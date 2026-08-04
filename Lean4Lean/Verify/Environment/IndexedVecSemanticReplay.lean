@@ -213,35 +213,37 @@ theorem indexedVecSemanticConsSourceTr :
   exact hshape.to_trExprS indexedVecTypeEnv_ordered trivial
     ⟨.sort u, htype⟩
 
-noncomputable def indexedVecStagedSemanticInput :
-    VInductDecl.StagedNormalizationCandidateSemanticInput
+noncomputable def indexedVecStagedUniverseInput :
+    VInductDecl.StagedNormalizationCandidateUniverseInput
       indexedVecFamilyCandidateContext ctorContext natFinalEnv [`u]
       indexedVecNormalizationCandidate indexedVecDecl where
-  raw := indexedVecType
-  raw_types_eq := rfl
-  declaration_uvars_eq := rfl
-  preFamily := indexedVecPreFamilyStage
-  family := indexedVecFamilyStage
-  constructorValidation :=
-    AddInductive.ConstructorValidationRun.of_run
-      indexedVecValidationCheckConstructors
-  constructors := .cons {
-    name_eq := rfl
-    uvars_eq := rfl
-    type := {
-      context_eq := rfl
-      source_tr := indexedVecSemanticNilSourceTr
-      whnfFuel := 9999
-      whnfDepth := rfl } } (.cons {
-    name_eq := rfl
-    uvars_eq := rfl
-    type := {
-      context_eq := rfl
-      source_tr := indexedVecSemanticConsSourceTr
-      whnfFuel := 9999
-      whnfDepth := rfl } } .nil)
-  familyTypesProduced := indexedVecFamilyTypeListProduced
-  familiesProduced := indexedVecFamilyListProduced
+  staged := {
+    raw := indexedVecType
+    raw_types_eq := rfl
+    declaration_uvars_eq := rfl
+    preFamily := indexedVecPreFamilyStage
+    family := indexedVecFamilyStage
+    constructorValidation :=
+      AddInductive.ConstructorValidationRun.of_run
+        indexedVecValidationCheckConstructors
+    constructors := .cons {
+      name_eq := rfl
+      uvars_eq := rfl
+      type := {
+        context_eq := rfl
+        source_tr := indexedVecSemanticNilSourceTr
+        whnfFuel := 9999
+        whnfDepth := rfl } } (.cons {
+      name_eq := rfl
+      uvars_eq := rfl
+      type := {
+        context_eq := rfl
+        source_tr := indexedVecSemanticConsSourceTr
+        whnfFuel := 9999
+        whnfDepth := rfl } } .nil)
+    familyTypesProduced := indexedVecFamilyTypeListProduced
+    familiesProduced := indexedVecFamilyListProduced }
+  universeRun := indexedVecValidationCheckConstructorUniverseSemantics
 
 /-- Generic automatic assembly joins the arbitrary-length operational list
 witnesses to the complete retained semantic hierarchy for the two-constructor
@@ -250,7 +252,7 @@ theorem indexedVecProducedSemanticHierarchy_exists :
     Nonempty (VInductDecl.ProducedNormalizationCandidateSemanticRun
       indexedVecFamilyCandidateContext ctorContext natFinalEnv [`u]
       indexedVecNormalizationCandidate indexedVecDecl) :=
-  indexedVecStagedSemanticInput.exists
+  indexedVecStagedUniverseInput.exists
 
 /-- The automatically assembled hierarchy retains both constructor headers in
 the producer's `nil`/`cons` source order.  This inspects the semantic result,

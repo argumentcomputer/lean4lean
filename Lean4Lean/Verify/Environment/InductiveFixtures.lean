@@ -1,5 +1,5 @@
 import Lean4Lean.Verify.Environment.Lemmas
-import Lean4Lean.Verify.Environment.Normalization
+import Lean4Lean.Verify.Environment.ConstructorValidation
 import Lean4Lean.Inductive.Add
 import Lean4Lean.Theory.Meta
 import Lean4Lean.Theory.InductiveFixtures
@@ -6220,6 +6220,39 @@ private theorem annotatedPi_checkConstructors :
   unfold AddInductive.checkConstructorFold
   simp [ReaderT.pure, Pure.pure, Except.pure]
 
+private theorem annotatedPi_checkConstructorUniverseSemantics :
+    AddInductive.checkConstructorUniverseListSemantics
+        annotatedPiInductiveStats annotatedPiKernelType.ctors
+        annotatedPiCtorCandidateContext = .ok () := by
+  unfold AddInductive.checkConstructorUniverseListSemantics
+  simp only [annotatedPiKernelType, annotatedPiKernelCtor,
+    annotatedPiMkInfo, ConstantInfo.type, ConstantInfo.toConstantVal,
+    ReaderT.bind, Bind.bind]
+  unfold AddInductive.checkConstructorUniverseSemantics
+  simp only [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, Bind.bind, ReaderT.pure, Pure.pure,
+    Except.bind, Except.pure]
+  rw [show annotatedPiCtorCandidateContext.fuel.inductiveFuel =
+      999 + 1 by rfl]
+  unfold AddInductive.checkConstructorUniverseSemantics.loop
+  simp only
+  rw [show annotatedPiInductiveStats.params[0]? = none by rfl]
+  simp only [ReaderT.bind, Bind.bind, AddInductive.liftTypeChecker_apply]
+  rw [annotatedPiInner_ensureTypeM_expanded]
+  simp only [Except.bind]
+  simp [Expr.sortLevel!, AddInductive.constructorUniverseSemanticGe,
+    AddInductive.levelStructGe, AddInductive.levelStructEq, Pure.pure]
+  simp only [AddInductive.withLocalDecl_apply,
+    annotatedPiConst_instantiate1, annotatedPiConst_instantiate1',
+    annotatedPiOuterBodyCandidateContext,
+    AddInductive.Context.pushLocalDecl,
+    AddInductive.Context.freshExpr, AddInductive.Context.freshFVarId,
+    AddInductive.consumeTypeAnnotations, annotatedPiInnerAnnotations,
+    annotatedPiInnerKernel, annotatedPiRawDomainKernel,
+    annotatedPiCtorCandidateContext]
+  unfold AddInductive.checkConstructorUniverseSemantics.loop
+  rfl
+
 private theorem annotatedPiSortAnnotationTrace_build :
     AddInductive.CandidateTypeAnnotationTrace.build (.sort .zero) =
       ⟨.sort .zero, .identity _⟩ := by
@@ -6751,6 +6784,23 @@ private theorem aliasFormer_checkConstructors :
   unfold AddInductive.checkConstructorType.loop
   simp [aliasFormerCtor_isValidIndAppIdx, ReaderT.pure, Pure.pure,
     Except.pure, AddInductive.checkConstructorFold]
+
+private theorem aliasFormer_checkConstructorUniverseSemantics :
+    AddInductive.checkConstructorUniverseListSemantics
+        aliasFormerInductiveStats aliasFormerKernelType.ctors
+        aliasFormerCtorCandidateContext = .ok () := by
+  unfold AddInductive.checkConstructorUniverseListSemantics
+  simp only [aliasFormerKernelType, aliasFormerKernelCtor,
+    aliasFormerMkInfo, ConstantInfo.type, ConstantInfo.toConstantVal,
+    ReaderT.bind, Bind.bind]
+  unfold AddInductive.checkConstructorUniverseSemantics
+  simp only [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, Bind.bind, ReaderT.pure, Pure.pure,
+    Except.bind, Except.pure]
+  rw [show aliasFormerCtorCandidateContext.fuel.inductiveFuel = 999 + 1 by
+    rfl]
+  unfold AddInductive.checkConstructorUniverseSemantics.loop
+  rfl
 
 /-- The generic candidate traversal retains the exact context, input, and
 result of the actual AliasFormer family WHNF observation. -/
@@ -7412,28 +7462,30 @@ private def aliasFormerNormalizationCandidateSemanticRun :
   uvars_eq := rfl
   family := aliasFormerCandidateFamilySemanticRun
 
-private noncomputable def aliasFormerStagedSemanticInput :
-    VInductDecl.StagedNormalizationCandidateSemanticInput
+private noncomputable def aliasFormerStagedUniverseInput :
+    VInductDecl.StagedNormalizationCandidateUniverseInput
       aliasFormerCandidateContext aliasFormerCtorCandidateContext
       typeFamilyAliasEnv [] aliasFormerNormalizationCandidate
       aliasFormerRawDecl where
-  raw := aliasFormerRawType
-  raw_types_eq := rfl
-  declaration_uvars_eq := rfl
-  preFamily := aliasFormerPreFamilyStage
-  family := aliasFormerFamilyStage
-  constructorValidation :=
-    AddInductive.ConstructorValidationRun.of_run aliasFormer_checkConstructors
-  constructors := .cons {
-    name_eq := rfl
-    uvars_eq := rfl
-    type := {
-      context_eq := rfl
-      source_tr := aliasFormerCtorCheckTypeRun.expr_tr
-      whnfFuel := 9999
-      whnfDepth := rfl } } .nil
-  familyTypesProduced := aliasFormerFamilyTypeListProduced
-  familiesProduced := aliasFormerFamilyListProduced
+  staged := {
+    raw := aliasFormerRawType
+    raw_types_eq := rfl
+    declaration_uvars_eq := rfl
+    preFamily := aliasFormerPreFamilyStage
+    family := aliasFormerFamilyStage
+    constructorValidation :=
+      AddInductive.ConstructorValidationRun.of_run aliasFormer_checkConstructors
+    constructors := .cons {
+      name_eq := rfl
+      uvars_eq := rfl
+      type := {
+        context_eq := rfl
+        source_tr := aliasFormerCtorCheckTypeRun.expr_tr
+        whnfFuel := 9999
+        whnfDepth := rfl } } .nil
+    familyTypesProduced := aliasFormerFamilyTypeListProduced
+    familiesProduced := aliasFormerFamilyListProduced }
+  universeRun := aliasFormer_checkConstructorUniverseSemantics
 
 /-- The exact family/constructor producer traversals and verified translations
 automatically determine a complete retained AliasFormer hierarchy. -/
@@ -7442,7 +7494,7 @@ theorem aliasFormerProducedSemanticHierarchy_exists :
       aliasFormerCandidateContext aliasFormerCtorCandidateContext
       typeFamilyAliasEnv [] aliasFormerNormalizationCandidate
       aliasFormerRawDecl) :=
-  aliasFormerStagedSemanticInput.exists
+  aliasFormerStagedUniverseInput.exists
 
 def aliasFormerNormalizationCandidateRun :
     VInductDecl.NormalizationCandidateRun typeFamilyAliasEnv []
@@ -8245,28 +8297,30 @@ private def annotatedPiNormalizationCandidateSemanticRun :
   uvars_eq := rfl
   family := annotatedPiCandidateFamilySemanticRun
 
-private noncomputable def annotatedPiStagedSemanticInput :
-    VInductDecl.StagedNormalizationCandidateSemanticInput
+private noncomputable def annotatedPiStagedUniverseInput :
+    VInductDecl.StagedNormalizationCandidateUniverseInput
       annotatedPiFamilyCandidateContext annotatedPiCtorCandidateContext
       outParamEnv [] annotatedPiNormalizationCandidate
       annotatedPiRawDecl where
-  raw := annotatedPiRawType
-  raw_types_eq := rfl
-  declaration_uvars_eq := rfl
-  preFamily := annotatedPiPreFamilyStage
-  family := annotatedPiFamilyStage
-  constructorValidation :=
-    AddInductive.ConstructorValidationRun.of_run annotatedPi_checkConstructors
-  constructors := .cons {
-    name_eq := rfl
-    uvars_eq := rfl
-    type := {
-      context_eq := rfl
-      source_tr := annotatedPiCtorCandidateRun.source_tr
-      whnfFuel := 9999
-      whnfDepth := rfl } } .nil
-  familyTypesProduced := annotatedPiFamilyTypeListProduced
-  familiesProduced := annotatedPiFamilyListProduced
+  staged := {
+    raw := annotatedPiRawType
+    raw_types_eq := rfl
+    declaration_uvars_eq := rfl
+    preFamily := annotatedPiPreFamilyStage
+    family := annotatedPiFamilyStage
+    constructorValidation :=
+      AddInductive.ConstructorValidationRun.of_run annotatedPi_checkConstructors
+    constructors := .cons {
+      name_eq := rfl
+      uvars_eq := rfl
+      type := {
+        context_eq := rfl
+        source_tr := annotatedPiCtorCandidateRun.source_tr
+        whnfFuel := 9999
+        whnfDepth := rfl } } .nil
+    familyTypesProduced := annotatedPiFamilyTypeListProduced
+    familiesProduced := annotatedPiFamilyListProduced }
+  universeRun := annotatedPi_checkConstructorUniverseSemantics
 
 /-- The exact family/constructor producer traversals and verified translations
 automatically determine the complete retained AnnotatedPi hierarchy, including
@@ -8276,7 +8330,7 @@ theorem annotatedPiProducedSemanticHierarchy_exists :
       annotatedPiFamilyCandidateContext annotatedPiCtorCandidateContext
       outParamEnv [] annotatedPiNormalizationCandidate
       annotatedPiRawDecl) :=
-  annotatedPiStagedSemanticInput.exists
+  annotatedPiStagedUniverseInput.exists
 
 def annotatedPiNormalizationCandidateRun :
     VInductDecl.NormalizationCandidateRun outParamEnv []
