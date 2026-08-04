@@ -66,8 +66,8 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-01D1 active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
-| Current formalization source | `097efb45018136df32c2f6e0dbbbbf7c7106c149` on `argumentcomputer/lean4lean` `jcb/induct` |
+| Ladder position | **L4L-01D2 active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
+| Current formalization source | local-committed L4L-01D1 checkpoint `a246c048390c7f3c3a06f87fdb94b23ef671681f` at `jcb/formalization`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 22 live sorries and 29 custom-axiom declarations, both pinned by exact audits |
@@ -115,7 +115,11 @@ analysis and analyzer-owned view WF derive checked WF and every per-position
 shape record, so fixtures supply no component equations. The staged
 semantic-input owner, family-validation semantics with post-family staging,
 and the complete retained constructor-validation trace (with source-list
-inversion and phase-local failure theorems) are in place.
+inversion and phase-local failure theorems) are in place. The source-ordered
+constructor-universe audit accepts only proved structural order or the
+impredicative-Prop exception, retains that stronger result in the staged
+semantic owner, and excludes normalized `Level.geq`-only acceptance until its
+core comparison receives a soundness proof.
 
 **Three positive regressions, end to end.** AliasFormer (terminal alias),
 AnnotatedPi (nested recursive-Π with retained `outParam Prop`, generated
@@ -123,10 +127,12 @@ recursor and iota rule), and `IndexedVec` (one parameter, one index, ordered
 `nil`/`cons`, identity normalization) each prove the exact successful whole
 `buildNormalizationCandidate` call, inhabit
 `ProducedGenerationCandidatePackage`, and route both the certified Theory
-transaction and the checked replay through that package. Negatives stay
-sharp: opaque-`outParam` whole-candidate rejection, truncated and reordered
-views, missing/extra constructors, and the environment-free
-closure/universe/name/result/collision matrix.
+transaction and the checked replay through that package. All three also pass
+the strengthened constructor-universe gate. Negatives stay sharp:
+opaque-`outParam` whole-candidate rejection, the non-Prop normalized
+`Level.geq`-only exclusion, truncated and reordered views, missing/extra
+constructors, and the environment-free closure/universe/name/result/collision
+matrix.
 
 **Environment replay.** Six actual-metadata transactions (Nat, Eq,
 `IndexedVec`, `Acc`, `AliasFormer`, `AliasRec`) plus the candidate-produced
@@ -139,8 +145,9 @@ indices as `Nat.zero`/`Nat.succ`, deliberately excluding notation's
 replay. `AliasRec` remains the compositional constructor-normalization
 specification until its candidate list is migrated.
 
-**Not claimed.** Generic package construction from an arbitrary successful
-producer call (L4L-01D1-L4L-01E), WHNF/defeq validation parity, full
+**Not claimed.** Post-family constructor interpretation through generic
+package construction from an arbitrary successful producer call
+(L4L-01D2-L4L-01E), WHNF/defeq validation parity, full
 positivity, small elimination, K behavior, the complete differential matrix,
 mutual/nested blocks, patterns, projections, and the remaining
 metatheory/checker roots. Bare producer success is never generation-shape
@@ -333,7 +340,7 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Singleton constructor soundness (L4L-01D1–L4L-01E)
+### Singleton constructor soundness (L4L-01D2–L4L-01E)
 
 Constructor fields are checked after the raw family constant is inserted, but
 `VInductDecl.fieldsWF` is intentionally stated over the pre-family
@@ -349,22 +356,7 @@ caller-selected view, or an assumed normalization theorem, and the
 opaque-`outParam` whole-candidate rejection must stay green and fail before
 package construction.
 
-**L4L-01D1 — constructor-universe semantic subset (active).** Lean v4.31's
-constructor validator falls back to core `Level.geq`, which first uses core
-`Level.normalize`; neither exposes the soundness theorem needed to turn that
-Boolean into Theory's `VLevel` order. Define the executable
-constructor-universe semantic gate `levelStructGe result field ||
-result.isZero`. Prove strict kernel-level translation preserves structural
-equality/order, prove the gate yields `result = 0 ∨ field ≤ result`, and
-prove it is an under-approximation of the ordinary validator. Thread it
-through the retained source-ordered trace. The core `Level.geq`-only fallback
-is explicitly excluded until L4L-02C restores it.
-*Exit:* AliasFormer, AnnotatedPi, and `IndexedVec` pass the gate; a non-Prop
-`Level.geq`-only case is rejected at the strengthened semantic gate; exact
-roots use only `propext`/`Quot.sound`; no level-normalizer sorry,
-core-normalization oracle, custom axiom, or acceptance widening.
-
-**L4L-01D2 — post-family constructor semantics.** Align the retained
+**L4L-01D2 — post-family constructor semantics (active).** Align the retained
 constructor-validation telescope with the retained candidate telescope at
 Theory de Bruijn positions, despite their distinct validation/candidate
 fresh-FVar identifiers. Interpret root `checkType`, parameter `isDefEq`,

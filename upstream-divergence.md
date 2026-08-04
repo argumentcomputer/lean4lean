@@ -4,9 +4,13 @@ This file tracks every deliberate semantic, API, build, or verification delta
 from `upstream/master` that must either be upstreamed or explicitly retained.
 It is the tracked counterpart to `plans/roadmap.md`.
 
-Audit baseline after the generation-readiness checkpoint (2026-08-03):
+Audit baseline after the constructor-universe semantic checkpoint
+(2026-08-04):
 
-- upstream: `0c38ab8`
+- current upstream reconciliation parent: digama `upstream/master`
+  `ef849dfbd94a`
+- historical generation-readiness comparison upstream: `0c38ab8`; the
+  ahead-of-upstream counts below use this older baseline
 - published semantic checkpoint:
   `cf3d5a47d35867e0e6ebe023c0803982e3e36cd1` (33 commits ahead of upstream)
 - first published documentation child:
@@ -49,9 +53,37 @@ Audit baseline after the generation-readiness checkpoint (2026-08-03):
   `bbb45e0e950724cdbbd405d75e304e2020cecf82`
   (`feat: consolidate generation readiness`; 50 commits ahead of upstream;
   3 files changed, 701 insertions, and 98 deletions)
+- upstream v4.31 reconciliation checkpoint:
+  `7f864b459e4a6062b468d6e5416688feac0f9f99`
+  (`merge: reconcile upstream v4.31`; second parent digama
+  `upstream/master` `ef849dfbd94a`)
+- retained constructor-validation checkpoint:
+  `097efb45018136df32c2f6e0dbbbbf7c7106c149`
+  (`feat: retain constructor validation traces`)
+- local-committed constructor-universe semantic checkpoint:
+  `a246c048390c7f3c3a06f87fdb94b23ef671681f`
+  (`proof: establish constructor universe foundation`; 5 files changed,
+  1,686 insertions, and 3,608 deletions, including the roadmap rewrite).
+  Publication to the fork's `jcb/induct` branch is pending.
 - fixed fork master: `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb`
   on local and `origin/master`
-- audited source checkpoint: `bbb45e0e` builds on the exact arbitrary-length
+- current audited source checkpoint: `a246c048` adds a source-ordered
+  executable audit for the structural/impredicative-Prop subset of constructor
+  universe validation, proves strict level translation preserves its equality
+  and order decisions, and translates every accepted trace node to Theory's
+  required universe disjunction. The strengthened staged owner retains the
+  audit separately from ordinary `buildNormalizationCandidate` success.
+  AliasFormer, AnnotatedPi, and the ordered two-constructor `IndexedVec`
+  regression pass; a non-Prop comparison accepted only by normalized
+  `Level.geq` remains rejected pending its own soundness bridge. The new
+  mathematical roots use exactly `propext`/`Quot.sound`; no normalizer oracle,
+  custom axiom, sorry, or acceptance widening is introduced. The exact
+  22-sorry frontier, 156-job default Lake build, 119-job Theory/Verify and Nix
+  proof builds, default Nix build, all six current-host flake checks,
+  all-system no-build evaluation, formatter, Theory import-boundary, and
+  whitespace checks pass.
+- generation-readiness source checkpoint: `bbb45e0e` builds on the exact
+  arbitrary-length
   producer witnesses and source-indexed semantic inputs that return a
   `Nonempty ProducedNormalizationCandidateSemanticRun`. The retained checker
   selects every Theory view; callers provide verified contexts and strict
@@ -173,7 +205,8 @@ to the replacement.
 - **Delta:** token-aware, declaration-attributed allowlist excluding
   `Experimental/`, wired into Nix and CI.
 - **Ix impact:** guarantees that upstream proof debt can only shrink at pin
-  boundaries; currently records exactly 20 supported-tree sorries.
+  boundaries; after the v4.31 reconciliation it records exactly 22
+  supported-tree sorries.
 - **Tests:** `perl .github/scripts/check_sorry_frontier.pl` and the
   `sorry-frontier` flake check.
 - **Upstream issue/PR:** TBD.
@@ -311,12 +344,14 @@ to the replacement.
 
 ## D010 — executable normalization and certified producer boundary
 
-- **Status:** published-fork
+- **Status:** local-committed (the earlier checkpoints are published-fork;
+  `a246c04` is not yet published)
 - **Commits:** `1fb7d6e`, `9fde4c6`, `b283912`, `a84aa19`, `c2b1c4f`,
   `a1d8943`, `6a77882`, `bc37d43`, `5e5bb76`, `33b99f4`, `a3ff992`,
   `9a865ea`, `a627362`, `6732659`, `c40a471`, `c739d41`, `82f4a54`,
   `d553930`, `cf3d5a4`, `c9e4ae2`, `a7d101b`, `f0caf16`, `e3cf22d`,
-  `7e5f4f7`, `2b1d802`, `a64fe98`, `5aa9ab6`, and `bbb45e0`
+  `7e5f4f7`, `2b1d802`, `a64fe98`, `5aa9ab6`, `bbb45e0`, `7c79220`,
+  `da45b53`, `097efb4`, and `a246c04`
 - **Delta:** retain exact ordinary-checker full-check, WHNF, and `isDefEq`
   executions in source- and context-indexed candidate traces; interpret them
   into Theory normalization and generation certificates; assemble dependent
@@ -414,43 +449,40 @@ to the replacement.
   the existing complete produced package for that same candidate. AliasFormer,
   AnnotatedPi, and `IndexedVec` all use this consolidated path; fixtures no
   longer provide checked WF or per-position generation-shape structures.
+  Constructor validation now has a parallel strengthened semantic boundary.
+  `checkConstructorUniverseListSemantics` replays every source-ordered
+  constructor telescope and accepts an ordinary field only through structural
+  universe order or the impredicative-Prop result exception. Strict kernel
+  level translation turns that executable decision into exactly the Theory
+  disjunction needed later by `fieldsWF`. The additive
+  `StagedNormalizationCandidateUniverseInput` retains the successful audit
+  alongside the established semantic owner without changing
+  `buildNormalizationCandidate` or treating its success as semantic evidence.
+  AliasFormer, AnnotatedPi, and `IndexedVec` use that owner; the normalized
+  non-Prop `Level.geq`-only regression remains deliberately rejected.
 - **Ix impact:** prevents ix from receiving an unrelated hand-selected
   normalization or generation witness while keeping checker state out of the
   Theory API. This is the proof boundary needed before executable metadata can
   be treated as certified inductive generation.
-- **Latest checkpoint:** one strengthened executable outer result now retains
-  the exact ordinary `buildNormalizationCandidate` equation and one complete
-  raw-family/constructor generation-spine check. The check is source-indexed,
-  rejects missing or extra constructors explicitly, and is independent of
-  semantic proofs. Given the retained semantic hierarchy and exact dependent
-  analysis, `GenerationCandidateSemanticRun.ofGenerationShape` derives checked
-  WF from the analyzer-owned view declaration and expands the single Boolean
-  into every dependent family/constructor stored-spine/count certificate.
-  `ProducedGenerationShapeCandidate.producedPackage` returns the complete
-  producer-selected semantic package for that same candidate. AliasFormer,
-  AnnotatedPi, and the two-constructor `IndexedVec` regression all flow through
-  this boundary. They supply neither checked WF nor per-position shape records;
-  their certified Theory transactions and checked E1 replays continue to
-  project from the same source-indexed packages.
-- **Current gap:** construct the verified per-position semantic inputs and WF
-  of the analyzer-owned view declaration generically from one arbitrary
-  verified outer checker context, strict source translations, and the exact
-  successful operational traversals. Then expose the singleton theorem that
-  combines those semantic inputs, exact dependent analysis, and the
-  strengthened generation-shape result into
-  `Nonempty ProducedGenerationCandidatePackage` (or an equivalent dependent
-  result). Bare `buildNormalizationCandidate` success cannot soundly imply the
-  gate: WHNF may change the visible Pi spine and the ordinary producer does not
-  test `storedSpine`. It also cannot imply Theory WF. The generic boundary must
-  therefore either run the strengthened gate or require its successful result,
-  while verified checker executions remain the sole source of Theory meaning.
-  Raw/view pairing, component equations, checked WF, dependent list alignment,
-  and every per-position shape record must remain derived; view-telescope,
-  terminal-typing, normalization-equality, and post-family-WF premises must not
-  be reintroduced.
-  The outer boundary remains singleton-family;
-  complete the normalization differential matrix before widening it to mutual
-  and nested blocks.
+- **Latest checkpoint:** the L4L-01D1 source at `a246c04` proves the
+  structural/Prop constructor-universe gate sound under strict translation,
+  threads it through the retained telescope and constructor-list trace, and
+  makes the exact successful audit part of the staged semantic owner. The gate
+  is a strict under-approximation of ordinary validation: it cannot widen
+  kernel acceptance, and the core normalized `Level.geq` fallback remains out
+  of scope until its own soundness proof. All three live fixtures pass through
+  this strengthened owner.
+- **Current gap:** L4L-01D2 must align the retained constructor-validation and
+  candidate telescopes at Theory de Bruijn positions even though the two
+  executable traversals allocate different fresh free-variable identifiers.
+  Interpret the root `checkType`, parameter `isDefEq`, field `ensureType`,
+  positivity targets, and terminal family applications in the actual
+  post-family verified environment. The result must remain source ordered and
+  cover each exact view field/result without claiming pre-family `fieldsWF`,
+  accepting a caller-selected view, or using whole-Pi injectivity. D3 and D4
+  remain responsible for pre-family replay and analyzer-owned view WF; E then
+  closes the generic produced package. The outer boundary remains
+  singleton-family until the later mutual/nested checkpoints.
 - **Tests:** exact positive AliasFormer, AnnotatedPi, and `IndexedVec`
   whole-call equations; positive semantic/transaction/replay fixtures for the
   first two plus the complete checkpoint semantic/transaction/E1 replay for
@@ -465,11 +497,13 @@ to the replacement.
   `typeEnv_wf`, checked-WF, per-position generation-shape, normalized-pair,
   `rawTel`, `rawResult`, and `viewResult` inputs; exact strengthened-producer
   success for all three fixtures; missing-raw and extra-raw constructor-list
-  rejection; exact analyzer-success replay in all three fixtures; focused
-  direct compiles, 157-job default Lake build, and 124-job Theory/Verify and Nix
-  proof builds; 20-sorry frontier check; default Nix build; all six
-  current-host flake checks; all-system no-build evaluation; formatter; Theory
-  import-boundary; and whitespace checks.
+  rejection; exact analyzer-success replay in all three fixtures; structural
+  and impredicative-Prop universe positives; normalized non-Prop
+  `Level.geq`-only rejection; exact universe-bridge and staged-owner axiom
+  guards; focused direct compiles, 156-job default Lake build, and 119-job
+  Theory/Verify and Nix proof builds; 22-sorry frontier check; default Nix
+  build; all six current-host flake checks; all-system no-build evaluation;
+  formatter; Theory import-boundary; and whitespace checks.
 - **Axiom note:** no normalization oracle, native evaluator, or new axiom was
   added. `Checked.type_eq`, `GenerationChecked.viewCtorType_eq`, and
   `GenerationChecked.checkedResultTarget_hasType` are exactly guarded at
@@ -517,7 +551,12 @@ to the replacement.
   semantic generation owner, deriving checked WF, and constructing the final
   package inherit exactly the already recorded checked semantic closure. Exact
   fixture guards expose only their pre-existing checker/pointer/cache and
-  projection dependencies.
+  projection dependencies. The new kernel-level structural equality/order and
+  Theory universe-disjunction roots depend exactly on
+  `propext`/`Quot.sound`; no level-normalizer theorem, oracle, custom axiom, or
+  new sorry is reachable. The additive staged projections explicitly guard
+  their inherited Verify closure instead of presenting it as a smaller
+  mathematical trust claim.
 - **Upstream issue/PR:** TBD; submit after the singleton producer interface is
   stable enough that the first PR does not freeze fixture-specific APIs.
 - **Removal condition:** upstream executable inductive ingestion returns or
