@@ -4,7 +4,7 @@ This file tracks every deliberate semantic, API, build, or verification delta
 from `upstream/master` that must either be upstreamed or explicitly retained.
 It is the tracked counterpart to `plans/roadmap.md`.
 
-Audit baseline after the post-family constructor semantic checkpoint
+Audit baseline after the pre-family constructor safety checkpoint
 (2026-08-05):
 
 - current upstream reconciliation parent: digama `upstream/master`
@@ -70,19 +70,26 @@ Audit baseline after the post-family constructor semantic checkpoint
   (`proof: establish post-family constructor semantics`; 5 files changed,
   3,963 insertions, and 1 deletion). Publication to the fork's `jcb/induct`
   branch is pending.
+- local-committed pre-family constructor safety checkpoint:
+  `9e40cbe00e9c6fe808ebb0720c912bba21aa1b06`
+  (`proof: establish pre-family constructor safety`; 5 files changed,
+  3,482 insertions, and 1 deletion; 67 commits ahead of the reconciled
+  upstream). Publication to the fork's `jcb/induct` branch is pending.
 - fixed fork master: `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb`
   on local and `origin/master`
-- current audited source checkpoint: `37d2dd99` aligns each retained
-  constructor-validation telescope with its retained candidate telescope by
-  source position, independently of the fresh-FVar identifiers allocated by
-  the two traversals. It interprets root `checkType`, parameter `isDefEq`, field
-  `ensureType`, positivity targets, and terminal family applications through
-  the verified checker in the actual post-family environment, retaining the
-  result in one staged source-ordered owner. AliasFormer, AnnotatedPi, and the
-  ordered two-constructor `IndexedVec` regression all inhabit that owner;
-  `IndexedVec` explicitly proves the relevant validator/candidate field FVars
-  differ. No pre-family `fieldsWF`, analyzer-view acceptance, whole-Pi
-  injectivity, native evaluator, custom axiom, or new sorry is claimed or
+- current audited source checkpoint: `9e40cbe0` adds one executable pre-family
+  constructor trace and staged semantic owner on top of the exact post-family
+  alignment. It retains ordinary-field checks, omits recursive outer locals,
+  and replays nested recursive Pi binders plus recursive/result index spines in
+  the verified pre-family context, with proved prefix weakening for the
+  resulting Theory judgments. The current singleton subset requires recursive
+  fields to form a suffix and every later recursive domain/result to be
+  syntactically independent of omitted recursive locals. AliasFormer,
+  AnnotatedPi, and the ordered two-constructor `IndexedVec` regression all
+  inhabit the produced pre-family owner. Executable negatives reach the exact
+  recursive-field-order and recursive-local-dependency errors. No `fieldsWF`,
+  analyzer-view acceptance, false constant-removal theorem, proof-only semantic
+  premise, native evaluator, custom axiom, or new sorry is claimed or
   introduced. Exact root guards retain only the already accepted checker and
   implementation contracts. The exact 22-sorry frontier, 156-job default Lake
   build, 119-job Theory/Verify and Nix proof builds, default Nix build, all six
@@ -351,13 +358,13 @@ to the replacement.
 ## D010 — executable normalization and certified producer boundary
 
 - **Status:** local-committed (the earlier checkpoints are published-fork;
-  `37d2dd9` is not yet published)
+  `9e40cbe` is not yet published)
 - **Commits:** `1fb7d6e`, `9fde4c6`, `b283912`, `a84aa19`, `c2b1c4f`,
   `a1d8943`, `6a77882`, `bc37d43`, `5e5bb76`, `33b99f4`, `a3ff992`,
   `9a865ea`, `a627362`, `6732659`, `c40a471`, `c739d41`, `82f4a54`,
   `d553930`, `cf3d5a4`, `c9e4ae2`, `a7d101b`, `f0caf16`, `e3cf22d`,
   `7e5f4f7`, `2b1d802`, `a64fe98`, `5aa9ab6`, `bbb45e0`, `7c79220`,
-  `da45b53`, `097efb4`, `a246c04`, and `37d2dd9`
+  `da45b53`, `097efb4`, `a246c04`, `37d2dd9`, and `9e40cbe`
 - **Delta:** retain exact ordinary-checker full-check, WHNF, and `isDefEq`
   executions in source- and context-indexed candidate traces; interpret them
   into Theory normalization and generation certificates; assemble dependent
@@ -477,29 +484,45 @@ to the replacement.
   AliasFormer, AnnotatedPi, and `IndexedVec` inhabit the staged owner, and the
   two-constructor regression pins both source order and genuinely distinct
   validator/candidate field identifiers.
+  `buildConstructorPreFamilySafety` and
+  `checkConstructorPreFamilySafety` add the strengthened D3 boundary without
+  changing ordinary candidate production. Their dependent traces instantiate
+  the analyzer-owned family parameters, retain exact ordinary-field
+  `checkType`/`ensureType`/annotation equality observations, omit recursive
+  outer-field locals, and replay family-free nested Pi binders and
+  recursive/result index spines in the pre-family context. Recursive fields
+  must form a suffix, and recursive domains/results must be syntactically
+  independent of every omitted FVar. The semantic trace interpretation and
+  proved prefix-weakening projections derive the pre-family field, binder, and
+  spine judgments from those exact executions. The additive
+  `StagedNormalizationCandidatePreFamilyInput` retains the safety trace beside
+  D2's owner and reconstructs its semantic result under `Nonempty` from the
+  exact family terminal context. AliasFormer, AnnotatedPi, and `IndexedVec`
+  inhabit the new produced owner; executable initial-state fixtures reject an
+  ordinary field after recursion and a later recursive field depending on the
+  omitted local with their dedicated gate errors.
 - **Ix impact:** prevents ix from receiving an unrelated hand-selected
   normalization or generation witness while keeping checker state out of the
   Theory API. This is the proof boundary needed before executable metadata can
   be treated as certified inductive generation.
-- **Latest checkpoint:** the L4L-01D2 source at `37d2dd9` constructs the exact
-  source-ordered alignment and semantic replay for every retained constructor
-  validation/candidate pair in the actual post-family verified context. It
-  consumes validation-owned locals while matching candidate domains and
-  results by Theory positions, so distinct executable FVar allocation is not
-  mistaken for a semantic mismatch. Root, parameter, field, positivity, and
-  terminal evidence all flow into one staged produced owner; the three live
-  fixtures inhabit it without asserting pre-family `fieldsWF` or analyzer-view
-  acceptance.
-- **Current gap:** L4L-01D3 must add the executable pre-family-safety gate for
-  the current singleton subset: recursive fields form a suffix, while
-  recursive-Pi binders and recursive/result indices are independent of the
-  recursive-local suffix that will be removed. Re-run the family-free checks
-  in the verified pre-family context and transport them by proved weakening,
-  with negative regressions for field order and recursive-local dependency.
-  This remains an under-approximation, not a caller-supplied semantic premise
-  or a false general constant-removal theorem. D4 remains responsible for
-  analyzer-owned view WF; E then closes the generic produced package. The outer
-  boundary remains singleton-family until the later mutual/nested checkpoints.
+- **Latest checkpoint:** the L4L-01D3 source at `9e40cbe` constructs and
+  interprets the executable pre-family safety trace selected for the same
+  analyzer-owned family and constructor list as D1/D2. Ordinary fields are
+  rechecked and retained; recursive outer locals are omitted while their
+  nested binders and all recursive/result indices are checked in the exact
+  pre-family context and transported by proved weakening. The three live
+  fixtures inhabit the staged produced owner, and exact-message negatives pin
+  recursive-suffix ordering and omitted-local independence. This remains a
+  deliberate under-approximation and introduces neither a general
+  constant-removal theorem nor a caller-supplied semantic premise.
+- **Current gap:** L4L-01D4 must combine D1's universe semantics, D2's exact
+  positional alignment, D3's pre-family judgments, and the analyzer equations
+  to derive every accepted analyzer-owned constructor's `fieldsWF`, terminal
+  `SpineWF`, and exact view declaration WF. It must then delete all three
+  fixture-supplied `viewDecl_wf` wrappers without renaming or reintroducing a
+  checked-WF/view-WF premise. E remains responsible for generic package
+  closure. The outer boundary remains singleton-family until the later
+  mutual/nested checkpoints.
 - **Tests:** exact positive AliasFormer, AnnotatedPi, and `IndexedVec`
   whole-call equations; positive semantic/transaction/replay fixtures for the
   first two plus the complete checkpoint semantic/transaction/E1 replay for
@@ -519,8 +542,11 @@ to the replacement.
   `Level.geq`-only rejection; exact universe-bridge and staged-owner axiom
   guards; exact post-family alignment of all AliasFormer, AnnotatedPi, and
   ordered `IndexedVec` fields/results; distinct validator/candidate
-  `IndexedVec` field-FVar regression; exact generic and fixture post-family
-  axiom guards; focused direct compiles, 156-job default Lake build, and
+  `IndexedVec` field-FVar regression; exact successful pre-family replay and
+  produced semantic ownership for all three fixtures; executable
+  recursive-field-order and recursive-local-dependency rejection guards;
+  exact generic and fixture post-family/pre-family axiom guards; focused direct
+  compiles, 156-job default Lake build, and
   119-job Theory/Verify and Nix proof builds; 22-sorry frontier check; default
   Nix build; all six current-host flake checks; all-system no-build evaluation;
   formatter; Theory import-boundary; and whitespace checks.
@@ -583,6 +609,14 @@ to the replacement.
   syntax implementation contracts. The positional alignment and semantic-run
   structures declare no axiom; no `native_decide`, new sorry, or additional
   custom trust contract is reachable from these roots.
+  D3's executable gate and both rejection guards compute without an axiom or
+  proof premise. The trace interpretation, weakening lemmas, staged generic
+  owner, and all three fixture roots are compile-time guarded at exactly the
+  same established Verify closure as D2: `propext`, `sorryAx`,
+  `Classical.choice`, `Quot.sound`, and the existing expression, level,
+  pointer-equality, persistent-collection, and syntax implementation
+  contracts. No constant-removal axiom/theorem, native evaluator, new sorry,
+  or new project-specific trust contract is reachable.
 - **Upstream issue/PR:** TBD; submit after the singleton producer interface is
   stable enough that the first PR does not freeze fixture-specific APIs.
 - **Removal condition:** upstream executable inductive ingestion returns or
