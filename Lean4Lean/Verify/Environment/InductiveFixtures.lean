@@ -7487,6 +7487,96 @@ private noncomputable def aliasFormerStagedUniverseInput :
     familiesProduced := aliasFormerFamilyListProduced }
   universeRun := aliasFormer_checkConstructorUniverseSemantics
 
+private theorem aliasFormerConstructorValidationContext_eq :
+    { aliasFormerNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext with
+      env := aliasFormerCtorCandidateContext.env } =
+      aliasFormerCtorCandidateContext := rfl
+
+private theorem aliasFormerCtorCandidateContext_empty :
+    aliasFormerCtorCandidateContext.withEmptyLocalContext =
+      aliasFormerCtorCandidateContext := rfl
+
+private theorem aliasFormerAlignmentRun :
+    aliasFormerStagedUniverseInput.staged.constructorValidation.trace.checkCandidateAlignment
+      aliasFormerNormalizationCandidate.families.singleton.constructors
+      { aliasFormerNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext with
+        env := aliasFormerCtorCandidateContext.env } = .ok () := by
+    change AddInductive.ConstructorListValidationTrace.checkCandidateAlignment
+      aliasFormerStagedUniverseInput.staged.constructorValidation.trace
+      (.cons aliasFormerConstructorCandidate .nil)
+      aliasFormerCtorCandidateContext = Except.ok ()
+    generalize htrace :
+      aliasFormerStagedUniverseInput.staged.constructorValidation.trace = trace
+    cases trace with
+    | cons _ _ _ _ _ _ typeTrace tailTrace =>
+        cases typeTrace <;> cases tailTrace
+        rename_i _ _ _ _ valid
+        simp only [aliasFormerConstructorValidationContext_eq] at *
+        have hfvars : aliasFormerMkInfo.type.fvarsList.all
+            (fun fv =>
+              (aliasFormerCtorCandidateContext.lctx.find? fv).isSome) =
+              true := by
+          have hnil : aliasFormerMkInfo.type.fvarsList = [] :=
+            fvarsList_eq_nil.mpr (by
+              change (Expr.const ``AliasFormer []).hasFVar = false
+              exact constNil_data_hasFVar_false _)
+          rw [hnil]
+          rfl
+        have hmvars : aliasFormerMkInfo.type.hasMVar = false := by
+          simp [aliasFormerMkInfo, ConstantInfo.type,
+            ConstantInfo.toConstantVal, Expr.hasMVar,
+            constNil_data_hasExprMVar_false,
+            constNil_data_hasLevelMVar_false]
+        obtain ⟨checked, hchecked⟩ :=
+          AddInductive.checkConstructorAlignedExpr.exists_of_run hfvars
+            hmvars aliasFormerCtorCheckTypeStep_valid
+        have hdefeq := AddInductive.candidateIsDefEqRefl
+          aliasFormerCtorCandidateContext aliasFormerMkInfo.type
+        have hobserve := AddInductive.observeCandidateIsDefEq_of_run
+          aliasFormerCtorCandidateContext aliasFormerMkInfo.type
+          aliasFormerMkInfo.type hdefeq
+        have hchecked' : AddInductive.checkConstructorAlignedExpr
+            aliasFormerCtorCandidateContext (.const ``AliasFormer []) =
+            .ok checked := by
+          simpa [aliasFormerMkInfo, ConstantInfo.type,
+            ConstantInfo.toConstantVal] using hchecked
+        have hobserve' : AddInductive.observeCandidateIsDefEq
+            aliasFormerCtorCandidateContext (.const ``AliasFormer [])
+              (.const ``AliasFormer []) = .ok ⟨hdefeq⟩ := by
+          simpa [aliasFormerMkInfo, ConstantInfo.type,
+            ConstantInfo.toConstantVal] using hobserve
+        have hvalid : AddInductive.isValidIndAppIdx
+            aliasFormerStagedUniverseInput.staged.family.validation.stats
+            (.const ``AliasFormer []) 0 = true := by
+          simpa [aliasFormerKernelCtor, aliasFormerMkInfo,
+            ConstantInfo.type, ConstantInfo.toConstantVal] using valid
+        unfold AddInductive.ConstructorListValidationTrace.checkCandidateAlignment
+        unfold AddInductive.ConstructorCandidateAlignmentTrace.check
+        rw [AddInductive.ConstructorCandidateAlignmentTrace.build.eq_def]
+        simp only [aliasFormerKernelType]
+        simp +decide [aliasFormerCtorCandidateContext_empty,
+          hchecked', hobserve', hvalid,
+          AddInductive.ConstructorViewAlignmentTrace.build.eq_def,
+          AddInductive.ConstructorCandidateAlignmentTrace.build.eq_def,
+          AddInductive.CandidateExprTrace.spineLength,
+          AddInductive.ConstructorTypeValidationTrace.spineLength,
+          aliasFormerKernelCtor,
+          aliasFormerConstructorCandidate,
+          aliasFormerCtorCandidate,
+          AddInductive.CandidateExpr.view,
+          AddInductive.CandidateExprTrace.view,
+          aliasFormerMkInfo, ConstantInfo.type,
+          ConstantInfo.toConstantVal]
+        rfl
+
+private noncomputable def aliasFormerStagedPostFamilyInput :
+    VInductDecl.StagedNormalizationCandidatePostFamilyInput
+      aliasFormerCandidateContext aliasFormerCtorCandidateContext
+      typeFamilyAliasEnv [] aliasFormerNormalizationCandidate
+      aliasFormerRawDecl :=
+  VInductDecl.StagedNormalizationCandidatePostFamilyInput.ofRun
+    aliasFormerStagedUniverseInput aliasFormerAlignmentRun
+
 /-- The exact family/constructor producer traversals and verified translations
 automatically determine a complete retained AliasFormer hierarchy. -/
 theorem aliasFormerProducedSemanticHierarchy_exists :
@@ -7495,6 +7585,14 @@ theorem aliasFormerProducedSemanticHierarchy_exists :
       typeFamilyAliasEnv [] aliasFormerNormalizationCandidate
       aliasFormerRawDecl) :=
   aliasFormerStagedUniverseInput.exists
+
+/-- The retained validator telescope and independently produced candidate
+telescope align positionally and admit the complete post-family semantic
+interpretation for `AliasFormer`. -/
+theorem aliasFormerProducedPostFamilySemantic_exists :
+    Nonempty (VInductDecl.ProducedNormalizationCandidatePostFamilySemanticRun
+      aliasFormerStagedPostFamilyInput) :=
+  aliasFormerStagedPostFamilyInput.exists
 
 def aliasFormerNormalizationCandidateRun :
     VInductDecl.NormalizationCandidateRun typeFamilyAliasEnv []
@@ -8321,6 +8419,799 @@ private noncomputable def annotatedPiStagedUniverseInput :
     familyTypesProduced := annotatedPiFamilyTypeListProduced
     familiesProduced := annotatedPiFamilyListProduced }
   universeRun := annotatedPi_checkConstructorUniverseSemantics
+
+private def annotatedPiConstructorValidationContext : AddInductive.Context :=
+  { env := annotatedPiCtorCandidateContext.env
+    lctx := annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext.lctx
+    lparams := annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext.lparams
+    ngen := annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext.ngen
+    safety := annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext.safety
+    allowPrimitive := annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext.allowPrimitive
+    fuel := annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext.fuel }
+
+private theorem annotatedPiConstructorValidationContext_eq :
+    { annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext with
+      env := annotatedPiCtorCandidateContext.env } =
+      annotatedPiCtorCandidateContext := rfl
+
+private theorem annotatedPiConstructorValidationContext_def_eq :
+    annotatedPiConstructorValidationContext =
+      annotatedPiCtorCandidateContext := rfl
+
+private theorem annotatedPiConstructorValidationContextLiteral_eq :
+    ({ env := annotatedPiCtorCandidateContext.env
+       lctx := annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext.lctx
+       lparams := annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext.lparams
+       ngen := annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext.ngen
+       safety := annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext.safety
+       allowPrimitive := annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext.allowPrimitive
+       fuel := annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext.fuel } :
+      AddInductive.Context) = annotatedPiCtorCandidateContext := rfl
+
+private theorem annotatedPiStagedStats_eq :
+    annotatedPiStagedUniverseInput.staged.family.validation.stats =
+      annotatedPiInductiveStats := rfl
+
+private theorem annotatedPiStagedParams_zero :
+    annotatedPiStagedUniverseInput.staged.family.validation.stats.params[0]? =
+      none := by
+  rw [annotatedPiStagedStats_eq]
+  rfl
+
+private theorem annotatedPiKernelCtor_isForall :
+    annotatedPiKernelCtor.type.isForall = true := rfl
+
+private theorem annotatedPiKernelType_ctors_eq :
+    annotatedPiKernelType.ctors = [annotatedPiKernelCtor] := rfl
+
+private theorem annotatedPiKernelCtor_type_eq :
+    annotatedPiKernelCtor.type =
+      .forallE annotatedPiOuterName annotatedPiInnerKernel
+        (.const ``AnnotatedPi []) .default := rfl
+
+private theorem annotatedPiConstructorValidationFuel_eq :
+    annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext.fuel.inductiveFuel =
+      1000 := rfl
+
+private theorem annotatedPiCtorCandidateContext_empty :
+    annotatedPiCtorCandidateContext.withEmptyLocalContext =
+      annotatedPiCtorCandidateContext := rfl
+
+private def annotatedPiViewInnerKernel : Expr :=
+  .forallE `p (.sort .zero) (.const ``AnnotatedPi []) .default
+
+private def annotatedPiViewCtorKernel : Expr :=
+  .forallE annotatedPiOuterName annotatedPiViewInnerKernel
+    (.const ``AnnotatedPi []) .default
+
+private def annotatedPiAlignedViewInnerKernel : Expr :=
+  .forallE `p (.sort .zero)
+    ((Expr.const ``AnnotatedPi []).abstract
+      #[annotatedPiCtorCandidateContext.freshExpr]) .default
+
+private def annotatedPiAlignedViewCtorKernel : Expr :=
+  .forallE annotatedPiOuterName annotatedPiAlignedViewInnerKernel
+    ((Expr.const ``AnnotatedPi []).abstract
+      #[annotatedPiCtorCandidateContext.freshExpr]) .default
+
+@[simp] private theorem annotatedPiConst_abstract_singleton
+    (context : AddInductive.Context) :
+    (Expr.const ``AnnotatedPi []).abstract #[context.freshExpr] =
+      .const ``AnnotatedPi [] := by
+  rw [show #[context.freshExpr] =
+    ⟨[context.freshFVarId].map Expr.fvar⟩ by rfl]
+  simp only [Expr.abstract_eq, Expr.abstractList, Expr.abstract1]
+
+private theorem annotatedPiAlignedViewInnerKernel_eq :
+    annotatedPiAlignedViewInnerKernel = annotatedPiViewInnerKernel := by
+  simp [annotatedPiAlignedViewInnerKernel, annotatedPiViewInnerKernel]
+
+private theorem annotatedPiAlignedViewCtorKernel_eq :
+    annotatedPiAlignedViewCtorKernel = annotatedPiViewCtorKernel := by
+  simp [annotatedPiAlignedViewCtorKernel, annotatedPiViewCtorKernel,
+    annotatedPiAlignedViewInnerKernel, annotatedPiViewInnerKernel]
+
+private theorem annotatedPiValidationAlignedCheck_exists
+    {source candidateSource : Expr}
+    (source_eq : source = candidateSource)
+    {checked : AddInductive.ConstructorCheckedExpr
+      annotatedPiCtorCandidateContext candidateSource}
+    (run : AddInductive.checkConstructorAlignedExpr
+      annotatedPiCtorCandidateContext candidateSource = .ok checked) :
+    ∃ aligned : AddInductive.ConstructorCheckedExpr
+        annotatedPiConstructorValidationContext source,
+      AddInductive.checkConstructorAlignedExpr
+        annotatedPiConstructorValidationContext source = .ok aligned := by
+  subst candidateSource
+  rw [annotatedPiConstructorValidationContext_def_eq]
+  exact ⟨checked, run⟩
+
+private def annotatedPiAlignChecked
+    {context candidateContext : AddInductive.Context}
+    {source candidateSource : Expr}
+    (context_eq : context = candidateContext)
+    (source_eq : source = candidateSource)
+    (checked : AddInductive.ConstructorCheckedExpr
+      candidateContext candidateSource) :
+    AddInductive.ConstructorCheckedExpr context source := by
+  subst candidateContext
+  subst candidateSource
+  exact checked
+
+private def annotatedPiAlignIsDefEq
+    {context candidateContext : AddInductive.Context}
+    {lhs rhs candidateLhs candidateRhs : Expr}
+    (context_eq : context = candidateContext)
+    (lhs_eq : lhs = candidateLhs)
+    (rhs_eq : rhs = candidateRhs)
+    (observation : AddInductive.CandidateIsDefEqObservation
+      candidateContext candidateLhs candidateRhs) :
+    AddInductive.CandidateIsDefEqObservation context lhs rhs := by
+  subst candidateContext
+  subst candidateLhs
+  subst candidateRhs
+  exact observation
+
+private theorem annotatedPiViewInnerCheckTypeStep_valid :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨annotatedPiCtorCandidateContext, annotatedPiViewInnerKernel,
+        .sort (.succ .zero)⟩ := by
+  change TypeChecker.M.run annotatedPiCtorCandidateContext.env
+      annotatedPiCtorCandidateContext.safety
+      annotatedPiCtorCandidateContext.lctx
+      annotatedPiCtorCandidateContext.lparams
+      annotatedPiCtorCandidateContext.fuel
+      (TypeChecker.checkType annotatedPiViewInnerKernel) =
+        .ok (.sort (.succ .zero))
+  change
+    Except.map (fun x : Expr × TypeChecker.State => x.1)
+      (TypeChecker.Inner.inferType annotatedPiViewInnerKernel false
+        (TypeChecker.Methods.withFuel 10000)
+        annotatedPiCtorCandidateContext.toTypeChecker
+        ({} : TypeChecker.State)) =
+      .ok (.sort (.succ .zero))
+  change
+    Except.map (fun x : Expr × TypeChecker.State => x.1)
+      (TypeChecker.Inner.inferType' annotatedPiViewInnerKernel false
+        (TypeChecker.Methods.withFuel 9999)
+        annotatedPiCtorCandidateContext.toTypeChecker
+        ({} : TypeChecker.State)) =
+      .ok (.sort (.succ .zero))
+  unfold annotatedPiViewInnerKernel TypeChecker.Inner.inferType'
+  simp [Expr.hasLooseBVars, Expr.looseBVarRange',
+    TypeChecker.Inner.inferType',
+    TypeChecker.Inner.inferForall, TypeChecker.Inner.inferForall.loop,
+    Expr.instantiate1_eq, Expr.instantiate1',
+    annotatedPiWithLocalDecl, annotatedPiCtorCandidateContext,
+    AddInductive.Context.toTypeChecker,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+  simp [Expr.sortLevel!, annotatedPi_mkLevelIMaxSuccZero]
+  rfl
+
+private def annotatedPiViewInnerFinalState : TypeChecker.State :=
+  { ({} : TypeChecker.State) with
+    ngen := ({} : TypeChecker.State).ngen.next
+    inferTypeC :=
+      ((({} : TypeChecker.State).inferTypeC.insert
+          (.sort .zero) (.sort (.succ .zero))).insert
+          (.const ``AnnotatedPi []) (.sort (.succ .zero))).insert
+          annotatedPiViewInnerKernel (.sort (.succ .zero)) }
+
+private theorem annotatedPiViewInnerInferType_exists (n : Nat) :
+    ∃ state : TypeChecker.State,
+      TypeChecker.Inner.inferType' annotatedPiViewInnerKernel false
+          (TypeChecker.Methods.withFuel (n + 1))
+          annotatedPiCtorCandidateContext.toTypeChecker
+          ({} : TypeChecker.State) =
+        .ok (.sort (.succ .zero), state) ∧
+      state.inferTypeC[(.const ``AnnotatedPi [] : Expr)]? =
+        some (.sort (.succ .zero)) := by
+  refine ⟨annotatedPiViewInnerFinalState, ?_, ?_⟩
+  · unfold annotatedPiViewInnerKernel TypeChecker.Inner.inferType'
+    simp [Expr.hasLooseBVars, Expr.looseBVarRange',
+      TypeChecker.Inner.inferType',
+      TypeChecker.Inner.inferForall, TypeChecker.Inner.inferForall.loop,
+      Expr.instantiate1_eq, Expr.instantiate1',
+      annotatedPiWithLocalDecl, annotatedPiCtorCandidateContext,
+      AddInductive.Context.toTypeChecker,
+      Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+    simp [Expr.sortLevel!, annotatedPi_mkLevelIMaxSuccZero]
+    rfl
+  · simpa [annotatedPiViewInnerFinalState,
+      annotatedPiViewInnerKernel] using
+      annotatedPiFamilyCacheAfterForall
+        (({} : TypeChecker.State).inferTypeC.insert
+          (.sort .zero) (.sort (.succ .zero)))
+        `p (.sort .zero) (.const ``AnnotatedPi [])
+        (.sort (.succ .zero)) .default
+
+private theorem annotatedPiViewCtorCheckTypeStep_valid :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨annotatedPiCtorCandidateContext, annotatedPiViewCtorKernel,
+        .sort (.succ .zero)⟩ := by
+  change TypeChecker.M.run annotatedPiCtorCandidateContext.env
+      annotatedPiCtorCandidateContext.safety
+      annotatedPiCtorCandidateContext.lctx
+      annotatedPiCtorCandidateContext.lparams
+      annotatedPiCtorCandidateContext.fuel
+      (TypeChecker.checkType annotatedPiViewCtorKernel) =
+        .ok (.sort (.succ .zero))
+  change
+    Except.map (fun x : Expr × TypeChecker.State => x.1)
+      (TypeChecker.Inner.inferType annotatedPiViewCtorKernel false
+        (TypeChecker.Methods.withFuel 10000)
+        annotatedPiCtorCandidateContext.toTypeChecker
+        ({} : TypeChecker.State)) =
+      .ok (.sort (.succ .zero))
+  change
+    Except.map (fun x : Expr × TypeChecker.State => x.1)
+      (TypeChecker.Inner.inferType' annotatedPiViewCtorKernel false
+        (TypeChecker.Methods.withFuel 9999)
+        annotatedPiCtorCandidateContext.toTypeChecker
+        ({} : TypeChecker.State)) =
+      .ok (.sort (.succ .zero))
+  obtain ⟨innerState, hinner, hinnerCache⟩ :=
+    annotatedPiViewInnerInferType_exists 9997
+  change TypeChecker.Inner.inferType' annotatedPiViewInnerKernel false
+      (TypeChecker.Methods.withFuel 9998)
+      annotatedPiCtorCandidateContext.toTypeChecker
+      ({} : TypeChecker.State) =
+    .ok (.sort (.succ .zero), innerState) at hinner
+  unfold annotatedPiViewInnerKernel at hinner
+  let outerState : TypeChecker.State :=
+    { innerState with ngen := innerState.ngen.next }
+  have houterCache :
+      outerState.inferTypeC[(.const ``AnnotatedPi [] : Expr)]? =
+        some (.sort (.succ .zero)) := by
+    exact hinnerCache
+  have hfamily :
+      TypeChecker.Inner.inferType' (.const ``AnnotatedPi []) false
+          (TypeChecker.Methods.withFuel 9998)
+          ({ env := annotatedPiCtorCandidateContext.toTypeChecker.env
+             lctx := annotatedPiCtorCandidateContext.toTypeChecker.lctx.mkLocalDecl
+               ⟨innerState.ngen.curr⟩ annotatedPiOuterName
+               annotatedPiViewInnerKernel .default
+             safety := annotatedPiCtorCandidateContext.toTypeChecker.safety
+             eagerReduce := annotatedPiCtorCandidateContext.toTypeChecker.eagerReduce
+             lparams := annotatedPiCtorCandidateContext.toTypeChecker.lparams
+             fuel := annotatedPiCtorCandidateContext.toTypeChecker.fuel } :
+            TypeChecker.Context)
+          outerState =
+        .ok (.sort (.succ .zero), outerState) := by
+    simpa [annotatedPiCtorCandidateContext,
+      AddInductive.Context.toTypeChecker] using
+      annotatedPiInferTypeFamilyCached 9998
+        (annotatedPiCtorCandidateContext.toTypeChecker.lctx.mkLocalDecl
+          ⟨innerState.ngen.curr⟩ annotatedPiOuterName
+          annotatedPiViewInnerKernel .default)
+        outerState houterCache
+  unfold annotatedPiViewInnerKernel at hfamily
+  unfold annotatedPiViewCtorKernel TypeChecker.Inner.inferType'
+  simp [annotatedPiViewInnerKernel,
+    Expr.hasLooseBVars, Expr.looseBVarRange',
+    TypeChecker.Inner.inferForall, TypeChecker.Inner.inferForall.loop,
+    Expr.instantiate1_eq, Expr.instantiate1',
+    annotatedPiWithLocalDecl,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+  rw [hinner]
+  simp only [TypeChecker.Inner.ensureSortCore, Expr.isSort, if_true,
+    annotatedPiWithLocalDecl,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind,
+    ReaderT.pure, StateT.pure, Except.pure, Pure.pure]
+  rw [hfamily]
+  simp [TypeChecker.Inner.ensureSortCore,
+    Expr.sortLevel!, annotatedPi_mkLevelIMaxSuccZero,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind,
+    ReaderT.pure, StateT.pure, Except.pure, Pure.pure]
+  rfl
+
+private theorem annotatedPiSortZeroCheckTypeStep_valid :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨annotatedPiCtorCandidateContext, .sort .zero,
+        .sort (.succ .zero)⟩ := by
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  change
+    Except.map (fun x : Expr × TypeChecker.State => x.1)
+      (TypeChecker.Inner.inferType (.sort .zero) false
+        (TypeChecker.Methods.withFuel 10000)
+        annotatedPiCtorCandidateContext.toTypeChecker
+        ({} : TypeChecker.State)) =
+      .ok (.sort (.succ .zero))
+  change
+    Except.map (fun x : Expr × TypeChecker.State => x.1)
+      (TypeChecker.Inner.inferType' (.sort .zero) false
+        (TypeChecker.Methods.withFuel 9999)
+        annotatedPiCtorCandidateContext.toTypeChecker
+        ({} : TypeChecker.State)) =
+      .ok (.sort (.succ .zero))
+  unfold TypeChecker.Inner.inferType'
+  simp [Expr.hasLooseBVars, Expr.looseBVarRange',
+    annotatedPiCtorCandidateContext,
+    AddInductive.Context.toTypeChecker,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+  rfl
+
+private theorem annotatedPiConsumeRawDomain :
+    AddInductive.consumeTypeAnnotations annotatedPiRawDomainKernel =
+      .sort .zero := by
+  simp [AddInductive.consumeTypeAnnotations, annotatedPiRawDomainKernel]
+
+private theorem annotatedPiConsumeInner :
+    AddInductive.consumeTypeAnnotations annotatedPiInnerKernel =
+      annotatedPiInnerKernel := by
+  simp [AddInductive.consumeTypeAnnotations, annotatedPiInnerKernel]
+
+private theorem annotatedPiValidationInnerBodyContext_eq :
+    annotatedPiConstructorValidationContext.pushLocalDecl
+      `p .default
+        (AddInductive.consumeTypeAnnotations annotatedPiRawDomainKernel) =
+      annotatedPiInnerBodyCandidateContext := by
+  rw [annotatedPiConstructorValidationContext_def_eq,
+    annotatedPiConsumeRawDomain]
+  rfl
+
+private theorem annotatedPiValidationOuterBodyContext_eq :
+    annotatedPiConstructorValidationContext.pushLocalDecl
+      annotatedPiOuterName .default
+        (AddInductive.consumeTypeAnnotations annotatedPiInnerKernel) =
+      annotatedPiOuterBodyCandidateContext := by
+  rw [annotatedPiConstructorValidationContext_def_eq,
+    annotatedPiConsumeInner]
+  rfl
+
+private theorem annotatedPiValidationInnerBody_whnf_eq
+    {result : Expr}
+    (run : AddInductive.CandidateWhnfStep.Valid
+      ⟨({ annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext with
+          env := annotatedPiCtorCandidateContext.env }).pushLocalDecl
+          `p .default (AddInductive.consumeTypeAnnotations
+            annotatedPiRawDomainKernel),
+        .const ``AnnotatedPi [], result⟩) :
+    result = .const ``AnnotatedPi [] := by
+  rw [annotatedPiConstructorValidationContext_eq,
+    annotatedPiConsumeRawDomain] at run
+  change TypeChecker.M.run annotatedPiInnerBodyCandidateContext.env
+    annotatedPiInnerBodyCandidateContext.safety
+    annotatedPiInnerBodyCandidateContext.lctx
+    annotatedPiInnerBodyCandidateContext.lparams
+    annotatedPiInnerBodyCandidateContext.fuel
+    (TypeChecker.whnf (.const ``AnnotatedPi [])) = .ok result at run
+  have known := annotatedPiInnerBodyCandidateStep_valid
+  change TypeChecker.M.run annotatedPiInnerBodyCandidateContext.env
+    annotatedPiInnerBodyCandidateContext.safety
+    annotatedPiInnerBodyCandidateContext.lctx
+    annotatedPiInnerBodyCandidateContext.lparams
+    annotatedPiInnerBodyCandidateContext.fuel
+    (TypeChecker.whnf (.const ``AnnotatedPi [])) =
+      .ok (.const ``AnnotatedPi []) at known
+  rw [known] at run
+  exact (Except.ok.inj run).symm
+
+private theorem constructorTypeValidationTrace_spineLength_zero
+    {stats : AddInductive.InductiveStats} {isUnsafe : Bool}
+    {familyIdx : Nat} {ctor : Name} {context : AddInductive.Context}
+    {source : Expr} {argIdx fuel : Nat}
+    (trace : AddInductive.ConstructorTypeValidationTrace stats isUnsafe
+      familyIdx ctor context source argIdx fuel)
+    (terminal : source.isForall = false) :
+    trace.spineLength = 0 := by
+  cases trace <;>
+    simp_all [AddInductive.ConstructorTypeValidationTrace.spineLength,
+      Expr.isForall]
+
+private theorem constructorTypeValidationTrace_eq_terminal
+    {stats : AddInductive.InductiveStats} {isUnsafe : Bool}
+    {familyIdx : Nat} {ctor : Name} {context : AddInductive.Context}
+    {source : Expr} {argIdx fuel : Nat}
+    (trace : AddInductive.ConstructorTypeValidationTrace stats isUnsafe
+      familyIdx ctor context source argIdx (fuel + 1))
+    (terminal : source.isForall = false)
+    (valid : AddInductive.isValidIndAppIdx stats source familyIdx = true) :
+    trace = .terminal context source fuel argIdx terminal valid := by
+  cases trace with
+  | parameter context fuel argIdx name domain body binderInfo param
+      parameterType parameterAt parameterTypeRun defeq tail =>
+      have impossible :
+          (Expr.forallE name domain body binderInfo).isForall = true := rfl
+      rw [impossible] at terminal
+      contradiction
+  | ordinary context fuel argIdx name domain body binderInfo sortResult
+      noParameter ensureType universeTrace positivity tail =>
+      have impossible :
+          (Expr.forallE name domain body binderInfo).isForall = true := rfl
+      rw [impossible] at terminal
+      contradiction
+  | terminal => rfl
+
+set_option maxHeartbeats 10000000 in
+private noncomputable def annotatedPiStagedPostFamilyInput :
+    VInductDecl.StagedNormalizationCandidatePostFamilyInput
+      annotatedPiFamilyCandidateContext annotatedPiCtorCandidateContext
+      outParamEnv [] annotatedPiNormalizationCandidate
+      annotatedPiRawDecl where
+  universeInput := annotatedPiStagedUniverseInput
+  alignment := by
+    change AddInductive.ConstructorCandidateAlignmentTrace
+      annotatedPiStagedUniverseInput.staged.family.validation.stats false 0
+      annotatedPiConstructorValidationContext
+      annotatedPiStagedUniverseInput.staged.constructorValidation.trace
+      (.cons annotatedPiConstructorCandidate .nil)
+    generalize htrace :
+      annotatedPiStagedUniverseInput.staged.constructorValidation.trace = trace
+    cases trace with
+    | cons seen head constructors constructorFresh constructorClosed
+        constructorRootCheck typeTrace listTailTrace =>
+        cases typeTrace with
+        | parameter context fuel argIdx name domain body binderInfo param
+            parameterType parameterAt parameterTypeRun defeq tail =>
+            rw [annotatedPiStagedParams_zero] at parameterAt
+            contradiction
+        | terminal context source fuel argIdx terminal valid =>
+            rw [annotatedPiKernelCtor_isForall] at terminal
+            contradiction
+        | ordinary context fuel argIdx name domain body binderInfo sortResult
+            noParameter ensureType universeTrace positivity tail =>
+            cases listTailTrace
+            cases positivity with
+            | skipped isUnsafe_eq => contradiction
+            | safe isUnsafe_eq positivityTrace =>
+                cases positivityTrace with
+                | absent context source result fuel whnf occurs =>
+                    change AddInductive.CandidateWhnfStep.Valid
+                      ⟨{ annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext with
+                          env := annotatedPiCtorCandidateContext.env },
+                        annotatedPiInnerKernel, result⟩ at whnf
+                    rw [annotatedPiConstructorValidationContext_eq] at whnf
+                    change TypeChecker.M.run annotatedPiCtorCandidateContext.env
+                      annotatedPiCtorCandidateContext.safety
+                      annotatedPiCtorCandidateContext.lctx
+                      annotatedPiCtorCandidateContext.lparams
+                      annotatedPiCtorCandidateContext.fuel
+                      (TypeChecker.whnf annotatedPiInnerKernel) =
+                        .ok result at whnf
+                    rw [annotatedPiInner_whnfM] at whnf
+                    cases whnf
+                    rw [annotatedPiStagedStats_eq,
+                      annotatedPiInner_stats_hasIndOcc] at occurs
+                    contradiction
+                | target context source result fuel targetIdx whnf occurs
+                    terminal valid =>
+                    change AddInductive.CandidateWhnfStep.Valid
+                      ⟨{ annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext with
+                          env := annotatedPiCtorCandidateContext.env },
+                        annotatedPiInnerKernel, result⟩ at whnf
+                    rw [annotatedPiConstructorValidationContext_eq] at whnf
+                    change TypeChecker.M.run annotatedPiCtorCandidateContext.env
+                      annotatedPiCtorCandidateContext.safety
+                      annotatedPiCtorCandidateContext.lctx
+                      annotatedPiCtorCandidateContext.lparams
+                      annotatedPiCtorCandidateContext.fuel
+                      (TypeChecker.whnf annotatedPiInnerKernel) =
+                        .ok result at whnf
+                    rw [annotatedPiInner_whnfM] at whnf
+                    cases whnf
+                    simp [annotatedPiInnerKernel, Expr.isForall] at terminal
+                | forallE positivityContext positivitySource positivityFuel
+                    positivityName positivityDomain positivityBody
+                    positivityBinderInfo positivityWhnf positivityOccurs
+                    positivityDomainFree positivityTail =>
+                    change AddInductive.CandidateWhnfStep.Valid
+                      ⟨{ annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext with
+                          env := annotatedPiCtorCandidateContext.env },
+                        annotatedPiInnerKernel,
+                        .forallE positivityName positivityDomain positivityBody
+                          positivityBinderInfo⟩ at positivityWhnf
+                    rw [annotatedPiConstructorValidationContext_eq] at positivityWhnf
+                    change TypeChecker.M.run annotatedPiCtorCandidateContext.env
+                      annotatedPiCtorCandidateContext.safety
+                      annotatedPiCtorCandidateContext.lctx
+                      annotatedPiCtorCandidateContext.lparams
+                      annotatedPiCtorCandidateContext.fuel
+                      (TypeChecker.whnf annotatedPiInnerKernel) =
+                        .ok (.forallE positivityName positivityDomain
+                          positivityBody positivityBinderInfo) at positivityWhnf
+                    rw [annotatedPiInner_whnfM] at positivityWhnf
+                    cases positivityWhnf
+                    have hTailSpine : tail.spineLength = 0 :=
+                      constructorTypeValidationTrace_spineLength_zero tail (by
+                        simp only [annotatedPiConst_instantiate1,
+                          Expr.isForall])
+                    cases positivityTail with
+                    | absent context source result fuel whnf occurs =>
+                        have whnf' : AddInductive.CandidateWhnfStep.Valid
+                            ⟨({ annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext with
+                                env := annotatedPiCtorCandidateContext.env }).pushLocalDecl
+                                `p .default (AddInductive.consumeTypeAnnotations
+                                  annotatedPiRawDomainKernel),
+                              .const ``AnnotatedPi [], result⟩ := by
+                          simpa only [annotatedPiConst_instantiate1] using whnf
+                        have hresult :=
+                          annotatedPiValidationInnerBody_whnf_eq whnf'
+                        subst result
+                        rw [annotatedPiStagedStats_eq,
+                          annotatedPiConst_hasIndOcc] at occurs
+                        contradiction
+                    | forallE context source fuel name domain body binderInfo
+                        whnf occurs domainFree positivityTail =>
+                        have whnf' : AddInductive.CandidateWhnfStep.Valid
+                            ⟨({ annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext with
+                                env := annotatedPiCtorCandidateContext.env }).pushLocalDecl
+                                `p .default (AddInductive.consumeTypeAnnotations
+                                  annotatedPiRawDomainKernel),
+                              .const ``AnnotatedPi [],
+                              .forallE name domain body binderInfo⟩ := by
+                          simpa only [annotatedPiConst_instantiate1] using whnf
+                        have hresult :=
+                          annotatedPiValidationInnerBody_whnf_eq whnf'
+                        contradiction
+                    | target targetContext targetSource targetResult targetFuel
+                        targetIdx targetWhnf targetOccurs targetTerminal
+                        targetValid =>
+                        have targetWhnfNormalized :
+                            AddInductive.CandidateWhnfStep.Valid
+                              ⟨({ annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext with
+                                  env := annotatedPiCtorCandidateContext.env }).pushLocalDecl
+                                  `p .default (AddInductive.consumeTypeAnnotations
+                                    annotatedPiRawDomainKernel),
+                                .const ``AnnotatedPi [], targetResult⟩ := by
+                          simpa only [annotatedPiConst_instantiate1] using
+                            targetWhnf
+                        have hresult :=
+                          annotatedPiValidationInnerBody_whnf_eq
+                            targetWhnfNormalized
+                        subst targetResult
+                        simp only [annotatedPiConst_instantiate1] at tail ⊢
+                        cases tail
+                        change AddInductive.CandidateCheckTypeObservation
+                          annotatedPiConstructorValidationContext.withEmptyLocalContext
+                          annotatedPiKernelCtor.type at constructorRootCheck
+                        let rootChecked :=
+                          AddInductive.ConstructorCheckedExpr.ofClosedRoot
+                            constructorClosed constructorRootCheck
+                        let innerChecked : AddInductive.ConstructorCheckedExpr
+                            annotatedPiCtorCandidateContext
+                            annotatedPiInnerKernel :=
+                          .ofRun (by
+                            simp [annotatedPiInnerKernel,
+                              annotatedPiRawDomainKernel, FVarsIn,
+                              Level.hasMVar'])
+                            annotatedPiInnerCheckTypeStep_valid
+                        let viewInnerChecked : AddInductive.ConstructorCheckedExpr
+                            annotatedPiCtorCandidateContext
+                            annotatedPiViewInnerKernel :=
+                          .ofRun (by
+                            simp [annotatedPiViewInnerKernel, FVarsIn,
+                              Level.hasMVar'])
+                            annotatedPiViewInnerCheckTypeStep_valid
+                        let domainChecked : AddInductive.ConstructorCheckedExpr
+                            annotatedPiCtorCandidateContext
+                            annotatedPiRawDomainKernel :=
+                          .ofRun (by
+                            simp [annotatedPiRawDomainKernel, FVarsIn,
+                              Level.hasMVar'])
+                            annotatedPiDomainCheckTypeStep_valid
+                        let sortChecked : AddInductive.ConstructorCheckedExpr
+                            annotatedPiCtorCandidateContext (.sort .zero) :=
+                          .ofRun (by simp [FVarsIn, Level.hasMVar'])
+                            annotatedPiSortZeroCheckTypeStep_valid
+                        let innerBodyChecked :
+                            AddInductive.ConstructorCheckedExpr
+                              annotatedPiInnerBodyCandidateContext
+                              (.const ``AnnotatedPi []) :=
+                          .ofRun (by simp [FVarsIn])
+                            annotatedPiInnerBodyCheckTypeStep_valid
+                        let outerBodyChecked :
+                            AddInductive.ConstructorCheckedExpr
+                              annotatedPiOuterBodyCandidateContext
+                              (.const ``AnnotatedPi []) :=
+                          .ofRun (by simp [FVarsIn])
+                            annotatedPiOuterBodyCheckTypeStep_valid
+                        let innerChecked' := annotatedPiAlignChecked
+                          annotatedPiConstructorValidationContext_def_eq rfl
+                          innerChecked
+                        let viewInnerChecked' := annotatedPiAlignChecked
+                          annotatedPiConstructorValidationContext_def_eq
+                          annotatedPiAlignedViewInnerKernel_eq viewInnerChecked
+                        let consumedInnerChecked := annotatedPiAlignChecked
+                          annotatedPiConstructorValidationContext_def_eq
+                          annotatedPiConsumeInner innerChecked
+                        let domainChecked' := annotatedPiAlignChecked
+                          annotatedPiConstructorValidationContext_def_eq rfl
+                          domainChecked
+                        let sortChecked' := annotatedPiAlignChecked
+                          annotatedPiConstructorValidationContext_def_eq
+                          annotatedPiConsumeRawDomain sortChecked
+                        let innerBodyChecked' := annotatedPiAlignChecked
+                          annotatedPiValidationInnerBodyContext_eq rfl
+                          innerBodyChecked
+                        let innerBodyPositivityChecked :=
+                          annotatedPiAlignChecked
+                            annotatedPiValidationInnerBodyContext_eq
+                            (annotatedPiConst_instantiate1
+                              annotatedPiConstructorValidationContext.freshExpr)
+                            innerBodyChecked
+                        let outerBodyChecked' := annotatedPiAlignChecked
+                          annotatedPiValidationOuterBodyContext_eq rfl
+                          outerBodyChecked
+                        let outerBodySourceChecked := annotatedPiAlignChecked
+                          annotatedPiValidationOuterBodyContext_eq
+                          (annotatedPiConst_instantiate1
+                            annotatedPiConstructorValidationContext.freshExpr)
+                          outerBodyChecked
+                        have outerTailView_eq :
+                            ((Expr.const ``AnnotatedPi []).abstract
+                                #[annotatedPiCtorCandidateContext.freshExpr]
+                              |>.instantiate1
+                                annotatedPiConstructorValidationContext.freshExpr) =
+                              .const ``AnnotatedPi [] := by
+                          simp [annotatedPiConst_abstract_singleton]
+                        let outerBodyViewChecked := annotatedPiAlignChecked
+                          annotatedPiValidationOuterBodyContext_eq
+                          outerTailView_eq outerBodyChecked
+                        let innerAnnotations :
+                            AddInductive.CandidateIsDefEqObservation
+                              annotatedPiCtorCandidateContext
+                              annotatedPiInnerKernel annotatedPiInnerKernel :=
+                          ⟨AddInductive.candidateIsDefEqRefl
+                            annotatedPiCtorCandidateContext
+                            annotatedPiInnerKernel⟩
+                        let innerAnnotations' := annotatedPiAlignIsDefEq
+                          annotatedPiConstructorValidationContext_def_eq rfl
+                          annotatedPiConsumeInner innerAnnotations
+                        let domainAnnotations :
+                            AddInductive.CandidateIsDefEqObservation
+                              annotatedPiCtorCandidateContext
+                              annotatedPiRawDomainKernel (.sort .zero) :=
+                          ⟨annotatedPiDomainAnnotationsEq⟩
+                        let domainAnnotations' := annotatedPiAlignIsDefEq
+                          annotatedPiConstructorValidationContext_def_eq rfl
+                          annotatedPiConsumeRawDomain domainAnnotations
+                        have sortCheckedInferred :
+                            sortChecked'.observation.inferred =
+                              .sort (.succ .zero) := by
+                          apply sortChecked'.inferred_eq_of_run
+                          rw [annotatedPiConstructorValidationContext_def_eq,
+                            annotatedPiConsumeRawDomain]
+                          exact annotatedPiSortZeroCheckTypeStep_valid
+                        have rootStoredSpine :
+                            annotatedPiConstructorCandidate.type.trace.storedSpine =
+                              true := by
+                          change annotatedPiCtorCandidate.trace.storedSpine = true
+                          exact annotatedPiCtorCandidate_storedSpine
+                        have rootDepth :
+                            annotatedPiConstructorCandidate.type.context.fuel.recDepth =
+                              annotatedPiConstructorValidationContext.fuel.recDepth := by
+                          rfl
+                        let constructorTailTrace :=
+                          AddInductive.ConstructorTypeValidationTrace.terminal
+                            (stats := annotatedPiStagedUniverseInput.staged.family.validation.stats)
+                            (isUnsafe := false) (familyIdx := 0)
+                            (ctor := annotatedPiKernelCtor.name)
+                            (annotatedPiConstructorValidationContext.pushLocalDecl
+                              annotatedPiOuterName .default
+                                (AddInductive.consumeTypeAnnotations
+                                  annotatedPiInnerKernel))
+                            ((Expr.const ``AnnotatedPi []).instantiate1
+                              annotatedPiConstructorValidationContext.freshExpr)
+                            998 1
+                            (by
+                              simp only [annotatedPiConst_instantiate1,
+                                Expr.isForall])
+                            (by
+                              simp only [annotatedPiConst_instantiate1]
+                              assumption)
+                        have tail_eq : tail = constructorTailTrace := by
+                          unfold constructorTailTrace
+                          apply constructorTypeValidationTrace_eq_terminal
+                        let positivityTargetTrace :=
+                          AddInductive.ConstructorPositivityTrace.target
+                            (stats := annotatedPiStagedUniverseInput.staged.family.validation.stats)
+                            (ctor := annotatedPiKernelCtor.name)
+                            (argIdx := 0)
+                            (annotatedPiConstructorValidationContext.pushLocalDecl
+                              `p .default
+                                (AddInductive.consumeTypeAnnotations
+                                  annotatedPiRawDomainKernel))
+                            ((Expr.const ``AnnotatedPi []).instantiate1
+                              annotatedPiConstructorValidationContext.freshExpr)
+                            (.const ``AnnotatedPi []) 998 targetIdx
+                            targetWhnf targetOccurs targetTerminal targetValid
+                        let nestedPositivityTrace :=
+                          AddInductive.ConstructorPositivityTrace.forallE
+                            (stats := annotatedPiStagedUniverseInput.staged.family.validation.stats)
+                            (ctor := annotatedPiKernelCtor.name)
+                            (argIdx := 0)
+                            annotatedPiConstructorValidationContext
+                            annotatedPiInnerKernel 999 `p
+                            annotatedPiRawDomainKernel
+                            (.const ``AnnotatedPi []) .default positivityWhnf
+                            positivityOccurs positivityDomainFree
+                            positivityTargetTrace
+                        let positivityModeTrace :=
+                          AddInductive.ConstructorPositivityModeTrace.safe
+                            isUnsafe_eq nestedPositivityTrace
+                        let headValidationTrace :=
+                          AddInductive.ConstructorTypeValidationTrace.ordinary
+                            annotatedPiConstructorValidationContext 999 0
+                            annotatedPiOuterName annotatedPiInnerKernel
+                            (.const ``AnnotatedPi []) .default sortResult
+                            noParameter ensureType universeTrace
+                            positivityModeTrace constructorTailTrace
+                        have rootSpineLength' :
+                            annotatedPiConstructorCandidate.type.trace.spineLength =
+                              headValidationTrace.spineLength := by
+                          rfl
+                        have positivityTargetAlignment :
+                            AddInductive.ConstructorPositivityAlignmentTrace
+                              positivityTargetTrace :=
+                          .target innerBodyPositivityChecked
+                        have positivityAlignment :
+                            AddInductive.ConstructorPositivityModeAlignmentTrace
+                              positivityModeTrace :=
+                          .safe <| .forallE innerChecked' domainChecked'
+                            sortChecked' (.succ .zero)
+                            sortCheckedInferred (by
+                              rw [annotatedPiConstructorValidationContext_def_eq]
+                              exact annotatedPiCtorCandidateFresh)
+                            domainAnnotations' positivityTargetTrace
+                            positivityTargetAlignment
+                        have outerTailAlignment :
+                            AddInductive.ConstructorViewAlignmentTrace
+                              constructorTailTrace
+                              ((Expr.const ``AnnotatedPi []).abstract
+                                  #[annotatedPiCtorCandidateContext.freshExpr]
+                                |>.instantiate1
+                                  annotatedPiConstructorValidationContext.freshExpr) := by
+                          simp only [annotatedPiConst_abstract_singleton,
+                            annotatedPiConst_instantiate1]
+                          exact .terminal outerBodySourceChecked
+                            outerBodyChecked'
+                            (by simp [Expr.isForall]) (by assumption)
+                        have headAlignment :
+                            AddInductive.ConstructorViewAlignmentTrace
+                              headValidationTrace
+                              annotatedPiConstructorCandidate.type.view := by
+                          change AddInductive.ConstructorViewAlignmentTrace
+                            headValidationTrace
+                            annotatedPiAlignedViewCtorKernel
+                          exact AddInductive.ConstructorViewAlignmentTrace.ordinary
+                              innerChecked' viewInnerChecked'
+                              consumedInnerChecked
+                              positivityModeTrace
+                              positivityAlignment (by
+                                rw [annotatedPiConstructorValidationContext_def_eq]
+                                exact annotatedPiCtorCandidateFresh)
+                              innerAnnotations' constructorTailTrace
+                              outerTailAlignment
+                        rw [tail_eq]
+                        exact
+                          AddInductive.ConstructorCandidateAlignmentTrace.cons
+                            (seen := ∅) (fresh := constructorFresh)
+                            (closed := constructorClosed)
+                            (rootCheck := constructorRootCheck)
+                            (typeTrace := headValidationTrace)
+                            (tailTrace :=
+                              AddInductive.ConstructorListValidationTrace.nil
+                                ((∅ : NameSet).insert
+                                  annotatedPiKernelCtor.name))
+                            (candidate := annotatedPiConstructorCandidate)
+                            (candidates := AddInductive.CandidateList.nil)
+                            rootChecked rootStoredSpine rootSpineLength'
+                            rootDepth headAlignment
+                            (AddInductive.ConstructorCandidateAlignmentTrace.nil
+                              (stats := annotatedPiStagedUniverseInput.staged.family.validation.stats)
+                              (isUnsafe := false) (familyIdx := 0)
+                              (context := annotatedPiConstructorValidationContext)
+                              ((∅ : NameSet).insert
+                                annotatedPiKernelCtor.name))
+
+/-- AnnotatedPi's retained validator telescope and candidate telescope admit
+the complete post-family semantic interpretation, including the nested
+annotation-bearing recursive field. -/
+theorem annotatedPiProducedPostFamilySemantic_exists :
+    Nonempty (VInductDecl.ProducedNormalizationCandidatePostFamilySemanticRun
+      annotatedPiStagedPostFamilyInput) :=
+  annotatedPiStagedPostFamilyInput.exists
 
 /-- The exact family/constructor producer traversals and verified translations
 automatically determine the complete retained AnnotatedPi hierarchy, including
@@ -9280,6 +10171,39 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerProducedSemanticHierarchy_ex
 #print axioms aliasFormerProducedSemanticHierarchy_exists
 
 /--
+info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerProducedPostFamilySemantic_exists' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms aliasFormerProducedPostFamilySemantic_exists
+
+/--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerGenerationCandidateSemanticRun' depends on axioms: [propext,
  sorryAx,
  Classical.choice,
@@ -9834,6 +10758,39 @@ info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiProducedSemanticHierarchy_ex
 -/
 #guard_msgs in
 #print axioms annotatedPiProducedSemanticHierarchy_exists
+
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiProducedPostFamilySemantic_exists' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms annotatedPiProducedPostFamilySemantic_exists
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiNormalizationCandidateRun' depends on axioms: [propext,

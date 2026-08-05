@@ -914,6 +914,30 @@ theorem terminalContext_lparams
       domain_ih body_ih =>
     simpa [terminalContext, Context.pushLocalDecl] using body_ih
 
+/-- Following the main candidate Π spine changes only the local context and
+name generator; it preserves the checker safety mode. -/
+theorem terminalContext_safety
+    (candidate : CandidateExprTrace context source) :
+    candidate.terminalContext.safety = context.safety := by
+  induction candidate with
+  | terminal => rfl
+  | forallE context source inferred name domain body binderInfo fresh
+      annotations annotationsEq checked valid domainCandidate bodyCandidate
+      domain_ih body_ih =>
+    simpa [terminalContext, Context.pushLocalDecl] using body_ih
+
+/-- Following the main candidate Π spine preserves the checker fuel
+configuration. -/
+theorem terminalContext_fuel
+    (candidate : CandidateExprTrace context source) :
+    candidate.terminalContext.fuel = context.fuel := by
+  induction candidate with
+  | terminal => rfl
+  | forallE context source inferred name domain body binderInfo fresh
+      annotations annotationsEq checked valid domainCandidate bodyCandidate
+      domain_ih body_ih =>
+    simpa [terminalContext, Context.pushLocalDecl] using body_ih
+
 /-- Non-Π result reached after following the complete main Π spine. -/
 def terminalResult : CandidateExprTrace context source → Expr
   | .terminal _ _ _ result _ _ => result

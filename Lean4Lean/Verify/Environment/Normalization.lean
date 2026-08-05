@@ -192,6 +192,23 @@ theorem VEnv.HasPrimitives.addConst
           (by simp [reflectedPrimitiveNames])] using h)
       exact ⟨hconstant, hnil.mono hle, hcons.mono hle⟩ }
 
+/-- A verified implementation local context remains verified when the Theory
+environment grows.  Kernel local declarations and their free-variable names
+are unchanged; only their translations and typing derivations are transported
+monotonically. -/
+theorem MLCtx.WF.mono
+    {env env' : VEnv} (henv : env ≤ env') :
+    ∀ {context : MLCtx} {Us : List Name},
+      context.WF env Us → context.WF env' Us
+  | .nil, _, _ => trivial
+  | .vlam fv name type type' binderInfo tail, Us,
+      ⟨tailWF, fresh, type_tr, typeWF⟩ =>
+    ⟨tailWF.mono henv, fresh, type_tr.mono henv, typeWF.mono henv⟩
+  | .vlet fv name type value type' value' tail, Us,
+      ⟨tailWF, fresh, type_tr, value_tr, valueWF⟩ =>
+    ⟨tailWF.mono henv, fresh, type_tr.mono henv,
+      value_tr.mono henv, valueWF.mono henv⟩
+
 /-- Kernel-side counterpart of `VEnv.HasPrimitives.of_avoids`: if an isolated
 constant map contains no hard-coded primitive name, the safety premise needed
 by `VContext` is vacuous. -/
@@ -676,6 +693,102 @@ def CandidateContextRun.root
     run.context.fuel = candidateContext.fuel := by
   have h := congrArg (fun c : TypeChecker.Context => c.fuel) run.context_eq
   simpa only [AddInductive.Context.toTypeChecker] using h
+
+/-- Reset only the implementation and Theory local contexts while retaining
+the exact environment, safety mode, level parameters, fuel, and name
+generator owned by a candidate context.  Constructor root `checkType` uses
+precisely this context before the validation telescope re-enters the retained
+family locals. -/
+def CandidateContextRun.withEmptyLocalContext
+    (run : CandidateContextRun candidateContext) :
+    CandidateContextRun candidateContext.withEmptyLocalContext := by
+  let context : VContext :=
+    { run.context with
+      lctx := {}
+      mlctx := .nil
+      mlctx_wf := trivial
+      lctx_eq := rfl }
+  have context_eq : context.toContext =
+      candidateContext.withEmptyLocalContext.toTypeChecker := by
+    change { run.context.toContext with lctx := {} } =
+      candidateContext.withEmptyLocalContext.toTypeChecker
+    rw [run.context_eq]
+    rfl
+  refine ⟨context, context_eq, ?_, run.namePrefix_ne⟩
+  exact VState.WF.empty_of_reserves context (by
+    intro fv hfv
+    change fv ∈ VLCtx.fvars ([] : VLCtx) at hfv
+    simp at hfv)
+
+/-- Package a retained full-check observation at an already named strict
+Theory source.  The verified execution still chooses the inferred Theory
+type; the duplicate source translation returned by refinement is discarded,
+not identified by syntactic equality. -/
+theorem CheckTypeRun.exists_ofCandidateStep
+    (step : AddInductive.CandidateCheckTypeStep)
+    (hvalid : step.Valid)
+    (contextRun : CandidateContextRun step.context)
+    (source' : VExpr)
+    (source_tr : contextRun.context.TrExprS step.source source') :
+    ∃ inferred', Nonempty
+      (CheckTypeRun contextRun.context.venv contextRun.context.lparams
+        contextRun.context.vlctx step.source step.inferred source' inferred') := by
+  obtain ⟨_, inferred', _, inferred_tr, _⟩ :=
+    candidateCheckTypeStep_exists_translation step hvalid
+      contextRun.context contextRun.context_eq contextRun.state_wf
+      source_tr.fvarsIn step.context.fuel.recDepth rfl
+  exact ⟨inferred', ⟨CheckTypeRun.ofCandidateStep step hvalid
+    contextRun.context contextRun.context_eq rfl rfl rfl
+    contextRun.state_wf source_tr inferred_tr
+    step.context.fuel.recDepth rfl⟩⟩
+
+/-- Full-check packaging when only the checker's syntactic free-variable
+premise is known.  Both strict Theory endpoints are then selected by the
+verified refinement of the retained execution. -/
+theorem CheckTypeRun.exists_ofCandidateStepFVars
+    (step : AddInductive.CandidateCheckTypeStep)
+    (hvalid : step.Valid)
+    (contextRun : CandidateContextRun step.context)
+    (source_fvars :
+      step.source.FVarsIn (· ∈ contextRun.context.vlctx.fvars)) :
+    ∃ source' inferred', Nonempty
+      (CheckTypeRun contextRun.context.venv contextRun.context.lparams
+        contextRun.context.vlctx step.source step.inferred source' inferred') := by
+  obtain ⟨source', inferred', source_tr, inferred_tr, _⟩ :=
+    candidateCheckTypeStep_exists_translation step hvalid
+      contextRun.context contextRun.context_eq contextRun.state_wf
+      source_fvars step.context.fuel.recDepth rfl
+  exact ⟨source', inferred', ⟨CheckTypeRun.ofCandidateStep step hvalid
+    contextRun.context contextRun.context_eq rfl rfl rfl
+    contextRun.state_wf source_tr inferred_tr
+    step.context.fuel.recDepth rfl⟩⟩
+
+/-- Package one retained WHNF observation and keep the strict Theory
+translation selected for its exact kernel result. -/
+theorem WhnfRun.exists_ofCandidateStep
+    (step : AddInductive.CandidateWhnfStep)
+    (hvalid : step.Valid)
+    (contextRun : CandidateContextRun step.context)
+    (source' : VExpr)
+    (source_tr : contextRun.context.TrExprS step.source source')
+    (recursionFuel : Nat)
+    (hdepth : step.context.fuel.recDepth = recursionFuel + 1) :
+    ∃ result', contextRun.context.TrExprS step.result result' ∧
+      Nonempty (WhnfRun contextRun.context.venv
+        contextRun.context.lparams contextRun.context.vlctx
+        step.source step.result source' result') := by
+  obtain ⟨state, run⟩ := step.innerRun recursionFuel hdepth hvalid
+  rw [← contextRun.context_eq] at run
+  obtain ⟨_, _, _, _, _, resultTranslation⟩ :=
+    (Inner.whnf'.WF source_tr
+      (Methods.withFuel recursionFuel) Methods.withFuel.WF)
+      contextRun.state_wf step.result state run
+  obtain ⟨result', result_tr, _⟩ := resultTranslation
+  exact ⟨result', result_tr, ⟨WhnfRun.ofCandidateStep step hvalid
+    contextRun.context contextRun.context_eq rfl rfl rfl
+    contextRun.state_wf source_tr
+    (result_tr.trExpr contextRun.context.Ewf contextRun.context.Δwf)
+    recursionFuel hdepth⟩⟩
 
 /-- Extend a verified candidate context by precisely the raw local declaration
 used by `AddInductive.Context.pushLocalDecl`.
@@ -2126,6 +2239,76 @@ theorem CandidateExprRun.env_wf
   | forallE _ _ _ _ node =>
     simpa only [node.check.venv_eq] using node.check.context.Ewf
 
+/-- Recover the exact verified candidate context reached at the end of the
+main Pi spine.
+
+`CandidateExprRun` retains the semantic context at every recursive node, but
+its public indices deliberately mention only the translated local context.
+Constructor validation, on the other hand, resumes in the implementation
+`Context` returned by the family traversal.  This projection reconnects the
+two without reconstructing a local context from names: starting from the
+root `CandidateContextRun`, each Pi case repeats the already-certified
+annotation equality and the exact `pushLocalDecl` used by the candidate. -/
+theorem CandidateExprRun.terminalContextRun
+    {env : VEnv} {Us : List Name}
+    {candidateContext : AddInductive.Context} {source : Expr}
+    {trace : AddInductive.CandidateExprTrace candidateContext source}
+    {Δ : VLCtx} {source' view' inferred' : VExpr}
+    (run : CandidateExprRun env Us trace Δ source' view' inferred')
+    (contextRun : CandidateContextRun candidateContext)
+    (venv_eq : contextRun.context.venv = env)
+    (lparams_eq : contextRun.context.lparams = Us)
+    (vlctx_eq : contextRun.context.vlctx = Δ) :
+    ∃ terminalRun : CandidateContextRun trace.terminalContext,
+      terminalRun.context.venv = env ∧
+      terminalRun.context.lparams = Us := by
+  induction run with
+  | terminal node =>
+      exact ⟨by
+          simpa only [AddInductive.CandidateExprTrace.terminalContext] using
+            contextRun,
+        venv_eq, lparams_eq⟩
+  | @forallE domain context name binderInfo Δ source inferred body
+      source' domain' body' inferred' domainView' domainInferred'
+      storedDomain' bodyΔ storedBody' bodyView' bodyInferred' u v fresh
+      checked normalized annotations annotationsEq domainCandidate
+      bodyCandidate node domainRun annotationsRun bodyRun domainType bodyType
+      bodySource bodyContext domainIH bodyIH =>
+    have storedDomain_tr : contextRun.context.TrExprS
+        annotations.consumed storedDomain' := by
+      simpa only [VContext.TrExprS, venv_eq, lparams_eq, vlctx_eq] using
+        annotationsRun.rhs_tr
+    have henv : VEnv.WF env := by
+      simpa only [venv_eq] using contextRun.context.Ewf
+    have hΔ : OnCtx Δ.toCtx (env.IsType Us.length) := by
+      simpa only [venv_eq, lparams_eq, vlctx_eq] using
+        contextRun.context.Δwf.toCtx
+    have storedDomain_type : env.IsType Us.length Δ.toCtx storedDomain' := by
+      have annotationDef := annotationsRun.isDefEqU.of_l henv hΔ domainType
+      exact ⟨u, annotationDef.hasType.2⟩
+    let nextContextRun := contextRun.pushLocalDecl name binderInfo
+      annotations.consumed fresh storedDomain' storedDomain_tr (by
+        change contextRun.context.venv.IsType
+          contextRun.context.lparams.length
+          contextRun.context.vlctx.toCtx storedDomain'
+        rw [venv_eq, lparams_eq, vlctx_eq]
+        exact storedDomain_type)
+    have nextVenv : nextContextRun.context.venv = env := by
+      simp only [nextContextRun, CandidateContextRun.pushLocalDecl_venv,
+        venv_eq]
+    have nextLparams : nextContextRun.context.lparams = Us := by
+      simp only [nextContextRun, CandidateContextRun.pushLocalDecl_lparams,
+        lparams_eq]
+    have nextVlctx : nextContextRun.context.vlctx = bodyΔ := by
+      simp only [nextContextRun, CandidateContextRun.pushLocalDecl_vlctx]
+      rw [vlctx_eq, bodyContext]
+    obtain ⟨terminalRun, terminalVenv, terminalLparams⟩ :=
+      bodyIH nextContextRun nextVenv nextLparams nextVlctx
+    exact ⟨by
+        simpa only [AddInductive.CandidateExprTrace.terminalContext] using
+          terminalRun,
+      terminalVenv, terminalLparams⟩
+
 /-- Interpret the terminal-sort fact retained by family validation.
 
 At a terminal node the verified WHNF result translates the exact kernel sort.
@@ -2789,6 +2972,92 @@ def CandidateFamilyStagedInput.postFamily
         preFamily.contextRun.context_lparams.symm
       _ = Us := preFamily.lparams_eq
   vlctx_eq := rfl
+
+/-- Rebuild the verified context in which constructor validation actually
+runs.
+
+Family candidates are interpreted before the raw family is inserted, so the
+recursive run reaches the correct local telescope in the pre-family Theory
+environment.  Constructor validation keeps that exact implementation local
+context while replacing only the kernel/Theory environment with the staged
+post-family pair.  Monotonicity of local-context verification justifies that
+replacement; no local declaration, free-variable identifier, or binder order
+is regenerated. -/
+theorem CandidateFamilyStagedInput.validationContextRun
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name} {source : InductiveType}
+    {candidate : AddInductive.CandidateFamilyType source}
+    {raw : VInductiveType}
+    {preFamily : TypeChecker.CandidateSemanticStage familyContext env Us}
+    (input : CandidateFamilyStagedInput familyContext constructorContext
+      env Us candidate raw preFamily)
+    (semantic : TypeChecker.CandidateExprSemanticRootRun env Us
+      candidate.type raw.type) :
+    ∃ validationRun : TypeChecker.CandidateContextRun
+        { candidate.type.trace.terminalContext with
+          env := constructorContext.env },
+      validationRun.context.venv = input.typeEnv ∧
+      validationRun.context.lparams = Us := by
+  obtain ⟨inferred, recursive⟩ := semantic.recursive
+  obtain ⟨terminalRun, terminalVenv, terminalLparams⟩ :=
+    recursive.terminalContextRun semantic.contextRun semantic.venv_eq
+      semantic.lparams_eq semantic.vlctx_eq
+  have terminalMLWF : terminalRun.context.mlctx.WF env Us := by
+    simpa only [terminalVenv, terminalLparams] using
+      terminalRun.context.mlctx_wf
+  have postMLWF : terminalRun.context.mlctx.WF input.typeEnv Us :=
+    terminalMLWF.mono (VEnv.addConst_le input.addInduct.env_add)
+  have validationSafety : terminalRun.context.safety =
+      input.postContext.safety := by
+    calc
+      terminalRun.context.safety =
+          candidate.type.trace.terminalContext.safety :=
+        terminalRun.context_safety
+      _ = candidate.type.context.safety :=
+        candidate.type.trace.terminalContext_safety
+      _ = familyContext.safety := by rw [input.type.context_eq]
+      _ = constructorContext.safety := by rw [input.constructorContext_eq]
+      _ = input.postContext.safety := rfl
+  let validationContext : TypeChecker.VContext :=
+    { terminalRun.context with
+      env := constructorContext.env
+      venv := input.typeEnv
+      hasPrimitives := input.postContext.hasPrimitives
+      safePrimitives := input.postContext.safePrimitives
+      trenv := by
+        have postEnv : input.postContext.env = constructorContext.env := rfl
+        have postVenv : input.postContext.venv = input.typeEnv := rfl
+        simpa only [validationSafety, postEnv, postVenv] using
+          input.postContext.trenv
+      mlctx_wf := by
+        simpa only [terminalLparams] using postMLWF }
+  have validationContextEq : validationContext.toContext =
+      ({ candidate.type.trace.terminalContext with
+        env := constructorContext.env } : AddInductive.Context).toTypeChecker := by
+    calc
+      validationContext.toContext =
+          { terminalRun.context.toContext with
+            env := constructorContext.env } := rfl
+      _ = { candidate.type.trace.terminalContext.toTypeChecker with
+            env := constructorContext.env } :=
+        congrArg (fun c : TypeChecker.Context =>
+          { c with env := constructorContext.env }) terminalRun.context_eq
+      _ = ({ candidate.type.trace.terminalContext with
+          env := constructorContext.env } : AddInductive.Context).toTypeChecker :=
+        rfl
+  let validationRun : TypeChecker.CandidateContextRun
+      { candidate.type.trace.terminalContext with
+        env := constructorContext.env } :=
+    TypeChecker.CandidateContextRun.ofVContext _ validationContext
+      validationContextEq
+      (TypeChecker.VState.WF.empty_of_reserves validationContext (by
+        intro fv hfv
+        exact terminalRun.state_wf.ngen_wf fv (by
+          simpa only [validationContext] using hfv)))
+      terminalRun.namePrefix_ne
+  refine ⟨validationRun, ?_, ?_⟩
+  · rfl
+  · exact terminalLparams
 
 /-- One source-indexed constructor interpreted in the shared post-family
 stage. Header equality and universe alignment stay attached to the exact raw
