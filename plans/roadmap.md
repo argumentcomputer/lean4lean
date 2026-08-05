@@ -1,6 +1,6 @@
 # Lean4Lean completion roadmap
 
-**Status:** authoritative local roadmap, audited 2026-08-04 against the
+**Status:** authoritative local roadmap, audited 2026-08-05 against the
 committed fork and the current `jcb/induct` development branch.
 
 **Versioning.** `plans/roadmap.md` is intentionally tracked so the
@@ -66,8 +66,8 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-01D2 active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
-| Current formalization source | local-committed L4L-01D1 checkpoint `a246c048390c7f3c3a06f87fdb94b23ef671681f` at `jcb/formalization`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
+| Ladder position | **L4L-01D3 active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
+| Current formalization source | local-committed L4L-01D2 checkpoint `37d2dd998e626e25cda8874d9f6a32f85288bb91` at `jcb/formalization`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 22 live sorries and 29 custom-axiom declarations, both pinned by exact audits |
@@ -119,7 +119,11 @@ inversion and phase-local failure theorems) are in place. The source-ordered
 constructor-universe audit accepts only proved structural order or the
 impredicative-Prop exception, retains that stronger result in the staged
 semantic owner, and excludes normalized `Level.geq`-only acceptance until its
-core comparison receives a soundness proof.
+core comparison receives a soundness proof. The post-family constructor owner
+aligns the retained validator and candidate telescopes by source position,
+independent of their fresh-FVar identities, and interprets root, parameter,
+field, positivity, and terminal checks in the actual verified post-family
+context without claiming pre-family `fieldsWF`.
 
 **Three positive regressions, end to end.** AliasFormer (terminal alias),
 AnnotatedPi (nested recursive-Π with retained `outParam Prop`, generated
@@ -128,7 +132,10 @@ recursor and iota rule), and `IndexedVec` (one parameter, one index, ordered
 `buildNormalizationCandidate` call, inhabit
 `ProducedGenerationCandidatePackage`, and route both the certified Theory
 transaction and the checked replay through that package. All three also pass
-the strengthened constructor-universe gate. Negatives stay sharp:
+the strengthened constructor-universe gate and inhabit the produced
+post-family semantic owner. `IndexedVec` additionally proves that validator
+and candidate field FVars differ while their Theory positions still align.
+Negatives stay sharp:
 opaque-`outParam` whole-candidate rejection, the non-Prop normalized
 `Level.geq`-only exclusion, truncated and reordered views, missing/extra
 constructors, and the environment-free closure/universe/name/result/collision
@@ -145,13 +152,12 @@ indices as `Nat.zero`/`Nat.succ`, deliberately excluding notation's
 replay. `AliasRec` remains the compositional constructor-normalization
 specification until its candidate list is migrated.
 
-**Not claimed.** Post-family constructor interpretation through generic
-package construction from an arbitrary successful producer call
-(L4L-01D2-L4L-01E), WHNF/defeq validation parity, full
-positivity, small elimination, K behavior, the complete differential matrix,
-mutual/nested blocks, patterns, projections, and the remaining
-metatheory/checker roots. Bare producer success is never generation-shape
-authority or Theory semantics.
+**Not claimed.** Pre-family constructor replay and `fieldsWF`, analyzer-owned
+view WF, or generic package construction from an arbitrary successful producer
+call (L4L-01D3-L4L-01E); WHNF/defeq validation parity, full positivity, small
+elimination, K behavior, the complete differential matrix, mutual/nested
+blocks, patterns, projections, and the remaining metatheory/checker roots.
+Bare producer success is never generation-shape authority or Theory semantics.
 
 ### 2.2 Live debt
 
@@ -340,14 +346,14 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Singleton constructor soundness (L4L-01D2–L4L-01E)
+### Singleton constructor soundness (L4L-01D3–L4L-01E)
 
 Constructor fields are checked after the raw family constant is inserted, but
 `VInductDecl.fieldsWF` is intentionally stated over the pre-family
 environment. A general "remove the fresh constant whenever the conclusion is
 family-free" lemma is false — a beta-redex can use the fresh constant in a
-discarded argument — so the interpretation is split into four
-dependency-ordered checkpoints, and no stage may claim the strengthened
+discarded argument — so the remaining work follows three dependency-ordered
+checkpoints, and no stage may claim the strengthened
 theorem from bare `buildNormalizationCandidate` success. Throughout,
 AliasFormer, AnnotatedPi, and `IndexedVec` remain the terminal-alias, nested
 annotated-Π, and parameter/index/multi-constructor regressions; do not weaken
@@ -356,18 +362,7 @@ caller-selected view, or an assumed normalization theorem, and the
 opaque-`outParam` whole-candidate rejection must stay green and fail before
 package construction.
 
-**L4L-01D2 — post-family constructor semantics (active).** Align the retained
-constructor-validation telescope with the retained candidate telescope at
-Theory de Bruijn positions, despite their distinct validation/candidate
-fresh-FVar identifiers. Interpret root `checkType`, parameter `isDefEq`,
-field `ensureType`, positivity targets, and terminal family applications with
-the verified checker in the actual post-family environment.
-*Exit:* a source-ordered semantic result covers every constructor and exact
-view field/result; differing validation/candidate FVar identifiers are a
-regression; no pre-family `fieldsWF`, view acceptance, or whole-Pi
-injectivity is claimed.
-
-**L4L-01D3 — pre-family safety and replay.** Add one executable
+**L4L-01D3 — pre-family safety and replay (active).** Add one executable
 pre-family-safety gate for the current singleton subset: recursive fields
 must form a suffix, and recursive-Pi binders plus recursive/result indices
 must be independent of the removed recursive-local suffix. Re-run the

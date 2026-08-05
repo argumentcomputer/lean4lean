@@ -4,8 +4,8 @@ This file tracks every deliberate semantic, API, build, or verification delta
 from `upstream/master` that must either be upstreamed or explicitly retained.
 It is the tracked counterpart to `plans/roadmap.md`.
 
-Audit baseline after the constructor-universe semantic checkpoint
-(2026-08-04):
+Audit baseline after the post-family constructor semantic checkpoint
+(2026-08-05):
 
 - current upstream reconciliation parent: digama `upstream/master`
   `ef849dfbd94a`
@@ -65,23 +65,29 @@ Audit baseline after the constructor-universe semantic checkpoint
   (`proof: establish constructor universe foundation`; 5 files changed,
   1,686 insertions, and 3,608 deletions, including the roadmap rewrite).
   Publication to the fork's `jcb/induct` branch is pending.
+- local-committed post-family constructor semantic checkpoint:
+  `37d2dd998e626e25cda8874d9f6a32f85288bb91`
+  (`proof: establish post-family constructor semantics`; 5 files changed,
+  3,963 insertions, and 1 deletion). Publication to the fork's `jcb/induct`
+  branch is pending.
 - fixed fork master: `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb`
   on local and `origin/master`
-- current audited source checkpoint: `a246c048` adds a source-ordered
-  executable audit for the structural/impredicative-Prop subset of constructor
-  universe validation, proves strict level translation preserves its equality
-  and order decisions, and translates every accepted trace node to Theory's
-  required universe disjunction. The strengthened staged owner retains the
-  audit separately from ordinary `buildNormalizationCandidate` success.
-  AliasFormer, AnnotatedPi, and the ordered two-constructor `IndexedVec`
-  regression pass; a non-Prop comparison accepted only by normalized
-  `Level.geq` remains rejected pending its own soundness bridge. The new
-  mathematical roots use exactly `propext`/`Quot.sound`; no normalizer oracle,
-  custom axiom, sorry, or acceptance widening is introduced. The exact
-  22-sorry frontier, 156-job default Lake build, 119-job Theory/Verify and Nix
-  proof builds, default Nix build, all six current-host flake checks,
-  all-system no-build evaluation, formatter, Theory import-boundary, and
-  whitespace checks pass.
+- current audited source checkpoint: `37d2dd99` aligns each retained
+  constructor-validation telescope with its retained candidate telescope by
+  source position, independently of the fresh-FVar identifiers allocated by
+  the two traversals. It interprets root `checkType`, parameter `isDefEq`, field
+  `ensureType`, positivity targets, and terminal family applications through
+  the verified checker in the actual post-family environment, retaining the
+  result in one staged source-ordered owner. AliasFormer, AnnotatedPi, and the
+  ordered two-constructor `IndexedVec` regression all inhabit that owner;
+  `IndexedVec` explicitly proves the relevant validator/candidate field FVars
+  differ. No pre-family `fieldsWF`, analyzer-view acceptance, whole-Pi
+  injectivity, native evaluator, custom axiom, or new sorry is claimed or
+  introduced. Exact root guards retain only the already accepted checker and
+  implementation contracts. The exact 22-sorry frontier, 156-job default Lake
+  build, 119-job Theory/Verify and Nix proof builds, default Nix build, all six
+  current-host flake checks, all-system no-build evaluation, formatter, Theory
+  import-boundary, and whitespace checks pass.
 - generation-readiness source checkpoint: `bbb45e0e` builds on the exact
   arbitrary-length
   producer witnesses and source-indexed semantic inputs that return a
@@ -345,13 +351,13 @@ to the replacement.
 ## D010 — executable normalization and certified producer boundary
 
 - **Status:** local-committed (the earlier checkpoints are published-fork;
-  `a246c04` is not yet published)
+  `37d2dd9` is not yet published)
 - **Commits:** `1fb7d6e`, `9fde4c6`, `b283912`, `a84aa19`, `c2b1c4f`,
   `a1d8943`, `6a77882`, `bc37d43`, `5e5bb76`, `33b99f4`, `a3ff992`,
   `9a865ea`, `a627362`, `6732659`, `c40a471`, `c739d41`, `82f4a54`,
   `d553930`, `cf3d5a4`, `c9e4ae2`, `a7d101b`, `f0caf16`, `e3cf22d`,
   `7e5f4f7`, `2b1d802`, `a64fe98`, `5aa9ab6`, `bbb45e0`, `7c79220`,
-  `da45b53`, `097efb4`, and `a246c04`
+  `da45b53`, `097efb4`, `a246c04`, and `37d2dd9`
 - **Delta:** retain exact ordinary-checker full-check, WHNF, and `isDefEq`
   executions in source- and context-indexed candidate traces; interpret them
   into Theory normalization and generation certificates; assemble dependent
@@ -460,29 +466,40 @@ to the replacement.
   `buildNormalizationCandidate` or treating its success as semantic evidence.
   AliasFormer, AnnotatedPi, and `IndexedVec` use that owner; the normalized
   non-Prop `Level.geq`-only regression remains deliberately rejected.
+  `ConstructorViewAlignmentTrace` then aligns each validation-owned telescope
+  with its candidate-owned telescope at the corresponding Theory de Bruijn
+  positions, rather than equating their fresh-FVar identifiers. The complete
+  post-family semantic list run interprets the retained root type check,
+  parameter definitional equalities, ordinary and recursive field type checks,
+  positivity targets, and terminal family applications in the actual verified
+  post-family context. `StagedNormalizationCandidatePostFamilyInput` couples
+  that source-ordered result to the same produced candidate and universe audit.
+  AliasFormer, AnnotatedPi, and `IndexedVec` inhabit the staged owner, and the
+  two-constructor regression pins both source order and genuinely distinct
+  validator/candidate field identifiers.
 - **Ix impact:** prevents ix from receiving an unrelated hand-selected
   normalization or generation witness while keeping checker state out of the
   Theory API. This is the proof boundary needed before executable metadata can
   be treated as certified inductive generation.
-- **Latest checkpoint:** the L4L-01D1 source at `a246c04` proves the
-  structural/Prop constructor-universe gate sound under strict translation,
-  threads it through the retained telescope and constructor-list trace, and
-  makes the exact successful audit part of the staged semantic owner. The gate
-  is a strict under-approximation of ordinary validation: it cannot widen
-  kernel acceptance, and the core normalized `Level.geq` fallback remains out
-  of scope until its own soundness proof. All three live fixtures pass through
-  this strengthened owner.
-- **Current gap:** L4L-01D2 must align the retained constructor-validation and
-  candidate telescopes at Theory de Bruijn positions even though the two
-  executable traversals allocate different fresh free-variable identifiers.
-  Interpret the root `checkType`, parameter `isDefEq`, field `ensureType`,
-  positivity targets, and terminal family applications in the actual
-  post-family verified environment. The result must remain source ordered and
-  cover each exact view field/result without claiming pre-family `fieldsWF`,
-  accepting a caller-selected view, or using whole-Pi injectivity. D3 and D4
-  remain responsible for pre-family replay and analyzer-owned view WF; E then
-  closes the generic produced package. The outer boundary remains
-  singleton-family until the later mutual/nested checkpoints.
+- **Latest checkpoint:** the L4L-01D2 source at `37d2dd9` constructs the exact
+  source-ordered alignment and semantic replay for every retained constructor
+  validation/candidate pair in the actual post-family verified context. It
+  consumes validation-owned locals while matching candidate domains and
+  results by Theory positions, so distinct executable FVar allocation is not
+  mistaken for a semantic mismatch. Root, parameter, field, positivity, and
+  terminal evidence all flow into one staged produced owner; the three live
+  fixtures inhabit it without asserting pre-family `fieldsWF` or analyzer-view
+  acceptance.
+- **Current gap:** L4L-01D3 must add the executable pre-family-safety gate for
+  the current singleton subset: recursive fields form a suffix, while
+  recursive-Pi binders and recursive/result indices are independent of the
+  recursive-local suffix that will be removed. Re-run the family-free checks
+  in the verified pre-family context and transport them by proved weakening,
+  with negative regressions for field order and recursive-local dependency.
+  This remains an under-approximation, not a caller-supplied semantic premise
+  or a false general constant-removal theorem. D4 remains responsible for
+  analyzer-owned view WF; E then closes the generic produced package. The outer
+  boundary remains singleton-family until the later mutual/nested checkpoints.
 - **Tests:** exact positive AliasFormer, AnnotatedPi, and `IndexedVec`
   whole-call equations; positive semantic/transaction/replay fixtures for the
   first two plus the complete checkpoint semantic/transaction/E1 replay for
@@ -500,9 +517,12 @@ to the replacement.
   rejection; exact analyzer-success replay in all three fixtures; structural
   and impredicative-Prop universe positives; normalized non-Prop
   `Level.geq`-only rejection; exact universe-bridge and staged-owner axiom
-  guards; focused direct compiles, 156-job default Lake build, and 119-job
-  Theory/Verify and Nix proof builds; 22-sorry frontier check; default Nix
-  build; all six current-host flake checks; all-system no-build evaluation;
+  guards; exact post-family alignment of all AliasFormer, AnnotatedPi, and
+  ordered `IndexedVec` fields/results; distinct validator/candidate
+  `IndexedVec` field-FVar regression; exact generic and fixture post-family
+  axiom guards; focused direct compiles, 156-job default Lake build, and
+  119-job Theory/Verify and Nix proof builds; 22-sorry frontier check; default
+  Nix build; all six current-host flake checks; all-system no-build evaluation;
   formatter; Theory import-boundary; and whitespace checks.
 - **Axiom note:** no normalization oracle, native evaluator, or new axiom was
   added. `Checked.type_eq`, `GenerationChecked.viewCtorType_eq`, and
@@ -556,7 +576,13 @@ to the replacement.
   `propext`/`Quot.sound`; no level-normalizer theorem, oracle, custom axiom, or
   new sorry is reachable. The additive staged projections explicitly guard
   their inherited Verify closure instead of presenting it as a smaller
-  mathematical trust claim.
+  mathematical trust claim. The D2 staged owner and all three fixture roots
+  are each compile-time guarded at the same established post-family checker
+  closure: `propext`, `sorryAx`, `Classical.choice`, `Quot.sound`, and the
+  existing expression, level, pointer-equality, persistent-collection, and
+  syntax implementation contracts. The positional alignment and semantic-run
+  structures declare no axiom; no `native_decide`, new sorry, or additional
+  custom trust contract is reachable from these roots.
 - **Upstream issue/PR:** TBD; submit after the singleton producer interface is
   stable enough that the first PR does not freeze fixture-specific APIs.
 - **Removal condition:** upstream executable inductive ingestion returns or
