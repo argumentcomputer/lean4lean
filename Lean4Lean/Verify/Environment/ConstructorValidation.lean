@@ -842,6 +842,7 @@ inductive ConstructorViewAlignmentTrace :
   | ordinary
       (domainCheck : ConstructorCheckedExpr context domain)
       (viewDomainCheck : ConstructorCheckedExpr context viewDomain)
+      (viewEquality : CandidateIsDefEqObservation context domain viewDomain)
       (consumedCheck : ConstructorCheckedExpr context
         (consumeTypeAnnotations domain))
       (positivityTrace : ConstructorPositivityModeTrace stats isUnsafe ctor
@@ -907,6 +908,7 @@ def build :
       .forallE viewName viewDomain viewBody viewBinderInfo => do
       let domainCheck ← checkConstructorAlignedExpr context domain
       let viewDomainCheck ← checkConstructorAlignedExpr context viewDomain
+      let viewEquality ← observeCandidateIsDefEq context domain viewDomain
       let consumedCheck ← checkConstructorAlignedExpr context
         (consumeTypeAnnotations domain)
       let positivityAlignment ←
@@ -916,7 +918,7 @@ def build :
           (consumeTypeAnnotations domain)
         let tail ← build tailTrace
           (viewBody.instantiate1 context.freshExpr)
-        pure <| .ordinary domainCheck viewDomainCheck consumedCheck
+        pure <| .ordinary domainCheck viewDomainCheck viewEquality consumedCheck
           positivityTrace positivityAlignment fresh annotations tailTrace tail
       else
         throw <| .other "constructor validation reused a local identifier"
@@ -1361,6 +1363,7 @@ inductive ConstructorViewSemanticRun
       {viewBinderInfo : BinderInfo}
       {domainCheck : ConstructorCheckedExpr context domain}
       {viewDomainCheck : ConstructorCheckedExpr context viewDomain}
+      {viewEquality : CandidateIsDefEqObservation context domain viewDomain}
       {consumedCheck : ConstructorCheckedExpr context
         (consumeTypeAnnotations domain)}
       {fresh : context.lctx.find? context.freshFVarId = none}
@@ -1369,6 +1372,11 @@ inductive ConstructorViewSemanticRun
         contextRun.candidate)
       (viewDomainRun : ConstructorCheckedExpr.Run viewDomainCheck
         contextRun.candidate)
+      (viewEqualityRun : TypeChecker.IsDefEqRun
+        contextRun.candidate.context.venv
+        contextRun.candidate.context.lparams
+        contextRun.candidate.context.vlctx domain viewDomain
+        domainRun.source' viewDomainRun.source')
       (consumedRun : ConstructorCheckedExpr.Run consumedCheck
         contextRun.candidate)
       (ensureTypeRun : TypeChecker.EnsureTypeRun
@@ -1446,13 +1454,14 @@ theorem nonempty_of_alignment
   | ordinary context fuel argIdx name domain body binderInfo sortResult
       noParameter ensureTypeStep universeTrace positivityTrace tailTrace ih =>
       cases alignment with
-      | ordinary domainCheck viewDomainCheck consumedCheck _
+      | ordinary domainCheck viewDomainCheck viewEquality consumedCheck _
           positivityAlignment fresh annotations _ tailAlignment =>
           obtain ⟨domainRun⟩ :=
             ConstructorCheckedExpr.Run.exists domainCheck contextRun.candidate
           obtain ⟨viewDomainRun⟩ :=
             ConstructorCheckedExpr.Run.exists viewDomainCheck
               contextRun.candidate
+          let viewEqualityRun := domainRun.isDefEq viewDomainRun viewEquality
           obtain ⟨consumedRun⟩ :=
             ConstructorCheckedExpr.Run.exists consumedCheck
               contextRun.candidate
@@ -1481,8 +1490,9 @@ theorem nonempty_of_alignment
             simpa [AddInductive.Context.pushLocalDecl] using depth
           obtain ⟨tail⟩ := ih tailContext tailDepth tailAlignment
           exact ⟨ConstructorViewSemanticRun.ordinary
-            domainRun viewDomainRun consumedRun ensureTypeRun positivity
-            annotationsRun consumedType tail⟩
+            (viewEquality := viewEquality)
+            domainRun viewDomainRun viewEqualityRun consumedRun ensureTypeRun
+            positivity annotationsRun consumedType tail⟩
   | terminal context source fuel argIdx sourceTerminal sourceValid =>
       cases alignment with
       | terminal sourceCheck viewCheck viewTerminal viewValid =>
@@ -1841,6 +1851,147 @@ exact `checkType`, `ensureType`, and `isDefEq` executions; they are operational
 evidence, not caller-supplied Theory judgments.
 -/
 
+/-- Executable fragment on which strict kernel-to-Theory translation has a
+syntactically unique endpoint.  Projections are excluded because the current
+`TrProj` contract determines their result only up to definitional equality;
+projection-bearing inductives remain outside the singleton subset until the
+projection milestones establish an exact structural API. -/
+def theoryTranslationUnique : Expr → Bool
+  | .bvar _
+  | .fvar _
+  | .sort _
+  | .const ..
+  | .mvar ..
+  | .lit _ => true
+  | .app fn argument =>
+      theoryTranslationUnique fn && theoryTranslationUnique argument
+  | .lam _ domain body _
+  | .forallE _ domain body _ =>
+      theoryTranslationUnique domain && theoryTranslationUnique body
+  | .letE _ _ value body _ =>
+      theoryTranslationUnique value && theoryTranslationUnique body
+  | .mdata _ expression => theoryTranslationUnique expression
+  | .proj .. => false
+
+/-- The executable predicate is exactly the structural proposition used by
+strict-translation uniqueness. -/
+theorem theoryTranslationUnique_sound
+    (success : theoryTranslationUnique expression = true) :
+    TrExprS.IsUnique expression := by
+  induction expression <;>
+    simp_all [theoryTranslationUnique, TrExprS.IsUnique]
+
+/-- Abstracting one free variable preserves the projection-free fragment:
+the operation changes only free/bound-variable identities and recursively
+retains every expression constructor. -/
+theorem theoryTranslationUnique_abstract1
+    (expression : Expr) (id : FVarId) (depth : Nat) :
+    theoryTranslationUnique (Expr.abstract1 id expression depth) =
+      theoryTranslationUnique expression := by
+  induction expression generalizing depth <;>
+    simp [Expr.abstract1, theoryTranslationUnique, *]
+  split <;> rfl
+
+/-- Iterated free-variable abstraction likewise preserves the executable
+strict-translation fragment. -/
+theorem theoryTranslationUnique_abstractList
+    (expression : Expr) (ids : List FVarId) (depth : Nat) :
+    theoryTranslationUnique (Expr.abstractList expression ids depth) =
+      theoryTranslationUnique expression := by
+  induction ids generalizing expression with
+  | nil => rfl
+  | cons id ids ih =>
+      simp only [Expr.abstractList, ih,
+        theoryTranslationUnique_abstract1]
+
+/-- Array-form abstraction over an explicit list of free variables preserves
+the projection-free fragment. -/
+theorem theoryTranslationUnique_abstractFVars
+    (expression : Expr) (ids : List FVarId) :
+    theoryTranslationUnique
+        (expression.abstract ⟨ids.map Expr.fvar⟩) =
+      theoryTranslationUnique expression := by
+  rw [Expr.abstract_eq]
+  exact theoryTranslationUnique_abstractList expression ids 0
+
+/-- Every syntax fragment contributing to a recursively reconstructed
+candidate view has a unique strict Theory endpoint.  Checking recursive body
+views as well as their stored abstractions supplies precisely the induction
+hypotheses consumed by `CandidateExprRun.view_tr_strict`. -/
+def CandidateExprTrace.viewTranslationUnique :
+    {context : Context} → {source : Expr} →
+      CandidateExprTrace context source → Bool
+  | _, _, .terminal _ _ _ result _ _ => theoryTranslationUnique result
+  | _, _, .forallE context _ _ _ _ _ _ _ _ _ _ _ domain body =>
+      domain.viewTranslationUnique &&
+        (body.viewTranslationUnique &&
+          theoryTranslationUnique
+            (body.view.abstract #[context.freshExpr]))
+
+/-- The recursive check is extensionally the projection-free check on the
+reconstructed analyzer view. Its explicit body clause supplies the induction
+hypothesis consumed by the strict-view proof. -/
+theorem CandidateExprTrace.viewTranslationUnique_eq
+    (trace : CandidateExprTrace context source) :
+    trace.viewTranslationUnique = theoryTranslationUnique trace.view := by
+  induction trace with
+  | terminal => rfl
+  | forallE context source inferred name domain body binderInfo fresh
+      annotations annotationsEq checked normalized domainTrace bodyTrace
+      domainIH bodyIH =>
+    simp only [viewTranslationUnique, CandidateExprTrace.view,
+      theoryTranslationUnique, domainIH, bodyIH]
+    rw [show #[context.freshExpr] =
+      ⟨[context.freshFVarId].map Expr.fvar⟩ by rfl,
+      theoryTranslationUnique_abstractFVars]
+    simp
+
+/-- A successful recursive executable check supplies the exact proposition
+required by strict candidate-view translation. -/
+theorem CandidateExprTrace.viewTranslationUnique_sound
+    (trace : CandidateExprTrace context source)
+    (success : trace.viewTranslationUnique = true) :
+    TypeChecker.CandidateExprTraceViewIsUnique trace := by
+  induction trace with
+  | terminal => exact theoryTranslationUnique_sound success
+  | forallE context source inferred name domain body binderInfo fresh
+      annotations annotationsEq checked normalized domainTrace bodyTrace
+      domainIH bodyIH =>
+    simp only [viewTranslationUnique, Bool.and_eq_true] at success
+    exact ⟨domainIH success.1, bodyIH success.2.1,
+      theoryTranslationUnique_sound success.2.2⟩
+
+/-- Source-ordered strict-view check for an exact dependent constructor
+candidate list. -/
+def CandidateList.viewTranslationUnique :
+    {constructors : List Constructor} →
+      CandidateList CandidateConstructor constructors → Bool
+  | _, .nil => true
+  | _, .cons candidate candidates =>
+      candidate.type.trace.viewTranslationUnique &&
+        candidates.viewTranslationUnique
+
+/-- Proof-level source-ordered counterpart of
+`CandidateList.viewTranslationUnique`. -/
+def CandidateList.ViewTranslationUnique :
+    {constructors : List Constructor} →
+      CandidateList CandidateConstructor constructors → Prop
+  | _, .nil => True
+  | _, .cons candidate candidates =>
+      TypeChecker.CandidateExprTraceViewIsUnique candidate.type.trace ∧
+        candidates.ViewTranslationUnique
+
+theorem CandidateList.viewTranslationUnique_sound
+    (candidates : CandidateList CandidateConstructor constructors)
+    (success : candidates.viewTranslationUnique = true) :
+    candidates.ViewTranslationUnique := by
+  induction candidates with
+  | nil => trivial
+  | cons candidate candidates ih =>
+    simp only [viewTranslationUnique, Bool.and_eq_true] at success
+    exact ⟨candidate.type.trace.viewTranslationUnique_sound success.1,
+      ih success.2⟩
+
 /-- Advance the constructor traversal's fresh-name supply without adding the
 family-dependent local declaration for a recursive outer field. -/
 def Context.advanceFresh (context : Context) : Context :=
@@ -2142,6 +2293,40 @@ theorem nonempty
     simpa only [contextRun.venv_eq, contextRun.lparams_eq] using
       expectedRun.check.expr_tr
   exact ⟨expectedRun.source', nonempty_at contextRun trace _ expected_tr⟩
+
+/-- Strict family translation fixes the expected endpoint chosen by an exact
+pre-family index replay, even when the replay context contains a later prefix
+of fresh locals. -/
+theorem expected_eq_of_family
+    {env : VEnv} {Us : List Name} {context : Context}
+    {contextRun : ConstructorContextRun env Us context}
+    {expected : Expr} {arguments : List Expr}
+    {trace : ConstructorPreFamilyIndexSpineTrace context expected arguments}
+    {expected' : VExpr}
+    (run : ConstructorPreFamilyIndexSpineSemanticRun env Us context
+      contextRun trace expected')
+    {parameterΔ viewΔ : VLCtx} {expectedBase : VExpr} {n : Nat}
+    (familyTr : TrExprS env Us parameterΔ expected expectedBase)
+    (unique : TrExprS.IsUnique expected)
+    (viewLift : VLCtx.FVLift' parameterΔ viewΔ 0
+      (.skipN .refl n) 0)
+    (viewDefEq : VLCtx.IsDefEq env Us.length
+      contextRun.candidate.context.vlctx viewΔ)
+    (viewUnique : TrExprS.IsUniqueCtx
+      contextRun.candidate.context.vlctx viewΔ) :
+    expected' = expectedBase.liftN n 0 := by
+  have henv : VEnv.Ordered env := by
+    simpa only [contextRun.venv_eq] using
+      contextRun.candidate.context.Ewf.ordered
+  have viewWF : VLCtx.WF env Us.length viewΔ :=
+    (viewDefEq.symm henv).wf
+  have familyAtView : TrExprS env Us viewΔ expected
+      (expectedBase.liftN n 0) := by
+    simpa only [VExpr.lift'_consN_skipN] using
+      familyTr.weakFV' henv viewLift viewWF
+  have retained : TrExprS env Us contextRun.candidate.context.vlctx
+      expected expected' := run.expectedRun.expr_tr
+  exact retained.unique' viewUnique unique familyAtView
 
 /-- Transport the exact pre-family index judgment below an arbitrary later
 prefix. This is the proved context weakening used when D4 places the same
@@ -2861,6 +3046,416 @@ theorem nonempty
         ConstructorPreFamilyIndexSpineSemanticRun.nonempty contextRun spineTrace
       exact ⟨.terminal expected' spine⟩
 
+end ConstructorPreFamilyViewSemanticRun
+
+private theorem drop_eq_cons_of_getElem?_eq_some
+    {values : List α} {index : Nat} {value : α}
+    (atIndex : values[index]? = some value) :
+    values.drop index = value :: values.drop (index + 1) := by
+  induction values generalizing index with
+  | nil => simp at atIndex
+  | cons head tail ih =>
+      cases index with
+      | zero =>
+          simp at atIndex
+          simpa [atIndex]
+      | succ index =>
+          simp at atIndex ⊢
+          simpa [Nat.add_assoc, Nat.add_comm 1] using ih atIndex
+
+private theorem eq_length_of_getElem?_eq_none
+    {values : List α} {index : Nat}
+    (atIndex : values[index]? = none)
+    (indexLe : index ≤ values.length) :
+    index = values.length := by
+  induction values generalizing index with
+  | nil => simp_all
+  | cons head tail ih =>
+      cases index with
+      | zero => simp at atIndex
+      | succ index =>
+          simp at atIndex
+          simp only [List.length_cons, Nat.succ_le_succ_iff] at indexLe
+          have indexEq : index = tail.length :=
+            Nat.le_antisymm indexLe atIndex
+          simp [indexEq]
+
+/-- The exact D3 suffix after consuming every validator-owned parameter.
+The context is unchanged because parameter branches instantiate existing
+locals rather than pushing constructor fields. -/
+structure ConstructorPreFamilyParameterSuffix
+    {env : VEnv} {Us : List Name}
+    {stats : InductiveStats} {familyIndices : Expr}
+    {context : Context}
+    {removed : List FVarId} {recursiveStarted : Bool}
+    {contextRun : ConstructorContextRun env Us context}
+    (rest : Expr) where
+  trace : ConstructorPreFamilyViewTrace stats 0 familyIndices
+    context rest stats.params.size removed recursiveStarted
+  semantic : ConstructorPreFamilyViewSemanticRun env Us stats 0
+    familyIndices contextRun trace
+
+namespace ConstructorPreFamilyViewSemanticRun
+
+/-- Strip the exact validator-owned parameter prefix from a verified D3
+view trace.  The successful executable instantiation equation excludes an
+early terminal, while the indexed parameter lookups exclude an early field. -/
+theorem afterParameters
+    {env : VEnv} {Us : List Name}
+    {stats : InductiveStats} {familyIndices : Expr}
+    {familyName : Name} {levels : List Level}
+    {context : Context} {view rest : Expr} {argIdx : Nat}
+    {removed : List FVarId} {recursiveStarted : Bool}
+    {contextRun : ConstructorContextRun env Us context}
+    {trace : ConstructorPreFamilyViewTrace stats 0 familyIndices
+      context view argIdx removed recursiveStarted}
+    (semantic : ConstructorPreFamilyViewSemanticRun env Us stats 0
+      familyIndices contextRun trace)
+    (indConsts : stats.indConsts = #[.const familyName levels])
+    (argIdxLe : argIdx ≤ stats.params.size)
+    (instantiation : instantiateFamilyParameters view
+      (stats.params.toList.drop argIdx) = .ok rest) :
+    Nonempty (ConstructorPreFamilyParameterSuffix
+      (env := env) (Us := Us) (stats := stats)
+      (familyIndices := familyIndices) (context := context)
+      (removed := removed) (recursiveStarted := recursiveStarted)
+      (contextRun := contextRun) rest) := by
+  induction semantic generalizing rest with
+  | @parameter context argIdx removed recursiveStarted name domain body
+      binderInfo parameter parameterAt tailTrace contextRun tail ih =>
+      have atList : stats.params.toList[argIdx]? = some parameter := by
+        simpa only [← Array.getElem?_toList] using parameterAt
+      have dropped := drop_eq_cons_of_getElem?_eq_some atList
+      rw [dropped] at instantiation
+      simp only [instantiateFamilyParameters] at instantiation
+      have argIdxLt : argIdx < stats.params.size := by
+        by_contra notLt
+        have argIdxEq : argIdx = stats.params.size := by omega
+        subst argIdx
+        simp at parameterAt
+      exact ih (by omega) instantiation
+  | @ordinary context argIdx removed recursiveStarted name domain body
+      binderInfo noParameter nonrecursive notStarted domainCheck ensureType
+      consumedCheck annotations fresh tailTrace contextRun domainRun consumedRun
+      ensureTypeRun annotationsRun consumedType tail =>
+      have noParameterList : stats.params.toList[argIdx]? = none := by
+        simpa only [← Array.getElem?_toList] using noParameter
+      have argIdxEq : argIdx = stats.params.toList.length :=
+        eq_length_of_getElem?_eq_none noParameterList (by simpa using argIdxLe)
+      have sizeEq : stats.params.toList.length = stats.params.size := by simp
+      rw [sizeEq] at argIdxEq
+      subst argIdx
+      have dropEq : stats.params.toList.drop stats.params.size = [] := by
+        simpa using List.drop_length stats.params.toList
+      rw [dropEq] at instantiation
+      have viewEq : (.forallE name domain body binderInfo) = rest :=
+        Except.ok.inj (by
+          change Except.ok (.forallE name domain body binderInfo) =
+            Except.ok rest at instantiation
+          exact instantiation)
+      subst rest
+      let suffixTrace := ConstructorPreFamilyViewTrace.ordinary context
+        stats.params.size removed recursiveStarted name domain body binderInfo
+        noParameter nonrecursive notStarted domainCheck ensureType consumedCheck
+        annotations fresh tailTrace
+      exact ⟨⟨suffixTrace,
+        ConstructorPreFamilyViewSemanticRun.ordinary domainRun consumedRun
+          ensureTypeRun annotationsRun consumedType tail⟩⟩
+  | @recursive context argIdx removed recursiveStarted name domain body
+      binderInfo noParameter isRecursive independent fieldTrace fresh tailTrace
+      contextRun field tail =>
+      have noParameterList : stats.params.toList[argIdx]? = none := by
+        simpa only [← Array.getElem?_toList] using noParameter
+      have argIdxEq : argIdx = stats.params.toList.length :=
+        eq_length_of_getElem?_eq_none noParameterList (by simpa using argIdxLe)
+      have sizeEq : stats.params.toList.length = stats.params.size := by simp
+      rw [sizeEq] at argIdxEq
+      subst argIdx
+      have dropEq : stats.params.toList.drop stats.params.size = [] := by
+        simpa using List.drop_length stats.params.toList
+      rw [dropEq] at instantiation
+      have viewEq : (.forallE name domain body binderInfo) = rest :=
+        Except.ok.inj (by
+          change Except.ok (.forallE name domain body binderInfo) =
+            Except.ok rest at instantiation
+          exact instantiation)
+      subst rest
+      let suffixTrace := ConstructorPreFamilyViewTrace.recursive context
+        stats.params.size removed recursiveStarted name domain body binderInfo
+        noParameter isRecursive independent fieldTrace fresh tailTrace
+      exact ⟨⟨suffixTrace,
+        ConstructorPreFamilyViewSemanticRun.recursive field tail⟩⟩
+  | @terminal context source argIdx removed recursiveStarted valid independent
+      spineTrace contextRun expected spine =>
+      by_cases argIdxEq : argIdx = stats.params.size
+      · subst argIdx
+        have dropEq : stats.params.toList.drop stats.params.size = [] := by
+          simpa using List.drop_length stats.params.toList
+        rw [dropEq] at instantiation
+        have viewEq : source = rest :=
+          Except.ok.inj (by
+            change Except.ok source = Except.ok rest at instantiation
+            exact instantiation)
+        subst rest
+        let suffixTrace := ConstructorPreFamilyViewTrace.terminal context source
+          stats.params.size removed recursiveStarted valid independent
+          spineTrace
+        exact ⟨⟨suffixTrace,
+          ConstructorPreFamilyViewSemanticRun.terminal expected spine⟩⟩
+      · have argIdxLt : argIdx < stats.params.size := by omega
+        obtain ⟨parameter, parameterAt⟩ :
+            ∃ parameter, stats.params.toList[argIdx]? = some parameter := by
+          have listLt : argIdx < stats.params.toList.length := by
+            simpa using argIdxLt
+          exact ⟨stats.params.toList[argIdx], by
+            simp only [List.getElem?_eq_getElem listLt]⟩
+        have dropped := drop_eq_cons_of_getElem?_eq_some parameterAt
+        rw [dropped] at instantiation
+        cases source <;>
+          simp only [instantiateFamilyParameters] at instantiation
+        case forallE binderName binderType body binderInfo =>
+          unfold isValidIndAppIdx at valid
+          rw [indConsts] at valid
+          simp only [Expr.withApp_eq, Expr.getAppFn] at valid
+          cases headEq :
+              ((.forallE binderName binderType body binderInfo : Expr) ==
+                .const familyName levels) with
+          | false => simp [headEq] at valid
+          | true =>
+              change Expr.eqv
+                (.forallE binderName binderType body binderInfo)
+                (.const familyName levels) = true at headEq
+              rw [Expr.eqv_eq] at headEq
+              simp [Expr.eqv'] at headEq
+        all_goals exact nomatch instantiation
+
+end ConstructorPreFamilyViewSemanticRun
+
+/-- The exact D2 suffix after consuming every validator-owned parameter.
+Both the executable alignment and its verified semantic interpretation are
+retained at the first ordinary field or terminal result. -/
+structure ConstructorViewParameterSuffix
+    {env : VEnv} {Us : List Name} {whnfFuel : Nat}
+    {stats : InductiveStats} {isUnsafe : Bool} {familyIdx : Nat}
+    {ctor : Name} {context : Context}
+    {contextRun : ConstructorContextRun env Us context}
+    (rest : Expr) where
+  source : Expr
+  fuel : Nat
+  trace : ConstructorTypeValidationTrace stats isUnsafe familyIdx ctor
+    context source stats.params.size fuel
+  alignment : ConstructorViewAlignmentTrace trace rest
+  semantic : ConstructorViewSemanticRun env Us whnfFuel contextRun trace rest
+
+namespace ConstructorViewSemanticRun
+
+/-- Strip the exact parameter prefix shared by D2's validation trace and
+analyzer view alignment. Parameter lookups exclude an early ordinary field;
+the alignment's retained non-Pi fact excludes an early terminal. -/
+theorem afterParameters
+    {env : VEnv} {Us : List Name} {whnfFuel : Nat}
+    {stats : InductiveStats} {isUnsafe : Bool} {familyIdx : Nat}
+    {ctor : Name} {context : Context} {source view rest : Expr}
+    {argIdx fuel : Nat}
+    {contextRun : ConstructorContextRun env Us context}
+    {trace : ConstructorTypeValidationTrace stats isUnsafe familyIdx ctor
+      context source argIdx fuel}
+    (alignment : ConstructorViewAlignmentTrace trace view)
+    (semantic : ConstructorViewSemanticRun env Us whnfFuel contextRun trace
+      view)
+    (argIdxLe : argIdx ≤ stats.params.size)
+    (instantiation : instantiateFamilyParameters view
+      (stats.params.toList.drop argIdx) = .ok rest) :
+    ∃ suffix : ConstructorViewParameterSuffix
+      (env := env) (Us := Us) (whnfFuel := whnfFuel)
+      (stats := stats) (isUnsafe := isUnsafe) (familyIdx := familyIdx)
+      (ctor := ctor) (context := context) (contextRun := contextRun) rest,
+      suffix.trace.universeSemantics = trace.universeSemantics := by
+  induction trace generalizing view rest with
+  | parameter context fuel argIdx name domain body binderInfo param
+      parameterType parameterAt parameterTypeRun validationDefEq tailTrace ih =>
+      cases alignment with
+      | parameter domainCheck viewDomainCheck parameterTypeCheck
+          parameterShape parameterPresent _ tailAlignment =>
+        cases semantic with
+        | parameter domainRun viewDomainRun parameterTypeSemantic validationRun
+            tail =>
+          have atList : stats.params.toList[argIdx]? = some param := by
+            simpa only [← Array.getElem?_toList] using parameterAt
+          have dropped := drop_eq_cons_of_getElem?_eq_some atList
+          rw [dropped] at instantiation
+          simp only [instantiateFamilyParameters] at instantiation
+          obtain ⟨suffix, suffixUniverse⟩ := ih tailAlignment tail (by
+            have argIdxLt : argIdx < stats.params.size := by
+              by_contra notLt
+              have argIdxEq : argIdx = stats.params.size := by omega
+              subst argIdx
+              simp at parameterAt
+            omega) instantiation
+          exact ⟨suffix, by
+            simpa only [ConstructorTypeValidationTrace.universeSemantics]
+              using suffixUniverse⟩
+  | ordinary context fuel argIdx name domain body binderInfo sortResult
+      noParameter ensureTypeStep universeTrace positivityTrace tailTrace ih =>
+      cases alignment with
+      | @ordinary _ _ viewDomain _ _ _ _ _ _ _ _ _ _ _ _ _ viewName
+          viewBody viewBinderInfo domainCheck viewDomainCheck viewEquality
+          consumedCheck _ positivityAlignment fresh annotations _
+          tailAlignment =>
+        cases semantic with
+        | ordinary domainRun viewDomainRun viewEqualityRun consumedRun
+            ensureTypeRun positivity annotationsRun consumedType tail =>
+          have noParameterList : stats.params.toList[argIdx]? = none := by
+            simpa only [← Array.getElem?_toList] using noParameter
+          have argIdxEq : argIdx = stats.params.toList.length :=
+            eq_length_of_getElem?_eq_none noParameterList
+              (by simpa using argIdxLe)
+          have sizeEq : stats.params.toList.length = stats.params.size := by
+            simp
+          rw [sizeEq] at argIdxEq
+          subst argIdx
+          have dropEq : stats.params.toList.drop stats.params.size = [] := by
+            simpa using List.drop_length stats.params.toList
+          rw [dropEq] at instantiation
+          injection instantiation with restEq
+          subst rest
+          let suffixTrace := ConstructorTypeValidationTrace.ordinary context
+            fuel stats.params.size name domain body binderInfo sortResult
+            noParameter ensureTypeStep universeTrace positivityTrace tailTrace
+          have suffixAlignment : ConstructorViewAlignmentTrace suffixTrace
+              (.forallE viewName viewDomain viewBody viewBinderInfo) :=
+            ConstructorViewAlignmentTrace.ordinary domainCheck
+              viewDomainCheck viewEquality consumedCheck positivityTrace
+              positivityAlignment fresh annotations tailTrace tailAlignment
+          have suffixSemantic : ConstructorViewSemanticRun env Us whnfFuel
+              contextRun suffixTrace
+                (.forallE viewName viewDomain viewBody viewBinderInfo) :=
+            ConstructorViewSemanticRun.ordinary
+              (viewEquality := viewEquality) domainRun viewDomainRun
+              viewEqualityRun consumedRun ensureTypeRun positivity
+              annotationsRun consumedType tail
+          exact ⟨⟨_, fuel + 1, suffixTrace, suffixAlignment,
+            suffixSemantic⟩, rfl⟩
+  | terminal context source fuel argIdx sourceTerminal sourceValid =>
+      cases alignment with
+      | terminal sourceCheck viewCheck viewTerminal viewValid =>
+        cases semantic with
+        | terminal sourceRun viewRun =>
+          by_cases argIdxEq : argIdx = stats.params.size
+          · subst argIdx
+            have dropEq : stats.params.toList.drop stats.params.size = [] := by
+              simpa using List.drop_length stats.params.toList
+            rw [dropEq] at instantiation
+            have viewEq : view = rest := Except.ok.inj instantiation
+            subst rest
+            let suffixTrace : ConstructorTypeValidationTrace stats isUnsafe
+                familyIdx ctor context source stats.params.size (fuel + 1) :=
+              ConstructorTypeValidationTrace.terminal context source fuel
+                stats.params.size sourceTerminal sourceValid
+            have suffixAlignment : ConstructorViewAlignmentTrace suffixTrace
+                view :=
+              ConstructorViewAlignmentTrace.terminal sourceCheck viewCheck
+                viewTerminal viewValid
+            have suffixSemantic : ConstructorViewSemanticRun env Us whnfFuel
+                contextRun suffixTrace view :=
+              ConstructorViewSemanticRun.terminal (isUnsafe := isUnsafe)
+                (ctor := ctor) sourceRun viewRun
+            exact ⟨⟨source, fuel + 1, suffixTrace, suffixAlignment,
+              suffixSemantic⟩, rfl⟩
+          · have argIdxLt : argIdx < stats.params.size := by omega
+            obtain ⟨parameter, parameterAt⟩ :
+                ∃ parameter, stats.params.toList[argIdx]? = some parameter := by
+              have listLt : argIdx < stats.params.toList.length := by
+                simpa using argIdxLt
+              exact ⟨stats.params.toList[argIdx], by
+                simp only [List.getElem?_eq_getElem listLt]⟩
+            have dropped := drop_eq_cons_of_getElem?_eq_some parameterAt
+            rw [dropped] at instantiation
+            cases view <;>
+              simp_all [instantiateFamilyParameters, Expr.isForall]
+
+end ConstructorViewSemanticRun
+
+private def candidateForallDepth : Expr → Nat
+  | .forallE _ _ body _ => candidateForallDepth body + 1
+  | _ => 0
+
+private theorem candidateForallDepth_le_instantiate1'
+    (expression argument : Expr) (depth : Nat) :
+    candidateForallDepth expression ≤
+      candidateForallDepth (expression.instantiate1' argument depth) := by
+  induction expression generalizing depth <;>
+    simp [candidateForallDepth, Expr.instantiate1', *]
+
+private theorem candidateForallDepth_abstract1
+    (expression : Expr) (id : FVarId) (depth : Nat) :
+    candidateForallDepth (Expr.abstract1 id expression depth) =
+      candidateForallDepth expression := by
+  induction expression generalizing depth <;>
+    simp [candidateForallDepth, Expr.abstract1, *]
+  split <;> rfl
+
+private theorem candidateForallDepth_abstractList
+    (expression : Expr) (ids : List FVarId) (depth : Nat) :
+    candidateForallDepth (Expr.abstractList expression ids depth) =
+      candidateForallDepth expression := by
+  induction ids generalizing expression with
+  | nil => rfl
+  | cons id ids ih =>
+      simp only [Expr.abstractList, ih, candidateForallDepth_abstract1]
+
+private theorem candidateForallDepth_abstract
+    (expression : Expr) (ids : List FVarId) :
+    candidateForallDepth (expression.abstract ⟨ids.map Expr.fvar⟩) =
+      candidateForallDepth expression := by
+  rw [Expr.abstract_eq]
+  exact candidateForallDepth_abstractList expression ids 0
+
+private theorem candidateView_forallDepth
+    (trace : CandidateExprTrace context source) :
+    trace.spineLength ≤ candidateForallDepth trace.view := by
+  induction trace with
+  | terminal => exact Nat.zero_le _
+  | forallE context source inferred name domain body binderInfo fresh
+      annotations annotationsEq checked normalized domainCandidate
+      bodyCandidate domainIH bodyIH =>
+      simp only [CandidateExprTrace.view, candidateForallDepth,
+        CandidateExprTrace.spineLength]
+      rw [show #[context.freshExpr] =
+        ⟨[context.freshFVarId].map Expr.fvar⟩ by rfl,
+        candidateForallDepth_abstract]
+      omega
+
+private theorem instantiateFamilyParameters_exists_of_forallDepth
+    (length : parameters.length ≤ candidateForallDepth source) :
+    ∃ rest, instantiateFamilyParameters source parameters = .ok rest := by
+  induction parameters generalizing source with
+  | nil => exact ⟨source, rfl⟩
+  | cons parameter parameters ih =>
+      cases source <;> simp [candidateForallDepth] at length
+      case forallE name domain body binderInfo =>
+        have bodyLength : parameters.length ≤ candidateForallDepth
+            (body.instantiate1 parameter) := by
+          rw [Expr.instantiate1_eq]
+          exact Nat.le_trans
+            (by omega : parameters.length ≤ candidateForallDepth body)
+            (candidateForallDepth_le_instantiate1' body parameter 0)
+        obtain ⟨rest, restEq⟩ := ih bodyLength
+        exact ⟨rest, restEq⟩
+
+/-- A reconstructed candidate view can instantiate any parameter list no
+longer than its retained main Pi spine.  This is only a syntactic success
+fact; the exact Theory endpoint is supplied separately by strict translation. -/
+theorem CandidateExprTrace.instantiateViewParameters
+    (trace : CandidateExprTrace context source)
+    (parameters : List Expr)
+    (length : parameters.length ≤ trace.spineLength) :
+    ∃ rest, instantiateFamilyParameters trace.view parameters = .ok rest := by
+  apply instantiateFamilyParameters_exists_of_forallDepth
+  exact Nat.le_trans length (candidateView_forallDepth trace)
+
+namespace ConstructorPreFamilyViewSemanticRun
+
 /-- Weaken an exact ordinary-field type over any later field prefix. -/
 theorem ordinaryType_weakPrefix
     (contextRun : ConstructorContextRun env Us context)
@@ -2991,11 +3586,32 @@ structure ConstructorPreFamilySafetyTrace
     (candidates : AddInductive.CandidateList
       AddInductive.CandidateConstructor constructors)
     (context : Context) where
+  translationUnique :
+    (theoryTranslationUnique familyView &&
+      candidates.viewTranslationUnique) = true
   familyIndices : Expr
   parameters : instantiateFamilyParameters familyView stats.params.toList =
     .ok familyIndices
   constructors : ConstructorPreFamilyListTrace stats 0 familyIndices context
     candidates
+
+theorem ConstructorPreFamilySafetyTrace.familyTranslationUnique
+    (trace : ConstructorPreFamilySafetyTrace stats familyView candidates
+      context) :
+    TrExprS.IsUnique familyView :=
+  by
+    have unique := trace.translationUnique
+    simp only [Bool.and_eq_true] at unique
+    exact theoryTranslationUnique_sound unique.1
+
+theorem ConstructorPreFamilySafetyTrace.constructorTranslationUnique
+    (trace : ConstructorPreFamilySafetyTrace stats familyView candidates
+      context) :
+    candidates.ViewTranslationUnique :=
+  by
+    have unique := trace.translationUnique
+    simp only [Bool.and_eq_true] at unique
+    exact candidates.viewTranslationUnique_sound unique.2
 
 /-- Build the complete D3 trace or return the first structural/checker
 failure. -/
@@ -3006,13 +3622,19 @@ def buildConstructorPreFamilySafety
     (context : Context) :
     Except Exception
       (ConstructorPreFamilySafetyTrace stats familyView candidates context) :=
-  match parameters :
-      instantiateFamilyParameters familyView stats.params.toList with
-  | .error error => .error error
-  | .ok familyIndices => do
-      let constructors ← ConstructorPreFamilyListTrace.build stats 0
-        familyIndices context candidates
-      pure ⟨familyIndices, parameters, constructors⟩
+  match translationUnique :
+      theoryTranslationUnique familyView &&
+        candidates.viewTranslationUnique with
+  | false => throw <| .other
+      "candidate view contains a projection with no exact Theory endpoint"
+  | true =>
+      match parameters :
+          instantiateFamilyParameters familyView stats.params.toList with
+      | .error error => .error error
+      | .ok familyIndices => do
+          let constructors ← ConstructorPreFamilyListTrace.build stats 0
+            familyIndices context candidates
+          pure ⟨translationUnique, familyIndices, parameters, constructors⟩
 
 /-! ### Executable pre-family rejection fixtures -/
 
@@ -3079,12 +3701,16 @@ def checkConstructorPreFamilySafety
     (stats : InductiveStats) (familyView : Expr)
     (candidates : AddInductive.CandidateList
       AddInductive.CandidateConstructor constructors) : M Unit := fun context =>
-  do
+  if theoryTranslationUnique familyView &&
+      candidates.viewTranslationUnique then do
     let familyIndices ← instantiateFamilyParameters familyView
       stats.params.toList
     let _ ← ConstructorPreFamilyListTrace.build stats 0 familyIndices context
       candidates
     pure ()
+  else
+    throw <| .other
+      "candidate view contains a projection with no exact Theory endpoint"
 
 /-- A successful executable D3 gate returns its exact parameter-instantiated
 family telescope and source-ordered replay trace. -/
@@ -3094,18 +3720,313 @@ theorem ConstructorPreFamilyListTrace.nonempty_of_check
     Nonempty (ConstructorPreFamilySafetyTrace stats familyView candidates
       context) := by
   unfold checkConstructorPreFamilySafety at success
-  cases parameters : instantiateFamilyParameters familyView
-      stats.params.toList with
-  | error error =>
-      simp [parameters, Bind.bind, Except.bind] at success
-  | ok familyIndices =>
-      cases constructorsRun : ConstructorPreFamilyListTrace.build stats 0
-          familyIndices context candidates with
+  cases translationUnique :
+      theoryTranslationUnique familyView &&
+        candidates.viewTranslationUnique with
+  | false => simp [translationUnique] at success
+  | true =>
+      cases parameters : instantiateFamilyParameters familyView
+          stats.params.toList with
       | error error =>
-          simp [parameters, constructorsRun, Bind.bind, Except.bind] at success
-      | ok constructors => exact ⟨⟨familyIndices, parameters, constructors⟩⟩
+          simp [translationUnique, parameters, Bind.bind, Except.bind] at success
+      | ok familyIndices =>
+          cases constructorsRun : ConstructorPreFamilyListTrace.build stats 0
+              familyIndices context candidates with
+          | error error =>
+              simp [translationUnique, parameters, constructorsRun,
+                Bind.bind, Except.bind] at success
+          | ok constructors =>
+              exact ⟨⟨translationUnique, familyIndices, parameters,
+                constructors⟩⟩
 
 end AddInductive
+
+namespace TypeChecker
+open AddInductive
+
+private theorem abstract1_instantiate_self
+    (expression : Expr) (id : FVarId) (depth : Nat) :
+    Closed expression depth →
+    (expression.abstract1 id depth).instantiate1' (.fvar id) depth =
+      expression := by
+  induction expression generalizing depth <;>
+    simp_all [Closed, Expr.abstract1, Expr.instantiate1', beq_iff_eq] <;>
+    split <;>
+      simp_all [Expr.instantiate1', Expr.liftLooseBVars'] <;>
+      omega
+
+private theorem abstract_instantiate_self
+    (expression : Expr) (id : FVarId) (closed : Closed expression) :
+    (expression.abstract #[.fvar id]).instantiate1 (.fvar id) =
+      expression := by
+  rw [show #[Expr.fvar id] = ⟨[id].map Expr.fvar⟩ by rfl]
+  simp only [Expr.abstract_eq, Expr.abstractList, Expr.instantiate1_eq]
+  exact abstract1_instantiate_self expression id 0 closed
+
+/-- A source-ordered list of kernel parameter FVars builds an exact verified
+local telescope.  The final context is obtained by pushing each parameter in
+order; dependency metadata is retained but never guessed by consumers. -/
+inductive CandidateParameterContext :
+    VLCtx → List Expr → List VExpr → VLCtx → Prop where
+  | nil : CandidateParameterContext base [] [] base
+  | cons
+      (tail : CandidateParameterContext
+        ((some (fv, deps), .vlam A) :: base) parameters types final) :
+      CandidateParameterContext base (.fvar fv :: parameters)
+        (A :: types) final
+
+/-- A completed analyzer-owned parameter telescope also certifies every
+earlier context in that telescope. -/
+theorem CandidateParameterContext.initialWF
+    (params : CandidateParameterContext base parameters types final)
+    (finalWF : VLCtx.WF env U final) :
+    VLCtx.WF env U base := by
+  induction params with
+  | nil => exact finalWF
+  | cons tail ih => exact (ih finalWF).1
+
+/-- The source parameter list and analyzer telescope carried by an exact
+parameter context have the same number of entries. -/
+theorem CandidateParameterContext.length_eq
+    (params : CandidateParameterContext base parameters types final) :
+    parameters.length = types.length := by
+  induction params with
+  | nil => rfl
+  | cons tail ih => simp only [List.length_cons, ih]
+
+/-- Replay a successful kernel parameter instantiation against the exact
+analyzer-owned Theory parameter telescope.  Each source Pi body is opened by
+the corresponding retained FVar; no whole-Pi injectivity or caller-selected
+endpoint is used. -/
+theorem CandidateParameterContext.instantiateForall
+    (params : CandidateParameterContext base parameters types final)
+    (henv : VEnv.Ordered env)
+    (finalWF : VLCtx.WF env Us.length final)
+    (instantiation : instantiateFamilyParameters source parameters = .ok rest)
+    (tr : TrExprS env Us base source (VExpr.forallN types result)) :
+    TrExprS env Us final rest result := by
+  induction params generalizing source rest with
+  | nil =>
+      have source_eq : source = rest := Except.ok.inj instantiation
+      subst rest
+      simpa only [VExpr.forallN] using tr
+  | @cons fv deps A base parameters types final tail ih =>
+      cases source <;> simp only [instantiateFamilyParameters] at instantiation
+      case forallE name domain body binderInfo =>
+        obtain ⟨domain', body', targetEq, domainType, bodyType, domainTr,
+            bodyTr⟩ := TrExprS.forallE_components tr
+        simp only [VExpr.forallN, VExpr.forallE.injEq] at targetEq
+        obtain ⟨rfl, rfl⟩ := targetEq
+        have nextWF : VLCtx.WF env Us.length
+            ((some (fv, deps), .vlam A) :: base) :=
+          tail.initialWF finalWF
+        exact ih finalWF instantiation (by
+          simpa only [Expr.instantiate1_eq] using
+            bodyTr.inst_fvar henv nextWF)
+      all_goals exact nomatch instantiation
+
+/-- Consume an exact prefix of a strictly translated candidate view and keep
+the terminal candidate context tied to the corresponding view telescope.
+
+The resulting `parameterContext` is the analyzer-owned prefix context.  The
+final `FVLift'` is over precisely the unconsumed suffix, so a strict
+translation in the parameter context can be weakened to the same terminal
+context used by pre-family constructor replay. -/
+theorem CandidateExprRun.parameterViewTerminal
+    {env : VEnv} {Us : List Name}
+    {candidateContext : AddInductive.Context} {source : Expr}
+    {trace : AddInductive.CandidateExprTrace candidateContext source}
+    {Δ : VLCtx} {source' view' inferred' : VExpr}
+    (run : CandidateExprRun env Us trace Δ source' view' inferred')
+    (contextRun : CandidateContextRun candidateContext)
+    (venv_eq : contextRun.context.venv = env)
+    (lparams_eq : contextRun.context.lparams = Us)
+    (vlctx_eq : contextRun.context.vlctx = Δ)
+    (unique : CandidateExprTraceViewIsUnique trace)
+    (count : Nat) (hcount : count ≤ trace.spineLength)
+    {viewΔ : VLCtx}
+    (viewDefEq : VLCtx.IsDefEq env Us.length Δ viewΔ)
+    (viewContext : TrExprS.IsUniqueCtx Δ viewΔ)
+    (noBV : Δ.NoBV) :
+    ∃ (parameterΔ : VLCtx) (rest : Expr)
+        (terminalRun : CandidateContextRun trace.terminalContext)
+        (viewTerminal : VLCtx),
+      instantiateFamilyParameters trace.view (trace.parameterList count) =
+        .ok rest ∧
+      TrExprS env Us parameterΔ rest (VExpr.dropN count view') ∧
+      parameterΔ.toCtx =
+        (VExpr.telN count view').reverse ++ viewΔ.toCtx ∧
+      CandidateParameterContext viewΔ (trace.parameterList count)
+        (VExpr.telN count view') parameterΔ ∧
+      parameterΔ.fvars.map Expr.fvar =
+        (trace.parameterList count).reverse ++
+          viewΔ.fvars.map Expr.fvar ∧
+      parameterΔ.NoBV ∧
+      VLCtx.WF env Us.length parameterΔ ∧
+      terminalRun.context.venv = env ∧
+      terminalRun.context.lparams = Us ∧
+      VLCtx.IsDefEq env Us.length terminalRun.context.vlctx viewTerminal ∧
+      TrExprS.IsUniqueCtx terminalRun.context.vlctx viewTerminal ∧
+      VLCtx.FVLift' parameterΔ viewTerminal 0
+        (.skipN .refl (trace.spineLength - count)) 0 ∧
+      viewTerminal.toCtx =
+        (VExpr.telN (trace.spineLength - count)
+          (VExpr.dropN count view')).reverse ++ parameterΔ.toCtx := by
+  induction run generalizing count viewΔ with
+  | @terminal Δ context source inferred result source' result' inferred'
+      checked normalized node =>
+    simp only [AddInductive.CandidateExprTrace.spineLength] at hcount
+    have count_eq : count = 0 := Nat.eq_zero_of_le_zero hcount
+    subst count
+    have strict :=
+      CandidateExprRun.view_tr_strict
+        (CandidateExprRun.terminal node) unique
+    have henv : VEnv.WF env := by
+      simpa only [node.check.venv_eq] using node.check.context.Ewf
+    obtain ⟨moved, movedTr⟩ := strict.defeqDFC henv viewDefEq
+    have moved_eq : result' = moved :=
+      strict.unique' viewContext unique movedTr
+    subst moved
+    obtain ⟨terminalRun, viewTerminal, terminalVenv, terminalLparams,
+        terminalViewDefEq, terminalViewContext, terminalViewLift,
+        terminalViewEq⟩ :=
+      (CandidateExprRun.terminal node).terminalContextRunView contextRun
+        venv_eq lparams_eq vlctx_eq viewDefEq viewContext
+    exact ⟨viewΔ, result, terminalRun, viewTerminal, rfl, movedTr, rfl, .nil,
+      by simp [AddInductive.CandidateExprTrace.parameterList],
+      by simpa only [VLCtx.NoBV, ← viewDefEq.bvars] using noBV,
+      (viewDefEq.symm henv.ordered).wf,
+      terminalVenv, terminalLparams, terminalViewDefEq, terminalViewContext,
+      by simpa only [Nat.sub_zero] using terminalViewLift,
+      by simpa only [Nat.sub_zero, VExpr.dropN] using terminalViewEq⟩
+  | @forallE domain context name binderInfo Δ source inferred body
+      source' domain' body' inferred' domainView' domainInferred'
+      storedDomain' bodyΔ storedBody' bodyView' bodyInferred' u v fresh
+      checked normalized annotations annotationsEq domainCandidate
+      bodyCandidate node domainRun annotationsRun bodyRun domainType bodyType
+      bodySource bodyContext domainIH bodyIH =>
+    have currentRun := CandidateExprRun.forallE
+      (fresh := fresh) (checked := checked) (normalized := normalized)
+      annotations annotationsEq domainCandidate bodyCandidate node domainRun
+      annotationsRun bodyRun domainType bodyType bodySource bodyContext
+    have henv : VEnv.WF env := by
+      simpa only [node.check.venv_eq] using node.check.context.Ewf
+    have hΔ : VLCtx.WF env Us.length Δ := by
+      simpa only [node.check.venv_eq, node.check.lparams_eq,
+        node.check.vlctx_eq] using node.check.context.Δwf
+    have allUnique := unique
+    rcases unique with ⟨domainUnique, bodyUnique, abstractUnique⟩
+    cases count with
+    | zero =>
+        have strict := currentRun.view_tr_strict allUnique
+        obtain ⟨moved, movedTr⟩ := strict.defeqDFC henv viewDefEq
+        have moved_eq : VExpr.forallE domainView' bodyView' = moved :=
+          strict.unique' viewContext allUnique.view movedTr
+        subst moved
+        obtain ⟨terminalRun, viewTerminal, terminalVenv, terminalLparams,
+            terminalViewDefEq, terminalViewContext, terminalViewLift,
+            terminalViewEq⟩ :=
+          currentRun.terminalContextRunView contextRun venv_eq lparams_eq
+            vlctx_eq viewDefEq viewContext
+        exact ⟨viewΔ, _, terminalRun, viewTerminal, rfl, movedTr, rfl, .nil,
+          by simp [AddInductive.CandidateExprTrace.parameterList],
+          by simpa only [VLCtx.NoBV, ← viewDefEq.bvars] using noBV,
+          (viewDefEq.symm henv.ordered).wf,
+          terminalVenv, terminalLparams, terminalViewDefEq,
+          terminalViewContext,
+          by simpa only [Nat.sub_zero] using terminalViewLift,
+          by simpa only [Nat.sub_zero, VExpr.dropN] using terminalViewEq⟩
+    | succ count =>
+        simp only [AddInductive.CandidateExprTrace.spineLength,
+          Nat.succ_le_succ_iff] at hcount
+        have domainDef : env.IsDefEq Us.length Δ.toCtx
+            domain' domainView' (.sort u) :=
+          domainRun.evidence.isDefEq.toU.of_l henv hΔ.toCtx domainType
+        have annotationDef : env.IsDefEq Us.length Δ.toCtx
+            domain' storedDomain' (.sort u) :=
+          annotationsRun.isDefEqU.of_l henv hΔ.toCtx domainType
+        have storedToView : env.IsDefEq Us.length Δ.toCtx
+            storedDomain' domainView' (.sort u) :=
+          annotationDef.symm.trans domainDef
+        have storedDomain_tr : contextRun.context.TrExprS
+            annotations.consumed storedDomain' := by
+          simpa only [VContext.TrExprS, venv_eq, lparams_eq, vlctx_eq] using
+            annotationsRun.rhs_tr
+        have storedDomain_type : env.IsType Us.length Δ.toCtx storedDomain' :=
+          ⟨u, annotationDef.hasType.2⟩
+        let nextContextRun := contextRun.pushLocalDecl name binderInfo
+          annotations.consumed fresh storedDomain' storedDomain_tr (by
+            change contextRun.context.venv.IsType
+              contextRun.context.lparams.length
+              contextRun.context.vlctx.toCtx storedDomain'
+            rw [venv_eq, lparams_eq, vlctx_eq]
+            exact storedDomain_type)
+        have nextVenv : nextContextRun.context.venv = env := by
+          simp only [nextContextRun, CandidateContextRun.pushLocalDecl_venv,
+            venv_eq]
+        have nextLparams : nextContextRun.context.lparams = Us := by
+          simp only [nextContextRun, CandidateContextRun.pushLocalDecl_lparams,
+            lparams_eq]
+        have nextVlctx : nextContextRun.context.vlctx = bodyΔ := by
+          simp only [nextContextRun, CandidateContextRun.pushLocalDecl_vlctx]
+          rw [vlctx_eq, bodyContext]
+        let viewBodyΔ : VLCtx :=
+          (some (context.freshFVarId, annotations.consumed.fvarsList),
+            .vlam domainView') :: viewΔ
+        have bodyWF := bodyRun.context_wf
+        rw [bodyContext] at bodyWF
+        have bodyViewDefEq : VLCtx.IsDefEq env Us.length bodyΔ viewBodyΔ := by
+          rw [bodyContext]
+          exact .cons viewDefEq bodyWF.2.1 (.vlam storedToView)
+        have bodyViewContext : TrExprS.IsUniqueCtx bodyΔ viewBodyΔ := by
+          rw [bodyContext]
+          exact viewContext.cons .vlam
+        have bodyNoBV : bodyΔ.NoBV := by
+          rw [bodyContext]
+          simpa only [VLCtx.NoBV, VLCtx.bvars] using noBV
+        obtain ⟨parameterΔ, rest, terminalRun, viewTerminal, restEq,
+            restTr, parameterCtx, parameterContext, parameterFVars,
+            parameterNoBV, parameterWF, terminalVenv,
+            terminalLparams, terminalViewDefEq, terminalViewContext,
+            terminalViewLift, terminalViewEq⟩ :=
+          bodyIH nextContextRun nextVenv nextLparams nextVlctx bodyUnique
+            count hcount bodyViewDefEq bodyViewContext bodyNoBV
+        have bodyClosed : Closed bodyCandidate.view := by
+          have closed := (bodyRun.view_tr_strict bodyUnique).closed
+          simpa only [bodyNoBV] using closed
+        refine ⟨parameterΔ, rest, terminalRun, viewTerminal, ?_, ?_, ?_,
+          ?_, ?_, parameterNoBV, parameterWF, terminalVenv, terminalLparams,
+          ?_, ?_, ?_, ?_⟩
+        · simp only [AddInductive.CandidateExprTrace.view,
+            AddInductive.CandidateExprTrace.parameterList,
+            instantiateFamilyParameters]
+          change instantiateFamilyParameters
+            ((bodyCandidate.view.abstract
+              #[.fvar context.freshFVarId]).instantiate1
+                (.fvar context.freshFVarId)) _ = _
+          rw [abstract_instantiate_self _ _ bodyClosed]
+          exact restEq
+        · simpa only [VExpr.dropN] using restTr
+        · simpa only [AddInductive.CandidateExprTrace.spineLength,
+            VExpr.telN, List.reverse_cons, List.singleton_append,
+            List.append_assoc, viewBodyΔ, VLCtx.toCtx] using parameterCtx
+        · simpa only [AddInductive.CandidateExprTrace.parameterList,
+            VExpr.telN, viewBodyΔ, AddInductive.Context.freshExpr] using
+            CandidateParameterContext.cons parameterContext
+        · simpa [AddInductive.CandidateExprTrace.parameterList,
+            List.reverse_cons, List.singleton_append, List.append_assoc,
+            viewBodyΔ, VLCtx.fvars, AddInductive.Context.freshExpr] using
+            parameterFVars
+        · simpa only [AddInductive.CandidateExprTrace.terminalContext] using
+            terminalViewDefEq
+        · simpa only [AddInductive.CandidateExprTrace.terminalContext] using
+            terminalViewContext
+        · simpa only [AddInductive.CandidateExprTrace.spineLength,
+            Nat.succ_sub_succ_eq_sub] using terminalViewLift
+        · simpa only [AddInductive.CandidateExprTrace.spineLength,
+            Nat.succ_sub_succ_eq_sub, VExpr.dropN] using terminalViewEq
+
+end TypeChecker
 
 namespace VInductDecl
 
@@ -3406,6 +4327,4180 @@ theorem StagedNormalizationCandidatePreFamilyInput.exists
     AddInductive.ConstructorPreFamilyListSemanticRun.nonempty contextRun
       input.safety.constructors
   exact ⟨⟨postFamily, contextRun, constructors⟩⟩
+
+/-- Invert a verified iterated Pi type into its exact source-ordered
+telescope and terminal type. -/
+private theorem isType_forallN_inv
+    (henv : VEnv.Ordered env) :
+    ∀ {As : List VExpr} {U : Nat} {Γ : List VExpr} {B : VExpr},
+      env.IsType U Γ (VExpr.forallN As B) →
+        env.OnTel U Γ As ∧
+          env.IsType U (As.reverse ++ Γ) B
+  | [], U, Γ, B, h => by
+      change env.IsType _ _ B at h
+      exact ⟨trivial, h⟩
+  | A :: As, U, Γ, B, h => by
+      obtain ⟨hA, hrest⟩ := h.forallE_inv henv
+      obtain ⟨hAs, hB⟩ := isType_forallN_inv henv hrest
+      exact ⟨⟨hA, hAs⟩, by
+        simpa [List.reverse_cons, List.append_assoc] using hB⟩
+
+/-- The family normalization trace and the analyzer's exact generation
+equation derive the checked parameter/index telescope. No checked- or
+view-well-formedness premise is accepted. -/
+theorem StagedNormalizationCandidatePreFamilyInput.familyOnTel
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name} {source : InductiveType}
+    {candidate : AddInductive.NormalizationCandidate [source]}
+    {rawDecl : VInductDecl}
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us candidate rawDecl)
+    (normalization : NormalizationCandidateSemanticRun env Us candidate rawDecl)
+    (generation : GenerationChecked rawDecl)
+    (analysis : normalization.root.normalization.generation? =
+      some generation) :
+    env.OnTel rawDecl.uvars []
+      (generation.block.checked.params ++ generation.block.checked.indices) := by
+  obtain ⟨_, recursive⟩ := normalization.family.type.recursive
+  have familyType : env.IsType Us.length [] normalization.family.type.view :=
+    recursive.view_isType_of_terminalSort
+      input.postFamilyInput.universeInput.staged.family.validation.terminal_eq
+  have view_eq : normalization.family.type.view =
+      generation.block.checked.type.type := by
+    exact (congrArg (fun ty : VInductiveType => ty.type)
+      (normalization.root.familyViewType_eq analysis)).symm
+  rw [view_eq, generation.block.checked.type_eq,
+    ← VExpr.forallN_append] at familyType
+  have henv : VEnv.Ordered env := by
+    simpa only [normalization.family.type.venv_eq] using
+      normalization.family.type.contextRun.context.Ewf.ordered
+  have htel := (isType_forallN_inv henv familyType).1
+  simpa only [normalization.uvars_eq] using htel
+
+open AddInductive TypeChecker
+
+private theorem familyTelNForallNLength :
+    ∀ (As : List VExpr) (B : VExpr),
+      VExpr.telN As.length (VExpr.forallN As B) = As
+  | [], _ => rfl
+  | _ :: As, B => by
+      simp only [List.length_cons, VExpr.forallN, VExpr.telN,
+        familyTelNForallNLength As B]
+
+private theorem familyDropNForallNLength :
+    ∀ (As : List VExpr) (B : VExpr),
+      VExpr.dropN As.length (VExpr.forallN As B) = B
+  | [], _ => rfl
+  | _ :: As, B => by
+      simp only [List.length_cons, VExpr.forallN, VExpr.dropN,
+        familyDropNForallNLength As B]
+
+/-- Consume the validator-owned parameter prefix of the retained family
+candidate and identify both resulting contexts with the analyzer telescope.
+
+The executable D3 gate selects the residual kernel family expression.  Strict
+translation uniqueness, the exact generation shape, and dependent analysis
+then identify its Theory endpoint and the terminal local context; neither a
+view nor a view-context premise is supplied by the caller. -/
+theorem StagedNormalizationCandidatePreFamilyInput.familyParameterTerminal
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name} {source : InductiveType}
+    {candidate : AddInductive.NormalizationCandidate [source]}
+    {rawDecl : VInductDecl}
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us candidate rawDecl)
+    (normalization : NormalizationCandidateSemanticRun env Us candidate rawDecl)
+    (generation : GenerationChecked rawDecl)
+    (analysis : normalization.root.normalization.generation? =
+      some generation)
+    (shape : normalization.generationShape = true) :
+    let trace := candidate.families.singleton.familyType.type.trace
+    ∃ (parameterΔ : VLCtx) (rest : Expr)
+        (terminalRun : CandidateContextRun trace.terminalContext)
+        (viewTerminal : VLCtx),
+      instantiateFamilyParameters trace.view
+          (trace.parameterList rawDecl.nparams) = .ok rest ∧
+      TrExprS env Us parameterΔ rest
+        (VExpr.dropN rawDecl.nparams normalization.family.type.view) ∧
+      parameterΔ.toCtx =
+        (VExpr.telN rawDecl.nparams normalization.family.type.view).reverse ∧
+      CandidateParameterContext [] (trace.parameterList rawDecl.nparams)
+        (VExpr.telN rawDecl.nparams normalization.family.type.view)
+        parameterΔ ∧
+      parameterΔ.fvars.map Expr.fvar =
+        (trace.parameterList rawDecl.nparams).reverse ∧
+      parameterΔ.NoBV ∧
+      VLCtx.WF env Us.length parameterΔ ∧
+      terminalRun.context.venv = env ∧
+      terminalRun.context.lparams = Us ∧
+      VLCtx.IsDefEq env Us.length terminalRun.context.vlctx viewTerminal ∧
+      TrExprS.IsUniqueCtx terminalRun.context.vlctx viewTerminal ∧
+      VLCtx.FVLift' parameterΔ viewTerminal 0
+        (.skipN .refl generation.block.checked.indices.length) 0 ∧
+      viewTerminal.toCtx =
+        generation.block.checked.indices.reverse ++ parameterΔ.toCtx := by
+  dsimp only
+  have familyShape := shape
+  simp only [NormalizationCandidateSemanticRun.generationShape,
+    normalizationCandidateGenerationShape, Bool.and_eq_true,
+    beq_iff_eq] at familyShape
+  have spineLength_eq :
+      candidate.families.singleton.familyType.type.trace.spineLength =
+        (generation.block.checked.params ++
+          generation.block.checked.indices).length := by
+    calc
+      _ = (VExpr.telN rawDecl.nparams normalization.raw.type ++
+          ctorFields (VExpr.dropN rawDecl.nparams normalization.raw.type)).length :=
+        familyShape.1.2
+      _ = (generation.block.rawParams ++
+          generation.block.rawIndices).length := by
+        simp only [NormalizedChecked.rawParams, NormalizedChecked.rawIndices,
+          NormalizationCandidateSemanticRun.root,
+          normalization.root.sourceType_eq generation]
+      _ = (generation.block.checked.params ++
+          generation.block.checked.indices).length := by
+        simp only [List.length_append]
+        rw [generation.shape.2.1, generation.shape.2.2.1]
+  have parameterLength : generation.block.checked.params.length =
+      rawDecl.nparams :=
+    generation.block.checked.direct_anatomy.2.1.trans
+      generation.block.nparams_eq.symm
+  have hcount : rawDecl.nparams ≤
+      candidate.families.singleton.familyType.type.trace.spineLength := by
+    rw [spineLength_eq]
+    simpa only [List.length_append, parameterLength] using
+      Nat.le_add_right rawDecl.nparams
+        generation.block.checked.indices.length
+  have unique : CandidateExprTraceViewIsUnique
+      candidate.families.singleton.familyType.type.trace := by
+    apply CandidateExprTrace.viewTranslationUnique_sound
+    rw [CandidateExprTrace.viewTranslationUnique_eq]
+    have uniqueGate := input.safety.translationUnique
+    simp only [Bool.and_eq_true] at uniqueGate
+    exact uniqueGate.1
+  obtain ⟨inferred, recursive⟩ := normalization.family.type.recursive
+  have rootWF : VLCtx.WF env Us.length ([] : VLCtx) := by
+    simpa only [normalization.family.type.venv_eq,
+      normalization.family.type.lparams_eq,
+      normalization.family.type.vlctx_eq] using
+      normalization.family.type.contextRun.context.Δwf
+  have henv : VEnv.Ordered env := by
+    simpa only [normalization.family.type.venv_eq] using
+      normalization.family.type.contextRun.context.Ewf.ordered
+  obtain ⟨parameterΔ, rest, terminalRun, viewTerminal, restEq, restTr,
+      parameterCtx, parameterContext, parameterFVars, parameterNoBV,
+      parameterWF, terminalVenv, terminalLparams,
+      terminalViewDefEq, terminalViewContext, terminalViewLift,
+      terminalViewEq⟩ :=
+    recursive.parameterViewTerminal normalization.family.type.contextRun
+      normalization.family.type.venv_eq normalization.family.type.lparams_eq
+      normalization.family.type.vlctx_eq unique rawDecl.nparams hcount
+      (.refl henv rootWF) .base (by rfl)
+  have remaining_eq :
+      candidate.families.singleton.familyType.type.trace.spineLength -
+          rawDecl.nparams = generation.block.checked.indices.length := by
+    rw [spineLength_eq, List.length_append,
+      parameterLength, Nat.add_sub_cancel_left]
+  have view_eq : normalization.family.type.view =
+      generation.block.checked.type.type :=
+    (congrArg (fun ty : VInductiveType => ty.type)
+      (normalization.root.familyViewType_eq analysis)).symm
+  have viewDrop_eq :
+      VExpr.dropN rawDecl.nparams normalization.family.type.view =
+        VExpr.forallN generation.block.checked.indices
+          (.sort generation.block.checked.resultLevel) := by
+    rw [view_eq, generation.block.checked.type_eq, ← parameterLength]
+    exact familyDropNForallNLength _ _
+  refine ⟨parameterΔ, rest, terminalRun, viewTerminal, restEq, restTr, ?_,
+    parameterContext, ?_, parameterNoBV, parameterWF, terminalVenv,
+    terminalLparams,
+    terminalViewDefEq,
+    terminalViewContext, ?_, ?_⟩
+  · simpa only [VLCtx.toCtx, List.append_nil] using parameterCtx
+  · simpa [VLCtx.fvars] using parameterFVars
+  · simpa only [remaining_eq] using terminalViewLift
+  · rw [remaining_eq, viewDrop_eq,
+      familyTelNForallNLength] at terminalViewEq
+    exact terminalViewEq
+
+/-- The analyzer-owned family prefix and D3's pre-family terminal context,
+with the residual kernel expression fixed to the exact executable safety
+trace and every Theory telescope component fixed to dependent analysis. -/
+theorem StagedNormalizationCandidatePreFamilyInput.familyContext
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name} {source : InductiveType}
+    {candidate : AddInductive.NormalizationCandidate [source]}
+    {rawDecl : VInductDecl}
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us candidate rawDecl)
+    (normalization : NormalizationCandidateSemanticRun env Us candidate rawDecl)
+    (generation : GenerationChecked rawDecl)
+    (analysis : normalization.root.normalization.generation? =
+      some generation)
+    (shape : normalization.generationShape = true) :
+    let trace := candidate.families.singleton.familyType.type.trace
+    ∃ (parameterΔ : VLCtx)
+        (terminalRun : CandidateContextRun trace.terminalContext)
+        (viewTerminal : VLCtx),
+      instantiateFamilyParameters trace.view
+          (trace.parameterList rawDecl.nparams) =
+        .ok input.safety.familyIndices ∧
+      TrExprS env Us parameterΔ input.safety.familyIndices
+        (VExpr.forallN generation.block.checked.indices
+          (.sort generation.block.checked.resultLevel)) ∧
+      parameterΔ.toCtx = generation.block.checked.params.reverse ∧
+      CandidateParameterContext [] (trace.parameterList rawDecl.nparams)
+        generation.block.checked.params parameterΔ ∧
+      parameterΔ.fvars.map Expr.fvar =
+        (trace.parameterList rawDecl.nparams).reverse ∧
+      parameterΔ.NoBV ∧
+      VLCtx.WF env Us.length parameterΔ ∧
+      terminalRun.context.venv = env ∧
+      terminalRun.context.lparams = Us ∧
+      VLCtx.IsDefEq env Us.length terminalRun.context.vlctx viewTerminal ∧
+      TrExprS.IsUniqueCtx terminalRun.context.vlctx viewTerminal ∧
+      VLCtx.FVLift' parameterΔ viewTerminal 0
+        (.skipN .refl generation.block.checked.indices.length) 0 ∧
+      viewTerminal.toCtx =
+        generation.block.checked.indices.reverse ++
+          generation.block.checked.params.reverse := by
+  dsimp only
+  obtain ⟨parameterΔ, rest, terminalRun, viewTerminal, restEq, restTr,
+      parameterCtx, parameterContext, parameterFVars, parameterNoBV,
+      parameterWF, terminalVenv, terminalLparams,
+      terminalViewDefEq, terminalViewContext, terminalViewLift,
+      terminalViewEq⟩ := input.familyParameterTerminal normalization
+    generation analysis shape
+  let validation :=
+    input.postFamilyInput.universeInput.staged.family.validation
+  have statsParams : validation.stats.params.toList =
+      candidate.families.singleton.familyType.type.trace.parameterList
+        rawDecl.nparams := by
+    rw [validation.stats_eq]
+    simp only [CandidateExprTrace.singletonCandidateInductiveStats,
+      validation, input.postFamilyInput.universeInput.staged.validation_nparams_eq]
+  have safetyParameters := input.safety.parameters
+  rw [statsParams] at safetyParameters
+  have rest_eq : rest = input.safety.familyIndices := by
+    exact Except.ok.inj (restEq.symm.trans safetyParameters)
+  subst rest
+  have parameterLength : generation.block.checked.params.length =
+      rawDecl.nparams :=
+    generation.block.checked.direct_anatomy.2.1.trans
+      generation.block.nparams_eq.symm
+  have view_eq : normalization.family.type.view =
+      generation.block.checked.type.type :=
+    (congrArg (fun ty : VInductiveType => ty.type)
+      (normalization.root.familyViewType_eq analysis)).symm
+  have viewDrop_eq :
+      VExpr.dropN rawDecl.nparams normalization.family.type.view =
+        VExpr.forallN generation.block.checked.indices
+          (.sort generation.block.checked.resultLevel) := by
+    rw [view_eq, generation.block.checked.type_eq, ← parameterLength]
+    exact familyDropNForallNLength _ _
+  have parameterTel_eq :
+      VExpr.telN rawDecl.nparams normalization.family.type.view =
+        generation.block.checked.params := by
+    rw [view_eq, generation.block.checked.type_eq, ← parameterLength]
+    exact familyTelNForallNLength _ _
+  refine ⟨parameterΔ, terminalRun, viewTerminal, restEq, ?_, ?_,
+    ?_, parameterFVars, parameterNoBV, parameterWF, terminalVenv,
+    terminalLparams,
+    terminalViewDefEq,
+    terminalViewContext, terminalViewLift, ?_⟩
+  · simpa only [viewDrop_eq] using restTr
+  · simpa only [parameterTel_eq] using parameterCtx
+  · simpa only [parameterTel_eq] using parameterContext
+  · simpa only [parameterCtx, parameterTel_eq] using terminalViewEq
+
+/-- Peeling at most `n` binders cannot expose more than `n` telescope
+entries. -/
+private theorem constructorTelN_length_le (n : Nat) (expression : VExpr) :
+    (VExpr.telN n expression).length ≤ n := by
+  induction n generalizing expression with
+  | zero => simp [VExpr.telN]
+  | succ n ih => cases expression <;> simp [VExpr.telN, ih]
+
+/-- Strip the validator-owned parameter prefix from one analyzer-selected
+constructor and retain the exact D3 suffix together with its strict Theory
+translation.
+
+The source parameter list is fixed by the family validation statistics, the
+Theory parameter telescope is fixed by dependent analysis, and the complete
+constructor endpoint is fixed by the analyzer-owned raw/view pairing.  Thus
+the residual endpoint is precisely the stored view fields followed by the
+analyzed result target; no whole-Pi injectivity or caller-selected view is
+used. -/
+theorem CandidateSemanticNormalizedCtorRun.preFamilySuffix
+    {env typeEnv : VEnv} {Us : List Name}
+    {source : VInductDecl} {generation : GenerationChecked source}
+    {kernelCtor : Constructor}
+    {candidateCtor : AddInductive.CandidateConstructor kernelCtor}
+    {rawCtor : VConstVal}
+    {root : CandidateConstructorSemanticRun typeEnv Us candidateCtor rawCtor}
+    {ctor : NormalizedCtor}
+    {stats : InductiveStats} {familyIndices : Expr}
+    {context : AddInductive.Context}
+    {contextRun : AddInductive.ConstructorContextRun env Us context}
+    {d3Trace : AddInductive.ConstructorPreFamilyViewTrace stats 0
+      familyIndices context candidateCtor.type.view 0 [] false}
+    {parameterΔ : VLCtx} {parameters : List Expr}
+    (genRun : CandidateSemanticNormalizedCtorRun generation.block typeEnv Us
+      root ctor)
+    (addType : env ≤ typeEnv)
+    (parameterContext : CandidateParameterContext [] parameters
+      generation.block.checked.params parameterΔ)
+    (parameterWF : VLCtx.WF env Us.length parameterΔ)
+    (unique : CandidateExprTraceViewIsUnique candidateCtor.type.trace)
+    (d3 : AddInductive.ConstructorPreFamilyViewSemanticRun env Us stats 0
+      familyIndices contextRun d3Trace)
+    (hctor : ctor ∈ generation.block.ctorPairs)
+    (parametersEq : stats.params.toList = parameters)
+    {familyName : Name} {levels : List Level}
+    (indConsts : stats.indConsts = #[.const familyName levels]) :
+    ∃ rest,
+      instantiateFamilyParameters candidateCtor.type.view stats.params.toList =
+          .ok rest ∧
+      Nonempty (AddInductive.ConstructorPreFamilyParameterSuffix
+        (env := env) (Us := Us) (stats := stats)
+        (familyIndices := familyIndices) (context := context)
+        (removed := []) (recursiveStarted := false)
+        (contextRun := contextRun) rest) ∧
+      TrExprS typeEnv Us parameterΔ rest
+        (VExpr.forallN ctor.view.fields
+          (ctor.resultTarget generation.block)) := by
+  have viewTel := genRun.run.viewTel_eq hctor
+  simp only [CandidateConstructorSemanticRun.root,
+    NormalizedCtor.viewBinders] at viewTel
+  have parameterLengthLe : generation.block.checked.params.length ≤
+      candidateCtor.type.trace.spineLength := by
+    apply Nat.le_trans (Nat.le_add_right _ ctor.view.fields.length)
+    rw [← List.length_append, ← viewTel]
+    exact constructorTelN_length_le _ _
+  have sourceParameterLength : stats.params.toList.length ≤
+      candidateCtor.type.trace.spineLength := by
+    rw [parametersEq, parameterContext.length_eq]
+    exact parameterLengthLe
+  obtain ⟨rest, instantiation⟩ :=
+    candidateCtor.type.trace.instantiateViewParameters stats.params.toList
+      sourceParameterLength
+  obtain ⟨inferred, recursive⟩ := root.type.recursive
+  have wholeTr : TrExprS typeEnv Us [] candidateCtor.type.view
+      (VExpr.forallN generation.block.checked.params
+        (VExpr.forallN ctor.view.fields
+          (ctor.resultTarget generation.block))) := by
+    have strict := recursive.view_tr_strict unique
+    have viewTypeEq : root.type.view = ctor.view.value.type := by
+      simpa only [CandidateConstructorSemanticRun.root,
+        CandidateConstructorRun.view] using
+        (congrArg (fun value : VConstVal => value.type) genRun.view_eq).symm
+    rw [viewTypeEq, generation.viewCtorType_eq hctor,
+      NormalizedCtor.viewBinders] at strict
+    simpa only [CandidateExpr.view, VExpr.forallN_append] using strict
+  have parameterWF' : VLCtx.WF typeEnv Us.length parameterΔ :=
+    parameterWF.mono addType
+  have typeEnvOrdered : typeEnv.Ordered := by
+    simpa only [root.type.venv_eq] using
+      root.type.contextRun.context.Ewf.ordered
+  have suffixTr : TrExprS typeEnv Us parameterΔ rest
+      (VExpr.forallN ctor.view.fields
+        (ctor.resultTarget generation.block)) := by
+    apply parameterContext.instantiateForall typeEnvOrdered parameterWF'
+    · simpa only [← parametersEq] using instantiation
+    · exact wholeTr
+  obtain ⟨suffix⟩ :=
+    d3.afterParameters indConsts (by simp) (by
+      simpa only [CandidateExpr.view, List.drop_zero] using instantiation)
+  exact ⟨rest, instantiation, ⟨suffix⟩, suffixTr⟩
+
+end VInductDecl
+
+namespace ConstructorValidation
+open AddInductive TypeChecker VEnv
+
+theorem TrExprS.IsUnique.liftLooseBVars
+    (unique : TrExprS.IsUnique expression) :
+    TrExprS.IsUnique (expression.liftLooseBVars' start amount) := by
+  induction expression generalizing start with
+  | bvar index => trivial
+  | fvar | mvar | sort | const | lit => trivial
+  | app function argument functionIH argumentIH =>
+      exact ⟨functionIH unique.1, argumentIH unique.2⟩
+  | lam name domain body binderInfo domainIH bodyIH
+  | forallE name domain body binderInfo domainIH bodyIH =>
+      exact ⟨domainIH unique.1, bodyIH unique.2⟩
+  | letE name type value body nondep typeIH valueIH bodyIH =>
+      exact ⟨valueIH unique.1, bodyIH unique.2⟩
+  | mdata data expression ih => exact ih unique
+  | proj => cases unique
+
+theorem TrExprS.IsUnique.instantiate1'
+    (expressionUnique : TrExprS.IsUnique expression)
+    (argumentUnique : TrExprS.IsUnique argument) :
+    TrExprS.IsUnique (expression.instantiate1' argument depth) := by
+  induction expression generalizing depth with
+  | bvar index =>
+      simp only [Expr.instantiate1']
+      split
+      · trivial
+      · split
+        · exact liftLooseBVars argumentUnique
+        · trivial
+  | fvar | mvar | sort | const | lit => trivial
+  | app function argument functionIH argumentIH =>
+      exact ⟨functionIH expressionUnique.1,
+        argumentIH expressionUnique.2⟩
+  | lam name domain body binderInfo domainIH bodyIH
+  | forallE name domain body binderInfo domainIH bodyIH =>
+      exact ⟨domainIH expressionUnique.1,
+        bodyIH expressionUnique.2⟩
+  | letE name type value body nondep typeIH valueIH bodyIH =>
+      exact ⟨valueIH expressionUnique.1,
+        bodyIH expressionUnique.2⟩
+  | mdata data expression ih => exact ih expressionUnique
+  | proj => cases expressionUnique
+
+theorem TrExprS.IsUnique.instantiate1
+    (expressionUnique : TrExprS.IsUnique expression)
+    (argumentUnique : TrExprS.IsUnique argument) :
+    TrExprS.IsUnique (expression.instantiate1 argument) := by
+  rw [Expr.instantiate1_eq]
+  exact instantiate1' expressionUnique argumentUnique
+
+theorem FVarsIn.consumeTypeAnnotations
+    (scope : FVarsIn predicate source) :
+    FVarsIn predicate (AddInductive.consumeTypeAnnotations source) := by
+  fun_induction AddInductive.consumeTypeAnnotations source <;>
+    simp_all [AddInductive.consumeTypeAnnotations, FVarsIn]
+
+theorem instantiateFamilyParameters_unique
+    (sourceUnique : TrExprS.IsUnique source)
+    (parametersUnique : ∀ parameter ∈ parameters,
+      TrExprS.IsUnique parameter)
+    (run : AddInductive.instantiateFamilyParameters source parameters =
+      .ok rest) :
+    TrExprS.IsUnique rest := by
+  induction parameters generalizing source with
+  | nil =>
+      have source_eq : source = rest := Except.ok.inj run
+      simpa only [source_eq] using sourceUnique
+  | cons parameter parameters ih =>
+      cases source <;>
+        simp only [AddInductive.instantiateFamilyParameters] at run
+      case forallE name domain body binderInfo =>
+        exact ih (ConstructorValidation.TrExprS.IsUnique.instantiate1 sourceUnique.2
+          (parametersUnique parameter (.head parameters)))
+          (fun candidate member =>
+            parametersUnique candidate (.tail parameter member)) run
+      all_goals exact nomatch run
+
+theorem CandidateParameterContext.parametersUnique
+    (parameters : CandidateParameterContext base sources types final) :
+    ∀ source ∈ sources, TrExprS.IsUnique source := by
+  induction parameters with
+  | nil => simp
+  | cons tail ih =>
+      intro source member
+      simp only [List.mem_cons] at member
+      rcases member with rfl | member
+      · trivial
+      · exact ih source member
+
+/-- The semantic context invariants shared while D3 and D2 consume the
+ordinary prefix of one analyzer-owned constructor view. -/
+structure ConstructorOrdinaryContextState
+    (env typeEnv : VEnv) (Us : List Name)
+    (base actual view postActual : VLCtx) (lift : Lift) where
+  baseWF : VLCtx.WF env Us.length base
+  actualWF : VLCtx.WF env Us.length actual
+  postWF : VLCtx.WF typeEnv Us.length postActual
+  postRelation : VLCtx.IsDefEqFVars typeEnv Us.length actual postActual
+  viewDefEq : VLCtx.IsDefEq env Us.length actual view
+  viewUnique : TrExprS.IsUniqueCtx actual view
+  viewLift : VLCtx.FVLift' base view 0 lift 0
+
+/-- Extend the synchronized ordinary-prefix invariant by the exact analyzer
+field selected by strict translation.  D3 and D2 may retain different
+dependency metadata, but use the same operational fresh identifier. -/
+theorem ConstructorOrdinaryContextState.push
+    {env typeEnv : VEnv} {Us : List Name}
+    {base actual view postActual : VLCtx} {lift : Lift}
+    (state : ConstructorOrdinaryContextState env typeEnv Us
+      base actual view postActual lift)
+    (henv : VEnv.WF env) (typeEnvWF : VEnv.WF typeEnv)
+    (addType : env ≤ typeEnv)
+    {source : Expr} {analyzer actualSource actualConsumed postConsumed : VExpr}
+    {fieldLevel consumedLevel : VLevel} {fv : FVarId}
+    {deps actualDeps postDeps : List FVarId}
+    (sourceUnique : TrExprS.IsUnique source)
+    (sourceTr : TrExprS typeEnv Us base source analyzer)
+    (actualTr : TrExprS env Us actual source actualSource)
+    (actualAnnotations : env.IsDefEqU Us.length actual.toCtx
+      actualSource actualConsumed)
+    (actualConsumedType : env.HasType Us.length actual.toCtx actualConsumed
+      (.sort consumedLevel))
+    (analyzerType : env.HasType Us.length base.toCtx analyzer
+      (.sort fieldLevel))
+    (depsSubset : deps ⊆ base.fvars)
+    (actualTailWF : VLCtx.WF env Us.length
+      ((some (fv, actualDeps), .vlam actualConsumed) :: actual))
+    (actualDeps_eq : actualDeps = deps)
+    (postTailWF : VLCtx.WF typeEnv Us.length
+      ((some (fv, postDeps), .vlam postConsumed) :: postActual))
+    (consumedEq : typeEnv.IsDefEq Us.length actual.toCtx
+      actualConsumed postConsumed (.sort consumedLevel)) :
+    ConstructorOrdinaryContextState env typeEnv Us
+      ((some (fv, deps), .vlam analyzer) :: base)
+      ((some (fv, actualDeps), .vlam actualConsumed) :: actual)
+      ((some (fv, deps), .vlam (analyzer.lift' lift)) :: view)
+      ((some (fv, postDeps), .vlam postConsumed) :: postActual)
+      (.consN lift 1) := by
+  subst actualDeps
+  have viewWF : VLCtx.WF env Us.length view :=
+    (state.viewDefEq.symm henv.ordered).wf
+  have analyzerAtView : TrExprS typeEnv Us view source
+      (analyzer.lift' lift) :=
+    sourceTr.weakFV' typeEnvWF.ordered state.viewLift
+      (viewWF.mono addType)
+  have actualSource_eq : actualSource =
+      analyzer.lift' lift :=
+    (actualTr.mono addType).unique' state.viewUnique sourceUnique
+      analyzerAtView
+  have consumedToAnalyzer : env.IsDefEq Us.length actual.toCtx
+      actualConsumed (analyzer.lift' lift)
+      (.sort consumedLevel) := by
+    rw [← actualSource_eq]
+    exact (actualAnnotations.of_r henv state.actualWF.toCtx
+      actualConsumedType).symm
+  have freshBase : fv ∉ base.fvars := by
+    intro present
+    have presentView : fv ∈ view.fvars :=
+      state.viewLift.fvars_sublist.subset present
+    have presentActual : fv ∈ actual.fvars := by
+      simpa only [state.viewDefEq.fvars] using presentView
+    exact (actualTailWF.2.1 fv deps rfl).1 presentActual
+  have baseTailWF : VLCtx.WF env Us.length
+      ((some (fv, deps), .vlam analyzer) :: base) :=
+    ⟨state.baseWF,
+      fun _ _ equality => by
+        cases equality
+        exact ⟨freshBase, depsSubset⟩,
+      ⟨fieldLevel, analyzerType⟩⟩
+  have nextViewDefEq : VLCtx.IsDefEq env Us.length
+      ((some (fv, deps), .vlam actualConsumed) :: actual)
+      ((some (fv, deps), .vlam (analyzer.lift' lift)) :: view) :=
+    .cons state.viewDefEq actualTailWF.2.1 (.vlam consumedToAnalyzer)
+  exact {
+    baseWF := baseTailWF
+    actualWF := actualTailWF
+    postWF := postTailWF
+    postRelation := .cons_fvar state.postRelation (.vlam consumedEq)
+    viewDefEq := nextViewDefEq
+    viewUnique := state.viewUnique.cons .vlam
+    viewLift := state.viewLift.cons_fvar (fv, deps) (.vlam analyzer)
+      depsSubset }
+
+private theorem vexpr_appArgs_acc (expression : VExpr) (suffix : List VExpr) :
+    VExpr.appArgs expression suffix =
+      VExpr.appArgs expression [] ++ suffix := by
+  induction expression generalizing suffix with
+  | app function argument ihFunction ihArgument =>
+      simp only [VExpr.appArgs]
+      rw [ihFunction, ihFunction (suffix := [argument])]
+      simp
+  | bvar | sort | const | lam | forallE => simp [VExpr.appArgs]
+
+private theorem expr_getAppArgsList_acc (expression : Expr)
+    (suffix : List Expr) :
+    expression.getAppArgsList suffix =
+      expression.getAppArgsList [] ++ suffix := by
+  induction expression generalizing suffix with
+  | app function argument ihFunction ihArgument =>
+      simp only [Expr.getAppArgsList]
+      rw [ihFunction, ihFunction (suffix := [argument])]
+      simp
+  | bvar | fvar | mvar | sort | const | lit | mdata | proj | lam | forallE |
+      letE => simp [Expr.getAppArgsList]
+
+theorem TrExprS.IsUnique.getAppArgsList
+    (unique : TrExprS.IsUnique expression) :
+    ∀ argument ∈ expression.getAppArgsList,
+      TrExprS.IsUnique argument := by
+  induction expression with
+  | app function argument functionIH argumentIH =>
+      intro candidate member
+      rw [Expr.getAppArgsList, expr_getAppArgsList_acc] at member
+      simp only [List.mem_append, List.mem_singleton] at member
+      rcases member with member | rfl
+      · exact functionIH unique.1 candidate member
+      · exact unique.2
+  | bvar | fvar | mvar | sort | const | lit | mdata | proj | lam | forallE |
+      letE => simp [Expr.getAppArgsList]
+
+theorem Closed.getAppArgsList
+    (closed : Closed expression depth) :
+    ∀ argument ∈ expression.getAppArgsList,
+      Closed argument depth := by
+  induction expression with
+  | app function argument functionIH argumentIH =>
+      intro candidate member
+      rw [Expr.getAppArgsList, expr_getAppArgsList_acc] at member
+      simp only [List.mem_append, List.mem_singleton] at member
+      rcases member with member | rfl
+      · exact functionIH closed.1 candidate member
+      · exact closed.2
+  | bvar | fvar | mvar | sort | const | lit | mdata | proj | lam | forallE |
+      letE => simp [Expr.getAppArgsList]
+
+theorem FVarsIn.getAppArgsList
+    (fvars : FVarsIn predicate expression) :
+    ∀ argument ∈ expression.getAppArgsList,
+      FVarsIn predicate argument := by
+  induction expression with
+  | app function argument functionIH argumentIH =>
+      intro candidate member
+      rw [Expr.getAppArgsList, expr_getAppArgsList_acc] at member
+      simp only [List.mem_append, List.mem_singleton] at member
+      rcases member with member | rfl
+      · exact functionIH fvars.1 candidate member
+      · exact fvars.2
+  | bvar | fvar | mvar | sort | const | lit | mdata | proj | lam | forallE |
+      letE => simp [Expr.getAppArgsList]
+
+private theorem vexpr_appHead_appN (head : VExpr) (arguments : List VExpr) :
+    VExpr.appHead (VExpr.appN head arguments) = VExpr.appHead head := by
+  induction arguments generalizing head with
+  | nil => rfl
+  | cons argument arguments ih =>
+      simp only [VExpr.appN]
+      rw [ih]
+      rfl
+
+private def vexprLiftTel (lift : Lift) : List VExpr → List VExpr
+  | [] => []
+  | domain :: domains =>
+      domain.lift' lift :: vexprLiftTel lift.cons domains
+
+private theorem vexpr_lift'_forallN (lift : Lift) :
+    ∀ (domains : List VExpr) (body : VExpr),
+      (VExpr.forallN domains body).lift' lift =
+        VExpr.forallN (vexprLiftTel lift domains)
+          (body.lift' (lift.consN domains.length))
+  | [], _ => rfl
+  | domain :: domains, body => by
+      simp only [VExpr.forallN, VExpr.lift', vexprLiftTel,
+        List.length_cons]
+      rw [vexpr_lift'_forallN lift.cons domains body]
+      congr 2
+      rw [show domains.length + 1 = 1 + domains.length by omega,
+        ← Lift.consN_consN]
+      rfl
+
+private theorem vexprLiftTel_length (lift : Lift) :
+    ∀ domains : List VExpr,
+      (vexprLiftTel lift domains).length = domains.length
+  | [] => rfl
+  | _ :: domains => by
+      simp only [vexprLiftTel, List.length_cons,
+        vexprLiftTel_length lift.cons domains]
+
+private theorem forall₂_append
+    (left : List.Forall₂ relation leftSources leftTargets)
+    (right : List.Forall₂ relation rightSources rightTargets) :
+    List.Forall₂ relation (leftSources ++ rightSources)
+      (leftTargets ++ rightTargets) := by
+  induction left with
+  | nil => exact right
+  | cons head tail ih => exact .cons head ih
+
+private theorem forall₂_length
+    (run : List.Forall₂ relation sources targets) :
+    sources.length = targets.length := by
+  induction run with
+  | nil => rfl
+  | cons _ _ ih => exact congrArg Nat.succ ih
+
+theorem forall₂_translation_unique
+    (left : List.Forall₂ (TrExprS env Us context) sources leftTargets)
+    (right : List.Forall₂ (TrExprS env Us context) sources rightTargets)
+    (unique : ∀ source ∈ sources, TrExprS.IsUnique source) :
+    leftTargets = rightTargets := by
+  induction left generalizing rightTargets with
+  | nil => cases right; rfl
+  | @cons source leftTarget sources leftTargets leftHead leftTail ih =>
+      cases right with
+      | cons rightHead rightTail =>
+          rw [leftHead.unique (unique source (.head sources)) rightHead,
+            ih rightTail (fun candidate member =>
+              unique candidate (.tail source member))]
+
+theorem forall₂_drop
+    (run : List.Forall₂ relation sources targets) (n : Nat) :
+    List.Forall₂ relation (sources.drop n) (targets.drop n) := by
+  induction n generalizing sources targets with
+  | zero => simpa using run
+  | succ n ih =>
+      cases run with
+      | nil => exact .nil
+      | cons head tail => simpa using ih tail
+
+theorem forall₂_tr_weakFV'
+    {env : VEnv} {Us : List Name} {base full : VLCtx}
+    {lift : Lift} (henv : VEnv.Ordered env)
+    (extension : VLCtx.FVLift' base full 0 lift 0)
+    (fullWF : VLCtx.WF env Us.length full)
+    (run : List.Forall₂ (TrExprS env Us base) sources targets) :
+    List.Forall₂ (TrExprS env Us full) sources
+      (targets.map fun target => target.lift' lift) := by
+  induction run with
+  | nil => exact .nil
+  | cons head tail ih =>
+      exact .cons (by simpa using head.weakFV' henv extension fullWF) ih
+
+theorem forall₂_tr_mono
+    (add : env ≤ env')
+    (run : List.Forall₂ (TrExprS env Us context) sources targets) :
+    List.Forall₂ (TrExprS env' Us context) sources targets := by
+  induction run with
+  | nil => exact .nil
+  | cons head tail ih => exact .cons (head.mono add) ih
+
+/-- General verified context weakening for an application spine. -/
+theorem VEnv.SpineWF.weak'
+    {env : VEnv} (henv : env.Ordered)
+    {U : Nat} {lift : Lift} {context enlarged : List VExpr}
+    (extension : Ctx.Lift' lift context enlarged) :
+    ∀ {arguments : List VExpr} {source target : VExpr},
+      env.SpineWF U context source arguments target →
+      env.SpineWF U enlarged (source.lift' lift)
+        (arguments.map fun argument => argument.lift' lift)
+        (target.lift' lift) := by
+  intro arguments
+  induction arguments with
+  | nil =>
+      intro source target run
+      exact congrArg (fun expression => expression.lift' lift) run
+  | cons argument arguments ih =>
+      intro source target run
+      obtain ⟨domain, body, rfl, argumentType, tail⟩ := run
+      refine ⟨domain.lift' lift, body.lift' lift.cons, rfl,
+        argumentType.weak' henv extension, ?_⟩
+      have weakened := ih tail
+      rwa [VExpr.lift'_inst_hi] at weakened
+
+theorem isValidIndAppIdx_shape
+    {stats : AddInductive.InductiveStats} {source : Expr}
+    {familyIdx : Nat}
+    (valid : AddInductive.isValidIndAppIdx stats source familyIdx = true) :
+    (source.getAppFn == stats.indConsts[familyIdx]!) = true ∧
+      source.getAppArgs.size =
+        stats.params.size + stats.nindices[familyIdx]! := by
+  unfold AddInductive.isValidIndAppIdx at valid
+  rw [Expr.withApp_eq] at valid
+  simp only [Id.run] at valid
+  split at valid
+  · rename_i shape
+    simpa only [Bool.and_eq_true, beq_iff_eq] using shape
+  · simp_all
+
+theorem isValidIndAppIdx_indexArgs_length
+    {stats : AddInductive.InductiveStats} {source : Expr}
+    {familyIdx : Nat}
+    (valid : AddInductive.isValidIndAppIdx stats source familyIdx = true) :
+    (source.getAppArgs.toList.drop stats.params.size).length =
+      stats.nindices[familyIdx]! := by
+  have shape := isValidIndAppIdx_shape valid
+  rw [List.length_drop, Array.length_toList, shape.2]
+  omega
+
+theorem constructorIndependentOf_fvars
+    {source : Expr} {full base removed : List FVarId}
+    (scope : FVarsIn (· ∈ full) source)
+    (independent : AddInductive.constructorIndependentOf source removed = true)
+    (remaining : ∀ fv, fv ∈ full → fv ∉ removed → fv ∈ base) :
+    FVarsIn (· ∈ base) source := by
+  rw [fvarsIn_iff] at scope ⊢
+  refine ⟨?_, scope.2⟩
+  intro fv member
+  apply remaining fv (scope.1 fv member)
+  unfold AddInductive.constructorIndependentOf at independent
+  simp only [List.all_eq_true] at independent
+  have omitted := independent fv member
+  simpa using omitted
+
+/-- Strict translation preserves a constant-headed application spine and
+translates its arguments position-for-position. -/
+theorem TrExprS.constApp_components
+    {env : VEnv} {Us : List Name} {context : VLCtx}
+    {source : Expr} {target : VExpr} {name : Name} {levels : List Level}
+    (run : TrExprS env Us context source target)
+    (head : source.getAppFn = .const name levels) :
+    ∃ levels',
+      VExpr.appHead target = .const name levels' ∧
+      List.Forall₂ (TrExprS env Us context)
+        source.getAppArgsList (VExpr.appArgs target []) := by
+  induction source generalizing target with
+  | const sourceName sourceLevels =>
+      cases run with
+      | const lookup levelsTr arity =>
+          simp only [Expr.getAppFn] at head
+          obtain ⟨rfl, rfl⟩ := head
+          exact ⟨_, rfl, .nil⟩
+  | app function argument functionIH argumentIH =>
+      cases run with
+      | app =>
+          rename_i function' domain' body' argument' functionType argumentType
+            functionTr argumentTr
+          have functionHead : function.getAppFn = .const name levels := by
+            simpa only [Expr.getAppFn] using head
+          obtain ⟨levels', targetHead, argumentsTr⟩ :=
+            functionIH functionTr functionHead
+          refine ⟨levels', ?_, ?_⟩
+          · simpa only [VExpr.appHead] using targetHead
+          · rw [show VExpr.appArgs (.app function' argument') [] =
+              VExpr.appArgs function' [] ++ [argument'] by
+                rw [VExpr.appArgs, vexpr_appArgs_acc]]
+            simp only [Expr.getAppArgsList] at *
+            rw [expr_getAppArgsList_acc]
+            exact forall₂_append argumentsTr (.cons argumentTr .nil)
+  | bvar => cases run; simp [Expr.getAppFn] at head
+  | fvar => cases run; simp [Expr.getAppFn] at head
+  | mvar => cases run
+  | sort => cases run; simp [Expr.getAppFn] at head
+  | lam => cases run; simp [Expr.getAppFn] at head
+  | forallE => cases run; simp [Expr.getAppFn] at head
+  | letE => cases run; simp [Expr.getAppFn] at head
+  | lit => cases run; simp [Expr.getAppFn] at head
+  | mdata => cases run; simp [Expr.getAppFn] at head
+  | proj => cases run; simp [Expr.getAppFn] at head
+
+/-- Remove one verified free-variable context extension from a list of strict
+translations, retaining the exact lifted endpoints. -/
+theorem TrExprS.forall₂_weakFV_inv
+    {env : VEnv} {Us : List Name} {base full : VLCtx}
+    {sources : List Expr} {targets : List VExpr} {n : Lift}
+    (henv : VEnv.WF env) (fullWF : VLCtx.WF env Us.length full)
+    (extension : VLCtx.FVLift' base full 0 n 0)
+    (runs : List.Forall₂ (TrExprS env Us full) sources targets)
+    (closed : ∀ source ∈ sources, Closed source)
+    (fvars : ∀ source ∈ sources, FVarsIn (· ∈ base.fvars) source)
+    (unique : ∀ source ∈ sources, TrExprS.IsUnique source) :
+    ∃ baseTargets,
+      List.Forall₂ (TrExprS env Us base) sources baseTargets ∧
+      targets = baseTargets.map (fun target => target.lift' (n.consN 0)) := by
+  induction runs with
+  | nil => exact ⟨[], .nil, rfl⟩
+  | @cons source target sources targets headRun tailRuns ih =>
+      have headClosed := closed source (.head sources)
+      have headFVars := fvars source (.head sources)
+      have headUnique := unique source (.head sources)
+      have tailClosed : ∀ expression ∈ sources, Closed expression :=
+        fun expression member => closed expression (.tail source member)
+      have tailFVars : ∀ expression ∈ sources,
+          FVarsIn (· ∈ base.fvars) expression :=
+        fun expression member => fvars expression (.tail source member)
+      have tailUnique : ∀ expression ∈ sources,
+          TrExprS.IsUnique expression :=
+        fun expression member => unique expression (.tail source member)
+      obtain ⟨headBase, headBaseRun⟩ :=
+        headRun.weakFV'_inv henv extension (.refl henv fullWF)
+          headClosed headFVars
+      obtain ⟨tailBase, tailBaseRuns, tailEq⟩ :=
+        ih tailClosed tailFVars tailUnique
+      have headEq : target = headBase.lift' (n.consN 0) :=
+        headRun.unique headUnique
+          (headBaseRun.weakFV' henv.ordered extension fullWF)
+      subst target
+      exact ⟨headBase :: tailBase, .cons headBaseRun tailBaseRuns, by
+        simp only [List.map_cons, tailEq]⟩
+
+/-- Remove a free-variable extension modulo the verified context equality
+used by the retained checker run. -/
+theorem TrExprS.forall₂_weakFV_inv_defeq
+    {env : VEnv} {Us : List Name} {base actual view : VLCtx}
+    {sources : List Expr} {targets : List VExpr} {n : Lift}
+    (henv : VEnv.WF env)
+    (viewDefEq : VLCtx.IsDefEq env Us.length actual view)
+    (viewUnique : TrExprS.IsUniqueCtx actual view)
+    (extension : VLCtx.FVLift' base view 0 n 0)
+    (runs : List.Forall₂ (TrExprS env Us actual) sources targets)
+    (closed : ∀ source ∈ sources, Closed source)
+    (fvars : ∀ source ∈ sources, FVarsIn (· ∈ base.fvars) source)
+    (unique : ∀ source ∈ sources, TrExprS.IsUnique source) :
+    ∃ baseTargets,
+      List.Forall₂ (TrExprS env Us base) sources baseTargets ∧
+      targets = baseTargets.map (fun target => target.lift' (n.consN 0)) := by
+  have viewWF : VLCtx.WF env Us.length view :=
+    (viewDefEq.symm henv.ordered).wf
+  induction runs with
+  | nil => exact ⟨[], .nil, rfl⟩
+  | @cons source target sources targets headRun tailRuns ih =>
+      have headClosed := closed source (.head sources)
+      have headFVars := fvars source (.head sources)
+      have headUnique := unique source (.head sources)
+      have tailClosed : ∀ expression ∈ sources, Closed expression :=
+        fun expression member => closed expression (.tail source member)
+      have tailFVars : ∀ expression ∈ sources,
+          FVarsIn (· ∈ base.fvars) expression :=
+        fun expression member => fvars expression (.tail source member)
+      have tailUnique : ∀ expression ∈ sources,
+          TrExprS.IsUnique expression :=
+        fun expression member => unique expression (.tail source member)
+      obtain ⟨headBase, headBaseRun⟩ :=
+        headRun.weakFV'_inv henv extension viewDefEq
+          headClosed headFVars
+      obtain ⟨tailBase, tailBaseRuns, tailEq⟩ :=
+        ih tailClosed tailFVars tailUnique
+      have headEq : target = headBase.lift' (n.consN 0) :=
+        headRun.unique' viewUnique headUnique
+          (headBaseRun.weakFV' henv.ordered extension viewWF)
+      subst target
+      exact ⟨headBase :: tailBase, .cons headBaseRun tailBaseRuns, by
+        simp only [List.map_cons, tailEq]⟩
+
+/-- Invert weakening of every component of an application-spine judgment when
+the enlarged context is well formed. -/
+theorem VEnv.SpineWF.weakN_inv
+    {env : VEnv} {U n k : Nat} {context enlarged : List VExpr}
+    (henv : VEnv.WF env) (enlargedWF : OnCtx enlarged (env.IsType U))
+    (extension : Ctx.LiftN n k context enlarged) :
+    ∀ {arguments : List VExpr} {source target : VExpr},
+      env.SpineWF U enlarged (source.liftN n k)
+        (arguments.map fun argument => argument.liftN n k)
+        (target.liftN n k) →
+      env.SpineWF U context source arguments target := by
+  intro arguments
+  induction arguments with
+  | nil =>
+      intro source target run
+      exact VExpr.liftN_inj.1 run
+  | cons argument arguments ih =>
+      intro source target run
+      obtain ⟨domain', body', sourceEq, argumentType, tail⟩ := run
+      cases source with
+      | bvar index => cases sourceEq
+      | sort level => cases sourceEq
+      | const name levels => cases sourceEq
+      | app fn argument => cases sourceEq
+      | lam domain body => cases sourceEq
+      | forallE domain body =>
+        injection sourceEq with domainEq bodyEq
+        subst domain'
+        subst body'
+        refine ⟨domain, body, rfl,
+          (HasType.weakN_iff henv enlargedWF extension).1 argumentType, ?_⟩
+        rw [← VExpr.liftN_inst_hi] at tail
+        exact ih tail
+
+/-- Invert a general verified context lift componentwise across an
+application-spine judgment. -/
+theorem VEnv.SpineWF.weak'_inv
+    {env : VEnv} {U : Nat} {lift : Lift} {context enlarged : List VExpr}
+    (henv : VEnv.WF env) (enlargedWF : OnCtx enlarged (env.IsType U))
+    (extension : Ctx.Lift' lift context enlarged) :
+    ∀ {arguments : List VExpr} {source target : VExpr},
+      env.SpineWF U enlarged (source.lift' lift)
+        (arguments.map fun argument => argument.lift' lift)
+        (target.lift' lift) →
+      env.SpineWF U context source arguments target := by
+  intro arguments
+  induction arguments with
+  | nil =>
+      intro source target run
+      exact VExpr.lift'_inj.1 run
+  | cons argument arguments ih =>
+      intro source target run
+      obtain ⟨domain', body', sourceEq, argumentType, tail⟩ := run
+      cases source with
+      | bvar index => cases sourceEq
+      | sort level => cases sourceEq
+      | const name levels => cases sourceEq
+      | app fn argument => cases sourceEq
+      | lam domain body => cases sourceEq
+      | forallE domain body =>
+        injection sourceEq with domainEq bodyEq
+        subst domain'
+        subst body'
+        refine ⟨domain, body, rfl,
+          (HasType.weak'_iff henv enlargedWF extension).1 argumentType, ?_⟩
+        rw [← VExpr.lift'_inst_hi] at tail
+        exact ih tail
+
+theorem ConstructorPreFamilyIndexSpineSemanticRun.expected_eq_of_family_lift
+    {env : VEnv} {Us : List Name} {context : AddInductive.Context}
+    {contextRun : AddInductive.ConstructorContextRun env Us context}
+    {expected : Expr} {arguments : List Expr}
+    {trace : AddInductive.ConstructorPreFamilyIndexSpineTrace context expected
+      arguments}
+    {expected' : VExpr}
+    (run : AddInductive.ConstructorPreFamilyIndexSpineSemanticRun env Us
+      context contextRun trace expected')
+    {base view : VLCtx} {expectedBase : VExpr} {lift : Lift}
+    (familyTr : TrExprS env Us base expected expectedBase)
+    (unique : TrExprS.IsUnique expected)
+    (extension : VLCtx.FVLift' base view 0 lift 0)
+    (viewDefEq : VLCtx.IsDefEq env Us.length
+      contextRun.candidate.context.vlctx view)
+    (viewUnique : TrExprS.IsUniqueCtx
+      contextRun.candidate.context.vlctx view) :
+    expected' = expectedBase.lift' (lift.consN 0) := by
+  have henv : VEnv.Ordered env := by
+    simpa only [contextRun.venv_eq] using
+      contextRun.candidate.context.Ewf.ordered
+  have viewWF : VLCtx.WF env Us.length view :=
+    (viewDefEq.symm henv).wf
+  have familyAtView : TrExprS env Us view expected
+      (expectedBase.lift' (lift.consN 0)) :=
+    familyTr.weakFV' henv extension viewWF
+  have retained : TrExprS env Us contextRun.candidate.context.vlctx
+      expected expected' := run.expectedRun.expr_tr
+  exact retained.unique' viewUnique unique familyAtView
+
+theorem VLCtx.FVLift'.toCtxLiftN
+    {base view : VLCtx} {n : Nat}
+    (extension : VLCtx.FVLift' base view 0 (.skipN .refl n) 0) :
+    Ctx.LiftN n 0 base.toCtx view.toCtx := by
+  exact Ctx.liftN_iff_lift'.2 extension.toCtx
+
+/-- Transport a spine to the canonical view context and then remove the
+free-variable extension from all of its endpoints. -/
+theorem VEnv.SpineWF.fvLift_inv
+    {env : VEnv} {U n : Nat} {base actual view : VLCtx}
+    {arguments : List VExpr} {source target : VExpr}
+    (henv : VEnv.WF env)
+    (viewDefEq : VLCtx.IsDefEq env U actual view)
+    (extension : VLCtx.FVLift' base view 0 (.skipN .refl n) 0)
+    (run : env.SpineWF U actual.toCtx (source.liftN n 0)
+      (arguments.map fun argument => argument.liftN n 0)
+      (target.liftN n 0)) :
+    env.SpineWF U base.toCtx source arguments target := by
+  have viewWF : VLCtx.WF env U view :=
+    (viewDefEq.symm henv.ordered).wf
+  have viewRun : env.SpineWF U view.toCtx (source.liftN n 0)
+      (arguments.map fun argument => argument.liftN n 0)
+      (target.liftN n 0) :=
+    run.defeqDFC henv.ordered viewDefEq.defeqCtx
+  exact VEnv.SpineWF.weakN_inv henv viewWF.toCtx
+    (Ctx.liftN_iff_lift'.2 extension.toCtx) viewRun
+
+theorem VEnv.SpineWF.fvLift'_inv
+    {env : VEnv} {U : Nat} {lift : Lift} {base actual view : VLCtx}
+    {arguments : List VExpr} {source target : VExpr}
+    (henv : VEnv.WF env)
+    (viewDefEq : VLCtx.IsDefEq env U actual view)
+    (extension : VLCtx.FVLift' base view 0 lift 0)
+    (run : env.SpineWF U actual.toCtx (source.lift' (lift.consN 0))
+      (arguments.map fun argument => argument.lift' (lift.consN 0))
+      (target.lift' (lift.consN 0))) :
+    env.SpineWF U base.toCtx source arguments target := by
+  have viewWF : VLCtx.WF env U view :=
+    (viewDefEq.symm henv.ordered).wf
+  have viewRun : env.SpineWF U view.toCtx
+      (source.lift' (lift.consN 0))
+      (arguments.map fun argument => argument.lift' (lift.consN 0))
+      (target.lift' (lift.consN 0)) :=
+    run.defeqDFC henv.ordered viewDefEq.defeqCtx
+  exact VEnv.SpineWF.weak'_inv henv viewWF.toCtx extension.toCtx viewRun
+
+/-- Identify a pre-family index replay with the analyzer family telescope,
+remove the family-index locals, and retarget its terminal to the family sort. -/
+theorem ConstructorPreFamilyIndexSpineSemanticRun.baseSpine
+    {env : VEnv} {Us : List Name} {context : AddInductive.Context}
+    {contextRun : AddInductive.ConstructorContextRun env Us context}
+    {expected : Expr} {arguments : List Expr}
+    {trace : AddInductive.ConstructorPreFamilyIndexSpineTrace context expected
+      arguments}
+    {expected' : VExpr} {base view : VLCtx} {indices : List VExpr}
+    {level : VLevel} {n : Nat}
+    (run : AddInductive.ConstructorPreFamilyIndexSpineSemanticRun env Us
+      context contextRun trace expected')
+    (familyTr : TrExprS env Us base expected
+      (VExpr.forallN indices (.sort level)))
+    (expectedUnique : TrExprS.IsUnique expected)
+    (viewDefEq : VLCtx.IsDefEq env Us.length
+      contextRun.candidate.context.vlctx view)
+    (viewUnique : TrExprS.IsUniqueCtx
+      contextRun.candidate.context.vlctx view)
+    (extension : VLCtx.FVLift' base view 0 (.skipN .refl n) 0)
+    (argumentClosed : ∀ argument ∈ arguments, Closed argument)
+    (argumentFVars : ∀ argument ∈ arguments,
+      FVarsIn (· ∈ base.fvars) argument)
+    (argumentUnique : ∀ argument ∈ arguments,
+      TrExprS.IsUnique argument)
+    (argumentLength : arguments.length = indices.length) :
+    ∃ indices',
+      List.Forall₂ (TrExprS env Us base) arguments indices' ∧
+      env.SpineWF Us.length base.toCtx
+        (VExpr.forallN indices (.sort level)) indices' (.sort level) := by
+  have henv : VEnv.WF env := by
+    simpa only [contextRun.venv_eq] using
+      contextRun.candidate.context.Ewf
+  have expectedEq : expected' =
+      (VExpr.forallN indices (.sort level)).liftN n 0 :=
+    run.expected_eq_of_family familyTr expectedUnique extension viewDefEq
+      viewUnique
+  subst expected'
+  obtain ⟨indices', indicesTr, indicesEq⟩ :=
+    TrExprS.forall₂_weakFV_inv_defeq henv viewDefEq viewUnique
+      extension run.arguments_tr argumentClosed argumentFVars argumentUnique
+  have translatedLength : run.arguments'.length =
+      (VExpr.liftTelN n indices 0).length := by
+    rw [← forall₂_length run.arguments_tr, argumentLength,
+      VExpr.liftTelN_length]
+  have liftedSpine : env.SpineWF Us.length
+      contextRun.candidate.context.vlctx.toCtx
+      ((VExpr.forallN indices (.sort level)).liftN n 0)
+      run.arguments' (.sort level) := by
+    have sourceEq :
+        (VExpr.forallN indices (.sort level)).liftN n 0 =
+          VExpr.forallN (VExpr.liftTelN n indices 0) (.sort level) := by
+      rw [VExpr.liftN_forallN]
+      rfl
+    have spine : env.SpineWF Us.length
+        contextRun.candidate.context.vlctx.toCtx
+        (VExpr.forallN (VExpr.liftTelN n indices 0) (.sort level))
+        run.arguments' run.result' :=
+      sourceEq ▸ run.spine
+    have retargeted := spine.retarget translatedLength (.sort level)
+    have sortClosed : (VExpr.sort level).ClosedN 0 := by trivial
+    have targetEq : (VExpr.sort level).instRev run.arguments' =
+        .sort level := VExpr.instRev_closedN run.arguments' sortClosed
+    rw [targetEq] at retargeted
+    exact Eq.mpr (congrArg (fun source => env.SpineWF Us.length
+      contextRun.candidate.context.vlctx.toCtx source run.arguments'
+        (.sort level)) sourceEq) retargeted
+  simp only [VExpr.lift'_consN_skipN] at indicesEq
+  rw [indicesEq] at liftedSpine
+  exact ⟨indices', indicesTr, by
+    apply VEnv.SpineWF.fvLift_inv henv viewDefEq extension
+    simpa only [VExpr.liftN] using liftedSpine⟩
+
+theorem ConstructorPreFamilyIndexSpineSemanticRun.baseSpine_lift
+    {env : VEnv} {Us : List Name} {context : AddInductive.Context}
+    {contextRun : AddInductive.ConstructorContextRun env Us context}
+    {expected : Expr} {arguments : List Expr}
+    {trace : AddInductive.ConstructorPreFamilyIndexSpineTrace context expected
+      arguments}
+    {expected' : VExpr} {base view : VLCtx} {indices : List VExpr}
+    {level : VLevel} {lift : Lift}
+    (run : AddInductive.ConstructorPreFamilyIndexSpineSemanticRun env Us
+      context contextRun trace expected')
+    (familyTr : TrExprS env Us base expected
+      (VExpr.forallN indices (.sort level)))
+    (expectedUnique : TrExprS.IsUnique expected)
+    (viewDefEq : VLCtx.IsDefEq env Us.length
+      contextRun.candidate.context.vlctx view)
+    (viewUnique : TrExprS.IsUniqueCtx
+      contextRun.candidate.context.vlctx view)
+    (extension : VLCtx.FVLift' base view 0 lift 0)
+    (argumentClosed : ∀ argument ∈ arguments, Closed argument)
+    (argumentFVars : ∀ argument ∈ arguments,
+      FVarsIn (· ∈ base.fvars) argument)
+    (argumentUnique : ∀ argument ∈ arguments,
+      TrExprS.IsUnique argument)
+    (argumentLength : arguments.length = indices.length) :
+    ∃ indices',
+      List.Forall₂ (TrExprS env Us base) arguments indices' ∧
+      env.SpineWF Us.length base.toCtx
+        (VExpr.forallN indices (.sort level)) indices' (.sort level) := by
+  have henv : VEnv.WF env := by
+    simpa only [contextRun.venv_eq] using
+      contextRun.candidate.context.Ewf
+  have expectedEq : expected' =
+      (VExpr.forallN indices (.sort level)).lift' (lift.consN 0) :=
+    expected_eq_of_family_lift run familyTr expectedUnique extension
+      viewDefEq viewUnique
+  subst expected'
+  obtain ⟨indices', indicesTr, indicesEq⟩ :=
+    TrExprS.forall₂_weakFV_inv_defeq henv viewDefEq viewUnique
+      extension run.arguments_tr argumentClosed argumentFVars argumentUnique
+  have translatedLength : run.arguments'.length =
+      (vexprLiftTel (lift.consN 0) indices).length := by
+    rw [← forall₂_length run.arguments_tr, argumentLength,
+      vexprLiftTel_length]
+  have liftedSpine : env.SpineWF Us.length
+      contextRun.candidate.context.vlctx.toCtx
+      ((VExpr.forallN indices (.sort level)).lift' (lift.consN 0))
+      run.arguments' (.sort level) := by
+    have sourceEq :
+        (VExpr.forallN indices (.sort level)).lift' (lift.consN 0) =
+          VExpr.forallN (vexprLiftTel (lift.consN 0) indices)
+            (.sort level) := by
+      rw [vexpr_lift'_forallN]
+      rfl
+    have spine : env.SpineWF Us.length
+        contextRun.candidate.context.vlctx.toCtx
+        (VExpr.forallN (vexprLiftTel (lift.consN 0) indices) (.sort level))
+        run.arguments' run.result' :=
+      sourceEq ▸ run.spine
+    have retargeted := spine.retarget translatedLength (.sort level)
+    have sortClosed : (VExpr.sort level).ClosedN 0 := by trivial
+    have targetEq : (VExpr.sort level).instRev run.arguments' =
+        .sort level := VExpr.instRev_closedN run.arguments' sortClosed
+    rw [targetEq] at retargeted
+    exact Eq.mpr (congrArg (fun source => env.SpineWF Us.length
+      contextRun.candidate.context.vlctx.toCtx source run.arguments'
+        (.sort level)) sourceEq) retargeted
+  rw [indicesEq] at liftedSpine
+  exact ⟨indices', indicesTr, by
+    apply VEnv.SpineWF.fvLift'_inv henv viewDefEq extension
+    simpa only [VExpr.lift'] using liftedSpine⟩
+
+/-- Recover the exact analyzer-selected source type and its checker-selected
+sort after removing a verified free-variable context extension. -/
+theorem ensureTypeRun_baseType
+    {env typeEnv : VEnv} {Us : List Name}
+    {base actual view : VLCtx} {source result : Expr}
+    {source' actual' : VExpr} {fieldLevel : VLevel} {n : Lift}
+    (henv : VEnv.WF env) (typeEnvOrdered : VEnv.Ordered typeEnv)
+    (addType : env ≤ typeEnv)
+    (baseWF : VLCtx.WF env Us.length base)
+    (viewDefEq : VLCtx.IsDefEq env Us.length actual view)
+    (viewUnique : TrExprS.IsUniqueCtx actual view)
+    (viewLift : VLCtx.FVLift' base view 0 n 0)
+    (sourceUnique : TrExprS.IsUnique source)
+    (sourceClosed : Closed source)
+    (sourceFVars : FVarsIn (· ∈ base.fvars) source)
+    (sourceTr : TrExprS typeEnv Us base source source')
+    (actualTr : TrExprS env Us actual source actual')
+    (actualType : env.HasType Us.length actual.toCtx actual' (.sort fieldLevel)) :
+    env.HasType Us.length base.toCtx source' (.sort fieldLevel) := by
+  obtain ⟨base', baseTr⟩ :=
+    actualTr.weakFV'_inv henv viewLift viewDefEq sourceClosed sourceFVars
+  have baseEq : base' = source' :=
+    (baseTr.mono addType).unique sourceUnique sourceTr
+  subst base'
+  have viewWF : VLCtx.WF env Us.length view :=
+    (viewDefEq.symm henv.ordered).wf
+  have sourceAtView := sourceTr
+  have sourceAtView' : TrExprS typeEnv Us view source
+      (source'.lift' (n.consN 0)) :=
+    sourceAtView.weakFV' typeEnvOrdered viewLift (viewWF.mono addType)
+  have actualEq : actual' = source'.lift' (n.consN 0) := by
+    exact (actualTr.mono addType).unique' viewUnique sourceUnique sourceAtView'
+  have sourceTypeAtView : env.HasType Us.length view.toCtx
+      actual' (.sort fieldLevel) :=
+    actualType.defeqDFC henv.ordered viewDefEq.defeqCtx
+  rw [actualEq] at sourceTypeAtView
+  exact (HasType.weak'_iff henv viewWF.toCtx viewLift.toCtx).1 (by
+    simpa using sourceTypeAtView)
+
+theorem ensureTypeRun_baseType_mono
+    {env typeEnv : VEnv} {Us : List Name}
+    {base actual view : VLCtx} {source : Expr}
+    {source' actual' : VExpr} {fieldLevel : VLevel} {n : Lift}
+    (typeEnvWF : VEnv.WF typeEnv)
+    (addType : env ≤ typeEnv)
+    (baseWF : VLCtx.WF env Us.length base)
+    (viewDefEq : VLCtx.IsDefEq env Us.length actual view)
+    (viewUnique : TrExprS.IsUniqueCtx actual view)
+    (viewLift : VLCtx.FVLift' base view 0 n 0)
+    (sourceUnique : TrExprS.IsUnique source)
+    (sourceClosed : Closed source)
+    (sourceFVars : FVarsIn (· ∈ base.fvars) source)
+    (sourceTr : TrExprS typeEnv Us base source source')
+    (actualTr : TrExprS env Us actual source actual')
+    (actualType : typeEnv.HasType Us.length actual.toCtx actual'
+      (.sort fieldLevel)) :
+    typeEnv.HasType Us.length base.toCtx source' (.sort fieldLevel) := by
+  exact ensureTypeRun_baseType (result := source) typeEnvWF
+    typeEnvWF.ordered VEnv.LE.rfl
+    (baseWF.mono addType) (viewDefEq.mono addType) viewUnique viewLift
+    sourceUnique sourceClosed sourceFVars sourceTr (actualTr.mono addType)
+    actualType
+
+/-- Recover a family-free base endpoint when the analyzer translation lives
+under a different prefix than D3's index-extended replay context. -/
+theorem ensureTypeRun_commonType
+    {env typeEnv : VEnv} {Us : List Name}
+    {base full actual view : VLCtx} {source : Expr}
+    {fullTarget actualTarget : VExpr} {fieldLevel : VLevel}
+    {fullLift viewLift : Lift}
+    (henv : VEnv.WF env) (typeEnvWF : VEnv.WF typeEnv)
+    (addType : env ≤ typeEnv)
+    (baseWF : VLCtx.WF env Us.length base)
+    (fullWF : VLCtx.WF typeEnv Us.length full)
+    (fullExtension : VLCtx.FVLift' base full 0 fullLift 0)
+    (viewDefEq : VLCtx.IsDefEq env Us.length actual view)
+    (viewUnique : TrExprS.IsUniqueCtx actual view)
+    (viewExtension : VLCtx.FVLift' base view 0 viewLift 0)
+    (sourceUnique : TrExprS.IsUnique source)
+    (sourceClosed : Closed source)
+    (sourceFVars : FVarsIn (· ∈ base.fvars) source)
+    (fullTr : TrExprS typeEnv Us full source fullTarget)
+    (actualTr : TrExprS env Us actual source actualTarget)
+    (actualType : env.HasType Us.length actual.toCtx actualTarget
+      (.sort fieldLevel)) :
+    ∃ baseTarget,
+      TrExprS typeEnv Us base source baseTarget ∧
+      fullTarget = baseTarget.lift' fullLift ∧
+      env.HasType Us.length base.toCtx baseTarget (.sort fieldLevel) := by
+  obtain ⟨baseTarget, baseTr⟩ := fullTr.weakFV'_inv typeEnvWF
+    fullExtension (.refl typeEnvWF.ordered fullWF) sourceClosed sourceFVars
+  have fullEq : fullTarget = baseTarget.lift' fullLift :=
+    fullTr.unique sourceUnique
+      (baseTr.weakFV' typeEnvWF.ordered fullExtension fullWF)
+  have baseType := ensureTypeRun_baseType (result := source)
+    henv typeEnvWF.ordered
+    addType baseWF viewDefEq viewUnique viewExtension sourceUnique
+    sourceClosed sourceFVars baseTr actualTr actualType
+  exact ⟨baseTarget, baseTr, fullEq, baseType⟩
+
+/-- D2 types the exact analyzer-owned field in the synthetic full field
+context and relates it to the declaration actually pushed by validation. -/
+theorem analyzerField_postType
+    {typeEnv : VEnv} {Us : List Name}
+    {full postActual : VLCtx} {source : Expr}
+    {analyzer postRaw postView postConsumed : VExpr}
+    {rawLevel : VLevel}
+    (typeEnvWF : VEnv.WF typeEnv)
+    (fullWF : VLCtx.WF typeEnv Us.length full)
+    (postWF : VLCtx.WF typeEnv Us.length postActual)
+    (relation : VLCtx.IsDefEqFVars typeEnv Us.length full postActual)
+    (analyzerTr : TrExprS typeEnv Us full source analyzer)
+    (postViewTr : TrExprS typeEnv Us postActual source postView)
+    (postRawType : typeEnv.HasType Us.length postActual.toCtx postRaw
+      (.sort rawLevel))
+    (postRawView : typeEnv.IsDefEqU Us.length postActual.toCtx
+      postRaw postView)
+    (postAnnotations : typeEnv.IsDefEqU Us.length postActual.toCtx
+      postRaw postConsumed) :
+    typeEnv.HasType Us.length full.toCtx analyzer (.sort rawLevel) ∧
+      typeEnv.IsDefEq Us.length full.toCtx analyzer postConsumed
+        (.sort rawLevel) := by
+  have postViewType : typeEnv.HasType Us.length postActual.toCtx postView
+      (.sort rawLevel) :=
+    postRawType.defeqU_l typeEnvWF postWF.toCtx postRawView
+  have postViewAtFull : typeEnv.HasType Us.length full.toCtx postView
+      (.sort rawLevel) :=
+    postViewType.defeqDFC typeEnvWF.ordered
+      (relation.defeqCtx.symm typeEnvWF.ordered)
+  have analyzerViewU : typeEnv.IsDefEqU Us.length full.toCtx
+      analyzer postView :=
+    analyzerTr.uniqFVars typeEnvWF relation fullWF postViewTr
+  have analyzerView := analyzerViewU.of_r typeEnvWF fullWF.toCtx
+    postViewAtFull
+  have rawViewAtFull := postRawView.defeqDFC typeEnvWF.ordered
+    (relation.defeqCtx.symm typeEnvWF.ordered)
+  have rawConsumedAtFull := postAnnotations.defeqDFC typeEnvWF.ordered
+    (relation.defeqCtx.symm typeEnvWF.ordered)
+  have rawTypeAtFull := postRawType.defeqDFC typeEnvWF.ordered
+    (relation.defeqCtx.symm typeEnvWF.ordered)
+  have rawConsumed := rawConsumedAtFull.of_l typeEnvWF fullWF.toCtx
+    rawTypeAtFull
+  have analyzerConsumed := analyzerView.trans
+    ((rawViewAtFull.of_l typeEnvWF fullWF.toCtx rawTypeAtFull).symm.trans
+      rawConsumed)
+  exact ⟨analyzerView.hasType.1, analyzerConsumed⟩
+
+structure AnalyzerPostContextState
+    (typeEnv : VEnv) (Us : List Name)
+    (full postActual postView : VLCtx) (viewLift : Lift) where
+  fullWF : VLCtx.WF typeEnv Us.length full
+  postWF : VLCtx.WF typeEnv Us.length postActual
+  viewWF : VLCtx.WF typeEnv Us.length postView
+  viewDefEq : VLCtx.IsDefEqFVars typeEnv Us.length postActual postView
+  viewExtension : VLCtx.FVLift' full postView 0 viewLift 0
+
+def vlctxCons
+    (entry : Option (FVarId × List FVarId) × VLocalDecl)
+    (tail : VLCtx) : VLCtx :=
+  entry :: tail
+
+theorem VLCtx.IsDefEqFVars.fvars
+    (relation : VLCtx.IsDefEqFVars env U left right) :
+    left.fvars = right.fvars := by
+  induction relation with
+  | nil => rfl
+  | cons_bvar relation declaration ih =>
+      change _ = _
+      exact ih
+  | cons_fvar relation declaration ih =>
+      change _ :: _ = _ :: _
+      exact congrArg (fun tail => _ :: tail) ih
+
+theorem VLCtx.IsDefEqFVars.mono
+    (add : env ≤ env') :
+    VLCtx.IsDefEqFVars env U left right →
+      VLCtx.IsDefEqFVars env' U left right := by
+  intro relation
+  induction relation with
+  | nil => exact .nil
+  | cons_bvar relation declaration ih =>
+      exact .cons_bvar ih (declaration.mono add)
+  | cons_fvar relation declaration ih =>
+      exact .cons_fvar ih (declaration.mono add)
+
+theorem VLCtx.IsDefEqFVars.symm
+    (henv : VEnv.Ordered env) :
+    VLCtx.IsDefEqFVars env U left right →
+      VLCtx.IsDefEqFVars env U right left := by
+  intro relation
+  induction relation with
+  | nil => exact .nil
+  | cons_bvar relation declaration ih =>
+      exact .cons_bvar ih
+        (declaration.symm.defeqDFC henv relation.defeqCtx)
+  | cons_fvar relation declaration ih =>
+      exact .cons_fvar ih
+        (declaration.symm.defeqDFC henv relation.defeqCtx)
+
+def FullFreshInvariant (context : AddInductive.Context)
+    (common full : VLCtx) : Prop :=
+  ∀ fv ∈ full.fvars,
+    fv ∈ common.fvars ∨ context.ngen.Reserves fv
+
+theorem FullFreshInvariant.fresh
+    (invariant : FullFreshInvariant context common full)
+    (freshCommon : context.freshFVarId ∉ common.fvars) :
+    context.freshFVarId ∉ full.fvars := by
+  intro present
+  rcases invariant context.freshFVarId present with common | reserved
+  · exact freshCommon common
+  · exact NameGenerator.not_reserves_self reserved
+
+theorem FullFreshInvariant.push
+    (invariant : FullFreshInvariant context common full)
+    {commonDomain fullDomain : VLocalDecl}
+    {commonDeps fullDeps : List FVarId} :
+    FullFreshInvariant
+      (context.pushLocalDecl name binderInfo sourceDomain)
+      (vlctxCons
+        (some (context.freshFVarId, commonDeps), commonDomain) common)
+      (vlctxCons
+        (some (context.freshFVarId, fullDeps), fullDomain) full) := by
+  intro fv present
+  simp only [vlctxCons, VLCtx.fvars_cons_some, List.mem_cons] at present
+  rcases present with rfl | present
+  · exact .inl (by simp [vlctxCons])
+  · rcases invariant fv present with commonMem | reserved
+    · exact .inl (by
+        simp only [vlctxCons, VLCtx.fvars_cons_some, List.mem_cons]
+        exact .inr commonMem)
+    · exact .inr (reserved.mono NameGenerator.LE.next)
+
+theorem FullFreshInvariant.skip
+    (invariant : FullFreshInvariant context common full)
+    {fullDomain : VLocalDecl} {fullDeps : List FVarId} :
+    FullFreshInvariant context.advanceFresh common
+      (vlctxCons
+        (some (context.freshFVarId, fullDeps), fullDomain) full) := by
+  intro fv present
+  simp only [vlctxCons, VLCtx.fvars_cons_some, List.mem_cons] at present
+  rcases present with rfl | present
+  · exact .inr NameGenerator.next_reserves_self
+  · rcases invariant fv present with common | reserved
+    · exact .inl common
+    · exact .inr (reserved.mono NameGenerator.LE.next)
+
+structure D3FullContextState
+    (env typeEnv : VEnv) (Us : List Name)
+    (context : AddInductive.Context)
+    (common full actual view : VLCtx) (fullLift viewLift : Lift) where
+  commonWF : VLCtx.WF env Us.length common
+  commonNoBV : common.NoBV
+  fullWF : VLCtx.WF typeEnv Us.length full
+  fullExtension : VLCtx.FVLift' common full 0 fullLift 0
+  actualWF : VLCtx.WF env Us.length actual
+  viewDefEq : VLCtx.IsDefEq env Us.length actual view
+  viewUnique : TrExprS.IsUniqueCtx actual view
+  viewExtension : VLCtx.FVLift' common view 0 viewLift 0
+  freshInvariant : FullFreshInvariant context common full
+
+/-- Push one family-free D3 binder through both the analyzer's full context
+and D3's index-extended context. -/
+theorem D3FullContextState.push
+    {env typeEnv : VEnv} {Us : List Name}
+    {context : AddInductive.Context}
+    {common full actual view : VLCtx} {fullLift viewLift : Lift}
+    (state : D3FullContextState env typeEnv Us context
+      common full actual view fullLift viewLift)
+    (henv : VEnv.WF env) (typeEnvWF : VEnv.WF typeEnv)
+    (addType : env ≤ typeEnv)
+    {source : Expr}
+    {fullTarget actualSource actualConsumed : VExpr}
+    {fieldLevel consumedLevel : VLevel}
+    (sourceUnique : TrExprS.IsUnique source)
+    (sourceClosed : Closed source)
+    (sourceFVars : FVarsIn (· ∈ common.fvars) source)
+    (fullTr : TrExprS typeEnv Us full source fullTarget)
+    (actualTr : TrExprS env Us actual source actualSource)
+    (actualType : env.HasType Us.length actual.toCtx actualSource
+      (.sort fieldLevel))
+    (actualAnnotations : env.IsDefEqU Us.length actual.toCtx
+      actualSource actualConsumed)
+    (actualConsumedType : env.HasType Us.length actual.toCtx actualConsumed
+      (.sort consumedLevel))
+    (actualTailWF : VLCtx.WF env Us.length
+      (vlctxCons
+        (some (context.freshFVarId,
+          (consumeTypeAnnotations source).fvarsList),
+          .vlam actualConsumed) actual)) :
+    ∃ commonTarget,
+      TrExprS typeEnv Us common source commonTarget ∧
+      fullTarget = commonTarget.lift' fullLift ∧
+      env.HasType Us.length common.toCtx commonTarget (.sort fieldLevel) ∧
+      D3FullContextState env typeEnv Us
+        (context.pushLocalDecl name binderInfo
+          (consumeTypeAnnotations source))
+        (vlctxCons
+          (some (context.freshFVarId,
+            (consumeTypeAnnotations source).fvarsList),
+            .vlam commonTarget) common)
+        (vlctxCons
+          (some (context.freshFVarId,
+            (consumeTypeAnnotations source).fvarsList),
+            .vlam fullTarget) full)
+        (vlctxCons
+          (some (context.freshFVarId,
+            (consumeTypeAnnotations source).fvarsList),
+            .vlam actualConsumed) actual)
+        (vlctxCons
+          (some (context.freshFVarId,
+            (consumeTypeAnnotations source).fvarsList),
+            .vlam (commonTarget.lift' viewLift)) view)
+        (.consN fullLift 1) (.consN viewLift 1) := by
+  obtain ⟨commonTarget, commonTr, fullEq, commonType⟩ :=
+    ensureTypeRun_commonType henv typeEnvWF addType state.commonWF
+      state.fullWF state.fullExtension state.viewDefEq state.viewUnique
+      state.viewExtension sourceUnique sourceClosed sourceFVars fullTr
+      actualTr actualType
+  have viewWF : VLCtx.WF env Us.length view :=
+    (state.viewDefEq.symm henv.ordered).wf
+  have commonAtView : TrExprS typeEnv Us view source
+      (commonTarget.lift' viewLift) :=
+    commonTr.weakFV' typeEnvWF.ordered state.viewExtension
+      (viewWF.mono addType)
+  have actualSource_eq : actualSource = commonTarget.lift' viewLift :=
+    (actualTr.mono addType).unique' state.viewUnique sourceUnique commonAtView
+  have consumedToCommon : env.IsDefEq Us.length actual.toCtx
+      actualConsumed (commonTarget.lift' viewLift)
+      (.sort consumedLevel) := by
+    rw [← actualSource_eq]
+    exact (actualAnnotations.of_r henv state.actualWF.toCtx
+      actualConsumedType).symm
+  have depsSubset : (consumeTypeAnnotations source).fvarsList ⊆
+      common.fvars :=
+    (FVarsIn.consumeTypeAnnotations sourceFVars |> fvarsIn_iff.mp).1
+  have freshCommon : context.freshFVarId ∉ common.fvars := by
+    intro present
+    have presentView := state.viewExtension.fvars_sublist.subset present
+    have presentActual : context.freshFVarId ∈ actual.fvars := by
+      simpa only [state.viewDefEq.fvars] using presentView
+    exact (actualTailWF.2.1 _ _ rfl).1 presentActual
+  have freshFull := state.freshInvariant.fresh freshCommon
+  have commonTailWF : VLCtx.WF env Us.length
+      (vlctxCons
+        (some (context.freshFVarId,
+          (consumeTypeAnnotations source).fvarsList),
+          .vlam commonTarget) common) := by
+    refine ⟨state.commonWF, ?_, ⟨fieldLevel, commonType⟩⟩
+    intro fv deps equality
+    cases equality
+    exact ⟨freshCommon, depsSubset⟩
+  have fullType : typeEnv.HasType Us.length full.toCtx fullTarget
+      (.sort fieldLevel) := by
+    rw [fullEq]
+    exact (commonType.weak' henv.ordered state.fullExtension.toCtx).mono addType
+  have fullTailWF : VLCtx.WF typeEnv Us.length
+      (vlctxCons
+        (some (context.freshFVarId,
+          (consumeTypeAnnotations source).fvarsList),
+          .vlam fullTarget) full) := by
+    refine ⟨state.fullWF, ?_, ⟨fieldLevel, fullType⟩⟩
+    intro fv deps equality
+    cases equality
+    exact ⟨freshFull, fun fv member =>
+      state.fullExtension.fvars_sublist.subset (depsSubset member)⟩
+  have nextViewDefEq : VLCtx.IsDefEq env Us.length
+      (vlctxCons
+        (some (context.freshFVarId,
+          (consumeTypeAnnotations source).fvarsList),
+          .vlam actualConsumed) actual)
+      (vlctxCons
+        (some (context.freshFVarId,
+          (consumeTypeAnnotations source).fvarsList),
+          .vlam (commonTarget.lift' viewLift)) view) := by
+    exact .cons state.viewDefEq actualTailWF.2.1
+      (.vlam consumedToCommon)
+  refine ⟨commonTarget, commonTr, fullEq, commonType, {
+    commonWF := commonTailWF
+    commonNoBV := by
+      simpa only [vlctxCons, VLCtx.NoBV, VLCtx.bvars] using
+        state.commonNoBV
+    fullWF := fullTailWF
+    fullExtension := ?_
+    actualWF := actualTailWF
+    viewDefEq := nextViewDefEq
+    viewUnique := state.viewUnique.cons .vlam
+    viewExtension := state.viewExtension.cons_fvar
+      (context.freshFVarId,
+        (consumeTypeAnnotations source).fvarsList)
+      (.vlam commonTarget) depsSubset
+    freshInvariant := state.freshInvariant.push }⟩
+  simpa only [fullEq, vlctxCons, VLocalDecl.lift',
+    VLocalDecl.depth] using state.fullExtension.cons_fvar
+    (context.freshFVarId,
+      (consumeTypeAnnotations source).fvarsList)
+    (.vlam commonTarget) depsSubset
+
+/-- Skip one family-dependent outer field in D3's family-free replay while
+retaining that exact analyzer field in the full context. -/
+theorem D3FullContextState.skip
+    {env typeEnv : VEnv} {Us : List Name}
+    {context : AddInductive.Context}
+    {common full actual view : VLCtx} {fullLift viewLift : Lift}
+    (state : D3FullContextState env typeEnv Us context
+      common full actual view fullLift viewLift)
+    {source : Expr} {field : VExpr}
+    (nextFullWF : VLCtx.WF typeEnv Us.length
+      ((some (context.freshFVarId,
+          (consumeTypeAnnotations source).fvarsList),
+        .vlam field) :: full)) :
+    D3FullContextState env typeEnv Us context.advanceFresh common
+      ((some (context.freshFVarId,
+          (consumeTypeAnnotations source).fvarsList),
+        .vlam field) :: full)
+      actual view (.skipN fullLift 1) viewLift where
+  commonWF := state.commonWF
+  commonNoBV := state.commonNoBV
+  fullWF := nextFullWF
+  fullExtension := by
+    simpa only [VLocalDecl.depth] using state.fullExtension.skip_fvar
+      (context.freshFVarId,
+        (consumeTypeAnnotations source).fvarsList) (.vlam field)
+  actualWF := state.actualWF
+  viewDefEq := state.viewDefEq
+  viewUnique := state.viewUnique
+  viewExtension := state.viewExtension
+  freshInvariant := state.freshInvariant.skip
+
+/-- Exact analyzer syntax and pre-family semantic evidence for one recursive
+field.  The family telescope is tracked at the analyzer's current full
+context; nested binders lift it in the ordinary de Bruijn way. -/
+def RecursiveFieldRunResult
+    (env : VEnv) (Us : List Name) (full : VLCtx)
+    (familyTarget fieldTarget : VExpr) (level : VLevel)
+    (familyName : Name) (parameterCount : Nat) : Prop :=
+  ∃ binders indices terminal,
+    fieldTarget = VExpr.forallN binders terminal ∧
+    env.OnTel Us.length full.toCtx binders ∧
+    env.SpineWF Us.length
+      (binders.reverse ++ full.toCtx)
+      (familyTarget.liftN binders.length 0) indices (.sort level) ∧
+    (∃ levels, VExpr.appHead terminal = .const familyName levels) ∧
+    (VExpr.appArgs terminal []).drop parameterCount = indices
+
+/-- Synchronize the recursive D3 replay with the analyzer's exact strict
+translation.  D3 supplies all family-free typing and the terminal index
+spine; strict translation uniqueness fixes the analyzer-owned domains and
+terminal arguments componentwise. -/
+theorem recursiveField_exactAnalyzer
+    {env typeEnv : VEnv} {Us : List Name}
+    {stats : AddInductive.InductiveStats} {familyIdx : Nat}
+    {familyIndices : Expr} {context : AddInductive.Context}
+    {contextRun : AddInductive.ConstructorContextRun env Us context}
+    {source : Expr} {fuel : Nat}
+    {trace : AddInductive.ConstructorPreFamilyRecursiveTrace stats familyIdx
+      familyIndices context source fuel}
+    (run : AddInductive.ConstructorPreFamilyRecursiveSemanticRun env Us stats
+      familyIdx familyIndices contextRun trace)
+    (henv : VEnv.WF env) (typeEnvWF : VEnv.WF typeEnv)
+    (addType : env ≤ typeEnv)
+    {common full view : VLCtx} {fullLift viewLift : Lift}
+    (state : D3FullContextState env typeEnv Us context common full
+      contextRun.candidate.context.vlctx view fullLift viewLift)
+    {commonIndices : List VExpr} {familyTarget fieldTarget : VExpr}
+    {level : VLevel} {familyName : Name} {familyLevels : List Level}
+    (familyCommonTr : TrExprS env Us common familyIndices
+      (VExpr.forallN commonIndices (.sort level)))
+    (familyFullTr : TrExprS typeEnv Us full familyIndices familyTarget)
+    (familyUnique : TrExprS.IsUnique familyIndices)
+    (indexLength : commonIndices.length = stats.nindices[familyIdx]!)
+    (familyHead : stats.indConsts[familyIdx]! =
+      .const familyName familyLevels)
+    (sourceUnique : TrExprS.IsUnique source)
+    (sourceClosed : Closed source)
+    (sourceFVars : FVarsIn (· ∈ common.fvars) source)
+    (fullTr : TrExprS typeEnv Us full source fieldTarget) :
+    RecursiveFieldRunResult env Us full familyTarget fieldTarget level
+      familyName stats.params.size := by
+  induction run generalizing common full view fullLift viewLift commonIndices
+      familyTarget fieldTarget with
+  | @target _ context source fuel valid spineTrace branchContextRun expected'
+      spine =>
+      have argumentClosed : ∀ argument ∈
+          source.getAppArgs.toList.drop stats.params.size,
+          Closed argument := by
+        intro argument member
+        apply Closed.getAppArgsList sourceClosed
+        rw [← Expr.getAppArgs_toList]
+        exact List.mem_of_mem_drop member
+      have argumentFVars : ∀ argument ∈
+          source.getAppArgs.toList.drop stats.params.size,
+          FVarsIn (· ∈ common.fvars) argument := by
+        intro argument member
+        apply FVarsIn.getAppArgsList sourceFVars
+        rw [← Expr.getAppArgs_toList]
+        exact List.mem_of_mem_drop member
+      have argumentUnique : ∀ argument ∈
+          source.getAppArgs.toList.drop stats.params.size,
+          TrExprS.IsUnique argument := by
+        intro argument member
+        apply TrExprS.IsUnique.getAppArgsList sourceUnique
+        rw [← Expr.getAppArgs_toList]
+        exact List.mem_of_mem_drop member
+      have argumentLength :
+          (source.getAppArgs.toList.drop stats.params.size).length =
+            commonIndices.length :=
+        (isValidIndAppIdx_indexArgs_length valid).trans
+          indexLength.symm
+      obtain ⟨baseIndices, baseIndicesTr, baseSpine⟩ :=
+        ConstructorPreFamilyIndexSpineSemanticRun.baseSpine_lift spine
+          familyCommonTr familyUnique
+          state.viewDefEq state.viewUnique state.viewExtension
+          argumentClosed argumentFVars argumentUnique argumentLength
+      have commonFamilyAtFull : TrExprS typeEnv Us full familyIndices
+          ((VExpr.forallN commonIndices (.sort level)).lift' fullLift) := by
+        simpa using (familyCommonTr.mono addType).weakFV'
+          typeEnvWF.ordered state.fullExtension state.fullWF
+      have familyEq : familyTarget =
+          (VExpr.forallN commonIndices (.sort level)).lift' fullLift :=
+        familyFullTr.unique familyUnique commonFamilyAtFull
+      have shape := isValidIndAppIdx_shape valid
+      have sourceHead : source.getAppFn =
+          .const familyName familyLevels := by
+        rw [familyHead] at shape
+        change source.getAppFn.eqv (.const familyName familyLevels) = true ∧
+          _ at shape
+        rw [Expr.eqv_eq] at shape
+        generalize headEq : source.getAppFn = head at shape
+        cases head <;> simp_all [Expr.eqv']
+      obtain ⟨targetLevels, targetHead, allArgumentsTr⟩ :=
+        TrExprS.constApp_components fullTr sourceHead
+      have droppedArgumentsTr :=
+        forall₂_drop allArgumentsTr stats.params.size
+      have baseIndicesAtFull : List.Forall₂
+          (TrExprS typeEnv Us full)
+          (source.getAppArgsList.drop stats.params.size)
+          (baseIndices.map fun index => index.lift' fullLift) := by
+        have baseMono := forall₂_tr_mono addType baseIndicesTr
+        have baseWeak := forall₂_tr_weakFV' typeEnvWF.ordered
+          state.fullExtension state.fullWF baseMono
+        simpa only [Expr.getAppArgs_toList] using baseWeak
+      have translatedIndicesEq :
+          (VExpr.appArgs fieldTarget []).drop stats.params.size =
+            baseIndices.map fun index => index.lift' fullLift :=
+        forall₂_translation_unique droppedArgumentsTr
+          baseIndicesAtFull (fun argument member =>
+            TrExprS.IsUnique.getAppArgsList sourceUnique argument
+              (List.mem_of_mem_drop member))
+      have fullSpine : env.SpineWF Us.length full.toCtx
+          ((VExpr.forallN commonIndices (.sort level)).lift' fullLift)
+          (baseIndices.map fun index => index.lift' fullLift)
+          (.sort level) := by
+        simpa using VEnv.SpineWF.weak' henv.ordered
+          state.fullExtension.toCtx baseSpine
+      rw [← familyEq, ← translatedIndicesEq] at fullSpine
+      exact ⟨[], (VExpr.appArgs fieldTarget []).drop stats.params.size,
+        fieldTarget, rfl, trivial, by simpa using fullSpine,
+        ⟨targetLevels, targetHead⟩, rfl⟩
+  | @forallE context name domain body binderInfo fuel domainCheck ensureType
+      consumedCheck annotations fresh tailTrace branchContextRun domainRun
+      consumedRun ensureTypeRun annotationsRun consumedType tail ih =>
+      obtain ⟨fullDomain, fullBody, rfl, fullDomainType, fullBodyType,
+          domainTr, bodyTr⟩ := TrExprS.forallE_components fullTr
+      have actualDomainTr : TrExprS env Us
+          branchContextRun.candidate.context.vlctx domain
+          domainRun.source' := by
+        simpa only [branchContextRun.venv_eq,
+          branchContextRun.lparams_eq] using domainRun.check.expr_tr
+      have actualDomainType : env.HasType Us.length
+          branchContextRun.candidate.context.vlctx.toCtx domainRun.source'
+          (.sort ensureTypeRun.resultLevel') := by
+        simpa only [branchContextRun.venv_eq,
+          branchContextRun.lparams_eq] using ensureTypeRun.source_type
+      have actualAnnotations : env.IsDefEqU Us.length
+          branchContextRun.candidate.context.vlctx.toCtx domainRun.source'
+          consumedRun.source' := by
+        simpa only [branchContextRun.venv_eq,
+          branchContextRun.lparams_eq] using annotationsRun.isDefEqU
+      have consumedTypeCopy := consumedType
+      obtain ⟨consumedLevel, consumedHasType⟩ := consumedType
+      have actualConsumedType : env.HasType Us.length
+          branchContextRun.candidate.context.vlctx.toCtx consumedRun.source'
+          (.sort consumedLevel) := by
+        simpa only [branchContextRun.venv_eq,
+          branchContextRun.lparams_eq] using consumedHasType
+      let nextContextRun := branchContextRun.pushLocalDecl name binderInfo
+        (consumeTypeAnnotations domain) fresh consumedRun.source'
+        consumedRun.check.expr_tr consumedTypeCopy
+      have actualTailWF : VLCtx.WF env Us.length
+          (vlctxCons
+            (some (context.freshFVarId,
+              (consumeTypeAnnotations domain).fvarsList),
+              .vlam consumedRun.source')
+            branchContextRun.candidate.context.vlctx) := by
+        have nextWF := nextContextRun.candidate.context.Δwf
+        rw [nextContextRun.venv_eq, nextContextRun.lparams_eq] at nextWF
+        simpa only [vlctxCons, nextContextRun,
+          AddInductive.ConstructorContextRun.pushLocalDecl,
+          CandidateContextRun.pushLocalDecl_vlctx] using nextWF
+      obtain ⟨commonDomain, commonDomainTr, fullDomainEq,
+          commonDomainType, nextState⟩ :=
+        state.push henv typeEnvWF addType sourceUnique.1 sourceClosed.1
+          sourceFVars.1 domainTr actualDomainTr actualDomainType
+          actualAnnotations actualConsumedType actualTailWF
+      have bodyOpened : TrExprS typeEnv Us
+          (vlctxCons
+            (some (context.freshFVarId,
+              (consumeTypeAnnotations domain).fvarsList),
+              .vlam fullDomain) full)
+          (body.instantiate1 context.freshExpr) fullBody := by
+        simpa only [vlctxCons, AddInductive.Context.freshExpr,
+          Expr.instantiate1_eq] using
+          bodyTr.inst_fvar typeEnvWF.ordered nextState.fullWF
+      have familyCommonNext : TrExprS env Us
+          (vlctxCons
+            (some (context.freshFVarId,
+              (consumeTypeAnnotations domain).fvarsList),
+              .vlam commonDomain) common)
+          familyIndices
+          (VExpr.forallN (VExpr.liftTelN 1 commonIndices 0)
+            (.sort level)) := by
+        have weakened := familyCommonTr.weakFV henv.ordered
+          (VLCtx.FVLift.skip_fvar
+            (context.freshFVarId,
+              (consumeTypeAnnotations domain).fvarsList)
+            (.vlam commonDomain) .refl)
+          nextState.commonWF
+        simpa [vlctxCons, VLocalDecl.depth,
+          VExpr.liftN_forallN, VExpr.liftN] using weakened
+      have familyFullNext : TrExprS typeEnv Us
+          (vlctxCons
+            (some (context.freshFVarId,
+              (consumeTypeAnnotations domain).fvarsList),
+              .vlam fullDomain) full)
+          familyIndices (familyTarget.liftN 1 0) := by
+        have weakened := familyFullTr.weakFV typeEnvWF.ordered
+          (VLCtx.FVLift.skip_fvar
+            (context.freshFVarId,
+              (consumeTypeAnnotations domain).fvarsList)
+            (.vlam fullDomain) .refl)
+          nextState.fullWF
+        simpa [vlctxCons, VLocalDecl.depth] using weakened
+      have nextIndexLength :
+          (VExpr.liftTelN 1 commonIndices 0).length =
+            stats.nindices[familyIdx]! := by
+        simpa only [VExpr.liftTelN_length] using indexLength
+      have tailUnique : TrExprS.IsUnique
+          (body.instantiate1 context.freshExpr) := by
+        apply TrExprS.IsUnique.instantiate1 sourceUnique.2
+        simp only [AddInductive.Context.freshExpr]
+        trivial
+      have nextFullNoBV :
+          (vlctxCons
+            (some (context.freshFVarId,
+              (consumeTypeAnnotations domain).fvarsList),
+              .vlam fullDomain) full).bvars = 0 :=
+        nextState.fullExtension.bvars_eq.trans nextState.commonNoBV
+      have tailClosed : Closed (body.instantiate1 context.freshExpr) := by
+        have closed := bodyOpened.closed
+        rw [nextFullNoBV] at closed
+        exact closed
+      have tailFVars : FVarsIn
+          (· ∈ (vlctxCons
+            (some (context.freshFVarId,
+              (consumeTypeAnnotations domain).fvarsList),
+              .vlam commonDomain) common).fvars)
+          (body.instantiate1 context.freshExpr) := by
+        rw [Expr.instantiate1_eq]
+        apply FVarsIn.instantiate1
+        · exact sourceFVars.2.mono (fun fv member => by
+            simp only [vlctxCons, VLCtx.fvars_cons_some,
+              List.mem_cons]
+            exact .inr member)
+        · simp [AddInductive.Context.freshExpr, vlctxCons, FVarsIn]
+      obtain ⟨tailBinders, indices, terminal, tailTargetEq, tailOnTel,
+          tailSpine, terminalHead, terminalIndices⟩ :=
+        ih nextState familyCommonNext familyFullNext nextIndexLength
+          tailUnique tailClosed tailFVars bodyOpened
+      refine ⟨fullDomain :: tailBinders, indices, terminal, ?_, ?_, ?_,
+        terminalHead, terminalIndices⟩
+      · simp only [VExpr.forallN, VExpr.forallE.injEq, true_and]
+        exact tailTargetEq
+      · exact ⟨by
+          rw [fullDomainEq]
+          exact ⟨ensureTypeRun.resultLevel', by
+            simpa using commonDomainType.weak' henv.ordered
+              state.fullExtension.toCtx⟩,
+          by
+            simpa only [vlctxCons, VLCtx.toCtx] using tailOnTel⟩
+      · simpa only [List.reverse_cons, List.singleton_append,
+          List.append_assoc, vlctxCons, VLCtx.toCtx,
+          List.length_cons, VExpr.liftN_liftN, Nat.add_comm] using tailSpine
+
+private theorem forallN_inj_of_terminal_ne_forall
+    (leftNot : ∀ domain body, leftTerminal ≠ .forallE domain body)
+    (rightNot : ∀ domain body, rightTerminal ≠ .forallE domain body)
+    (equality : VExpr.forallN leftBinders leftTerminal =
+      VExpr.forallN rightBinders rightTerminal) :
+    leftBinders = rightBinders ∧ leftTerminal = rightTerminal := by
+  induction leftBinders generalizing rightBinders with
+  | nil =>
+      cases rightBinders with
+      | nil => exact ⟨rfl, equality⟩
+      | cons domain binders =>
+          exact (leftNot domain (VExpr.forallN binders rightTerminal)
+            equality).elim
+  | cons domain binders ih =>
+      cases rightBinders with
+      | nil =>
+          exact (rightNot domain (VExpr.forallN binders leftTerminal)
+            equality.symm).elim
+      | cons rightDomain rightBinders =>
+          simp only [VExpr.forallN, VExpr.forallE.injEq] at equality
+          obtain ⟨domainEq, tailEq⟩ := equality
+          obtain ⟨bindersEq, terminalEq⟩ :=
+            ih tailEq
+          cases domainEq
+          cases bindersEq
+          exact ⟨rfl, terminalEq⟩
+
+private theorem terminal_ne_forall_of_appHead_const
+    (head : VExpr.appHead terminal = .const familyName levels) :
+    ∀ domain body, terminal ≠ .forallE domain body := by
+  intro domain body equality
+  subst terminal
+  simp only [VExpr.appHead] at head
+  exact VExpr.noConfusion head
+
+private theorem hasConst_of_appHead_const
+    (head : VExpr.appHead terminal = .const familyName levels) :
+    terminal.hasConst familyName = true := by
+  induction terminal with
+  | app function argument functionIH argumentIH =>
+      simp only [VExpr.appHead] at head
+      simp only [VExpr.hasConst, Bool.or_eq_true]
+      exact .inl (functionIH head)
+  | const name levels =>
+      simp only [VExpr.appHead, VExpr.const.injEq] at head
+      exact (beq_iff_eq).2 head.1
+  | bvar | sort | lam | forallE => simp [VExpr.appHead] at head
+
+private theorem forallN_hasConst_of_terminal
+    (terminalHasConst : terminal.hasConst familyName = true) :
+    (VExpr.forallN binders terminal).hasConst familyName = true := by
+  induction binders with
+  | nil => exact terminalHasConst
+  | cons binder binders ih =>
+      simp only [VExpr.forallN, VExpr.hasConst, Bool.or_eq_true]
+      exact .inr ih
+
+/-- A typed Theory expression cannot mention a constant absent from its
+environment. -/
+theorem VEnv.HasType.hasConst_false_of_absent
+    {env : VEnv} {U : Nat} {context : List VExpr}
+    {familyName : Name} {expression type : VExpr}
+    (henv : env.Ordered) (contextWF : OnCtx context (env.IsType U))
+    (absent : env.constants familyName = none)
+    (typed : env.HasType U context expression type) :
+    expression.hasConst familyName = false := by
+  induction expression generalizing context type with
+  | bvar | sort => rfl
+  | const name levels =>
+      by_cases equality : name = familyName
+      · subst name
+        obtain ⟨constant, present, levelWF, arity⟩ :=
+          typed.const_inv henv contextWF
+        rw [absent] at present
+        contradiction
+      · simpa [VExpr.hasConst, equality]
+  | app function argument functionIH argumentIH =>
+      obtain ⟨domain, body, functionType, argumentType⟩ :=
+        typed.app_inv henv contextWF
+      simp only [VExpr.hasConst, functionIH contextWF functionType,
+        argumentIH contextWF argumentType, Bool.false_or]
+  | lam domain body domainIH bodyIH =>
+      obtain ⟨domainType, bodyWF⟩ := typed.lam_inv henv contextWF
+      obtain ⟨domainLevel, domainHasType⟩ := domainType
+      obtain ⟨bodyType, bodyHasType⟩ := bodyWF
+      have nextContextWF : OnCtx (domain :: context) (env.IsType U) := by
+        change OnCtx context (env.IsType U) ∧ env.IsType U context domain
+        exact ⟨contextWF, ⟨domainLevel, domainHasType⟩⟩
+      simp only [VExpr.hasConst, domainIH contextWF domainHasType,
+        bodyIH nextContextWF bodyHasType, Bool.false_or]
+  | forallE domain body domainIH bodyIH =>
+      obtain ⟨domainType, bodyType⟩ := typed.forallE_inv henv
+      obtain ⟨domainLevel, domainHasType⟩ := domainType
+      obtain ⟨bodyLevel, bodyHasType⟩ := bodyType
+      have nextContextWF : OnCtx (domain :: context) (env.IsType U) := by
+        change OnCtx context (env.IsType U) ∧ env.IsType U context domain
+        exact ⟨contextWF, ⟨domainLevel, domainHasType⟩⟩
+      simp only [VExpr.hasConst, domainIH contextWF domainHasType,
+        bodyIH nextContextWF bodyHasType, Bool.false_or]
+
+theorem recArg?_eq_none_of_hasConst_false
+    (free : field.hasConst familyName = false) :
+    VInductDecl.recArg? U familyName np ni fieldIndex field = none := by
+  cases recursiveEq : VInductDecl.recArg? U familyName np ni fieldIndex field with
+  | none => rfl
+  | some recursive =>
+      have anatomy := VInductDecl.recArg?_eq recursiveEq
+      have terminalHead :
+          VExpr.appHead
+              (VExpr.appN (.const familyName (VLevel.params U))
+                (VExpr.bvarRevRange
+                    (fieldIndex + recursive.binders.length) np ++
+                  recursive.indices)) =
+            .const familyName (VLevel.params U) :=
+        VExpr.appHead_appN _ _
+      have terminalHasConst :=
+        hasConst_of_appHead_const terminalHead
+      have recursiveHasConst :=
+        forallN_hasConst_of_terminal
+          (binders := recursive.binders) terminalHasConst
+      rw [← anatomy.2.2.1, free] at recursiveHasConst
+      contradiction
+
+private theorem drop_bvarRevRange_append
+    (offset count : Nat) (suffix : List VExpr) :
+    (VExpr.bvarRevRange offset count ++ suffix).drop count = suffix := by
+  induction count with
+  | zero => rfl
+  | succ count ih =>
+      simp only [VExpr.bvarRevRange, List.cons_append, List.drop_succ_cons]
+      exact ih
+
+/-- A recursive-field synchronization certificate is exactly the semantic
+payload required by the analyzer's `RecArg` descriptor. -/
+theorem recursiveFieldResult_recArgWF
+    {env : VEnv} {Us : List Name} {full : VLCtx}
+    {familyTarget fieldTarget : VExpr} {level : VLevel}
+    {familyName : Name} {np ni fieldIndex : Nat}
+    {familyIndices : List VExpr}
+    (result : RecursiveFieldRunResult env Us full familyTarget
+      fieldTarget level familyName np)
+    (familyTargetEq : familyTarget =
+      VExpr.forallN (VExpr.liftTelN fieldIndex familyIndices 0)
+        (.sort level))
+    (stage : VInductDecl.stage3Field Us.length familyName np ni fieldIndex
+      fieldTarget = true) :
+    ∃ recursive,
+      VInductDecl.recArg? Us.length familyName np ni fieldIndex fieldTarget =
+        some recursive ∧
+      recursive.WF Us.length env level familyIndices full.toCtx := by
+  obtain ⟨binders, indices, terminal, targetEq, onTel, spine,
+      ⟨terminalLevels, terminalHead⟩, terminalIndices⟩ := result
+  have terminalHasConst : terminal.hasConst familyName = true :=
+    hasConst_of_appHead_const terminalHead
+  have fieldHasConst : fieldTarget.hasConst familyName = true := by
+    rw [targetEq]
+    exact forallN_hasConst_of_terminal terminalHasConst
+  have recursiveSome :
+      (VInductDecl.recArg? Us.length familyName np ni fieldIndex
+        fieldTarget).isSome = true := by
+    simpa only [VInductDecl.stage3Field, fieldHasConst, Bool.not_true,
+      Bool.or_false] using stage
+  cases recursiveEq : VInductDecl.recArg? Us.length familyName np ni
+      fieldIndex fieldTarget with
+  | none => simp [recursiveEq] at recursiveSome
+  | some recursive =>
+      have anatomy := VInductDecl.recArg?_eq recursiveEq
+      let recursiveTerminal := VExpr.appN
+        (.const familyName (VLevel.params Us.length))
+        (VExpr.bvarRevRange (fieldIndex + recursive.binders.length) np ++
+          recursive.indices)
+      have telescopesEq : VExpr.forallN binders terminal =
+          VExpr.forallN recursive.binders recursiveTerminal := by
+        exact targetEq.symm.trans anatomy.2.2.1
+      have recursiveTerminalHead :
+          VExpr.appHead recursiveTerminal =
+            .const familyName (VLevel.params Us.length) := by
+        exact VExpr.appHead_appN _ _
+      obtain ⟨bindersEq, terminalEq⟩ :=
+        forallN_inj_of_terminal_ne_forall
+          (terminal_ne_forall_of_appHead_const terminalHead)
+          (terminal_ne_forall_of_appHead_const recursiveTerminalHead)
+          telescopesEq
+      have indicesEq : indices = recursive.indices := by
+        rw [terminalEq, VExpr.appArgs_appN] at terminalIndices
+        simp only [VExpr.appArgs, List.append_nil] at terminalIndices
+        rw [drop_bvarRevRange_append] at terminalIndices
+        exact terminalIndices.symm
+      refine ⟨recursive, rfl, ?_⟩
+      unfold VInductDecl.RecArg.WF
+      refine ⟨?_, ?_⟩
+      · rw [← bindersEq]
+        exact onTel
+      · rw [anatomy.1, ← bindersEq, ← indicesEq]
+        rw [familyTargetEq, VExpr.liftN_forallN,
+          VExpr.liftTelN_liftTelN] at spine
+        simpa [VExpr.liftN] using spine
+
+theorem AnalyzerPostContextState.push
+    {typeEnv : VEnv} {Us : List Name}
+    {full postActual postViewContext : VLCtx} {viewLift : Lift}
+    (state : AnalyzerPostContextState typeEnv Us full postActual
+      postViewContext viewLift)
+    (typeEnvWF : VEnv.WF typeEnv)
+    {source : Expr} {analyzer postRaw postView postConsumed : VExpr}
+    {rawLevel : VLevel} {fv : FVarId} {postDeps : List FVarId}
+    (sourceUnique : TrExprS.IsUnique source)
+    (sourceClosed : Closed source)
+    (analyzerTr : TrExprS typeEnv Us full source analyzer)
+    (postViewTr : TrExprS typeEnv Us postActual source postView)
+    (postRawType : typeEnv.HasType Us.length postActual.toCtx postRaw
+      (.sort rawLevel))
+    (postRawView : typeEnv.IsDefEqU Us.length postActual.toCtx
+      postRaw postView)
+    (postAnnotations : typeEnv.IsDefEqU Us.length postActual.toCtx
+      postRaw postConsumed)
+    (postTailWF : VLCtx.WF typeEnv Us.length
+      ((some (fv, postDeps), .vlam postConsumed) :: postActual)) :
+    let deps := (AddInductive.consumeTypeAnnotations source).fvarsList
+    typeEnv.HasType Us.length full.toCtx analyzer (.sort rawLevel) ∧
+      AnalyzerPostContextState typeEnv Us
+        ((some (fv, deps), .vlam analyzer) :: full)
+        ((some (fv, postDeps), .vlam postConsumed) :: postActual)
+        ((some (fv, deps), .vlam (analyzer.lift' viewLift)) ::
+          postViewContext)
+        (.consN viewLift 1) := by
+  dsimp only
+  have postViewType : typeEnv.HasType Us.length postActual.toCtx postView
+      (.sort rawLevel) :=
+    postRawType.defeqU_l typeEnvWF state.postWF.toCtx postRawView
+  have postViewContextWF : VLCtx.WF typeEnv Us.length postViewContext :=
+    state.viewWF
+  have analyzerAtView : TrExprS typeEnv Us postViewContext source
+      (analyzer.lift' viewLift) :=
+    analyzerTr.weakFV' typeEnvWF.ordered state.viewExtension
+      postViewContextWF
+  have postViewAnalyzer : typeEnv.IsDefEqU Us.length postActual.toCtx
+      postView (analyzer.lift' viewLift) :=
+    postViewTr.uniqFVars typeEnvWF state.viewDefEq state.postWF
+      analyzerAtView
+  have analyzerAtPostType : typeEnv.HasType Us.length postActual.toCtx
+      (analyzer.lift' viewLift) (.sort rawLevel) :=
+    (postViewAnalyzer.of_l typeEnvWF state.postWF.toCtx postViewType).hasType.2
+  have analyzerAtViewType : typeEnv.HasType Us.length postViewContext.toCtx
+      (analyzer.lift' viewLift) (.sort rawLevel) :=
+    analyzerAtPostType.defeqDFC typeEnvWF.ordered
+      state.viewDefEq.defeqCtx
+  have analyzerType : typeEnv.HasType Us.length full.toCtx analyzer
+      (.sort rawLevel) :=
+    (HasType.weak'_iff typeEnvWF postViewContextWF.toCtx
+      state.viewExtension.toCtx).1 (by simpa using analyzerAtViewType)
+  have rawView := postRawView.of_l typeEnvWF state.postWF.toCtx postRawType
+  have rawConsumed :=
+    postAnnotations.of_l typeEnvWF state.postWF.toCtx postRawType
+  have analyzerConsumed : typeEnv.IsDefEq Us.length postActual.toCtx
+      postConsumed (analyzer.lift' viewLift) (.sort rawLevel) :=
+    (rawConsumed.symm.trans rawView).trans
+      (postViewAnalyzer.of_l typeEnvWF state.postWF.toCtx postViewType)
+  have depsSubset : (AddInductive.consumeTypeAnnotations source).fvarsList ⊆
+      full.fvars :=
+    (FVarsIn.consumeTypeAnnotations analyzerTr.fvarsIn
+      |> fvarsIn_iff.mp).1
+  have freshFull : fv ∉ full.fvars := by
+    intro present
+    have presentView := state.viewExtension.fvars_sublist.subset present
+    have presentPost : fv ∈ postActual.fvars := by
+      simpa only [ConstructorValidation.VLCtx.IsDefEqFVars.fvars state.viewDefEq]
+        using presentView
+    exact (postTailWF.2.1 fv postDeps rfl).1 presentPost
+  have freshView : fv ∉ postViewContext.fvars := by
+    intro present
+    have presentPost : fv ∈ postActual.fvars := by
+      simpa only [ConstructorValidation.VLCtx.IsDefEqFVars.fvars state.viewDefEq]
+        using present
+    exact (postTailWF.2.1 fv postDeps rfl).1 presentPost
+  have depsSubsetView :
+      (AddInductive.consumeTypeAnnotations source).fvarsList ⊆
+        postViewContext.fvars := fun _ member =>
+    state.viewExtension.fvars_sublist.subset (depsSubset member)
+  have fullTailWF : VLCtx.WF typeEnv Us.length
+      ((some (fv, (AddInductive.consumeTypeAnnotations source).fvarsList),
+        .vlam analyzer) :: full) :=
+    ⟨state.fullWF,
+      fun _ _ equality => by
+        cases equality
+        exact ⟨freshFull, depsSubset⟩,
+      ⟨rawLevel, analyzerType⟩⟩
+  have viewTailWF : VLCtx.WF typeEnv Us.length
+      ((some (fv, (AddInductive.consumeTypeAnnotations source).fvarsList),
+        .vlam (analyzer.lift' viewLift)) :: postViewContext) :=
+    ⟨state.viewWF,
+      fun _ _ equality => by
+        cases equality
+        exact ⟨freshView, depsSubsetView⟩,
+      ⟨rawLevel, analyzerAtViewType⟩⟩
+  exact ⟨analyzerType, {
+    fullWF := fullTailWF
+    postWF := postTailWF
+    viewWF := viewTailWF
+    viewDefEq := .cons_fvar state.viewDefEq (.vlam analyzerConsumed)
+    viewExtension := state.viewExtension.cons_fvar
+      (fv, (AddInductive.consumeTypeAnnotations source).fvarsList)
+      (.vlam analyzer) depsSubset }⟩
+
+theorem ordinaryField_baseTypes
+    {env typeEnv : VEnv} {Us : List Name}
+    {base actual view postActual : VLCtx} {source : Expr}
+    {source' actual' postRaw' postView' : VExpr}
+    {fieldLevel rawLevel resultLevel : VLevel} {n : Lift}
+    (henv : VEnv.WF env) (typeEnvWF : VEnv.WF typeEnv)
+    (addType : env ≤ typeEnv)
+    (baseWF : VLCtx.WF env Us.length base)
+    (actualWF : VLCtx.WF env Us.length actual)
+    (postWF : VLCtx.WF typeEnv Us.length postActual)
+    (postRelation : VLCtx.IsDefEqFVars typeEnv Us.length actual postActual)
+    (viewDefEq : VLCtx.IsDefEq env Us.length actual view)
+    (viewUnique : TrExprS.IsUniqueCtx actual view)
+    (viewLift : VLCtx.FVLift' base view 0 n 0)
+    (sourceUnique : TrExprS.IsUnique source)
+    (sourceClosed : Closed source)
+    (sourceFVars : FVarsIn (· ∈ base.fvars) source)
+    (sourceTr : TrExprS typeEnv Us base source source')
+    (actualTr : TrExprS env Us actual source actual')
+    (actualType : env.HasType Us.length actual.toCtx actual'
+      (.sort fieldLevel))
+    (postViewTr : TrExprS typeEnv Us postActual source postView')
+    (postRawType : typeEnv.HasType Us.length postActual.toCtx postRaw'
+      (.sort rawLevel))
+    (postRawView : typeEnv.IsDefEqU Us.length postActual.toCtx
+      postRaw' postView')
+    (rawBound : resultLevel = .zero ∨ rawLevel ≤ resultLevel) :
+    env.HasType Us.length base.toCtx source' (.sort fieldLevel) ∧
+      fieldLevel ≈ rawLevel ∧
+      (resultLevel = .zero ∨ fieldLevel ≤ resultLevel) := by
+  have baseField := ensureTypeRun_baseType (result := source) henv
+    typeEnvWF.ordered addType baseWF viewDefEq viewUnique viewLift
+    sourceUnique sourceClosed sourceFVars sourceTr actualTr actualType
+  have postViewType : typeEnv.HasType Us.length postActual.toCtx postView'
+      (.sort rawLevel) :=
+    postRawType.defeqU_l typeEnvWF postWF.toCtx postRawView
+  have postViewTypeAtActual : typeEnv.HasType Us.length actual.toCtx
+      postView' (.sort rawLevel) :=
+    postViewType.defeqDFC typeEnvWF.ordered
+      (postRelation.defeqCtx.symm typeEnvWF.ordered)
+  have translatedDefEq : typeEnv.IsDefEqU Us.length actual.toCtx
+      actual' postView' :=
+    (actualTr.mono addType).uniqFVars typeEnvWF postRelation
+      (actualWF.mono addType) postViewTr
+  have actualRawType : typeEnv.HasType Us.length actual.toCtx actual'
+      (.sort rawLevel) :=
+    (translatedDefEq.of_r typeEnvWF (actualWF.mono addType).toCtx
+      postViewTypeAtActual).hasType.1
+  have baseRaw := ensureTypeRun_baseType_mono typeEnvWF addType baseWF
+    viewDefEq viewUnique viewLift sourceUnique sourceClosed sourceFVars
+    sourceTr actualTr actualRawType
+  have levelEq : fieldLevel ≈ rawLevel :=
+    (baseField.mono addType).uniqU typeEnvWF (baseWF.mono addType).toCtx
+      baseRaw |>.sort_inv typeEnvWF (baseWF.mono addType).toCtx
+  refine ⟨baseField, levelEq, ?_⟩
+  rcases rawBound with prop | bound
+  · exact .inl prop
+  · exact .inr (VLevel.le_trans
+      (VLevel.le_antisymm_iff.mp levelEq).1 bound)
+
+theorem ordinaryConsumed_defeq
+    {env typeEnv : VEnv} {Us : List Name}
+    {actual postActual : VLCtx} {source rawSource rawConsumed sourceConsumed : Expr}
+    {actualSource' actualConsumed' postRaw' postView' postConsumed' : VExpr}
+    (typeEnvWF : VEnv.WF typeEnv) (addType : env ≤ typeEnv)
+    (actualWF : VLCtx.WF env Us.length actual)
+    (relation : VLCtx.IsDefEqFVars typeEnv Us.length actual postActual)
+    (actualSourceTr : TrExprS env Us actual source actualSource')
+    (actualAnnotations : env.IsDefEqU Us.length actual.toCtx
+      actualSource' actualConsumed')
+    (actualConsumedType : env.IsType Us.length actual.toCtx actualConsumed')
+    (postViewTr : TrExprS typeEnv Us postActual source postView')
+    (postRawView : typeEnv.IsDefEqU Us.length postActual.toCtx
+      postRaw' postView')
+    (postAnnotations : typeEnv.IsDefEqU Us.length postActual.toCtx
+      postRaw' postConsumed') :
+    ∃ level, typeEnv.IsDefEq Us.length actual.toCtx
+      actualConsumed' postConsumed' (.sort level) := by
+  have actualWF' := actualWF.mono addType
+  have sourceEq : typeEnv.IsDefEqU Us.length actual.toCtx
+      actualSource' postView' :=
+    (actualSourceTr.mono addType).uniqFVars typeEnvWF relation actualWF'
+      postViewTr
+  have postToActual := relation.defeqCtx.symm typeEnvWF.ordered
+  have rawView := postRawView.defeqDFC typeEnvWF.ordered postToActual
+  have rawConsumed := postAnnotations.defeqDFC typeEnvWF.ordered postToActual
+  have consumedEq := (actualAnnotations.mono addType).symm.trans typeEnvWF
+    actualWF'.toCtx (sourceEq.trans typeEnvWF actualWF'.toCtx
+      (rawView.symm.trans typeEnvWF actualWF'.toCtx rawConsumed))
+  obtain ⟨level, consumedType⟩ := actualConsumedType
+  exact ⟨level, consumedEq.of_l typeEnvWF actualWF'.toCtx
+    (consumedType.mono addType)⟩
+
+/-- The terminal kernel sort retained by a candidate recursion translates to
+the exact terminal Theory sort exposed by its analyzer-owned view telescope. -/
+theorem CandidateExprRun.terminalLevel_tr
+    {env : VEnv} {Us : List Name}
+    {candidateContext : AddInductive.Context} {source : Expr}
+    {trace : AddInductive.CandidateExprTrace candidateContext source}
+    {context : VLCtx} {source' view' inferred' : VExpr}
+    (run : CandidateExprRun env Us trace context source' view' inferred')
+    {resultLevel : Level} {resultLevel' : VLevel} {binders : List VExpr}
+    (terminal : trace.terminalResult = .sort resultLevel)
+    (viewEq : view' = VExpr.forallN binders (.sort resultLevel'))
+    (lengthEq : trace.spineLength = binders.length) :
+    VLevel.ofLevel Us resultLevel = some resultLevel' := by
+  induction run generalizing binders with
+  | terminal node =>
+      simp only [AddInductive.CandidateExprTrace.spineLength] at lengthEq
+      have bindersEq : binders = [] := List.eq_nil_of_length_eq_zero
+        lengthEq.symm
+      subst binders
+      simp only [VExpr.forallN] at viewEq
+      simp only [AddInductive.CandidateExprTrace.terminalResult] at terminal
+      rw [terminal, viewEq] at node
+      cases node.whnf.rhs_tr with
+      | sort levelTr => exact levelTr
+  | @forallE domain candidateContext name binderInfo context source inferred
+      body source' domain' body' inferred' domainView' domainInferred'
+      storedDomain' bodyContext storedBody' bodyView' bodyInferred' u v fresh
+      checked normalized annotations annotationsEq domainCandidate bodyCandidate
+      node domainRun annotationsRun bodyRun domainType bodyType bodySource
+      bodyContextEq domainIH bodyIH =>
+      simp only [AddInductive.CandidateExprTrace.spineLength] at lengthEq
+      cases binders with
+      | nil => simp at lengthEq
+      | cons binder binders =>
+          simp only [VExpr.forallN, VExpr.forallE.injEq] at viewEq
+          obtain ⟨_, bodyViewEq⟩ := viewEq
+          apply bodyIH terminal bodyViewEq
+          simpa only [List.length_cons] using Nat.succ.inj lengthEq
+
+end ConstructorValidation
+
+
+namespace ConstructorValidation
+open AddInductive TypeChecker VEnv
+
+/-- Every full-context free variable not deliberately omitted by D3 is still
+present in the family-free common context. -/
+def FullRemovedInvariant (common full : VLCtx)
+    (removed : List FVarId) : Prop :=
+  ∀ fv, fv ∈ full.fvars → fv ∉ removed → fv ∈ common.fvars
+
+theorem FullRemovedInvariant.push
+    (invariant : FullRemovedInvariant common full removed) :
+    FullRemovedInvariant
+      ((some (fv, commonDeps), commonDomain) :: common)
+      ((some (fv, fullDeps), fullDomain) :: full) removed := by
+  intro candidate present notRemoved
+  simp only [VLCtx.fvars_cons_some, List.mem_cons] at present ⊢
+  rcases present with rfl | present
+  · exact .inl rfl
+  · exact .inr (invariant candidate present notRemoved)
+
+theorem FullRemovedInvariant.skip
+    (invariant : FullRemovedInvariant common full removed)
+    (fresh : fv ∉ full.fvars) :
+    FullRemovedInvariant common
+      ((some (fv, fullDeps), fullDomain) :: full) (fv :: removed) := by
+  intro candidate present notRemoved
+  simp only [VLCtx.fvars_cons_some, List.mem_cons] at present
+  rcases present with rfl | present
+  · exact (notRemoved (by simp)).elim
+  · exact invariant candidate present (fun old => notRemoved (by simp [old]))
+
+theorem Context.freshFVarId_eq_of_ngen_eq
+    {left right : AddInductive.Context}
+    (equal : left.ngen = right.ngen) :
+    left.freshFVarId = right.freshFVarId := by
+  simp only [AddInductive.Context.freshFVarId, equal]
+
+theorem Context.push_advance_ngen_eq
+    {left right : AddInductive.Context}
+    (equal : left.ngen = right.ngen) :
+    (left.pushLocalDecl name binderInfo domain).ngen =
+      right.advanceFresh.ngen := by
+  simp only [AddInductive.Context.pushLocalDecl,
+    AddInductive.Context.advanceFresh, equal]
+
+theorem ordinaryConsumed_defeqAt
+    {env typeEnv : VEnv} {Us : List Name}
+    {actual postActual : VLCtx} {source : Expr}
+    {actualSource' actualConsumed' postRaw' postView' postConsumed' : VExpr}
+    {consumedLevel : VLevel}
+    (typeEnvWF : VEnv.WF typeEnv) (addType : env ≤ typeEnv)
+    (actualWF : VLCtx.WF env Us.length actual)
+    (relation : VLCtx.IsDefEqFVars typeEnv Us.length actual postActual)
+    (actualSourceTr : TrExprS env Us actual source actualSource')
+    (actualAnnotations : env.IsDefEqU Us.length actual.toCtx
+      actualSource' actualConsumed')
+    (actualConsumedType : env.HasType Us.length actual.toCtx actualConsumed'
+      (.sort consumedLevel))
+    (postViewTr : TrExprS typeEnv Us postActual source postView')
+    (postRawView : typeEnv.IsDefEqU Us.length postActual.toCtx
+      postRaw' postView')
+    (postAnnotations : typeEnv.IsDefEqU Us.length postActual.toCtx
+      postRaw' postConsumed') :
+    typeEnv.IsDefEq Us.length actual.toCtx
+      actualConsumed' postConsumed' (.sort consumedLevel) := by
+  have actualWF' := actualWF.mono addType
+  have sourceEq : typeEnv.IsDefEqU Us.length actual.toCtx
+      actualSource' postView' :=
+    (actualSourceTr.mono addType).uniqFVars typeEnvWF relation actualWF'
+      postViewTr
+  have postToActual := relation.defeqCtx.symm typeEnvWF.ordered
+  have rawView := postRawView.defeqDFC typeEnvWF.ordered postToActual
+  have rawConsumed := postAnnotations.defeqDFC typeEnvWF.ordered postToActual
+  have consumedEq := (actualAnnotations.mono addType).symm.trans typeEnvWF
+    actualWF'.toCtx (sourceEq.trans typeEnvWF actualWF'.toCtx
+      (rawView.symm.trans typeEnvWF actualWF'.toCtx rawConsumed))
+  exact consumedEq.of_l typeEnvWF actualWF'.toCtx
+    (actualConsumedType.mono addType)
+
+theorem ConstructorUniverseTrace.bound
+    {stats : AddInductive.InductiveStats}
+    {sortResult : Expr}
+    (trace : AddInductive.ConstructorUniverseTrace stats.resultLevel
+      sortResult.sortLevel!)
+    (valid : trace.semantic = true)
+    (resultLevelTr : VLevel.ofLevel Us stats.resultLevel = some resultLevel)
+    (ensureTypeRun : TypeChecker.EnsureTypeRun typeEnv Us postContext
+      source sortResult source') :
+    resultLevel = .zero ∨ ensureTypeRun.resultLevel' ≤ resultLevel := by
+  apply AddInductive.constructorUniverseSemanticGe_ofLevel valid resultLevelTr
+  have sortLevelEq : sortResult.sortLevel! = ensureTypeRun.resultLevel := by
+    simpa only [Expr.sortLevel!] using
+      congrArg Expr.sortLevel! ensureTypeRun.result_eq
+  rw [sortLevelEq]
+  exact ensureTypeRun.resultLevel_tr
+
+/-- D3's terminal index replay transported to the analyzer's exact full
+context and exact translated result target. -/
+theorem terminal_exactAnalyzer
+    {env typeEnv : VEnv} {Us : List Name}
+    {stats : AddInductive.InductiveStats} {familyIdx : Nat}
+    {familyIndices : Expr} {context : AddInductive.Context}
+    {contextRun : AddInductive.ConstructorContextRun env Us context}
+    {source : Expr} {argIdx : Nat} {removed : List FVarId}
+    {recursiveStarted : Bool}
+    {valid : AddInductive.isValidIndAppIdx stats source familyIdx = true}
+    {independent : AddInductive.constructorIndependentOf source removed = true}
+    {spineTrace : AddInductive.ConstructorPreFamilyIndexSpineTrace context
+      familyIndices (source.getAppArgs.toList.drop stats.params.size)}
+    {expected' : VExpr}
+    (spine : AddInductive.ConstructorPreFamilyIndexSpineSemanticRun env Us
+      context contextRun spineTrace expected')
+    (henv : VEnv.WF env) (typeEnvWF : VEnv.WF typeEnv)
+    (addType : env ≤ typeEnv)
+    {common full view : VLCtx} {fullLift viewLift : Lift}
+    (state : D3FullContextState env typeEnv Us context common full
+      contextRun.candidate.context.vlctx view fullLift viewLift)
+    {commonIndices : List VExpr} {familyTarget resultTarget : VExpr}
+    {level : VLevel} {familyName : Name} {familyLevels : List Level}
+    (familyCommonTr : TrExprS env Us common familyIndices
+      (VExpr.forallN commonIndices (.sort level)))
+    (familyFullTr : TrExprS typeEnv Us full familyIndices familyTarget)
+    (familyUnique : TrExprS.IsUnique familyIndices)
+    (indexLength : commonIndices.length = stats.nindices[familyIdx]!)
+    (familyHead : stats.indConsts[familyIdx]! =
+      .const familyName familyLevels)
+    (sourceUnique : TrExprS.IsUnique source)
+    (sourceClosed : Closed source)
+    (sourceFVars : FVarsIn (· ∈ common.fvars) source)
+    (fullTr : TrExprS typeEnv Us full source resultTarget) :
+    env.SpineWF Us.length full.toCtx familyTarget
+      (VInductDecl.recFieldIdxs stats.params.size resultTarget)
+      (.sort level) := by
+  have argumentClosed : ∀ argument ∈
+      source.getAppArgs.toList.drop stats.params.size,
+      Closed argument := by
+    intro argument member
+    apply Closed.getAppArgsList sourceClosed
+    rw [← Expr.getAppArgs_toList]
+    exact List.mem_of_mem_drop member
+  have argumentFVars : ∀ argument ∈
+      source.getAppArgs.toList.drop stats.params.size,
+      FVarsIn (· ∈ common.fvars) argument := by
+    intro argument member
+    apply FVarsIn.getAppArgsList sourceFVars
+    rw [← Expr.getAppArgs_toList]
+    exact List.mem_of_mem_drop member
+  have argumentUnique : ∀ argument ∈
+      source.getAppArgs.toList.drop stats.params.size,
+      TrExprS.IsUnique argument := by
+    intro argument member
+    apply TrExprS.IsUnique.getAppArgsList sourceUnique
+    rw [← Expr.getAppArgs_toList]
+    exact List.mem_of_mem_drop member
+  have argumentLength :
+      (source.getAppArgs.toList.drop stats.params.size).length =
+        commonIndices.length :=
+    (isValidIndAppIdx_indexArgs_length valid).trans indexLength.symm
+  obtain ⟨baseIndices, baseIndicesTr, baseSpine⟩ :=
+    ConstructorPreFamilyIndexSpineSemanticRun.baseSpine_lift
+      spine familyCommonTr familyUnique state.viewDefEq state.viewUnique
+      state.viewExtension argumentClosed argumentFVars argumentUnique
+      argumentLength
+  have commonFamilyAtFull : TrExprS typeEnv Us full familyIndices
+      ((VExpr.forallN commonIndices (.sort level)).lift' fullLift) := by
+    simpa using (familyCommonTr.mono addType).weakFV'
+      typeEnvWF.ordered state.fullExtension state.fullWF
+  have familyEq : familyTarget =
+      (VExpr.forallN commonIndices (.sort level)).lift' fullLift :=
+    familyFullTr.unique familyUnique commonFamilyAtFull
+  have shape := isValidIndAppIdx_shape valid
+  have sourceHead : source.getAppFn = .const familyName familyLevels := by
+    rw [familyHead] at shape
+    change source.getAppFn.eqv (.const familyName familyLevels) = true ∧ _
+      at shape
+    rw [Expr.eqv_eq] at shape
+    generalize headEq : source.getAppFn = head at shape
+    cases head <;> simp_all [Expr.eqv']
+  obtain ⟨targetLevels, targetHead, allArgumentsTr⟩ :=
+    TrExprS.constApp_components fullTr sourceHead
+  have droppedArgumentsTr :=
+    forall₂_drop allArgumentsTr stats.params.size
+  have baseIndicesAtFull : List.Forall₂ (TrExprS typeEnv Us full)
+      (source.getAppArgsList.drop stats.params.size)
+      (baseIndices.map fun index => index.lift' fullLift) := by
+    have baseMono := forall₂_tr_mono addType baseIndicesTr
+    have baseWeak := forall₂_tr_weakFV' typeEnvWF.ordered
+      state.fullExtension state.fullWF baseMono
+    simpa only [Expr.getAppArgs_toList] using baseWeak
+  have translatedIndicesEq :
+      (VExpr.appArgs resultTarget []).drop stats.params.size =
+        baseIndices.map fun index => index.lift' fullLift :=
+    forall₂_translation_unique droppedArgumentsTr baseIndicesAtFull
+      (fun argument member =>
+        TrExprS.IsUnique.getAppArgsList sourceUnique argument
+          (List.mem_of_mem_drop member))
+  have fullSpine : env.SpineWF Us.length full.toCtx
+      ((VExpr.forallN commonIndices (.sort level)).lift' fullLift)
+      (baseIndices.map fun index => index.lift' fullLift) (.sort level) := by
+    simpa using VEnv.SpineWF.weak' henv.ordered
+      state.fullExtension.toCtx baseSpine
+  rw [← familyEq, ← translatedIndicesEq] at fullSpine
+  simpa only [VInductDecl.recFieldIdxs] using fullSpine
+
+def ConstructorFieldsRunResult
+    (env : VEnv) (Us : List Name) (full : VLCtx)
+    (familyTarget : VExpr) (level : VLevel) (familyName : Name)
+    (parameters : Nat) (familyIndices fields : List VExpr)
+    (fieldIndex : Nat) (resultTarget : VExpr) : Prop :=
+  VInductDecl.fieldsWF Us.length familyName parameters env level familyIndices
+      full.toCtx fieldIndex fields ∧
+    env.SpineWF Us.length (fields.reverse ++ full.toCtx)
+      (familyTarget.liftN fields.length 0)
+      (VInductDecl.recFieldIdxs parameters resultTarget) (.sort level)
+
+/-- Synchronize the exact D3 family-free replay with D2's analyzer-owned
+constructor view, deriving every field judgment and the terminal index spine. -/
+theorem constructorFields_exactAnalyzer
+    {env typeEnv : VEnv} {Us : List Name}
+    {stats : AddInductive.InductiveStats} {familyIdx : Nat}
+    {familyIndices : Expr}
+    {d3Context d2Context : AddInductive.Context}
+    {d3ContextRun : AddInductive.ConstructorContextRun env Us d3Context}
+    {d2ContextRun : AddInductive.ConstructorContextRun typeEnv Us d2Context}
+    {view : Expr} {argIdx : Nat} {removed : List FVarId}
+    {recursiveStarted : Bool}
+    {d3Trace : AddInductive.ConstructorPreFamilyViewTrace stats familyIdx
+      familyIndices d3Context view argIdx removed recursiveStarted}
+    (d3 : AddInductive.ConstructorPreFamilyViewSemanticRun env Us stats
+      familyIdx familyIndices d3ContextRun d3Trace)
+    {isUnsafe : Bool} {ctorName : Name} {rawSource : Expr}
+    {d2Fuel whnfFuel : Nat}
+    {d2Trace : AddInductive.ConstructorTypeValidationTrace stats isUnsafe
+      familyIdx ctorName d2Context rawSource argIdx d2Fuel}
+    (d2Alignment : AddInductive.ConstructorViewAlignmentTrace d2Trace view)
+    (d2 : AddInductive.ConstructorViewSemanticRun typeEnv Us whnfFuel
+      d2ContextRun d2Trace view)
+    (henv : VEnv.WF env) (typeEnvWF : VEnv.WF typeEnv)
+    (addType : env ≤ typeEnv)
+    {common full d3ViewContext analyzerViewContext : VLCtx}
+    {fullLift viewLift analyzerViewLift : Lift}
+    (d3State : D3FullContextState env typeEnv Us d3Context common full
+      d3ContextRun.candidate.context.vlctx d3ViewContext fullLift viewLift)
+    (analyzerState : AnalyzerPostContextState typeEnv Us full
+      d2ContextRun.candidate.context.vlctx analyzerViewContext
+      analyzerViewLift)
+    (ordinaryState : recursiveStarted = false →
+      ConstructorOrdinaryContextState env typeEnv Us full
+        d3ContextRun.candidate.context.vlctx d3ViewContext
+        d2ContextRun.candidate.context.vlctx viewLift)
+    (removedEmpty : recursiveStarted = false → removed = [])
+    (removedInvariant : FullRemovedInvariant common full removed)
+    (ngenEq : d3Context.ngen = d2Context.ngen)
+    {commonIndices checkedIndices fields : List VExpr}
+    {familyTarget resultTarget : VExpr} {level : VLevel}
+    {familyName : Name} {familyLevels : List Level}
+    (familyCommonTr : TrExprS env Us common familyIndices
+      (VExpr.forallN commonIndices (.sort level)))
+    (familyFullTr : TrExprS typeEnv Us full familyIndices familyTarget)
+    (familyUnique : TrExprS.IsUnique familyIndices)
+    (indexLength : commonIndices.length = stats.nindices[familyIdx]!)
+    (familyHead : stats.indConsts[familyIdx]! =
+      .const familyName familyLevels)
+    (familyTargetEq : familyTarget =
+      VExpr.forallN (VExpr.liftTelN fieldIndex checkedIndices 0)
+        (.sort level))
+    (resultNotForall : ∀ domain body, resultTarget ≠ .forallE domain body)
+    (resultLevelTr : VLevel.ofLevel Us stats.resultLevel = some level)
+    (absent : env.constants familyName = none)
+    (sourceUnique : TrExprS.IsUnique view)
+    (sourceClosed : Closed view)
+    (wholeTr : TrExprS typeEnv Us full view
+      (VExpr.forallN fields resultTarget))
+    (parametersDone : stats.params.size ≤ argIdx)
+    (universeSemantics : d2Trace.universeSemantics = true)
+    (stageFields : ∀ q field, fields[q]? = some field →
+      VInductDecl.stage3Field Us.length familyName stats.params.size
+        checkedIndices.length (fieldIndex + q) field = true) :
+    ConstructorFieldsRunResult env Us full familyTarget level familyName
+      stats.params.size checkedIndices fields fieldIndex resultTarget := by
+  induction d3 generalizing d2Context d2ContextRun rawSource d2Fuel
+      common full d3ViewContext fullLift viewLift commonIndices familyTarget
+      analyzerViewContext analyzerViewLift fields fieldIndex with
+  | @parameter context parameterArgIdx removed recursiveStarted name domain
+      body binderInfo parameter parameterAt tailTrace contextRun tail ih =>
+      have parameterLt : parameterArgIdx < stats.params.size := by
+        exact Array.getElem?_eq_some_iff.mp parameterAt |>.1
+      omega
+  | @ordinary context ordinaryArgIdx removed recursiveStarted name domain body
+      binderInfo noParameter nonrecursive notStarted domainCheck ensureType
+      consumedCheck annotations fresh tailTrace contextRun domainRun
+      consumedRun ensureTypeRun annotationsRun consumedType tail ih =>
+      cases d2 with
+      | @parameter _ _ _ _ d2Context d2Fuel ordinaryArgIdx name₂
+          rawDomain rawBody
+          binderInfo₂ parameter parameterType parameterAt parameterTypeGet
+          validationDefEq d2TailTrace viewName viewDomain viewBody
+          viewBinderInfo domainCheck₂ viewDomainCheck₂ parameterTypeCheck
+          d2ContextRun domainRun₂ viewDomainRun₂ parameterTypeSemantic
+          validationRun tail₂ =>
+          rw [noParameter] at parameterAt
+          contradiction
+      | @ordinary _ _ _ _ d2Context d2Fuel ordinaryArgIdx name₂
+          rawDomain rawBody
+          binderInfo₂ sortResult noParameter₂ ensureTypeStep universeTrace
+          positivityTrace d2TailTrace viewName viewDomain viewBody
+          viewBinderInfo domainCheck₂ viewDomainCheck₂ viewEquality
+          consumedCheck₂ fresh₂ d2ContextRun domainRun₂ viewDomainRun₂
+          viewEqualityRun₂
+          consumedRun₂ ensureTypeRun₂ positivity₂ annotationsRun₂
+          consumedType₂ tail₂ =>
+          cases d2Alignment with
+          | ordinary _ _ _ _ _ positivityAlignment _ _ _ tailAlignment =>
+              obtain ⟨fieldTarget, bodyTarget, targetEq, fieldType,
+                  bodyType, fieldTr, bodyTr⟩ :=
+                TrExprS.forallE_components wholeTr
+              cases fields with
+              | nil =>
+                  exact (resultNotForall fieldTarget bodyTarget targetEq).elim
+              | cons field fields =>
+                  simp only [VExpr.forallN, VExpr.forallE.injEq] at targetEq
+                  obtain ⟨rfl, rfl⟩ := targetEq
+                  have prefixState : ConstructorOrdinaryContextState
+                      env typeEnv Us full
+                      contextRun.candidate.context.vlctx d3ViewContext
+                      d2ContextRun.candidate.context.vlctx viewLift :=
+                    ordinaryState notStarted
+                  have removedEq := removedEmpty notStarted
+                  subst removed
+                  have actualFieldTr : TrExprS env Us
+                      contextRun.candidate.context.vlctx domain
+                      domainRun.source' := by
+                    simpa only [contextRun.venv_eq, contextRun.lparams_eq]
+                      using domainRun.check.expr_tr
+                  have actualFieldType : env.HasType Us.length
+                      contextRun.candidate.context.vlctx.toCtx
+                      domainRun.source' (.sort ensureTypeRun.resultLevel') := by
+                    simpa only [contextRun.venv_eq, contextRun.lparams_eq]
+                      using ensureTypeRun.source_type
+                  have actualAnnotations : env.IsDefEqU Us.length
+                      contextRun.candidate.context.vlctx.toCtx
+                      domainRun.source' consumedRun.source' := by
+                    simpa only [contextRun.venv_eq, contextRun.lparams_eq]
+                      using annotationsRun.isDefEqU
+                  obtain ⟨consumedLevel, actualConsumedType⟩ := consumedType
+                  have actualConsumedType' : env.HasType Us.length
+                      contextRun.candidate.context.vlctx.toCtx
+                      consumedRun.source' (.sort consumedLevel) := by
+                    simpa only [contextRun.venv_eq, contextRun.lparams_eq]
+                      using actualConsumedType
+                  let nextD3ContextRun := contextRun.pushLocalDecl name
+                    binderInfo (consumeTypeAnnotations domain) fresh
+                    consumedRun.source' consumedRun.check.expr_tr
+                    ⟨consumedLevel, actualConsumedType⟩
+                  have actualTailWF : VLCtx.WF env Us.length
+                      ((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam consumedRun.source') ::
+                        contextRun.candidate.context.vlctx) := by
+                    have nextWF := nextD3ContextRun.candidate.context.Δwf
+                    rw [nextD3ContextRun.venv_eq,
+                      nextD3ContextRun.lparams_eq] at nextWF
+                    simpa only [nextD3ContextRun,
+                      AddInductive.ConstructorContextRun.pushLocalDecl,
+                      CandidateContextRun.pushLocalDecl_vlctx] using nextWF
+                  have postViewTr : TrExprS typeEnv Us
+                      d2ContextRun.candidate.context.vlctx domain
+                      viewDomainRun₂.source' := by
+                    simpa only [d2ContextRun.venv_eq,
+                      d2ContextRun.lparams_eq] using
+                      viewDomainRun₂.check.expr_tr
+                  have postRawType : typeEnv.HasType Us.length
+                      d2ContextRun.candidate.context.vlctx.toCtx
+                      domainRun₂.source' (.sort ensureTypeRun₂.resultLevel') := by
+                    simpa only [d2ContextRun.venv_eq,
+                      d2ContextRun.lparams_eq] using ensureTypeRun₂.source_type
+                  have postRawView : typeEnv.IsDefEqU Us.length
+                      d2ContextRun.candidate.context.vlctx.toCtx
+                      domainRun₂.source' viewDomainRun₂.source' := by
+                    simpa only [d2ContextRun.venv_eq,
+                      d2ContextRun.lparams_eq] using
+                      viewEqualityRun₂.isDefEqU
+                  have postAnnotations : typeEnv.IsDefEqU Us.length
+                      d2ContextRun.candidate.context.vlctx.toCtx
+                      domainRun₂.source' consumedRun₂.source' := by
+                    simpa only [d2ContextRun.venv_eq,
+                      d2ContextRun.lparams_eq] using
+                      annotationsRun₂.isDefEqU
+                  let nextD2ContextRun := d2ContextRun.pushLocalDecl name₂
+                    binderInfo₂ (consumeTypeAnnotations rawDomain) fresh₂
+                    consumedRun₂.source' consumedRun₂.check.expr_tr
+                    consumedType₂
+                  have postTailWF : VLCtx.WF typeEnv Us.length
+                      ((some (d2Context.freshFVarId,
+                          (consumeTypeAnnotations rawDomain).fvarsList),
+                        .vlam consumedRun₂.source') ::
+                        d2ContextRun.candidate.context.vlctx) := by
+                    have nextWF := nextD2ContextRun.candidate.context.Δwf
+                    rw [nextD2ContextRun.venv_eq,
+                      nextD2ContextRun.lparams_eq] at nextWF
+                    simpa only [nextD2ContextRun,
+                      AddInductive.ConstructorContextRun.pushLocalDecl,
+                      CandidateContextRun.pushLocalDecl_vlctx] using nextWF
+                  simp only [AddInductive.ConstructorTypeValidationTrace.universeSemantics,
+                    Bool.and_eq_true] at universeSemantics
+                  have sortLevelEq : sortResult.sortLevel! =
+                      ensureTypeRun₂.resultLevel := by
+                    simpa only [Expr.sortLevel!] using
+                      congrArg Expr.sortLevel! ensureTypeRun₂.result_eq
+                  have fieldLevelTr : VLevel.ofLevel Us
+                      sortResult.sortLevel! =
+                        some ensureTypeRun₂.resultLevel' := by
+                    rw [sortLevelEq]
+                    simpa only [d2ContextRun.lparams_eq] using
+                      ensureTypeRun₂.resultLevel_tr
+                  have rawBound :=
+                    AddInductive.constructorUniverseSemanticGe_ofLevel
+                      universeSemantics.1 resultLevelTr fieldLevelTr
+                  obtain ⟨fieldBaseType, levelEq, fieldBound⟩ :=
+                    ordinaryField_baseTypes henv typeEnvWF addType
+                      prefixState.baseWF prefixState.actualWF
+                      prefixState.postWF prefixState.postRelation
+                      prefixState.viewDefEq prefixState.viewUnique
+                      prefixState.viewLift sourceUnique.1 sourceClosed.1
+                      fieldTr.fvarsIn fieldTr actualFieldTr actualFieldType
+                      postViewTr postRawType postRawView rawBound
+                  have fieldFree : field.hasConst familyName = false :=
+                    VEnv.HasType.hasConst_false_of_absent henv.ordered
+                      prefixState.baseWF.toCtx absent fieldBaseType
+                  have recNone := recArg?_eq_none_of_hasConst_false
+                    (U := Us.length) (np := stats.params.size)
+                    (ni := checkedIndices.length) (fieldIndex := fieldIndex)
+                    fieldFree
+                  have consumedEq := ordinaryConsumed_defeqAt typeEnvWF
+                    addType prefixState.actualWF prefixState.postRelation
+                    actualFieldTr actualAnnotations actualConsumedType'
+                    postViewTr postRawView postAnnotations
+                  have depsSubset :
+                      (consumeTypeAnnotations domain).fvarsList ⊆ full.fvars :=
+                    (FVarsIn.consumeTypeAnnotations fieldTr.fvarsIn
+                      |> fvarsIn_iff.mp).1
+                  have freshEq : context.freshFVarId =
+                      d2Context.freshFVarId :=
+                    Context.freshFVarId_eq_of_ngen_eq ngenEq
+                  have postTailWF' : VLCtx.WF typeEnv Us.length
+                      ((some (context.freshFVarId,
+                          (consumeTypeAnnotations rawDomain).fvarsList),
+                        .vlam consumedRun₂.source') ::
+                        d2ContextRun.candidate.context.vlctx) := by
+                    rw [freshEq]
+                    exact postTailWF
+                  have nextPrefixState := prefixState.push henv typeEnvWF
+                    addType sourceUnique.1 fieldTr actualFieldTr
+                    actualAnnotations actualConsumedType' fieldBaseType
+                    depsSubset actualTailWF rfl postTailWF' consumedEq
+                  have domainFVars : FVarsIn (· ∈ common.fvars) domain :=
+                    fieldTr.fvarsIn.mono fun fv member =>
+                      removedInvariant fv member (by simp)
+                  obtain ⟨commonDomain, commonDomainTr, fieldEq,
+                      commonDomainType, nextD3State⟩ :=
+                    d3State.push (name := name) (binderInfo := binderInfo)
+                      henv typeEnvWF addType sourceUnique.1
+                      sourceClosed.1 domainFVars fieldTr actualFieldTr
+                      actualFieldType actualAnnotations actualConsumedType'
+                      actualTailWF
+                  obtain ⟨postAnalyzerType, nextAnalyzerState⟩ :=
+                    analyzerState.push typeEnvWF sourceUnique.1 sourceClosed.1
+                      fieldTr postViewTr postRawType postRawView
+                      postAnnotations postTailWF
+                  have viewWF : VLCtx.WF env Us.length d3ViewContext :=
+                    (d3State.viewDefEq.symm henv.ordered).wf
+                  have fieldAtView : TrExprS typeEnv Us d3ViewContext domain
+                      (field.lift' viewLift) :=
+                    fieldTr.weakFV' typeEnvWF.ordered prefixState.viewLift
+                      (viewWF.mono addType)
+                  have commonAtView : TrExprS typeEnv Us d3ViewContext domain
+                      (commonDomain.lift' viewLift) :=
+                    commonDomainTr.weakFV' typeEnvWF.ordered
+                      d3State.viewExtension (viewWF.mono addType)
+                  have viewFieldEq : field.lift' viewLift =
+                      commonDomain.lift' viewLift :=
+                    fieldAtView.unique sourceUnique.1 commonAtView
+                  have nextD3State' : D3FullContextState env typeEnv Us
+                      (context.pushLocalDecl name binderInfo
+                        (consumeTypeAnnotations domain))
+                      ((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam commonDomain) :: common)
+                      ((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam field) :: full)
+                      nextD3ContextRun.candidate.context.vlctx
+                      ((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam (field.lift' viewLift)) :: d3ViewContext)
+                      (.consN fullLift 1) (.consN viewLift 1) := by
+                    rw [viewFieldEq]
+                    simpa only [vlctxCons, nextD3ContextRun,
+                      AddInductive.ConstructorContextRun.pushLocalDecl,
+                      CandidateContextRun.pushLocalDecl_vlctx] using
+                      nextD3State
+                  have nextAnalyzerState' : AnalyzerPostContextState
+                      typeEnv Us
+                      ((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam field) :: full)
+                      nextD2ContextRun.candidate.context.vlctx
+                      ((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam (field.lift' analyzerViewLift)) ::
+                        analyzerViewContext)
+                      (.consN analyzerViewLift 1) := by
+                    rw [freshEq]
+                    simpa only [nextD2ContextRun,
+                      AddInductive.ConstructorContextRun.pushLocalDecl,
+                      CandidateContextRun.pushLocalDecl_vlctx] using
+                      nextAnalyzerState
+                  have nextPrefixState' : ConstructorOrdinaryContextState
+                      env typeEnv Us
+                      ((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam field) :: full)
+                      nextD3ContextRun.candidate.context.vlctx
+                      ((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam (field.lift' viewLift)) :: d3ViewContext)
+                      nextD2ContextRun.candidate.context.vlctx
+                      (.consN viewLift 1) := by
+                    have nextD2VlctxEq :
+                        nextD2ContextRun.candidate.context.vlctx =
+                          ((some (context.freshFVarId,
+                              (consumeTypeAnnotations rawDomain).fvarsList),
+                            .vlam consumedRun₂.source') ::
+                            d2ContextRun.candidate.context.vlctx) := by
+                      simp only [nextD2ContextRun,
+                        AddInductive.ConstructorContextRun.pushLocalDecl,
+                        CandidateContextRun.pushLocalDecl_vlctx]
+                      rw [← freshEq]
+                    rw [nextD2VlctxEq]
+                    simpa only [nextD3ContextRun,
+                      AddInductive.ConstructorContextRun.pushLocalDecl,
+                      CandidateContextRun.pushLocalDecl_vlctx] using
+                      nextPrefixState
+                  have familyCommonNext : TrExprS env Us
+                      ((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam commonDomain) :: common)
+                      familyIndices
+                      (VExpr.forallN (VExpr.liftTelN 1 commonIndices 0)
+                        (.sort level)) := by
+                    have weakened := familyCommonTr.weakFV henv.ordered
+                      (VLCtx.FVLift.skip_fvar
+                        (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList)
+                        (.vlam commonDomain) .refl)
+                      nextD3State'.commonWF
+                    simpa [VLocalDecl.depth, VExpr.liftN_forallN,
+                      VExpr.liftN] using weakened
+                  have familyFullNext : TrExprS typeEnv Us
+                      ((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam field) :: full)
+                      familyIndices (familyTarget.liftN 1 0) := by
+                    have weakened := familyFullTr.weakFV typeEnvWF.ordered
+                      (VLCtx.FVLift.skip_fvar
+                        (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList)
+                        (.vlam field) .refl)
+                      nextD3State'.fullWF
+                    simpa [VLocalDecl.depth] using weakened
+                  have bodyOpened : TrExprS typeEnv Us
+                      ((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam field) :: full)
+                      (body.instantiate1 context.freshExpr)
+                      (VExpr.forallN fields resultTarget) := by
+                    simpa only [AddInductive.Context.freshExpr,
+                      Expr.instantiate1_eq] using
+                      bodyTr.inst_fvar typeEnvWF.ordered nextD3State'.fullWF
+                  have tailUnique : TrExprS.IsUnique
+                      (body.instantiate1 context.freshExpr) := by
+                    apply TrExprS.IsUnique.instantiate1 sourceUnique.2
+                    simp only [AddInductive.Context.freshExpr]
+                    trivial
+                  have nextFullNoBV :
+                      VLCtx.bvars (((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam field) :: full) : VLCtx) = 0 :=
+                    nextD3State'.fullExtension.bvars_eq.trans
+                      nextD3State'.commonNoBV
+                  have tailClosed : Closed
+                      (body.instantiate1 context.freshExpr) := by
+                    have closed := bodyOpened.closed
+                    rw [nextFullNoBV] at closed
+                    exact closed
+                  have freshExprEq : d2Context.freshExpr =
+                      context.freshExpr := by
+                    simp only [AddInductive.Context.freshExpr, freshEq]
+                  have tailAlignment' : AddInductive.ConstructorViewAlignmentTrace
+                      d2TailTrace (body.instantiate1 context.freshExpr) := by
+                    rw [← freshExprEq]
+                    exact tailAlignment
+                  have tail₂' : AddInductive.ConstructorViewSemanticRun
+                      typeEnv Us whnfFuel nextD2ContextRun d2TailTrace
+                      (body.instantiate1 context.freshExpr) := by
+                    rw [← freshExprEq]
+                    exact tail₂
+                  have nextNgenEq :
+                      (context.pushLocalDecl name binderInfo
+                        (consumeTypeAnnotations domain)).ngen =
+                      (d2Context.pushLocalDecl name₂ binderInfo₂
+                        (consumeTypeAnnotations rawDomain)).ngen := by
+                    simpa only [AddInductive.Context.pushLocalDecl, ngenEq]
+                  have nextIndexLength :
+                      (VExpr.liftTelN 1 commonIndices 0).length =
+                        stats.nindices[familyIdx]! := by
+                    simpa only [VExpr.liftTelN_length] using indexLength
+                  have familyTargetNextEq : familyTarget.liftN 1 0 =
+                      VExpr.forallN
+                        (VExpr.liftTelN (fieldIndex + 1) checkedIndices 0)
+                        (.sort level) := by
+                    rw [familyTargetEq, VExpr.liftN_forallN,
+                      VExpr.liftTelN_liftTelN]
+                    simp only [VExpr.liftN]
+                  have stageTail : ∀ q candidate,
+                      fields[q]? = some candidate →
+                      VInductDecl.stage3Field Us.length familyName
+                        stats.params.size checkedIndices.length
+                        (fieldIndex + 1 + q) candidate = true := by
+                    intro q candidate member
+                    have staged := stageFields (q + 1) candidate (by
+                      simpa using member)
+                    simpa only [Nat.add_assoc, Nat.add_comm 1 q] using staged
+                  obtain ⟨tailFields, tailSpine⟩ := ih
+                    (fieldIndex := fieldIndex + 1) tailAlignment' tail₂'
+                    nextD3State' nextAnalyzerState'
+                    (fun _ => nextPrefixState') (fun _ => rfl)
+                    (removedInvariant.push) nextNgenEq familyCommonNext
+                    familyFullNext nextIndexLength familyTargetNextEq
+                    tailUnique tailClosed bodyOpened (by omega)
+                    universeSemantics.2 stageTail
+                  unfold ConstructorFieldsRunResult
+                  refine ⟨⟨?_, ?_, ?_⟩, ?_⟩
+                  · exact .inr (.inr ⟨recNone, ensureTypeRun.resultLevel',
+                      fieldBaseType, fieldBound⟩)
+                  · intro recursive
+                    rw [VInductDecl.recArg?_of_isRecField recursive] at recNone
+                    contradiction
+                  · simpa only [VLCtx.toCtx] using tailFields
+                  · simpa only [List.reverse_cons, List.singleton_append,
+                      List.append_assoc, VLCtx.toCtx, List.length_cons,
+                      VExpr.liftN_liftN, Nat.add_comm] using tailSpine
+      | terminal sourceRun₂ viewRun₂ =>
+          cases d2Alignment <;> simp_all [Expr.isForall]
+  | @recursive context recursiveArgIdx removed recursiveStarted name domain
+      body binderInfo noParameter isRecursive independent fieldTrace fresh
+      tailTrace contextRun recursiveRun tail ih =>
+      cases d2 with
+      | @parameter _ _ _ _ d2Context d2Fuel recursiveArgIdx name₂
+          rawDomain rawBody binderInfo₂ parameter parameterType parameterAt
+          parameterTypeGet validationDefEq d2TailTrace viewName viewDomain
+          viewBody viewBinderInfo domainCheck₂ viewDomainCheck₂
+          parameterTypeCheck d2ContextRun domainRun₂ viewDomainRun₂
+          parameterTypeSemantic validationRun tail₂ =>
+          rw [noParameter] at parameterAt
+          contradiction
+      | @ordinary _ _ _ _ d2Context d2Fuel recursiveArgIdx name₂
+          rawDomain rawBody binderInfo₂ sortResult noParameter₂
+          ensureTypeStep universeTrace positivityTrace d2TailTrace viewName
+          viewDomain viewBody viewBinderInfo domainCheck₂ viewDomainCheck₂
+          viewEquality consumedCheck₂ fresh₂ d2ContextRun domainRun₂
+          viewDomainRun₂ viewEqualityRun₂ consumedRun₂ ensureTypeRun₂
+          positivity₂ annotationsRun₂ consumedType₂ tail₂ =>
+          cases d2Alignment with
+          | ordinary _ _ _ _ _ positivityAlignment _ _ _ tailAlignment =>
+              obtain ⟨fieldTarget, bodyTarget, targetEq, fieldType,
+                  bodyType, fieldTr, bodyTr⟩ :=
+                TrExprS.forallE_components wholeTr
+              cases fields with
+              | nil =>
+                  exact (resultNotForall fieldTarget bodyTarget targetEq).elim
+              | cons field fields =>
+                  simp only [VExpr.forallN, VExpr.forallE.injEq] at targetEq
+                  obtain ⟨rfl, rfl⟩ := targetEq
+                  have postViewTr : TrExprS typeEnv Us
+                      d2ContextRun.candidate.context.vlctx domain
+                      viewDomainRun₂.source' := by
+                    simpa only [d2ContextRun.venv_eq,
+                      d2ContextRun.lparams_eq] using
+                      viewDomainRun₂.check.expr_tr
+                  have postRawType : typeEnv.HasType Us.length
+                      d2ContextRun.candidate.context.vlctx.toCtx
+                      domainRun₂.source' (.sort ensureTypeRun₂.resultLevel') := by
+                    simpa only [d2ContextRun.venv_eq,
+                      d2ContextRun.lparams_eq] using ensureTypeRun₂.source_type
+                  have postRawView : typeEnv.IsDefEqU Us.length
+                      d2ContextRun.candidate.context.vlctx.toCtx
+                      domainRun₂.source' viewDomainRun₂.source' := by
+                    simpa only [d2ContextRun.venv_eq,
+                      d2ContextRun.lparams_eq] using
+                      viewEqualityRun₂.isDefEqU
+                  have postAnnotations : typeEnv.IsDefEqU Us.length
+                      d2ContextRun.candidate.context.vlctx.toCtx
+                      domainRun₂.source' consumedRun₂.source' := by
+                    simpa only [d2ContextRun.venv_eq,
+                      d2ContextRun.lparams_eq] using annotationsRun₂.isDefEqU
+                  let nextD2ContextRun := d2ContextRun.pushLocalDecl name₂
+                    binderInfo₂ (consumeTypeAnnotations rawDomain) fresh₂
+                    consumedRun₂.source' consumedRun₂.check.expr_tr
+                    consumedType₂
+                  have postTailWF : VLCtx.WF typeEnv Us.length
+                      ((some (d2Context.freshFVarId,
+                          (consumeTypeAnnotations rawDomain).fvarsList),
+                        .vlam consumedRun₂.source') ::
+                        d2ContextRun.candidate.context.vlctx) := by
+                    have nextWF := nextD2ContextRun.candidate.context.Δwf
+                    rw [nextD2ContextRun.venv_eq,
+                      nextD2ContextRun.lparams_eq] at nextWF
+                    simpa only [nextD2ContextRun,
+                      AddInductive.ConstructorContextRun.pushLocalDecl,
+                      CandidateContextRun.pushLocalDecl_vlctx] using nextWF
+                  simp only [
+                    AddInductive.ConstructorTypeValidationTrace.universeSemantics,
+                    Bool.and_eq_true] at universeSemantics
+                  have freshEq : context.freshFVarId =
+                      d2Context.freshFVarId :=
+                    Context.freshFVarId_eq_of_ngen_eq ngenEq
+                  obtain ⟨postAnalyzerType, nextAnalyzerState⟩ :=
+                    analyzerState.push typeEnvWF sourceUnique.1 sourceClosed.1
+                      fieldTr postViewTr postRawType postRawView
+                      postAnnotations postTailWF
+                  have nextAnalyzerState' : AnalyzerPostContextState
+                      typeEnv Us
+                      ((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam field) :: full)
+                      nextD2ContextRun.candidate.context.vlctx
+                      ((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam (field.lift' analyzerViewLift)) ::
+                        analyzerViewContext)
+                      (.consN analyzerViewLift 1) := by
+                    rw [freshEq]
+                    simpa only [nextD2ContextRun,
+                      AddInductive.ConstructorContextRun.pushLocalDecl,
+                      CandidateContextRun.pushLocalDecl_vlctx] using
+                      nextAnalyzerState
+                  have domainFVars : FVarsIn (· ∈ common.fvars) domain :=
+                    constructorIndependentOf_fvars fieldTr.fvarsIn
+                      independent removedInvariant
+                  have recursiveResult := recursiveField_exactAnalyzer
+                    recursiveRun henv typeEnvWF addType d3State
+                    familyCommonTr familyFullTr familyUnique indexLength
+                    familyHead sourceUnique.1 sourceClosed.1 domainFVars fieldTr
+                  have stageHead : VInductDecl.stage3Field Us.length
+                      familyName stats.params.size checkedIndices.length
+                      fieldIndex field = true := by
+                    simpa using stageFields 0 field (by simp)
+                  obtain ⟨recursive, recursiveEq, recursiveWF⟩ :=
+                    recursiveFieldResult_recArgWF recursiveResult
+                      familyTargetEq stageHead
+                  have nextD3State : D3FullContextState env typeEnv Us
+                      context.advanceFresh common
+                      ((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam field) :: full)
+                      contextRun.advanceFresh.candidate.context.vlctx
+                      d3ViewContext (.skipN fullLift 1) viewLift := by
+                    simpa only [AddInductive.ConstructorContextRun.advanceFresh,
+                      AddInductive.advanceCandidateContextRun] using
+                      d3State.skip (source := domain)
+                        nextAnalyzerState'.fullWF
+                  have familyFullNext : TrExprS typeEnv Us
+                      ((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam field) :: full)
+                      familyIndices (familyTarget.liftN 1 0) := by
+                    have weakened := familyFullTr.weakFV typeEnvWF.ordered
+                      (VLCtx.FVLift.skip_fvar
+                        (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList)
+                        (.vlam field) .refl)
+                      nextD3State.fullWF
+                    simpa [VLocalDecl.depth] using weakened
+                  have bodyOpened : TrExprS typeEnv Us
+                      ((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam field) :: full)
+                      (body.instantiate1 context.freshExpr)
+                      (VExpr.forallN fields resultTarget) := by
+                    simpa only [AddInductive.Context.freshExpr,
+                      Expr.instantiate1_eq] using
+                      bodyTr.inst_fvar typeEnvWF.ordered nextD3State.fullWF
+                  have tailUnique : TrExprS.IsUnique
+                      (body.instantiate1 context.freshExpr) := by
+                    apply TrExprS.IsUnique.instantiate1 sourceUnique.2
+                    simp only [AddInductive.Context.freshExpr]
+                    trivial
+                  have nextFullNoBV :
+                      VLCtx.bvars (((some (context.freshFVarId,
+                          (consumeTypeAnnotations domain).fvarsList),
+                        .vlam field) :: full) : VLCtx) = 0 :=
+                    nextD3State.fullExtension.bvars_eq.trans
+                      nextD3State.commonNoBV
+                  have tailClosed : Closed
+                      (body.instantiate1 context.freshExpr) := by
+                    have closed := bodyOpened.closed
+                    rw [nextFullNoBV] at closed
+                    exact closed
+                  have freshExprEq : d2Context.freshExpr =
+                      context.freshExpr := by
+                    simp only [AddInductive.Context.freshExpr, freshEq]
+                  have tailAlignment' : AddInductive.ConstructorViewAlignmentTrace
+                      d2TailTrace (body.instantiate1 context.freshExpr) := by
+                    rw [← freshExprEq]
+                    exact tailAlignment
+                  have tail₂' : AddInductive.ConstructorViewSemanticRun
+                      typeEnv Us whnfFuel nextD2ContextRun d2TailTrace
+                      (body.instantiate1 context.freshExpr) := by
+                    rw [← freshExprEq]
+                    exact tail₂
+                  have nextNgenEq : context.advanceFresh.ngen =
+                      (d2Context.pushLocalDecl name₂ binderInfo₂
+                        (consumeTypeAnnotations rawDomain)).ngen := by
+                    simp only [AddInductive.Context.advanceFresh,
+                      AddInductive.Context.pushLocalDecl, ngenEq]
+                  have freshFull : context.freshFVarId ∉ full.fvars :=
+                    (nextAnalyzerState'.fullWF.2.1 _ _ rfl).1
+                  have familyTargetNextEq : familyTarget.liftN 1 0 =
+                      VExpr.forallN
+                        (VExpr.liftTelN (fieldIndex + 1) checkedIndices 0)
+                        (.sort level) := by
+                    rw [familyTargetEq, VExpr.liftN_forallN,
+                      VExpr.liftTelN_liftTelN]
+                    simp only [VExpr.liftN]
+                  have stageTail : ∀ q candidate,
+                      fields[q]? = some candidate →
+                      VInductDecl.stage3Field Us.length familyName
+                        stats.params.size checkedIndices.length
+                        (fieldIndex + 1 + q) candidate = true := by
+                    intro q candidate member
+                    have staged := stageFields (q + 1) candidate (by
+                      simpa using member)
+                    simpa only [Nat.add_assoc, Nat.add_comm 1 q] using staged
+                  obtain ⟨tailFields, tailSpine⟩ := ih
+                    (fieldIndex := fieldIndex + 1) tailAlignment' tail₂'
+                    nextD3State nextAnalyzerState'
+                    (fun impossible => by simp at impossible)
+                    (fun impossible => by simp at impossible)
+                    (removedInvariant.skip freshFull) nextNgenEq
+                    familyCommonTr familyFullNext indexLength
+                    familyTargetNextEq tailUnique tailClosed bodyOpened
+                    (by omega) universeSemantics.2 stageTail
+                  have headClassification :
+                      VInductDecl.isRecField Us.length familyName
+                          stats.params.size checkedIndices.length fieldIndex
+                          field = true ∨
+                        (∃ descriptor,
+                          VInductDecl.recArg? Us.length familyName
+                              stats.params.size checkedIndices.length
+                              fieldIndex field = some descriptor ∧
+                            descriptor.binders ≠ [] ∧
+                            descriptor.WF Us.length env level checkedIndices
+                              full.toCtx) ∨
+                        VInductDecl.recArg? Us.length familyName
+                            stats.params.size checkedIndices.length fieldIndex
+                            field = none ∧
+                          ∃ fieldLevel,
+                            env.HasType Us.length full.toCtx field
+                                (.sort fieldLevel) ∧
+                              (level = .zero ∨ fieldLevel ≤ level) := by
+                    by_cases nonempty : recursive.binders ≠ []
+                    · exact .inr (.inl ⟨recursive, recursiveEq, nonempty,
+                        recursiveWF⟩)
+                    · have empty : recursive.binders = [] := by
+                        simpa using nonempty
+                      exact .inl
+                        (VInductDecl.recArg?_nil recursiveEq empty).1
+                  have headDirectSpine :
+                      VInductDecl.isRecField Us.length familyName
+                          stats.params.size checkedIndices.length fieldIndex
+                          field = true →
+                        env.SpineWF Us.length full.toCtx
+                          (VExpr.forallN
+                            (VExpr.liftTelN fieldIndex checkedIndices 0)
+                            (.sort level))
+                          (VInductDecl.recFieldIdxs stats.params.size field)
+                          (.sort level) := by
+                    intro direct
+                    have canonical :=
+                      VInductDecl.recArg?_of_isRecField direct
+                    have descriptorEq : recursive =
+                        { fieldIndex := fieldIndex, binders := [],
+                          targetType := 0,
+                          indices := VInductDecl.recFieldIdxs
+                            stats.params.size field } :=
+                      Option.some.inj (recursiveEq.symm.trans canonical)
+                    rw [descriptorEq] at recursiveWF
+                    simpa [VInductDecl.RecArg.WF] using recursiveWF.2
+                  unfold ConstructorFieldsRunResult
+                  refine ⟨⟨headClassification, headDirectSpine, ?_⟩, ?_⟩
+                  · simpa only [VLCtx.toCtx] using tailFields
+                  · simpa only [List.reverse_cons, List.singleton_append,
+                      List.append_assoc, VLCtx.toCtx, List.length_cons,
+                      VExpr.liftN_liftN, Nat.add_comm] using tailSpine
+      | terminal sourceRun₂ viewRun₂ =>
+          cases d2Alignment <;> simp_all [Expr.isForall]
+  | @terminal context source terminalArgIdx removed recursiveStarted valid
+      independent spineTrace contextRun expected spine =>
+      have shape := isValidIndAppIdx_shape valid
+      have sourceHead : source.getAppFn = .const familyName familyLevels := by
+        rw [familyHead] at shape
+        change source.getAppFn.eqv (.const familyName familyLevels) = true ∧ _
+          at shape
+        rw [Expr.eqv_eq] at shape
+        generalize headEq : source.getAppFn = head at shape
+        cases head <;> simp_all [Expr.eqv']
+      cases fields with
+      | nil =>
+          unfold ConstructorFieldsRunResult
+          refine ⟨trivial, ?_⟩
+          simpa using terminal_exactAnalyzer
+            (argIdx := terminalArgIdx) (removed := removed)
+            (recursiveStarted := recursiveStarted) (valid := valid)
+            (independent := independent) (resultTarget := resultTarget)
+            spine henv typeEnvWF addType d3State
+            familyCommonTr familyFullTr familyUnique indexLength familyHead
+            sourceUnique sourceClosed
+            (constructorIndependentOf_fvars wholeTr.fvarsIn independent
+              removedInvariant)
+            wholeTr
+      | cons field fields =>
+          cases wholeTr
+          all_goals simp_all [Expr.getAppFn]
+
+end ConstructorValidation
+
+namespace VInductDecl
+open AddInductive TypeChecker VEnv
+
+theorem stagedIndexCount_eq
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name} {kernelSource : InductiveType}
+    {source : VInductDecl}
+    {candidate : AddInductive.NormalizationCandidate [kernelSource]}
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us candidate source)
+    (normalization : NormalizationCandidateSemanticRun env Us candidate source)
+    (generation : GenerationChecked source)
+    (analysis : normalization.root.normalization.generation? =
+      some generation)
+    (shape : normalization.generationShape = true) :
+    (input.postFamilyInput.universeInput.staged.family.validation.stats
+        ).nindices[0]! = generation.block.checked.indices.length := by
+  let validation := input.postFamilyInput.universeInput.staged.family.validation
+  have familyShape := shape
+  simp only [NormalizationCandidateSemanticRun.generationShape,
+    normalizationCandidateGenerationShape, Bool.and_eq_true,
+    beq_iff_eq] at familyShape
+  have spineLengthEq :
+      candidate.families.singleton.familyType.type.trace.spineLength =
+        (generation.block.checked.params ++
+          generation.block.checked.indices).length := by
+    calc
+      _ = (VExpr.telN source.nparams normalization.raw.type ++
+          ctorFields (VExpr.dropN source.nparams normalization.raw.type)).length :=
+        familyShape.1.2
+      _ = (generation.block.rawParams ++
+          generation.block.rawIndices).length := by
+        simp only [NormalizedChecked.rawParams, NormalizedChecked.rawIndices,
+          NormalizationCandidateSemanticRun.root,
+          normalization.root.sourceType_eq generation]
+      _ = (generation.block.checked.params ++
+          generation.block.checked.indices).length := by
+        simp only [List.length_append]
+        rw [generation.shape.2.1, generation.shape.2.2.1]
+  have parameterLength : generation.block.checked.params.length =
+      source.nparams :=
+    generation.block.checked.direct_anatomy.2.1.trans
+      generation.block.nparams_eq.symm
+  change validation.stats.nindices[0]! = _
+  rw [validation.stats_eq]
+  simp only [CandidateExprTrace.singletonCandidateInductiveStats]
+  rw [spineLengthEq, List.length_append, parameterLength,
+    input.postFamilyInput.universeInput.staged.validation_nparams_eq,
+    Nat.add_sub_cancel_left]
+  rfl
+
+theorem stagedResultLevel_tr
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name} {kernelSource : InductiveType}
+    {source : VInductDecl}
+    {candidate : AddInductive.NormalizationCandidate [kernelSource]}
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us candidate source)
+    (normalization : NormalizationCandidateSemanticRun env Us candidate source)
+    (generation : GenerationChecked source)
+    (analysis : normalization.root.normalization.generation? =
+      some generation)
+    (shape : normalization.generationShape = true) :
+    VLevel.ofLevel Us
+        input.postFamilyInput.universeInput.staged.family.validation.stats.resultLevel =
+      some generation.block.checked.resultLevel := by
+  let validation := input.postFamilyInput.universeInput.staged.family.validation
+  have familyShape := shape
+  simp only [NormalizationCandidateSemanticRun.generationShape,
+    normalizationCandidateGenerationShape, Bool.and_eq_true,
+    beq_iff_eq] at familyShape
+  have spineLengthEq :
+      candidate.families.singleton.familyType.type.trace.spineLength =
+        (generation.block.checked.params ++
+          generation.block.checked.indices).length := by
+    calc
+      _ = (VExpr.telN source.nparams normalization.raw.type ++
+          ctorFields (VExpr.dropN source.nparams normalization.raw.type)).length :=
+        familyShape.1.2
+      _ = (generation.block.rawParams ++
+          generation.block.rawIndices).length := by
+        simp only [NormalizedChecked.rawParams, NormalizedChecked.rawIndices,
+          NormalizationCandidateSemanticRun.root,
+          normalization.root.sourceType_eq generation]
+      _ = (generation.block.checked.params ++
+          generation.block.checked.indices).length := by
+        simp only [List.length_append]
+        rw [generation.shape.2.1, generation.shape.2.2.1]
+  have viewEq : normalization.family.type.view =
+      VExpr.forallN
+        (generation.block.checked.params ++ generation.block.checked.indices)
+        (.sort generation.block.checked.resultLevel) := by
+    have analyzerEq : normalization.family.type.view =
+        generation.block.checked.type.type :=
+      (congrArg (fun ty : VInductiveType => ty.type)
+        (normalization.root.familyViewType_eq analysis)).symm
+    rw [analyzerEq, generation.block.checked.type_eq,
+      VExpr.forallN_append]
+  obtain ⟨_, recursive⟩ := normalization.family.type.recursive
+  have levelTr := ConstructorValidation.CandidateExprRun.terminalLevel_tr recursive
+    validation.terminal_eq viewEq spineLengthEq
+  change VLevel.ofLevel Us validation.stats.resultLevel = _
+  rw [validation.stats_eq]
+  simpa only [CandidateExprTrace.singletonCandidateInductiveStats] using levelTr
+
+end VInductDecl
+
+namespace VInductDecl
+open AddInductive TypeChecker VEnv
+open ConstructorValidation
+
+/-- Derive the checked field and result-spine obligations for one exact
+analyzer-owned constructor position after consuming its parameter prefix. -/
+theorem CandidateSemanticNormalizedCtorRun.checkedConstructorWF
+    {env typeEnv : VEnv} {Us : List Name}
+    {source : VInductDecl} {generation : GenerationChecked source}
+    {kernelCtor : Constructor}
+    {candidateCtor : AddInductive.CandidateConstructor kernelCtor}
+    {rawCtor : VConstVal}
+    {root : CandidateConstructorSemanticRun typeEnv Us candidateCtor rawCtor}
+    {ctor : NormalizedCtor}
+    {stats : InductiveStats} {familyIndices : Expr}
+    {d3Context d2Context : AddInductive.Context}
+    {d3ContextRun : AddInductive.ConstructorContextRun env Us d3Context}
+    {d2ContextRun : AddInductive.ConstructorContextRun typeEnv Us d2Context}
+    {d3Trace : AddInductive.ConstructorPreFamilyViewTrace stats 0
+      familyIndices d3Context candidateCtor.type.view 0 [] false}
+    (d3 : AddInductive.ConstructorPreFamilyViewSemanticRun env Us stats 0
+      familyIndices d3ContextRun d3Trace)
+    {d2Trace : AddInductive.ConstructorTypeValidationTrace stats false 0
+      kernelCtor.name d2Context kernelCtor.type 0 d2Context.fuel.inductiveFuel}
+    (d2Alignment : AddInductive.ConstructorViewAlignmentTrace d2Trace
+      candidateCtor.type.view)
+    (d2 : AddInductive.ConstructorViewSemanticRun typeEnv Us
+      root.type.whnfFuel d2ContextRun d2Trace candidateCtor.type.view)
+    (genRun : CandidateSemanticNormalizedCtorRun generation.block typeEnv Us
+      root ctor)
+    (hctor : ctor ∈ generation.block.ctorPairs)
+    (henv : VEnv.WF env) (typeEnvWF : VEnv.WF typeEnv)
+    (addType : env ≤ typeEnv)
+    {parameterΔ d3ViewContext analyzerViewContext : VLCtx}
+    {viewLift analyzerViewLift : Lift}
+    {parameters : List Expr}
+    (parameterContext : CandidateParameterContext [] parameters
+      generation.block.checked.params parameterΔ)
+    (parameterWF : VLCtx.WF env Us.length parameterΔ)
+    (parameterCtx : parameterΔ.toCtx =
+      generation.block.checked.params.reverse)
+    (d3State : D3FullContextState env typeEnv Us d3Context
+      parameterΔ parameterΔ d3ContextRun.candidate.context.vlctx
+      d3ViewContext .refl viewLift)
+    (analyzerState : AnalyzerPostContextState typeEnv Us parameterΔ
+      d2ContextRun.candidate.context.vlctx analyzerViewContext
+      analyzerViewLift)
+    (ordinaryState : ConstructorOrdinaryContextState env typeEnv Us
+      parameterΔ d3ContextRun.candidate.context.vlctx d3ViewContext
+      d2ContextRun.candidate.context.vlctx viewLift)
+    (ngenEq : d3Context.ngen = d2Context.ngen)
+    (parametersEq : stats.params.toList = parameters)
+    {familyName : Name} {familyLevels : List Level}
+    (indConsts : stats.indConsts = #[.const familyName familyLevels])
+    (familyTr : TrExprS env Us parameterΔ familyIndices
+      (VExpr.forallN generation.block.checked.indices
+        (.sort generation.block.checked.resultLevel)))
+    (familyUnique : TrExprS.IsUnique familyIndices)
+    (indexLength : generation.block.checked.indices.length =
+      stats.nindices[0]!)
+    (resultLevelTr : VLevel.ofLevel Us stats.resultLevel =
+      some generation.block.checked.resultLevel)
+    (absent : env.constants familyName = none)
+    (unique : CandidateExprTraceViewIsUnique candidateCtor.type.trace)
+    (universeSemantics : d2Trace.universeSemantics = true)
+    (stageFields : ∀ q field, ctor.view.fields[q]? = some field →
+      VInductDecl.stage3Field Us.length familyName stats.params.size
+        generation.block.checked.indices.length q field = true) :
+    VInductDecl.fieldsWF Us.length familyName stats.params.size env
+        generation.block.checked.resultLevel
+        generation.block.checked.indices
+        generation.block.checked.params.reverse 0 ctor.view.fields ∧
+      env.SpineWF Us.length
+        (ctor.view.fields.reverse ++
+          generation.block.checked.params.reverse)
+        (VExpr.forallN
+          (VExpr.liftTelN ctor.view.fields.length
+            generation.block.checked.indices 0)
+          (.sort generation.block.checked.resultLevel))
+        (VInductDecl.recFieldIdxs stats.params.size
+          (ctor.resultTarget generation.block))
+        (.sort generation.block.checked.resultLevel) := by
+  obtain ⟨rest, instantiation, ⟨d3Suffix⟩, wholeTr⟩ :=
+    genRun.preFamilySuffix addType parameterContext parameterWF unique d3
+      hctor parametersEq indConsts
+  obtain ⟨d2Suffix, suffixUniverse⟩ :=
+    d2.afterParameters d2Alignment (by omega) instantiation
+  have instantiation' : instantiateFamilyParameters candidateCtor.type.view
+      parameters = .ok rest := by
+    rw [← parametersEq]
+    exact instantiation
+  have sourceUnique : TrExprS.IsUnique rest :=
+    instantiateFamilyParameters_unique unique.view
+      (ConstructorValidation.CandidateParameterContext.parametersUnique
+        parameterContext) instantiation'
+  have sourceClosed : Closed rest := by
+    have closed := wholeTr.closed
+    rw [show parameterΔ.bvars = 0 from by
+      simpa only [VLCtx.NoBV] using d3State.commonNoBV] at closed
+    exact closed
+  have resultNotForall : ∀ domain body,
+      ctor.resultTarget generation.block ≠ .forallE domain body := by
+    intro domain body equality
+    have headEq := congrArg VExpr.appHead equality
+    simp only [NormalizedCtor.resultTarget, VExpr.appHead_appN,
+      VExpr.appHead] at headEq
+    exact VExpr.noConfusion headEq
+  have familyTargetEq :
+      VExpr.forallN generation.block.checked.indices
+          (.sort generation.block.checked.resultLevel) =
+        VExpr.forallN
+          (VExpr.liftTelN 0 generation.block.checked.indices 0)
+          (.sort generation.block.checked.resultLevel) := by
+    have liftTelNZero : ∀ (indices : List VExpr) (cutoff : Nat),
+        VExpr.liftTelN 0 indices cutoff = indices := by
+      intro indices cutoff
+      induction indices generalizing cutoff with
+      | nil => rfl
+      | cons index indices ih =>
+          simp only [VExpr.liftTelN, VExpr.liftN_zero]
+          rw [ih]
+    rw [liftTelNZero]
+  have removedInvariant : FullRemovedInvariant parameterΔ parameterΔ
+      [] := by
+    intro fv member _
+    exact member
+  have familyHead : stats.indConsts[0]! =
+      .const familyName familyLevels := by
+    rw [indConsts]
+    rfl
+  have suffixUniverseSemantics :
+      d2Suffix.trace.universeSemantics = true :=
+    suffixUniverse.trans universeSemantics
+  have result := constructorFields_exactAnalyzer
+    (d3 := d3Suffix.semantic)
+    (d2Alignment := d2Suffix.alignment) (d2 := d2Suffix.semantic)
+    henv typeEnvWF addType d3State analyzerState
+    (fun _ => ordinaryState) (fun _ => rfl) removedInvariant ngenEq
+    familyTr (familyTr.mono addType) familyUnique indexLength
+    familyHead
+    familyTargetEq resultNotForall resultLevelTr absent sourceUnique
+    sourceClosed wholeTr (by omega) suffixUniverseSemantics (by
+      intro q field atIndex
+      simpa only [Nat.zero_add] using stageFields q field atIndex)
+  unfold ConstructorFieldsRunResult at result
+  simpa only [parameterCtx, VExpr.liftN_forallN, VExpr.liftN,
+    Nat.zero_add] using result
+
+/-- Traverse the exact source-indexed D3, D2, and analyzer lists in lockstep.
+The dependent indices rule out truncation, reordering, or reuse of evidence
+from a different constructor position. -/
+theorem CandidateSemanticNormalizedCtorListRun.checkedConstructorsWF
+    {env typeEnv : VEnv} {Us : List Name}
+    {source : VInductDecl} {generation : GenerationChecked source}
+    {stats : InductiveStats} {familyIndices : Expr}
+    {d3Context d2Context : AddInductive.Context}
+    {d3ContextRun : AddInductive.ConstructorContextRun env Us d3Context}
+    {d2ContextRun : AddInductive.ConstructorContextRun typeEnv Us d2Context}
+    {kernelCtors : List Constructor}
+    {candidates : AddInductive.CandidateList
+      AddInductive.CandidateConstructor kernelCtors}
+    {d3Trace : AddInductive.ConstructorPreFamilyListTrace stats 0
+      familyIndices d3Context candidates}
+    (d3 : AddInductive.ConstructorPreFamilyListSemanticRun env Us stats 0
+      familyIndices d3Context d3ContextRun d3Trace)
+    {seen : NameSet}
+    {d2Trace : AddInductive.ConstructorListValidationTrace stats false 0
+      d2Context seen kernelCtors}
+    {alignment : AddInductive.ConstructorCandidateAlignmentTrace stats false 0
+      d2Context d2Trace candidates}
+    {raws : List VConstVal}
+    {roots : CandidateConstructorSemanticListRun typeEnv Us candidates raws}
+    (d2 : AddInductive.ConstructorPostFamilySemanticListRun typeEnv Us stats
+      false 0 d2Context d2ContextRun d2Trace candidates alignment roots)
+    {ctors : List NormalizedCtor}
+    (generationRuns : CandidateSemanticNormalizedCtorListRun generation.block
+      typeEnv Us roots ctors)
+    (membership : ∀ ctor ∈ ctors,
+      ctor ∈ generation.block.ctorPairs)
+    (henv : VEnv.WF env) (typeEnvWF : VEnv.WF typeEnv)
+    (addType : env ≤ typeEnv)
+    {parameterΔ d3ViewContext analyzerViewContext : VLCtx}
+    {viewLift analyzerViewLift : Lift}
+    {parameters : List Expr}
+    (parameterContext : CandidateParameterContext [] parameters
+      generation.block.checked.params parameterΔ)
+    (parameterWF : VLCtx.WF env Us.length parameterΔ)
+    (parameterCtx : parameterΔ.toCtx =
+      generation.block.checked.params.reverse)
+    (d3State : D3FullContextState env typeEnv Us d3Context
+      parameterΔ parameterΔ d3ContextRun.candidate.context.vlctx
+      d3ViewContext .refl viewLift)
+    (analyzerState : AnalyzerPostContextState typeEnv Us parameterΔ
+      d2ContextRun.candidate.context.vlctx analyzerViewContext
+      analyzerViewLift)
+    (ordinaryState : ConstructorOrdinaryContextState env typeEnv Us
+      parameterΔ d3ContextRun.candidate.context.vlctx d3ViewContext
+      d2ContextRun.candidate.context.vlctx viewLift)
+    (ngenEq : d3Context.ngen = d2Context.ngen)
+    (parametersEq : stats.params.toList = parameters)
+    {familyName : Name} {familyLevels : List Level}
+    (indConsts : stats.indConsts = #[.const familyName familyLevels])
+    (familyTr : TrExprS env Us parameterΔ familyIndices
+      (VExpr.forallN generation.block.checked.indices
+        (.sort generation.block.checked.resultLevel)))
+    (familyUnique : TrExprS.IsUnique familyIndices)
+    (indexLength : generation.block.checked.indices.length =
+      stats.nindices[0]!)
+    (resultLevelTr : VLevel.ofLevel Us stats.resultLevel =
+      some generation.block.checked.resultLevel)
+    (absent : env.constants familyName = none)
+    (unique : candidates.ViewTranslationUnique)
+    (universeSemantics : d2Trace.universeSemantics = true)
+    (uvarsEq : source.uvars = Us.length)
+    (familyNameEq : familyName = generation.block.checked.type.name)
+    (paramsSizeEq : stats.params.size = source.nparams) :
+    ∀ ctor ∈ ctors,
+      VInductDecl.fieldsWF Us.length familyName stats.params.size env
+          generation.block.checked.resultLevel
+          generation.block.checked.indices
+          generation.block.checked.params.reverse 0 ctor.view.fields ∧
+        env.SpineWF Us.length
+          (ctor.view.fields.reverse ++
+            generation.block.checked.params.reverse)
+          (VExpr.forallN
+            (VExpr.liftTelN ctor.view.fields.length
+              generation.block.checked.indices 0)
+            (.sort generation.block.checked.resultLevel))
+          (VInductDecl.recFieldIdxs stats.params.size
+            (ctor.resultTarget generation.block))
+          (.sort generation.block.checked.resultLevel) := by
+  induction d3 generalizing seen raws ctors with
+  | nil =>
+      cases d2
+      cases generationRuns
+      intro ctor member
+      simp at member
+  | cons d3Head d3Tail ih =>
+      cases alignment with
+      | cons rootScope storedSpine spineLength candidateDepth headAlignment
+          tailAlignment =>
+        cases d2 with
+        | cons root d2Head spine d2Tail =>
+          cases generationRuns with
+          | cons generationHead generationTail =>
+            simp only [AddInductive.ConstructorListValidationTrace.universeSemantics,
+              Bool.and_eq_true] at universeSemantics
+            intro ctor member
+            simp only [List.mem_cons] at member
+            rcases member with rfl | member
+            · have hctor : ctor ∈ generation.block.ctorPairs :=
+                membership ctor (.head _)
+              obtain ⟨directCtor, directMember, viewEq⟩ :=
+                generation.viewCtor_ofDirect hctor
+              have directStage :=
+                (generation.block.checked.direct_anatomy.2.2.2.2.2
+                  directCtor directMember).2.2
+              rw [← generation.block.uvars_eq,
+                ← generation.block.nparams_eq,
+                uvarsEq, ← familyNameEq, ← paramsSizeEq] at directStage
+              have viewEq' : ctor.view =
+                  CheckedCtor.ofDirect Us.length familyName stats.params.size
+                    generation.block.checked.indices.length directCtor := by
+                simpa only [uvarsEq, paramsSizeEq,
+                  generation.block.sourceType_name_eq, familyNameEq] using viewEq
+              have stageFields : ∀ q field,
+                  ctor.view.fields[q]? = some field →
+                    VInductDecl.stage3Field Us.length familyName
+                      stats.params.size
+                      generation.block.checked.indices.length q field = true := by
+                intro q field atIndex
+                rw [viewEq'] at atIndex
+                simpa only [Nat.zero_add] using
+                  (VInductDecl.stage3Ctor_eq directStage).2.2.2 q field
+                    (by simpa only [CheckedCtor.ofDirect] using atIndex)
+              exact generationHead.checkedConstructorWF d3Head
+                headAlignment d2Head hctor henv typeEnvWF addType
+                parameterContext parameterWF parameterCtx d3State analyzerState
+                ordinaryState ngenEq parametersEq indConsts familyTr
+                familyUnique indexLength resultLevelTr absent unique.1
+                universeSemantics.1 stageFields
+            · exact ih d2Tail generationTail
+                (fun ctor member => membership ctor (.tail _ member)) unique.2
+                universeSemantics.2 ctor member
+
+/-- The retained D1/D2/D3 producer traces derive the exact analyzer-owned
+checked declaration semantics. -/
+theorem StagedNormalizationCandidatePreFamilyInput.checkedWF
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name} {kernelSource : InductiveType}
+    {source : VInductDecl}
+    {candidate : AddInductive.NormalizationCandidate [kernelSource]}
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us candidate source)
+    (normalization : NormalizationCandidateSemanticRun env Us candidate source)
+    (generation : GenerationChecked source)
+    (analysis : normalization.root.normalization.generation? =
+      some generation)
+    (shape : normalization.generationShape = true) :
+    generation.block.checked.WF env := by
+  let staged := input.postFamilyInput.universeInput.staged
+  let validation := staged.family.validation
+  obtain ⟨parameterΔ, terminalRun, viewTerminal, familyInstantiation,
+      familyTr, parameterCtx, parameterContext, parameterFVars,
+      parameterNoBV, parameterWF, terminalVenv, terminalLparams,
+      terminalViewDefEq, terminalViewUnique, terminalViewLift,
+      terminalViewEq⟩ :=
+    input.familyContext normalization generation analysis shape
+  have henv : VEnv.WF env := by
+    simpa only [normalization.family.type.venv_eq] using
+      normalization.family.type.contextRun.context.Ewf
+  have rawWF : normalization.raw.toVConstant.WF env := by
+    show env.IsType normalization.raw.uvars [] normalization.raw.type
+    simpa only [normalization.family.uvars_eq] using
+      normalization.family.type.source_isType_of_terminalSort
+        validation.terminal_eq
+  have typeEnvWF : VEnv.WF normalization.family.typeEnv := by
+    obtain ⟨declarations, declarationsWF⟩ := henv
+    exact ⟨.axiom normalization.raw.toVConstVal :: declarations,
+      .decl (.axiom rawWF normalization.family.addType) declarationsWF⟩
+  have rawEq : normalization.raw = staged.raw := by
+    have singletonEq : [normalization.raw] = [staged.raw] :=
+      normalization.raw_types_eq.symm.trans staged.raw_types_eq
+    injection singletonEq
+  have typeEnvEq : normalization.family.typeEnv = staged.family.typeEnv := by
+    exact Option.some.inj <| normalization.family.addType.symm.trans (by
+      simpa only [rawEq] using staged.family.addInduct.env_add)
+  obtain ⟨validationRun, validationVenv, validationLparams,
+      validationVlctx⟩ :=
+    staged.family.validationContextRunFromPre terminalRun terminalVenv
+      terminalLparams
+  let d3ContextRun : AddInductive.ConstructorContextRun env Us
+      candidate.families.singleton.familyType.type.trace.terminalContext :=
+    ⟨terminalRun, terminalVenv, terminalLparams⟩
+  let d2ContextRun : AddInductive.ConstructorContextRun
+      normalization.family.typeEnv Us
+      { candidate.families.singleton.familyType.type.trace.terminalContext with
+        env := constructorContext.env } :=
+    ⟨validationRun, validationVenv.trans typeEnvEq.symm,
+      validationLparams⟩
+  obtain ⟨d3Constructors⟩ :=
+    AddInductive.ConstructorPreFamilyListSemanticRun.nonempty d3ContextRun
+      input.safety.constructors
+  obtain ⟨d2Constructors⟩ :=
+    AddInductive.ConstructorPostFamilySemanticListRun.nonempty_of_alignment
+      d2ContextRun input.postFamilyInput.alignment
+      normalization.family.constructors
+  let generationRuns := normalization.constructorGenerationRuns generation
+    analysis shape
+  have terminalWF : VLCtx.WF env Us.length
+      terminalRun.context.vlctx := by
+    simpa only [terminalVenv, terminalLparams] using terminalRun.context.Δwf
+  have validationWF : VLCtx.WF normalization.family.typeEnv Us.length
+      validationRun.context.vlctx := by
+    simpa only [validationVenv, ← typeEnvEq, validationLparams] using
+      validationRun.context.Δwf
+  have viewTerminalWF : VLCtx.WF env Us.length viewTerminal :=
+    (terminalViewDefEq.symm henv.ordered).wf
+  have d3State : D3FullContextState env normalization.family.typeEnv Us
+      candidate.families.singleton.familyType.type.trace.terminalContext
+      parameterΔ parameterΔ terminalRun.context.vlctx viewTerminal .refl
+      (.skipN .refl generation.block.checked.indices.length) := {
+    commonWF := parameterWF
+    commonNoBV := parameterNoBV
+    fullWF := parameterWF.mono
+      (VEnv.addConst_le normalization.family.addType)
+    fullExtension := .refl
+    actualWF := terminalWF
+    viewDefEq := terminalViewDefEq
+    viewUnique := terminalViewUnique
+    viewExtension := terminalViewLift
+    freshInvariant := fun _ present => .inl present }
+  have analyzerState : AnalyzerPostContextState
+      normalization.family.typeEnv Us parameterΔ validationRun.context.vlctx
+      viewTerminal (.skipN .refl
+        generation.block.checked.indices.length) := {
+    fullWF := parameterWF.mono
+      (VEnv.addConst_le normalization.family.addType)
+    postWF := validationWF
+    viewWF := viewTerminalWF.mono
+      (VEnv.addConst_le normalization.family.addType)
+    viewDefEq := by
+      rw [validationVlctx]
+      exact (terminalViewDefEq.mono
+        (VEnv.addConst_le normalization.family.addType)).toFVars
+    viewExtension := terminalViewLift }
+  have ordinaryState : ConstructorOrdinaryContextState env
+      normalization.family.typeEnv Us parameterΔ terminalRun.context.vlctx
+      viewTerminal validationRun.context.vlctx
+      (.skipN .refl generation.block.checked.indices.length) := {
+    baseWF := parameterWF
+    actualWF := terminalWF
+    postWF := validationWF
+    postRelation := by
+      rw [validationVlctx]
+      exact ((VLCtx.IsDefEq.refl henv.ordered terminalWF).mono
+        (VEnv.addConst_le normalization.family.addType)).toFVars
+    viewDefEq := terminalViewDefEq
+    viewUnique := terminalViewUnique
+    viewLift := terminalViewLift }
+  have parametersEq : validation.stats.params.toList =
+      candidate.families.singleton.familyType.type.trace.parameterList
+        source.nparams := by
+    rw [validation.stats_eq]
+    simp only [CandidateExprTrace.singletonCandidateInductiveStats,
+      validation, staged, staged.validation_nparams_eq]
+  have paramsSizeEq : validation.stats.params.size = source.nparams := by
+    calc
+      validation.stats.params.size =
+          validation.stats.params.toList.length := by simp
+      _ = (candidate.families.singleton.familyType.type.trace.parameterList
+          source.nparams).length := congrArg List.length parametersEq
+      _ = generation.block.checked.params.length :=
+        parameterContext.length_eq
+      _ = source.nparams :=
+        generation.block.checked.direct_anatomy.2.1.trans
+          generation.block.nparams_eq.symm
+  have sourceTypeEq : generation.block.sourceType = normalization.raw := by
+    simpa only [NormalizationCandidateSemanticRun.root] using
+      normalization.root.sourceType_eq generation
+  have familyNameEq : generation.block.sourceType.name =
+      generation.block.checked.type.name :=
+    generation.block.sourceType_name_eq
+  have familyLparams :
+      candidate.families.singleton.familyType.type.context.lparams = Us := by
+    exact normalization.family.type.contextRun.context_lparams.symm.trans
+      normalization.family.type.lparams_eq
+  have indConsts : validation.stats.indConsts =
+      #[.const generation.block.sourceType.name (Us.map .param)] := by
+    rw [validation.stats_eq]
+    simp only [CandidateExprTrace.singletonCandidateInductiveStats,
+      familyLparams]
+    congr 2
+    exact congrArg (fun name => Expr.const name (Us.map .param)) <|
+      staged.family.name_eq.trans (congrArg
+        (fun type : VInductiveType => type.name)
+        (rawEq.symm.trans sourceTypeEq.symm))
+  have familyUnique : TrExprS.IsUnique input.safety.familyIndices :=
+    instantiateFamilyParameters_unique
+      input.safety.familyTranslationUnique
+      (ConstructorValidation.CandidateParameterContext.parametersUnique
+        parameterContext) familyInstantiation
+  have indexLength : generation.block.checked.indices.length =
+      validation.stats.nindices[0]! :=
+    (stagedIndexCount_eq input normalization generation analysis
+      shape).symm
+  have resultLevelTr : VLevel.ofLevel Us validation.stats.resultLevel =
+      some generation.block.checked.resultLevel :=
+    stagedResultLevel_tr input normalization generation analysis shape
+  have absent : env.constants generation.block.sourceType.name = none := by
+    rw [sourceTypeEq]
+    exact VEnv.addConst_fresh normalization.family.addType
+  have pairWF := generationRuns.checkedConstructorsWF
+    d3Constructors d2Constructors (fun _ member => member) henv typeEnvWF
+    (VEnv.addConst_le normalization.family.addType) parameterContext
+    parameterWF parameterCtx d3State analyzerState ordinaryState rfl
+    parametersEq indConsts familyTr familyUnique indexLength resultLevelTr
+    absent input.safety.constructorTranslationUnique
+    input.postFamilyInput.universeInput.universeSemantics
+    normalization.uvars_eq familyNameEq paramsSizeEq
+  refine ⟨by
+    simpa only [generation.block.uvars_eq] using
+      input.familyOnTel normalization generation analysis, ?_⟩
+  intro ctor ctorMember
+  have directMember :
+      CheckedCtor.ofDirect generation.block.normalization.view.uvars
+          generation.block.checked.type.name
+          generation.block.normalization.view.nparams
+          generation.block.checked.indices.length ctor ∈
+        generation.block.checked.constructors := by
+    rw [generation.block.checked.constructors_eq]
+    exact List.mem_map.2 ⟨ctor, ctorMember, rfl⟩
+  rw [← generation.viewCtors_eq] at directMember
+  obtain ⟨pair, pairMember, pairViewEq⟩ := List.mem_map.1 directMember
+  have result := pairWF pair pairMember
+  rw [pairViewEq] at result
+  have viewUvarsEq : generation.block.normalization.view.uvars = Us.length :=
+    generation.block.uvars_eq.symm.trans normalization.uvars_eq
+  have dropBvarRevRange : ∀ (offset count : Nat) (suffix : List VExpr),
+      (VExpr.bvarRevRange offset count ++ suffix).drop count = suffix := by
+    intro offset count suffix
+    induction count with
+    | zero => rfl
+    | succ count ih =>
+        simp only [VExpr.bvarRevRange, List.cons_append,
+          List.drop_succ_cons]
+        exact ih
+  rw [← viewUvarsEq, paramsSizeEq, generation.block.nparams_eq,
+    familyNameEq] at result
+  simpa only [
+    generation.block.nparams_eq, pairViewEq,
+    CheckedCtor.ofDirect, NormalizedCtor.resultTarget,
+    VInductDecl.recFieldIdxs, VExpr.appArgs_appN, VExpr.appArgs,
+    List.append_nil, dropBvarRevRange] using result
+
+/-- Re-index the derived checked semantics onto the exact normalization view
+selected by dependent analysis. -/
+theorem StagedNormalizationCandidatePreFamilyInput.viewDeclWF
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name} {kernelSource : InductiveType}
+    {source : VInductDecl}
+    {candidate : AddInductive.NormalizationCandidate [kernelSource]}
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us candidate source)
+    (normalization : NormalizationCandidateSemanticRun env Us candidate source)
+    (generation : GenerationChecked source)
+    (analysis : normalization.root.normalization.generation? =
+      some generation)
+    (shape : normalization.generationShape = true) :
+    normalization.root.viewDecl.WF env := by
+  have checkedWF := input.checkedWF normalization generation analysis shape
+  have normalizationEq : generation.block.normalization =
+      normalization.root.normalization :=
+    Normalization.generation?_normalization analysis
+  have viewEq : generation.block.normalization.view =
+      normalization.root.viewDecl := by
+    simpa only [NormalizationCandidateRun.normalization] using
+      congrArg (fun normalized : Normalization source => normalized.view)
+        normalizationEq
+  rw [← viewEq]
+  exact generation.block.checked.to_declWF generation.block.checked_eq
+    checkedWF
+
+/-- Build the semantic generation owner from the retained D1/D2/D3 input,
+exact dependent analysis, and the single executable hierarchy shape check.
+The analyzer-owned checked semantics are derived from those traces rather
+than accepted as a premise. -/
+def GenerationCandidateSemanticRun.ofGenerationShape
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name}
+    {kernelSource : InductiveType} {source : VInductDecl}
+    {candidate : AddInductive.NormalizationCandidate [kernelSource]}
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us candidate source)
+    (normalization : NormalizationCandidateSemanticRun env Us candidate source)
+    (generation : GenerationChecked source)
+    (analysis : normalization.root.normalization.generation? =
+      some generation)
+    (shape : normalization.generationShape = true) :
+    GenerationCandidateSemanticRun normalization generation := by
+  have familyShape := shape
+  simp only [NormalizationCandidateSemanticRun.generationShape,
+    normalizationCandidateGenerationShape, Bool.and_eq_true,
+    beq_iff_eq] at familyShape
+  have sourceTypeEq : generation.block.sourceType = normalization.raw := by
+    simpa only [NormalizationCandidateSemanticRun.root] using
+      normalization.root.sourceType_eq generation
+  apply GenerationCandidateSemanticShapeRun.run {
+    analysis := analysis
+    checked := input.checkedWF normalization generation analysis shape
+    family := {
+      storedSpine := familyShape.1.1
+      spineLength_eq := by
+        simpa only [NormalizedChecked.rawParams,
+          NormalizedChecked.rawIndices, sourceTypeEq] using familyShape.1.2 }
+    constructors :=
+      CandidateConstructorSemanticGenerationShapeList.ofCheck
+        normalization.family.constructors familyShape.2 }
+
+/-- Construct the produced package at the consolidated generation-shape
+boundary without accepting a checked- or view-WF premise. -/
+def NormalizationCandidateSemanticRun.producedPackageOfGenerationShape
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name}
+    {kernelSource : InductiveType} {source : VInductDecl}
+    {candidate : AddInductive.NormalizationCandidate [kernelSource]}
+    (normalization : NormalizationCandidateSemanticRun env Us candidate source)
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us candidate source)
+    (generation : GenerationChecked source)
+    (analysis : normalization.root.normalization.generation? =
+      some generation)
+    (shape : normalization.generationShape = true)
+    (context : AddInductive.Context)
+    (nparams numNested : Nat) (isUnsafe : Bool)
+    (produced :
+      AddInductive.buildNormalizationCandidate nparams
+          [kernelSource] numNested isUnsafe context = .ok candidate) :
+    ProducedGenerationCandidatePackage env Us :=
+  (GenerationCandidateSemanticRun.ofGenerationShape input normalization
+    generation analysis shape).producedPackage context nparams numNested
+      isUnsafe produced
+
+/-- Interpret one successful shape-producing outer result using the matching
+retained D1/D2/D3 semantic input. -/
+def ProducedGenerationShapeCandidate.producedPackage
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name}
+    {kernelSource : InductiveType} {source : VInductDecl}
+    {raw : VInductiveType} {numNested : Nat} {isUnsafe : Bool}
+    {context : AddInductive.Context}
+    (producedCandidate : ProducedGenerationShapeCandidate source raw
+      kernelSource numNested isUnsafe context)
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us producedCandidate.candidate source)
+    (normalization : NormalizationCandidateSemanticRun env Us
+      producedCandidate.candidate source)
+    (rawEq : raw = normalization.raw)
+    (generation : GenerationChecked source)
+    (analysis : normalization.root.normalization.generation? =
+      some generation) :
+    ProducedGenerationCandidatePackage env Us :=
+  normalization.producedPackageOfGenerationShape input generation analysis
+    (by
+      simpa only [NormalizationCandidateSemanticRun.generationShape,
+        rawEq] using producedCandidate.shape)
+    context source.nparams numNested isUnsafe producedCandidate.produced
+
+end VInductDecl
+
+namespace VInductDecl
+
+/- The D4 closure roots intentionally inherit the exact transitional Verify
+axiom set already present in the staged semantic inputs. -/
+/--
+info: 'Lean4Lean.VInductDecl.StagedNormalizationCandidatePreFamilyInput.checkedWF' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms StagedNormalizationCandidatePreFamilyInput.checkedWF
+
+/--
+info: 'Lean4Lean.VInductDecl.StagedNormalizationCandidatePreFamilyInput.viewDeclWF' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms StagedNormalizationCandidatePreFamilyInput.viewDeclWF
+
+/--
+info: 'Lean4Lean.VInductDecl.GenerationCandidateSemanticRun.ofGenerationShape' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms GenerationCandidateSemanticRun.ofGenerationShape
+
+/--
+info: 'Lean4Lean.VInductDecl.NormalizationCandidateSemanticRun.producedPackageOfGenerationShape' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms NormalizationCandidateSemanticRun.producedPackageOfGenerationShape
+
+/--
+info: 'Lean4Lean.VInductDecl.ProducedGenerationShapeCandidate.producedPackage' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms ProducedGenerationShapeCandidate.producedPackage
 
 /--
 info: 'Lean4Lean.VInductDecl.StagedNormalizationCandidatePreFamilyInput.exists' depends on axioms: [propext,

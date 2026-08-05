@@ -4447,50 +4447,61 @@ private theorem annotatedPiEmptyEqv_isEquivDomainSort :
 
 private theorem annotatedPiQuickIsDefEqDomainInitial
     (methods : TypeChecker.Methods)
-    (context : TypeChecker.Context) :
-    ∃ m : EquivManager,
+    (context : TypeChecker.Context) (initial : EquivManager) :
+    ∃ (r : LBool) (m : EquivManager),
       TypeChecker.Inner.quickIsDefEq
           annotatedPiRawDomainKernel (.sort .zero) true
-          methods context ({} : TypeChecker.State) =
-        .ok (.undef,
-          annotatedPiWithEqvManager ({} : TypeChecker.State) m) := by
-  obtain ⟨m, hm⟩ := annotatedPiEmptyEqv_isEquivDomainSort
-  refine ⟨m, ?_⟩
-  rw [show annotatedPiRawDomainKernel =
-    .app (.const ``outParam [.succ .zero]) (.sort .zero) by rfl]
-    at hm ⊢
-  unfold TypeChecker.Inner.quickIsDefEq
-  simp [modifyGet, MonadStateOf.modifyGet, monadLift,
-    MonadLift.monadLift, StateT.modifyGet, pure, ReaderT.pure,
-    StateT.pure, Except.pure, hm, annotatedPiWithEqvManager,
-    Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+          methods context ({ eqvManager := initial } : TypeChecker.State) =
+        .ok (r, ({ eqvManager := m } : TypeChecker.State)) ∧
+      (r = .true ∨ r = .undef) := by
+  let q := EquivManager.isEquiv true
+    annotatedPiRawDomainKernel (.sort .zero) initial
+  rcases hq : q with ⟨b, m⟩
+  have hq' : EquivManager.isEquiv true
+      annotatedPiRawDomainKernel (.sort .zero) initial = (b, m) := by
+    simpa [q] using hq
+  cases b
+  · refine ⟨.undef, m, ?_, Or.inr rfl⟩
+    simp [TypeChecker.Inner.quickIsDefEq, modifyGet,
+      MonadStateOf.modifyGet, monadLift, MonadLift.monadLift,
+      StateT.modifyGet, pure, ReaderT.pure, StateT.pure,
+      Except.pure, hq', Bind.bind, ReaderT.bind, StateT.bind,
+      Except.bind]
+    rfl
+  · refine ⟨.true, m, ?_, Or.inl rfl⟩
+    simp [TypeChecker.Inner.quickIsDefEq, modifyGet,
+      MonadStateOf.modifyGet, monadLift, MonadLift.monadLift,
+      StateT.modifyGet, pure, ReaderT.pure, StateT.pure,
+      Except.pure, hq', Bind.bind, ReaderT.bind, StateT.bind,
+      Except.bind]
 
 @[simp] private theorem annotatedPiWhnfCoreOutParamConstCheap
-    (m : EquivManager) :
+    (fuel : Nat) (m : EquivManager) :
     TypeChecker.Inner.whnfCore
         (.const ``outParam [.succ .zero]) false true
-        (TypeChecker.Methods.withFuel 9998)
+        (TypeChecker.Methods.withFuel (fuel + 2))
         annotatedPiCtorCandidateContext.toTypeChecker
         ({ eqvManager := m } : TypeChecker.State) =
       .ok (.const ``outParam [.succ .zero],
         ({ eqvManager := m } : TypeChecker.State)) := by
   rfl
 
-private theorem annotatedPiWhnfCoreDomainCheap (m : EquivManager) :
+private theorem annotatedPiWhnfCoreDomainCheap
+    (fuel : Nat) (m : EquivManager) :
     TypeChecker.Inner.whnfCore annotatedPiRawDomainKernel false true
-        (TypeChecker.Methods.withFuel 9999)
+        (TypeChecker.Methods.withFuel (fuel + 3))
         annotatedPiCtorCandidateContext.toTypeChecker
-        (annotatedPiWithEqvManager ({} : TypeChecker.State) m) =
+        ({ eqvManager := m } : TypeChecker.State) =
       .ok (annotatedPiRawDomainKernel,
-        annotatedPiWithEqvManager ({} : TypeChecker.State) m) := by
+        ({ eqvManager := m } : TypeChecker.State)) := by
   change
     TypeChecker.Inner.whnfCore'
         (.app (.const ``outParam [.succ .zero]) (.sort .zero))
-        false true (TypeChecker.Methods.withFuel 9998)
+        false true (TypeChecker.Methods.withFuel (fuel + 2))
         annotatedPiCtorCandidateContext.toTypeChecker
-        (annotatedPiWithEqvManager ({} : TypeChecker.State) m) =
+        ({ eqvManager := m } : TypeChecker.State) =
       .ok (.app (.const ``outParam [.succ .zero]) (.sort .zero),
-        annotatedPiWithEqvManager ({} : TypeChecker.State) m)
+        ({ eqvManager := m } : TypeChecker.State))
   unfold TypeChecker.Inner.whnfCore'
   simp only [normalizationRecMPure, normalizationRecMBind,
     normalizationRecMGet, annotatedPiWithEqvManager,
@@ -4501,7 +4512,7 @@ private theorem annotatedPiWhnfCoreDomainCheap (m : EquivManager) :
     (Expr.app (.const ``outParam [.succ .zero])
       (.sort .zero)).getAppFn =
         .const ``outParam [.succ .zero] by rfl]
-  rw [annotatedPiWhnfCoreOutParamConstCheap]
+  rw [annotatedPiWhnfCoreOutParamConstCheap fuel]
   simp [annotatedPiRawDomainKernel, annotatedPiReduceRecursorDomain,
     annotatedPiWithEqvManager, Expr.eqv_eq,
     Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
@@ -4537,10 +4548,11 @@ private def annotatedPiOutParamInferOnlyState
       (.const ``outParam [.succ .zero]) annotatedPiOutParamFnType,
     eqvManager := m }
 
-private theorem annotatedPiInferTypeOutParamOnly (m : EquivManager) :
+private theorem annotatedPiInferTypeOutParamOnly
+    (fuel : Nat) (m : EquivManager) :
     TypeChecker.Inner.inferType
         (.const ``outParam [.succ .zero]) true
-        (TypeChecker.Methods.withFuel 9998)
+        (TypeChecker.Methods.withFuel (fuel + 2))
         annotatedPiCtorCandidateContext.toTypeChecker
         ({ eqvManager := m } : TypeChecker.State) =
       .ok (annotatedPiOutParamFnType,
@@ -4548,7 +4560,7 @@ private theorem annotatedPiInferTypeOutParamOnly (m : EquivManager) :
   change
     TypeChecker.Inner.inferType'
         (.const ``outParam [.succ .zero]) true
-        (TypeChecker.Methods.withFuel 9997)
+        (TypeChecker.Methods.withFuel (fuel + 1))
         annotatedPiCtorCandidateContext.toTypeChecker
         ({ eqvManager := m } : TypeChecker.State) =
       .ok (annotatedPiOutParamFnType,
@@ -4558,9 +4570,10 @@ private theorem annotatedPiInferTypeOutParamOnly (m : EquivManager) :
     Expr.hasLooseBVars, Expr.looseBVarRange',
     Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
 
-private theorem annotatedPiInferAppDomainOnly (m : EquivManager) :
+private theorem annotatedPiInferAppDomainOnly
+    (fuel : Nat) (m : EquivManager) :
     TypeChecker.Inner.inferApp annotatedPiRawDomainKernel
-        (TypeChecker.Methods.withFuel 9998)
+        (TypeChecker.Methods.withFuel (fuel + 2))
         annotatedPiCtorCandidateContext.toTypeChecker
         ({ eqvManager := m } : TypeChecker.State) =
       .ok (.sort (.succ .zero),
@@ -4571,7 +4584,7 @@ private theorem annotatedPiInferAppDomainOnly (m : EquivManager) :
   rw [show annotatedPiRawDomainKernel.getAppArgs =
     #[.sort .zero] by rfl]
   simp only [normalizationRecMBind]
-  rw [annotatedPiInferTypeOutParamOnly]
+  rw [annotatedPiInferTypeOutParamOnly fuel]
   simp [TypeChecker.Inner.inferApp.loop,
     annotatedPiOutParamFnType, Expr.instantiateRevRange,
     Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
@@ -4584,15 +4597,16 @@ private def annotatedPiDomainInferOnlyState
         annotatedPiRawDomainKernel (.sort (.succ .zero)),
     eqvManager := m }
 
-private theorem annotatedPiInferTypeDomainOnlyAny (m : EquivManager) :
+private theorem annotatedPiInferTypeDomainOnlyAny
+    (fuel : Nat) (m : EquivManager) :
     TypeChecker.Inner.inferType annotatedPiRawDomainKernel true
-        (TypeChecker.Methods.withFuel 9999)
+        (TypeChecker.Methods.withFuel (fuel + 3))
         annotatedPiCtorCandidateContext.toTypeChecker
         ({ eqvManager := m } : TypeChecker.State) =
       .ok (.sort (.succ .zero), annotatedPiDomainInferOnlyState m) := by
   change
     TypeChecker.Inner.inferType' annotatedPiRawDomainKernel true
-        (TypeChecker.Methods.withFuel 9998)
+        (TypeChecker.Methods.withFuel (fuel + 2))
         annotatedPiCtorCandidateContext.toTypeChecker
         ({ eqvManager := m } : TypeChecker.State) =
       .ok (.sort (.succ .zero), annotatedPiDomainInferOnlyState m)
@@ -4605,7 +4619,33 @@ private theorem annotatedPiInferTypeDomainOnlyAny (m : EquivManager) :
   rw [show
     .app (.const ``outParam [.succ .zero]) (.sort .zero) =
       annotatedPiRawDomainKernel by rfl]
-  rw [annotatedPiInferAppDomainOnly]
+  rw [annotatedPiInferAppDomainOnly fuel]
+  simp [annotatedPiDomainInferOnlyState,
+    annotatedPiOutParamInferOnlyState, Bind.bind, ReaderT.bind,
+    StateT.bind, Except.bind]
+
+private theorem annotatedPiInferTypeDomainOnly998
+    (m : EquivManager) :
+    TypeChecker.Inner.inferType'
+        (.app (.const ``outParam [.succ .zero]) (.sort .zero)) true
+        (TypeChecker.Methods.withFuel 9998)
+        annotatedPiCtorCandidateContext.toTypeChecker
+        ({ eqvManager := m } : TypeChecker.State) =
+      .ok (.sort (.succ .zero), annotatedPiDomainInferOnlyState m) := by
+  unfold TypeChecker.Inner.inferType'
+  simp [Expr.hasLooseBVars, Expr.looseBVarRange',
+    annotatedPiDomainInferOnlyState, Bind.bind, ReaderT.bind,
+    StateT.bind, Except.bind]
+  rw [show
+    .app (.const ``outParam [.succ .zero]) (.sort .zero) =
+      annotatedPiRawDomainKernel by rfl]
+  rw [show TypeChecker.Inner.inferApp annotatedPiRawDomainKernel
+      (TypeChecker.Methods.withFuel 9998)
+      annotatedPiCtorCandidateContext.toTypeChecker
+      ({ eqvManager := m } : TypeChecker.State) =
+    .ok (.sort (.succ .zero), annotatedPiOutParamInferOnlyState m) by
+      simpa only [Nat.reduceAdd] using
+        annotatedPiInferAppDomainOnly 9996 m]
   simp [annotatedPiDomainInferOnlyState,
     annotatedPiOutParamInferOnlyState, Bind.bind, ReaderT.bind,
     StateT.bind, Except.bind]
@@ -4623,16 +4663,17 @@ private def annotatedPiSortOneInferOnlyState
   simp [annotatedPiDomainInferOnlyState, annotatedPiRawDomainKernel,
     annotatedPiOutParamFnType, Expr.eqv_eq]
 
-private theorem annotatedPiInferTypeSortOneOnly (m : EquivManager) :
+private theorem annotatedPiInferTypeSortOneOnly
+    (fuel : Nat) (m : EquivManager) :
     TypeChecker.Inner.inferType (.sort (.succ .zero)) true
-        (TypeChecker.Methods.withFuel 9999)
+        (TypeChecker.Methods.withFuel (fuel + 3))
         annotatedPiCtorCandidateContext.toTypeChecker
         (annotatedPiDomainInferOnlyState m) =
       .ok (.sort (.succ (.succ .zero)),
         annotatedPiSortOneInferOnlyState m) := by
   change
     TypeChecker.Inner.inferType' (.sort (.succ .zero)) true
-        (TypeChecker.Methods.withFuel 9998)
+        (TypeChecker.Methods.withFuel (fuel + 2))
         annotatedPiCtorCandidateContext.toTypeChecker
         (annotatedPiDomainInferOnlyState m) =
       .ok (.sort (.succ (.succ .zero)),
@@ -4644,37 +4685,38 @@ private theorem annotatedPiInferTypeSortOneOnly (m : EquivManager) :
     Except.bind]
 
 @[simp] private theorem annotatedPiWhnfSortTwo
-    (state : TypeChecker.State) :
+    (fuel : Nat) (state : TypeChecker.State) :
     TypeChecker.Inner.whnf (.sort (.succ (.succ .zero)))
-        (TypeChecker.Methods.withFuel 9999)
+        (TypeChecker.Methods.withFuel (fuel + 3))
         annotatedPiCtorCandidateContext.toTypeChecker state =
       .ok (.sort (.succ (.succ .zero)), state) := by
   rfl
 
-private theorem annotatedPiIsPropSortOneFalse (m : EquivManager) :
+private theorem annotatedPiIsPropSortOneFalse
+    (fuel : Nat) (m : EquivManager) :
     TypeChecker.Inner.isProp (.sort (.succ .zero))
-        (TypeChecker.Methods.withFuel 9999)
+        (TypeChecker.Methods.withFuel (fuel + 3))
         annotatedPiCtorCandidateContext.toTypeChecker
         (annotatedPiDomainInferOnlyState m) =
       .ok (false, annotatedPiSortOneInferOnlyState m) := by
   unfold TypeChecker.Inner.isProp TypeChecker.Inner.getSortLevel
   simp only [normalizationRecMBind]
-  rw [annotatedPiInferTypeSortOneOnly]
+  rw [annotatedPiInferTypeSortOneOnly fuel]
   rfl
 
 private theorem annotatedPiIsDefEqProofIrrelDomain
-    (m : EquivManager) :
+    (fuel : Nat) (m : EquivManager) :
     TypeChecker.Inner.isDefEqProofIrrel
         annotatedPiRawDomainKernel (.sort .zero)
-        (TypeChecker.Methods.withFuel 9999)
+        (TypeChecker.Methods.withFuel (fuel + 3))
         annotatedPiCtorCandidateContext.toTypeChecker
         ({ eqvManager := m } : TypeChecker.State) =
       .ok (.undef, annotatedPiSortOneInferOnlyState m) := by
   unfold TypeChecker.Inner.isDefEqProofIrrel
   simp only [normalizationRecMBind]
-  rw [annotatedPiInferTypeDomainOnlyAny]
+  rw [annotatedPiInferTypeDomainOnlyAny fuel]
   simp only [normalizationRecMBind]
-  rw [annotatedPiIsPropSortOneFalse]
+  rw [annotatedPiIsPropSortOneFalse fuel]
   rfl
 
 private theorem annotatedPiUnfoldOutParamCoreOfMiss
@@ -4731,26 +4773,28 @@ private theorem annotatedPiUnfoldDomainOfMiss
     (by simp) (by rfl) (by rfl)]
   rfl
 
-@[simp] private theorem annotatedPiWhnfCoreIdentityCheap (state) :
+@[simp] private theorem annotatedPiWhnfCoreIdentityCheap
+    (fuel : Nat) (state) :
     TypeChecker.Inner.whnfCore
         (.lam `α (.sort (.succ .zero)) (.bvar 0) .default)
-        false true (TypeChecker.Methods.withFuel 9998)
+        false true (TypeChecker.Methods.withFuel (fuel + 2))
         annotatedPiCtorCandidateContext.toTypeChecker state =
       .ok (.lam `α (.sort (.succ .zero)) (.bvar 0) .default,
         state) := by
   rfl
 
-@[simp] private theorem annotatedPiWhnfCoreSortZeroCheap998 (state) :
+@[simp] private theorem annotatedPiWhnfCoreSortZeroCheap
+    (fuel : Nat) (state) :
     TypeChecker.Inner.whnfCore (.sort .zero) false true
-        (TypeChecker.Methods.withFuel 9998)
+        (TypeChecker.Methods.withFuel (fuel + 2))
         annotatedPiCtorCandidateContext.toTypeChecker state =
       .ok (.sort .zero, state) := by
   rfl
 
 private theorem annotatedPiWhnfCoreDomainBetaCheap
-    (m : EquivManager) :
+    (fuel : Nat) (m : EquivManager) :
     TypeChecker.Inner.whnfCore annotatedPiDomainBetaKernel false true
-        (TypeChecker.Methods.withFuel 9999)
+        (TypeChecker.Methods.withFuel (fuel + 3))
         annotatedPiCtorCandidateContext.toTypeChecker
         (annotatedPiOutParamUnfoldState
           (annotatedPiSortOneInferOnlyState m)) =
@@ -4759,7 +4803,7 @@ private theorem annotatedPiWhnfCoreDomainBetaCheap
           (annotatedPiSortOneInferOnlyState m)) := by
   change
     TypeChecker.Inner.whnfCore' annotatedPiDomainBetaKernel false true
-        (TypeChecker.Methods.withFuel 9998)
+        (TypeChecker.Methods.withFuel (fuel + 2))
         annotatedPiCtorCandidateContext.toTypeChecker
         (annotatedPiOutParamUnfoldState
           (annotatedPiSortOneInferOnlyState m)) =
@@ -4780,7 +4824,7 @@ private theorem annotatedPiWhnfCoreDomainBetaCheap
       (.lam `α (.sort (.succ .zero)) (.bvar 0) .default)
       (.sort .zero)).getAppFn =
         .lam `α (.sort (.succ .zero)) (.bvar 0) .default by rfl]
-  rw [annotatedPiWhnfCoreIdentityCheap]
+  rw [annotatedPiWhnfCoreIdentityCheap fuel]
   rw [show
     (Expr.app
       (.lam `α (.sort (.succ .zero)) (.bvar 0) .default)
@@ -4846,10 +4890,10 @@ private theorem annotatedPiIsDeltaDomain :
   rfl
 
 private theorem annotatedPiDeltaDomain
-    (m : EquivManager) :
+    (fuel : Nat) (m : EquivManager) :
     (TypeChecker.Inner.unfoldDefinition annotatedPiRawDomainKernel >>=
       fun e => TypeChecker.Inner.whnfCore e.get! false true)
-        (TypeChecker.Methods.withFuel 9999)
+        (TypeChecker.Methods.withFuel (fuel + 3))
         annotatedPiCtorCandidateContext.toTypeChecker
         (annotatedPiSortOneInferOnlyState m) =
       .ok (.sort .zero,
@@ -4857,21 +4901,21 @@ private theorem annotatedPiDeltaDomain
           (annotatedPiSortOneInferOnlyState m)) := by
   simp only [normalizationRecMBind]
   rw [annotatedPiUnfoldDomainOfMiss
-    (TypeChecker.Methods.withFuel 9999)
+    (TypeChecker.Methods.withFuel (fuel + 3))
     (annotatedPiSortOneInferOnlyState m) (by
       simp [annotatedPiSortOneInferOnlyState,
         annotatedPiDomainInferOnlyState])]
   simp only
   rw [show (some annotatedPiDomainBetaKernel).get! =
     annotatedPiDomainBetaKernel by rfl]
-  rw [annotatedPiWhnfCoreDomainBetaCheap]
+  rw [annotatedPiWhnfCoreDomainBetaCheap fuel]
 
 private theorem annotatedPiLazyDeltaStepDomain
-    (m : EquivManager) :
+    (fuel : Nat) (m : EquivManager) :
     ∃ m' : EquivManager,
       TypeChecker.Inner.lazyDeltaReductionStep
           annotatedPiRawDomainKernel (.sort .zero)
-          (TypeChecker.Methods.withFuel 9999)
+          (TypeChecker.Methods.withFuel (fuel + 3))
           annotatedPiCtorCandidateContext.toTypeChecker
           (annotatedPiSortOneInferOnlyState m) =
         .ok (.bool true,
@@ -4879,7 +4923,7 @@ private theorem annotatedPiLazyDeltaStepDomain
             (annotatedPiOutParamUnfoldState
               (annotatedPiSortOneInferOnlyState m)) m') := by
   obtain ⟨m', hquick⟩ := annotatedPiQuickIsDefEqSortZeroAny
-    (TypeChecker.Methods.withFuel 9999)
+    (TypeChecker.Methods.withFuel (fuel + 3))
     annotatedPiCtorCandidateContext.toTypeChecker
     (annotatedPiOutParamUnfoldState
       (annotatedPiSortOneInferOnlyState m))
@@ -4896,17 +4940,17 @@ private theorem annotatedPiLazyDeltaStepDomain
   rw [annotatedPiTryUnfoldProjAppSortZero]
   simp only
   rw [normalizationRecMBind]
-  rw [annotatedPiDeltaDomain]
+  rw [annotatedPiDeltaDomain fuel]
   simp only
   rw [normalizationRecMBind]
   rw [hquick]
   rfl
 
 @[simp] private theorem annotatedPiIsDefEqOffsetDomain
-    (m : EquivManager) :
+    (fuel : Nat) (m : EquivManager) :
     TypeChecker.Inner.isDefEqOffset
         annotatedPiRawDomainKernel (.sort .zero)
-        (TypeChecker.Methods.withFuel 9999)
+        (TypeChecker.Methods.withFuel (fuel + 3))
         annotatedPiCtorCandidateContext.toTypeChecker
         (annotatedPiSortOneInferOnlyState m) =
       .ok (.undef, annotatedPiSortOneInferOnlyState m) := by
@@ -4922,23 +4966,23 @@ private theorem annotatedPiLazyDeltaStepDomain
   rfl
 
 private theorem annotatedPiLazyDeltaLoopDomain
-    (m : EquivManager) :
+    (fuel : Nat) (m : EquivManager) :
     ∃ m' : EquivManager,
       TypeChecker.Inner.lazyDeltaReduction.loop
           annotatedPiRawDomainKernel (.sort .zero) 1000
-          (TypeChecker.Methods.withFuel 9999)
+          (TypeChecker.Methods.withFuel (fuel + 3))
           annotatedPiCtorCandidateContext.toTypeChecker
           (annotatedPiSortOneInferOnlyState m) =
         .ok (.bool true,
           annotatedPiWithEqvManager
             (annotatedPiOutParamUnfoldState
               (annotatedPiSortOneInferOnlyState m)) m') := by
-  obtain ⟨m', hstep⟩ := annotatedPiLazyDeltaStepDomain m
+  obtain ⟨m', hstep⟩ := annotatedPiLazyDeltaStepDomain fuel m
   refine ⟨m', ?_⟩
   rw [show 1000 = 999 + 1 by rfl]
   unfold TypeChecker.Inner.lazyDeltaReduction.loop
   rw [normalizationRecMBind]
-  rw [annotatedPiIsDefEqOffsetDomain]
+  rw [annotatedPiIsDefEqOffsetDomain fuel]
   simp only
   rw [show (LBool.undef != LBool.undef) = false by rfl]
   simp only [Bool.false_eq_true, if_false]
@@ -4982,18 +5026,18 @@ private theorem annotatedPiLazyDeltaLoopDomain
   rfl
 
 private theorem annotatedPiLazyDeltaDomain
-    (m : EquivManager) :
+    (fuel : Nat) (m : EquivManager) :
     ∃ m' : EquivManager,
       TypeChecker.Inner.lazyDeltaReduction
           annotatedPiRawDomainKernel (.sort .zero)
-          (TypeChecker.Methods.withFuel 9999)
+          (TypeChecker.Methods.withFuel (fuel + 3))
           annotatedPiCtorCandidateContext.toTypeChecker
           (annotatedPiSortOneInferOnlyState m) =
         .ok (.bool true,
           annotatedPiWithEqvManager
             (annotatedPiOutParamUnfoldState
               (annotatedPiSortOneInferOnlyState m)) m') := by
-  obtain ⟨m', hloop⟩ := annotatedPiLazyDeltaLoopDomain m
+  obtain ⟨m', hloop⟩ := annotatedPiLazyDeltaLoopDomain fuel m
   refine ⟨m', ?_⟩
   unfold TypeChecker.Inner.lazyDeltaReduction
   rw [normalizationRecMBind]
@@ -5002,17 +5046,17 @@ private theorem annotatedPiLazyDeltaDomain
   change
     TypeChecker.Inner.lazyDeltaReduction.loop
         annotatedPiRawDomainKernel (.sort .zero) 1000
-        (TypeChecker.Methods.withFuel 9999)
+        (TypeChecker.Methods.withFuel (fuel + 3))
         annotatedPiCtorCandidateContext.toTypeChecker
         (annotatedPiSortOneInferOnlyState m) = _
   exact hloop
 
 private theorem annotatedPiQuickIsDefEqDomainAny
-    (m : EquivManager) :
+    (fuel : Nat) (m : EquivManager) :
     ∃ (r : LBool) (m' : EquivManager),
       TypeChecker.Inner.quickIsDefEq
           annotatedPiRawDomainKernel (.sort .zero) false
-          (TypeChecker.Methods.withFuel 9999)
+          (TypeChecker.Methods.withFuel (fuel + 3))
           annotatedPiCtorCandidateContext.toTypeChecker
           ({ eqvManager := m } : TypeChecker.State) =
         .ok (r, ({ eqvManager := m' } : TypeChecker.State)) ∧
@@ -5039,58 +5083,35 @@ private theorem annotatedPiQuickIsDefEqDomainAny
       Except.bind]
 
 @[simp] private theorem annotatedPiWhnfCoreSortCheap
-    (state : TypeChecker.State) :
+    (fuel : Nat) (state : TypeChecker.State) :
     TypeChecker.Inner.whnfCore (.sort .zero) false true
-        (TypeChecker.Methods.withFuel 9999)
+        (TypeChecker.Methods.withFuel (fuel + 3))
         annotatedPiCtorCandidateContext.toTypeChecker state =
       .ok (.sort .zero, state) := by
   rfl
 
-private theorem annotatedPiIsDefEqCoreDomain :
+private theorem annotatedPiIsDefEqCoreDomain
+    (fuel : Nat) (initial : EquivManager := {}) :
     ∃ state : TypeChecker.State,
       TypeChecker.Inner.isDefEqCore'
           annotatedPiRawDomainKernel (.sort .zero)
-          (TypeChecker.Methods.withFuel 9999)
+          (TypeChecker.Methods.withFuel (fuel + 3))
           annotatedPiCtorCandidateContext.toTypeChecker
-          ({} : TypeChecker.State) =
+          ({ eqvManager := initial } : TypeChecker.State) =
         .ok (true, state) := by
-  obtain ⟨m, hquick⟩ := annotatedPiQuickIsDefEqDomainInitial
-    (TypeChecker.Methods.withFuel 9999)
-    annotatedPiCtorCandidateContext.toTypeChecker
+  obtain ⟨r, m, hquick, hr⟩ := annotatedPiQuickIsDefEqDomainInitial
+    (TypeChecker.Methods.withFuel (fuel + 3))
+    annotatedPiCtorCandidateContext.toTypeChecker initial
   unfold TypeChecker.Inner.isDefEqCore'
   rw [normalizationRecMBind]
   rw [hquick]
-  simp only
-  rw [show (LBool.undef != LBool.undef) = false by rfl]
-  simp only [Bool.false_eq_true, if_false]
-  rw [normalizationRecMBind]
-  rw [normalizationRecMPure]
-  simp only
-  rw [normalizationRecMBind]
-  rw [normalizationRecMReadContext]
-  simp only
-  rw [show ((.sort .zero : Expr).isConstOf ``true) = false by rfl]
-  simp only [Bool.and_false, Bool.false_eq_true, if_false]
-  rw [normalizationRecMBind]
-  rw [normalizationRecMPure]
-  simp only
-  rw [normalizationRecMBind]
-  rw [annotatedPiWhnfCoreDomainCheap]
-  simp only
-  rw [normalizationRecMBind]
-  rw [annotatedPiWhnfCoreSortCheap]
-  simp only
-  cases hptr :
-      (!(ptrEqExpr annotatedPiRawDomainKernel annotatedPiRawDomainKernel &&
-        ptrEqExpr (.sort .zero) (.sort .zero)))
-  · simp only [Bool.false_eq_true, if_false]
-    rw [normalizationRecMBind]
-    rw [normalizationRecMPure]
+  rcases hr with htrue | hundef
+  · subst r
     simp only
-    rw [normalizationRecMBind]
-    rw [show annotatedPiWithEqvManager ({} : TypeChecker.State) m =
-      ({ eqvManager := m } : TypeChecker.State) by rfl]
-    rw [annotatedPiIsDefEqProofIrrelDomain]
+    rw [show (LBool.true != LBool.undef) = true by rfl]
+    simp only [if_true]
+    exact ⟨({ eqvManager := m } : TypeChecker.State), rfl⟩
+  · subst r
     simp only
     rw [show (LBool.undef != LBool.undef) = false by rfl]
     simp only [Bool.false_eq_true, if_false]
@@ -5098,47 +5119,107 @@ private theorem annotatedPiIsDefEqCoreDomain :
     rw [normalizationRecMPure]
     simp only
     rw [normalizationRecMBind]
-    obtain ⟨m'', hlazy⟩ := annotatedPiLazyDeltaDomain m
-    rw [hlazy]
-    refine ⟨annotatedPiWithEqvManager
-      (annotatedPiOutParamUnfoldState
-        (annotatedPiSortOneInferOnlyState m)) m'', ?_⟩
-    rfl
-  · simp only [if_true]
-    obtain ⟨r, m', hquick', hr⟩ :=
-      annotatedPiQuickIsDefEqDomainAny m
-    rw [normalizationRecMBind]
-    rw [show annotatedPiWithEqvManager ({} : TypeChecker.State) m =
-      ({ eqvManager := m } : TypeChecker.State) by rfl]
-    rw [hquick']
+    rw [normalizationRecMReadContext]
     simp only
-    rcases hr with htrue | hundef
-    · subst r
-      rw [show (LBool.true != LBool.undef) = true by rfl]
-      simp only [if_true]
-      refine ⟨({ eqvManager := m' } : TypeChecker.State), ?_⟩
-      rfl
-    · subst r
+    rw [show ((.sort .zero : Expr).isConstOf ``true) = false by rfl]
+    simp only [Bool.and_false, Bool.false_eq_true, if_false]
+    rw [normalizationRecMBind]
+    rw [normalizationRecMPure]
+    simp only
+    rw [normalizationRecMBind]
+    rw [annotatedPiWhnfCoreDomainCheap fuel]
+    simp only
+    rw [normalizationRecMBind]
+    rw [annotatedPiWhnfCoreSortCheap fuel]
+    simp only
+    cases hptr :
+        (!(ptrEqExpr annotatedPiRawDomainKernel annotatedPiRawDomainKernel &&
+          ptrEqExpr (.sort .zero) (.sort .zero)))
+    · simp only [Bool.false_eq_true, if_false]
+      rw [normalizationRecMBind]
+      rw [normalizationRecMPure]
+      simp only
+      rw [normalizationRecMBind]
+      rw [annotatedPiIsDefEqProofIrrelDomain fuel]
+      simp only
       rw [show (LBool.undef != LBool.undef) = false by rfl]
       simp only [Bool.false_eq_true, if_false]
       rw [normalizationRecMBind]
       rw [normalizationRecMPure]
       simp only
       rw [normalizationRecMBind]
-      rw [annotatedPiIsDefEqProofIrrelDomain]
-      simp only
-      rw [show (LBool.undef != LBool.undef) = false by rfl]
-      simp only [Bool.false_eq_true, if_false]
-      rw [normalizationRecMBind]
-      rw [normalizationRecMPure]
-      simp only
-      rw [normalizationRecMBind]
-      obtain ⟨m'', hlazy⟩ := annotatedPiLazyDeltaDomain m'
+      obtain ⟨m'', hlazy⟩ := annotatedPiLazyDeltaDomain fuel m
       rw [hlazy]
       refine ⟨annotatedPiWithEqvManager
         (annotatedPiOutParamUnfoldState
-          (annotatedPiSortOneInferOnlyState m')) m'', ?_⟩
+          (annotatedPiSortOneInferOnlyState m)) m'', ?_⟩
       rfl
+    · simp only [if_true]
+      obtain ⟨r, m', hquick', hr⟩ :=
+        annotatedPiQuickIsDefEqDomainAny fuel m
+      rw [normalizationRecMBind]
+      rw [hquick']
+      simp only
+      rcases hr with htrue | hundef
+      · subst r
+        rw [show (LBool.true != LBool.undef) = true by rfl]
+        simp only [if_true]
+        refine ⟨({ eqvManager := m' } : TypeChecker.State), ?_⟩
+        rfl
+      · subst r
+        rw [show (LBool.undef != LBool.undef) = false by rfl]
+        simp only [Bool.false_eq_true, if_false]
+        rw [normalizationRecMBind]
+        rw [normalizationRecMPure]
+        simp only
+        rw [normalizationRecMBind]
+        rw [annotatedPiIsDefEqProofIrrelDomain fuel]
+        simp only
+        rw [show (LBool.undef != LBool.undef) = false by rfl]
+        simp only [Bool.false_eq_true, if_false]
+        rw [normalizationRecMBind]
+        rw [normalizationRecMPure]
+        simp only
+        rw [normalizationRecMBind]
+        obtain ⟨m'', hlazy⟩ := annotatedPiLazyDeltaDomain fuel m'
+        rw [hlazy]
+        refine ⟨annotatedPiWithEqvManager
+          (annotatedPiOutParamUnfoldState
+            (annotatedPiSortOneInferOnlyState m')) m'', ?_⟩
+        rfl
+
+private theorem annotatedPiDomain_isDefEqInner
+    (fuel : Nat) (initial : EquivManager := {}) :
+    ∃ state : TypeChecker.State,
+      TypeChecker.Inner.isDefEq annotatedPiRawDomainKernel (.sort .zero)
+          (TypeChecker.Methods.withFuel (fuel + 4))
+          annotatedPiCtorCandidateContext.toTypeChecker
+          ({ eqvManager := initial } : TypeChecker.State) =
+        .ok (true, state) := by
+  obtain ⟨state, hcore⟩ := annotatedPiIsDefEqCoreDomain fuel initial
+  have hcore' :
+      TypeChecker.Inner.isDefEqCore
+          annotatedPiRawDomainKernel (.sort .zero)
+          (TypeChecker.Methods.withFuel (fuel + 4))
+          annotatedPiCtorCandidateContext.toTypeChecker
+          ({ eqvManager := initial } : TypeChecker.State) =
+        .ok (true, state) := by
+    change
+      TypeChecker.Inner.isDefEqCore'
+          annotatedPiRawDomainKernel (.sort .zero)
+          (TypeChecker.Methods.withFuel (fuel + 3))
+          annotatedPiCtorCandidateContext.toTypeChecker
+          ({ eqvManager := initial } : TypeChecker.State) =
+        .ok (true, state)
+    exact hcore
+  unfold TypeChecker.Inner.isDefEq
+  rw [show
+    (annotatedPiRawDomainKernel == (.sort .zero : Expr)) = false by
+      exact annotatedPiApp_beq_sort _ _ _]
+  simp only [Bool.false_eq_true, if_false, pure_bind,
+    normalizationRecMBind]
+  rw [hcore']
+  exact ⟨_, rfl⟩
 
 private theorem annotatedPiDomain_isDefEqM :
     TypeChecker.M.run annotatedPiCtorCandidateContext.env
@@ -5148,22 +5229,7 @@ private theorem annotatedPiDomain_isDefEqM :
       annotatedPiCtorCandidateContext.fuel
       (TypeChecker.isDefEq annotatedPiRawDomainKernel (.sort .zero)) =
         .ok true := by
-  obtain ⟨state, hcore⟩ := annotatedPiIsDefEqCoreDomain
-  have hcore' :
-      TypeChecker.Inner.isDefEqCore
-          annotatedPiRawDomainKernel (.sort .zero)
-          (TypeChecker.Methods.withFuel 10000)
-          annotatedPiCtorCandidateContext.toTypeChecker
-          ({} : TypeChecker.State) =
-        .ok (true, state) := by
-    change
-      TypeChecker.Inner.isDefEqCore'
-          annotatedPiRawDomainKernel (.sort .zero)
-          (TypeChecker.Methods.withFuel 9999)
-          annotatedPiCtorCandidateContext.toTypeChecker
-          ({} : TypeChecker.State) =
-        .ok (true, state)
-    exact hcore
+  obtain ⟨state, hrun⟩ := annotatedPiDomain_isDefEqInner 9996
   change
     Except.map (fun x : Bool × TypeChecker.State => x.1)
       (TypeChecker.Inner.isDefEq
@@ -5172,13 +5238,12 @@ private theorem annotatedPiDomain_isDefEqM :
         annotatedPiCtorCandidateContext.toTypeChecker
         ({} : TypeChecker.State)) =
       .ok true
-  unfold TypeChecker.Inner.isDefEq
-  rw [show
-    (annotatedPiRawDomainKernel == (.sort .zero : Expr)) = false by
-      exact annotatedPiApp_beq_sort _ _ _]
-  simp only [Bool.false_eq_true, if_false, pure_bind,
-    normalizationRecMBind]
-  rw [hcore']
+  rw [show TypeChecker.Inner.isDefEq
+      annotatedPiRawDomainKernel (.sort .zero)
+      (TypeChecker.Methods.withFuel 10000)
+      annotatedPiCtorCandidateContext.toTypeChecker
+      ({} : TypeChecker.State) = .ok (true, state) by
+    simpa only [Nat.reduceAdd] using hrun]
   rfl
 
 private theorem annotatedPiInner_checkTypeM :
@@ -5835,6 +5900,7 @@ private def annotatedPiInnerInferOnlyFinalState : TypeChecker.State :=
     inferTypeI := annotatedPiFamilyInferOnlyState.inferTypeI.insert
       annotatedPiInnerKernel (.sort (.succ .zero)) }
 
+set_option maxRecDepth 10000 in
 private theorem annotatedPiInner_inferTypeInner :
     TypeChecker.Inner.inferType annotatedPiInnerKernel true
         (TypeChecker.Methods.withFuel 10000)
@@ -5852,14 +5918,7 @@ private theorem annotatedPiInner_inferTypeInner :
     Expr.hasLooseBVars, Expr.looseBVarRange',
     TypeChecker.Inner.inferForall, TypeChecker.Inner.inferForall.loop,
     Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
-  rw [show TypeChecker.Inner.inferType'
-      (.app (.const ``outParam [.succ .zero]) (.sort .zero)) true
-      (TypeChecker.Methods.withFuel 9998)
-      annotatedPiCtorCandidateContext.toTypeChecker
-      ({} : TypeChecker.State) =
-    .ok (.sort (.succ .zero),
-      annotatedPiDomainInferOnlyState {}) by
-    exact annotatedPiInferTypeDomainOnlyAny {}]
+  rw [annotatedPiInferTypeDomainOnly998]
   simp only [TypeChecker.Inner.ensureSortCore, Expr.isSort,
     if_true, annotatedPiWithLocalDecl, Expr.instantiate1',
     annotatedPiRecMPure, Bind.bind, ReaderT.bind,
@@ -7080,7 +7139,7 @@ private def aliasFormerFamilyCandidateNodeRun :
     (by
       have hs : TrExprS typeFamilyAliasEnv [] []
           (.sort (.succ .zero)) (.sort (.succ .zero)) := .sort rfl
-      exact ⟨_, hs, ⟨_, VEnv.HasType.sort (by decide)⟩⟩)
+      exact hs)
     10000 9999 (by rfl) (by rfl)
 
 /-- Verified family-result normalization leaf for AliasFormer. -/
@@ -7256,8 +7315,7 @@ private def aliasFormerCtorCandidateNodeRun :
     aliasFormerCtorCandidateContextRun.context_eq
     rfl rfl rfl aliasFormerCtorCandidateContextRun.state_wf
     aliasFormerCtorCheckTypeRun.expr_tr (.const rfl rfl rfl)
-    ⟨_, aliasFormerCtorCheckTypeRun.expr_tr,
-      ⟨_, aliasFormerCtorCheckTypeRun.hasType⟩⟩
+    aliasFormerCtorCheckTypeRun.expr_tr
     10000 9999 (by rfl) (by rfl)
 
 private def aliasFormerCtorCandidateRun :
@@ -7336,10 +7394,7 @@ def recAliasWhnfRun :
       exact .lam
         ⟨_, VEnv.HasType.sort (by decide)⟩
         (.sort rfl) (.bvar rfl)
-    exact ⟨_, hs, ⟨_,
-      VEnv.HasType.lam
-        (VEnv.HasType.sort (by decide))
-        (VEnv.HasType.bvar .zero)⟩⟩
+    exact hs
   recursionFuel := 9999
   run_eq := by
     simpa [aliasRecNormalizationContext, TypeChecker.VContext.mk',
@@ -7473,6 +7528,7 @@ private noncomputable def aliasFormerStagedUniverseInput :
     declaration_uvars_eq := rfl
     preFamily := aliasFormerPreFamilyStage
     family := aliasFormerFamilyStage
+    validation_nparams_eq := rfl
     constructorValidation :=
       AddInductive.ConstructorValidationRun.of_run aliasFormer_checkConstructors
     constructors := .cons {
@@ -7677,6 +7733,14 @@ private theorem aliasFormerPreFamilySafetyRun :
       aliasFormerConstructorCandidate, aliasFormerCtorCandidate,
       AddInductive.CandidateExpr.view, AddInductive.CandidateExprTrace.view,
       viewRun, Bind.bind, Except.bind, Except.pure, Pure.pure]
+  have translationUnique :
+      (AddInductive.theoryTranslationUnique (.sort (.succ .zero)) &&
+        (AddInductive.CandidateList.cons aliasFormerConstructorCandidate
+          (AddInductive.CandidateList.nil : AddInductive.CandidateList
+            AddInductive.CandidateConstructor [])).viewTranslationUnique) =
+        true := by
+    rfl
+  rw [if_pos translationUnique]
   simp [parametersRun, listRun, Bind.bind, Except.bind,
     Except.pure, Pure.pure]
 
@@ -7809,14 +7873,6 @@ private theorem aliasFormerCandidate_generationShape :
     aliasFormerNormalizationCandidateSemanticRun.generationShape = true :=
   rfl
 
-/-- Temporary L4L-01A view-WF compatibility premise. L4L-01D derives this
-from retained validation and L4L-01E removes it from package construction. -/
-private theorem aliasFormerCandidate_viewDecl_wf :
-    aliasFormerNormalizationCandidateRun.viewDecl.WF
-      typeFamilyAliasEnv := by
-  change aliasFormerViewDecl.WF typeFamilyAliasEnv
-  exact aliasFormerViewDecl_wf
-
 private def aliasFormerProducedGenerationShapeCandidate :
     VInductDecl.ProducedGenerationShapeCandidate aliasFormerRawDecl
       aliasFormerRawType aliasFormerKernelType 0 false
@@ -7844,16 +7900,16 @@ theorem aliasFormerGenerationShapeCandidate_produced :
 
 /-- Complete source-indexed candidate certificate for the non-identity
 AliasFormer generation transaction. -/
-def aliasFormerGenerationCandidateSemanticRun :
-    VInductDecl.GenerationCandidateSemanticRun
+noncomputable def aliasFormerGenerationCandidateSemanticRun :
+  VInductDecl.GenerationCandidateSemanticRun
       aliasFormerNormalizationCandidateSemanticRun
       aliasFormerGenerationChecked :=
   VInductDecl.GenerationCandidateSemanticRun.ofGenerationShape
+    aliasFormerStagedPreFamilyInput
     aliasFormerNormalizationCandidateSemanticRun
-    aliasFormerGenerationChecked rfl aliasFormerCandidate_viewDecl_wf
-    aliasFormerCandidate_generationShape
+    aliasFormerGenerationChecked rfl aliasFormerCandidate_generationShape
 
-def aliasFormerGenerationCandidateRun :
+noncomputable def aliasFormerGenerationCandidateRun :
     VInductDecl.GenerationCandidateRun
       aliasFormerNormalizationCandidateRun
       aliasFormerGenerationChecked :=
@@ -7862,24 +7918,26 @@ def aliasFormerGenerationCandidateRun :
 /-- The generic dependent package retains the exact AliasFormer kernel
 source, candidate trace, reconstructed normalization, successful dependent
 analysis, and semantic generation run in one value. -/
-def aliasFormerGenerationCandidatePackage :
+noncomputable def aliasFormerGenerationCandidatePackage :
     VInductDecl.GenerationCandidatePackage typeFamilyAliasEnv [] :=
   aliasFormerGenerationCandidateSemanticRun.package
 
 /-- The complete AliasFormer semantic package is selected by the exact
 successful whole-call metadata producer, including its pre-family and
 post-family checker environments. -/
-def aliasFormerProducedGenerationCandidatePackage :
+noncomputable def aliasFormerProducedGenerationCandidatePackage :
     VInductDecl.ProducedGenerationCandidatePackage typeFamilyAliasEnv [] :=
   aliasFormerProducedGenerationShapeCandidate.producedPackage
+    aliasFormerStagedPreFamilyInput
     aliasFormerNormalizationCandidateSemanticRun rfl
-    aliasFormerGenerationChecked rfl aliasFormerCandidate_viewDecl_wf
+    aliasFormerGenerationChecked rfl
 
 /-- Theory-only erasure of the AliasFormer producer package. This is the
 consumer-facing value accepted by the public non-identity transaction. -/
 def aliasFormerGenerationCertificate :
-    aliasFormerRawDecl.GenerationCertificate typeFamilyAliasEnv :=
-  aliasFormerProducedGenerationCandidatePackage.package.certificate
+    aliasFormerRawDecl.GenerationCertificate typeFamilyAliasEnv where
+  generation := aliasFormerGenerationChecked
+  wf := aliasFormerGenerationCandidateSemanticRun.run.wf
 
 /-- The public proof-carrying path exposes AliasFormer's candidate-derived
 non-identity generation without exposing its checker package. -/
@@ -7901,7 +7959,7 @@ theorem aliasFormerCertified_ordered : aliasFormerFinalEnv.Ordered :=
 /-- Complete checker-side AliasFormer generation run, now derived by the
 generic family/constructor spine assembler from the executable singleton
 candidate rather than assembled field-by-field by the fixture. -/
-def aliasFormerGenerationRun :
+noncomputable def aliasFormerGenerationRun :
     VInductDecl.GenerationRun aliasFormerGenerationChecked
       typeFamilyAliasEnv :=
   aliasFormerProducedGenerationCandidatePackage.package.run.generationRun
@@ -8185,8 +8243,7 @@ private def annotatedPiFamilyCandidateNodeRun :
     annotatedPiFamilyCandidateContextRun.context_eq
     rfl rfl rfl annotatedPiFamilyCandidateContextRun.state_wf
     (.sort rfl) (.sort rfl)
-    ⟨_, TrExprS.sort rfl,
-      ⟨_, VEnv.HasType.sort (by decide)⟩⟩
+    (TrExprS.sort rfl)
     10000 9999 rfl rfl
 
 private def annotatedPiFamilyCandidateRun :
@@ -8238,7 +8295,7 @@ private def annotatedPiCtorCandidateNodeRun :
     annotatedPiCtorCandidateContextRun.context_eq
     rfl rfl rfl annotatedPiCtorCandidateContextRun.state_wf
     annotatedPiCtorSource_tr (.sort rfl)
-    ⟨_, annotatedPiCtorSource_tr, ⟨_, annotatedPiRawCtor_hasType⟩⟩
+    annotatedPiCtorSource_tr
     10000 9999 rfl rfl
 
 private def annotatedPiInnerCandidateNodeRun :
@@ -8255,8 +8312,7 @@ private def annotatedPiInnerCandidateNodeRun :
     annotatedPiCtorCandidateContextRun.context_eq
     rfl rfl rfl annotatedPiCtorCandidateContextRun.state_wf
     annotatedPiInnerSource_tr (.sort rfl)
-    ⟨_, annotatedPiInnerSource_tr,
-      ⟨_, annotatedPiRawInner_hasType []⟩⟩
+    annotatedPiInnerSource_tr
     10000 9999 rfl rfl
 
 private def annotatedPiDomainCandidateNodeRun :
@@ -8273,8 +8329,7 @@ private def annotatedPiDomainCandidateNodeRun :
     annotatedPiCtorCandidateContextRun.context_eq
     rfl rfl rfl annotatedPiCtorCandidateContextRun.state_wf
     annotatedPiDomainSource_tr (.sort rfl)
-    ⟨_, TrExprS.sort rfl,
-      ⟨_, VEnv.HasType.sort (by decide)⟩⟩
+    (TrExprS.sort rfl)
     10000 9999 rfl rfl
 
 private def annotatedPiInnerBodyCandidateNodeRun :
@@ -8303,10 +8358,8 @@ private def annotatedPiInnerBodyCandidateNodeRun :
     (annotatedPiInstConstSource_tr
       annotatedPiInnerBodyCandidateContextRun.context.vlctx)
     (.sort rfl)
-    ⟨_, annotatedPiConstSource_tr
-        annotatedPiInnerBodyCandidateContextRun.context.vlctx,
-      ⟨_, annotatedPiFamilyConst_hasType
-        annotatedPiInnerBodyCandidateContextRun.context.vlctx.toCtx⟩⟩
+    (annotatedPiConstSource_tr
+      annotatedPiInnerBodyCandidateContextRun.context.vlctx)
     10000 9999 rfl rfl
 
 private def annotatedPiOuterBodyCandidateNodeRun :
@@ -8335,10 +8388,8 @@ private def annotatedPiOuterBodyCandidateNodeRun :
     (annotatedPiInstConstSource_tr
       annotatedPiOuterBodyCandidateContextRun.context.vlctx)
     (.sort rfl)
-    ⟨_, annotatedPiConstSource_tr
-        annotatedPiOuterBodyCandidateContextRun.context.vlctx,
-      ⟨_, annotatedPiFamilyConst_hasType
-        annotatedPiOuterBodyCandidateContextRun.context.vlctx.toCtx⟩⟩
+    (annotatedPiConstSource_tr
+      annotatedPiOuterBodyCandidateContextRun.context.vlctx)
     10000 9999 rfl rfl
 
 private def annotatedPiDomainAnnotationsRun :
@@ -8524,6 +8575,7 @@ private noncomputable def annotatedPiStagedUniverseInput :
     declaration_uvars_eq := rfl
     preFamily := annotatedPiPreFamilyStage
     family := annotatedPiFamilyStage
+    validation_nparams_eq := rfl
     constructorValidation :=
       AddInductive.ConstructorValidationRun.of_run annotatedPi_checkConstructors
     constructors := .cons {
@@ -8628,6 +8680,140 @@ private theorem annotatedPiAlignedViewCtorKernel_eq :
     annotatedPiAlignedViewCtorKernel = annotatedPiViewCtorKernel := by
   simp [annotatedPiAlignedViewCtorKernel, annotatedPiViewCtorKernel,
     annotatedPiAlignedViewInnerKernel, annotatedPiViewInnerKernel]
+
+set_option maxRecDepth 10000 in
+private theorem annotatedPiDomain_isDefEqInner9999
+    (initial : EquivManager) :
+    ∃ state : TypeChecker.State,
+      TypeChecker.Inner.isDefEq annotatedPiRawDomainKernel (.sort .zero)
+          (TypeChecker.Methods.withFuel 9999)
+          annotatedPiCtorCandidateContext.toTypeChecker
+          ({ eqvManager := initial } : TypeChecker.State) =
+        .ok (true, state) := by
+  simpa only [Nat.reduceAdd] using
+    annotatedPiDomain_isDefEqInner 9995 initial
+
+private theorem annotatedPiInnerView_isDefEqForall
+    (initial : EquivManager) :
+    ∃ state : TypeChecker.State,
+      TypeChecker.Inner.isDefEqForall
+          annotatedPiInnerKernel annotatedPiViewInnerKernel #[]
+          (TypeChecker.Methods.withFuel 9999)
+          annotatedPiCtorCandidateContext.toTypeChecker
+          ({ eqvManager := initial } : TypeChecker.State) =
+        .ok (true, state) := by
+  obtain ⟨state, domainRun⟩ :=
+    annotatedPiDomain_isDefEqInner9999 initial
+  have domainRun' : TypeChecker.Inner.isDefEq
+      (annotatedPiRawDomainKernel.instantiateRev #[])
+      ((.sort .zero : Expr).instantiateRev #[])
+      (TypeChecker.Methods.withFuel 9999)
+      annotatedPiCtorCandidateContext.toTypeChecker
+      ({ eqvManager := initial } : TypeChecker.State) =
+        .ok (true, state) := by
+    simpa [Expr.instantiateRev] using domainRun
+  refine ⟨state, ?_⟩
+  unfold annotatedPiInnerKernel annotatedPiViewInnerKernel
+    TypeChecker.Inner.isDefEqForall
+  rw [show
+    (annotatedPiRawDomainKernel == (.sort .zero : Expr)) = false by
+      exact annotatedPiApp_beq_sort _ _ _]
+  simp only [Bool.false_eq_true, if_false, pure_bind,
+    normalizationRecMBind]
+  rw [domainRun']
+  simp [TypeChecker.Inner.isDefEqForall, TypeChecker.Inner.isDefEq,
+    Expr.hasLooseBVars, Expr.looseBVarRange', Expr.instantiateRev,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+
+private theorem annotatedPiInnerView_quickIsDefEq
+    (initial : EquivManager) :
+    ∃ state : TypeChecker.State,
+      TypeChecker.Inner.quickIsDefEq
+          annotatedPiInnerKernel annotatedPiViewInnerKernel true
+          (TypeChecker.Methods.withFuel 9999)
+          annotatedPiCtorCandidateContext.toTypeChecker
+          ({ eqvManager := initial } : TypeChecker.State) =
+        .ok (.true, state) := by
+  let q := EquivManager.isEquiv true annotatedPiInnerKernel
+    annotatedPiViewInnerKernel initial
+  rcases hq : q with ⟨equal, manager⟩
+  have hq' : EquivManager.isEquiv true annotatedPiInnerKernel
+      annotatedPiViewInnerKernel initial = (equal, manager) := by
+    simpa [q] using hq
+  cases equal
+  · obtain ⟨state, forallRun⟩ :=
+      annotatedPiInnerView_isDefEqForall manager
+    refine ⟨state, ?_⟩
+    unfold annotatedPiInnerKernel annotatedPiViewInnerKernel at hq' forallRun ⊢
+    unfold TypeChecker.Inner.quickIsDefEq
+    simp [modifyGet, MonadStateOf.modifyGet, monadLift,
+      MonadLift.monadLift, StateT.modifyGet, pure, ReaderT.pure,
+      StateT.pure, Except.pure, hq', forallRun,
+      Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+    unfold toLBoolM
+    rw [normalizationRecMBind, forallRun]
+    rfl
+  · refine ⟨({ eqvManager := manager } : TypeChecker.State), ?_⟩
+    unfold TypeChecker.Inner.quickIsDefEq
+    simp [modifyGet, MonadStateOf.modifyGet, monadLift,
+      MonadLift.monadLift, StateT.modifyGet, pure, ReaderT.pure,
+      StateT.pure, Except.pure, hq',
+      Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+
+private theorem annotatedPiInnerView_isDefEqInner :
+    ∃ state : TypeChecker.State,
+      TypeChecker.Inner.isDefEq
+          annotatedPiInnerKernel annotatedPiViewInnerKernel
+          (TypeChecker.Methods.withFuel 10000)
+          annotatedPiCtorCandidateContext.toTypeChecker
+          ({} : TypeChecker.State) =
+        .ok (true, state) := by
+  obtain ⟨quickState, quickRun⟩ :=
+    annotatedPiInnerView_quickIsDefEq {}
+  have coreRun : TypeChecker.Inner.isDefEqCore
+      annotatedPiInnerKernel annotatedPiViewInnerKernel
+      (TypeChecker.Methods.withFuel 10000)
+      annotatedPiCtorCandidateContext.toTypeChecker
+      ({} : TypeChecker.State) = .ok (true, quickState) := by
+    change TypeChecker.Inner.isDefEqCore'
+      annotatedPiInnerKernel annotatedPiViewInnerKernel
+      (TypeChecker.Methods.withFuel 9999)
+      annotatedPiCtorCandidateContext.toTypeChecker
+      ({} : TypeChecker.State) = .ok (true, quickState)
+    unfold TypeChecker.Inner.isDefEqCore'
+    rw [normalizationRecMBind, quickRun]
+    rfl
+  unfold TypeChecker.Inner.isDefEq
+  rw [show
+    (annotatedPiInnerKernel == annotatedPiViewInnerKernel) = false by
+      change Expr.eqv
+        (.forallE `p annotatedPiRawDomainKernel
+          (.const ``AnnotatedPi []) .default)
+        (.forallE `p (.sort .zero)
+          (.const ``AnnotatedPi []) .default) = false
+      rw [Expr.eqv_eq]
+      rfl]
+  simp only [Bool.false_eq_true, if_false, pure_bind,
+    normalizationRecMBind]
+  rw [coreRun]
+  exact ⟨_, rfl⟩
+
+private theorem annotatedPiInnerView_isDefEq :
+    AddInductive.CandidateIsDefEqStep.Valid
+      ⟨annotatedPiConstructorValidationContext,
+        annotatedPiInnerKernel, annotatedPiAlignedViewInnerKernel⟩ := by
+  unfold AddInductive.CandidateIsDefEqStep.Valid
+  rw [annotatedPiConstructorValidationContext_def_eq,
+    annotatedPiAlignedViewInnerKernel_eq]
+  obtain ⟨state, run⟩ := annotatedPiInnerView_isDefEqInner
+  change Except.map (fun x : Bool × TypeChecker.State => x.1)
+      (TypeChecker.Inner.isDefEq annotatedPiInnerKernel
+        annotatedPiViewInnerKernel
+        (TypeChecker.Methods.withFuel 10000)
+        annotatedPiCtorCandidateContext.toTypeChecker
+        ({} : TypeChecker.State)) = .ok true
+  rw [run]
+  rfl
 
 private theorem annotatedPiValidationAlignedCheck_exists
     {source candidateSource : Expr}
@@ -9294,6 +9480,7 @@ private noncomputable def annotatedPiStagedPostFamilyInput :
                             annotatedPiAlignedViewCtorKernel
                           exact AddInductive.ConstructorViewAlignmentTrace.ordinary
                               innerChecked' viewInnerChecked'
+                              ⟨annotatedPiInnerView_isDefEq⟩
                               consumedInnerChecked
                               positivityModeTrace
                               positivityAlignment (by
@@ -9681,6 +9868,22 @@ private theorem annotatedPiPreFamilySafetyRun :
         .ok (.sort (.succ .zero)) := by
     rfl
   unfold AddInductive.checkConstructorPreFamilySafety
+  have translationUnique :
+      (AddInductive.theoryTranslationUnique (.sort (.succ .zero)) &&
+        (AddInductive.CandidateList.cons annotatedPiConstructorCandidate
+          (AddInductive.CandidateList.nil : AddInductive.CandidateList
+            AddInductive.CandidateConstructor [])).viewTranslationUnique) =
+        true := by
+    simp [AddInductive.theoryTranslationUnique,
+      AddInductive.CandidateList.viewTranslationUnique,
+      AddInductive.CandidateExprTrace.viewTranslationUnique,
+      AddInductive.CandidateExprTrace.view,
+      annotatedPiConstructorCandidate, annotatedPiCtorCandidate,
+      annotatedPiCtorCandidateTrace, annotatedPiInnerCandidateTrace,
+      annotatedPiDomainCandidateTrace, annotatedPiInnerBodyCandidateTrace,
+      annotatedPiOuterBodyCandidateTrace,
+      annotatedPiConst_abstract_singleton]
+  rw [if_pos translationUnique]
   rw [parametersRun]
   simp only [Bind.bind, Except.bind]
   rw [listRun]
@@ -9752,16 +9955,6 @@ private theorem annotatedPiCandidate_generationShape :
   rw [annotatedPiCtorCandidate_storedSpine]
   rfl
 
-/-- Temporary L4L-01A view-WF compatibility premise. L4L-01D derives this
-from retained validation and L4L-01E removes it from package construction. -/
-private theorem annotatedPiCandidate_viewDecl_wf :
-    annotatedPiNormalizationCandidateRun.viewDecl.WF outParamEnv := by
-  change annotatedPiViewDecl.WF outParamEnv
-  apply annotatedPiViewDecl_wf.mono
-  exact (VEnv.addConst_le (by rfl :
-    VEnv.empty.addConst ``outParam (vconst(type_of% @outParam)) =
-      some outParamConstEnv)).trans VEnv.addDefEq_le
-
 private def annotatedPiProducedGenerationShapeCandidate :
     VInductDecl.ProducedGenerationShapeCandidate annotatedPiRawDecl
       annotatedPiRawType annotatedPiKernelType 0 false
@@ -9790,16 +9983,16 @@ theorem annotatedPiGenerationShapeCandidate_produced :
 /-- Complete source-indexed checker certificate for annotated recursive-Π
 generation. This is the first live generation run whose main constructor
 spine contains an annotation-normalized recursive function domain. -/
-def annotatedPiGenerationCandidateSemanticRun :
-    VInductDecl.GenerationCandidateSemanticRun
+noncomputable def annotatedPiGenerationCandidateSemanticRun :
+  VInductDecl.GenerationCandidateSemanticRun
       annotatedPiNormalizationCandidateSemanticRun
       annotatedPiGenerationChecked :=
   VInductDecl.GenerationCandidateSemanticRun.ofGenerationShape
+    annotatedPiStagedPreFamilyInput
     annotatedPiNormalizationCandidateSemanticRun
-    annotatedPiGenerationChecked rfl annotatedPiCandidate_viewDecl_wf
-    annotatedPiCandidate_generationShape
+    annotatedPiGenerationChecked rfl annotatedPiCandidate_generationShape
 
-def annotatedPiGenerationCandidateRun :
+noncomputable def annotatedPiGenerationCandidateRun :
     VInductDecl.GenerationCandidateRun
       annotatedPiNormalizationCandidateRun
       annotatedPiGenerationChecked :=
@@ -9807,25 +10000,27 @@ def annotatedPiGenerationCandidateRun :
 
 /-- Complete dependent producer package for the annotation-bearing recursive
 Π candidate. -/
-def annotatedPiGenerationCandidatePackage :
+noncomputable def annotatedPiGenerationCandidatePackage :
     VInductDecl.GenerationCandidatePackage outParamEnv [] :=
   annotatedPiGenerationCandidateSemanticRun.package
 
 /-- The complete AnnotatedPi semantic package is selected by the exact
 successful whole-call metadata producer, including its nested annotation-
 consuming traversal in the post-family environment. -/
-def annotatedPiProducedGenerationCandidatePackage :
+noncomputable def annotatedPiProducedGenerationCandidatePackage :
     VInductDecl.ProducedGenerationCandidatePackage outParamEnv [] :=
   annotatedPiProducedGenerationShapeCandidate.producedPackage
+    annotatedPiStagedPreFamilyInput
     annotatedPiNormalizationCandidateSemanticRun rfl
-    annotatedPiGenerationChecked rfl annotatedPiCandidate_viewDecl_wf
+    annotatedPiGenerationChecked rfl
 
 /-- Theory-only erasure consumed by the public certified transaction. -/
 def annotatedPiGenerationCertificate :
-    annotatedPiRawDecl.GenerationCertificate outParamEnv :=
-  annotatedPiProducedGenerationCandidatePackage.package.certificate
+    annotatedPiRawDecl.GenerationCertificate outParamEnv where
+  generation := annotatedPiGenerationChecked
+  wf := annotatedPiGenerationCandidateSemanticRun.run.wf
 
-def annotatedPiGenerationRun :
+noncomputable def annotatedPiGenerationRun :
     VInductDecl.GenerationRun annotatedPiGenerationChecked outParamEnv :=
   annotatedPiProducedGenerationCandidatePackage.package.run.generationRun
 
@@ -9943,7 +10138,7 @@ private theorem annotatedPiRec_fresh :
 
 /-- Complete kernel-metadata replay transaction for `AnnotatedPi`, driven by
 the checker-produced non-identity normalization certificate. -/
-def annotatedPiAddInductTraceChecked :
+noncomputable def annotatedPiAddInductTraceChecked :
     AddInductTrace outParamMap outParamEnv annotatedPiRawDecl
       annotatedPiMap annotatedPiFinalEnv := by
   refine annotatedPiProducedGenerationCandidatePackage.package.addInductTrace
@@ -10078,7 +10273,7 @@ theorem annotatedPi_rec_lookup_unique :
 /-- The complete AliasFormer metadata trace with the generation-WF field
 supplied by the checker-produced certificate. All computational metadata
 witnesses are shared with the existing replay. -/
-def aliasFormerAddInductTraceChecked :
+noncomputable def aliasFormerAddInductTraceChecked :
     AddInductTrace typeFamilyAliasMap typeFamilyAliasEnv
       aliasFormerRawDecl aliasFormerMap aliasFormerFinalEnv :=
   let replay :=
@@ -11490,7 +11685,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiGenerationCandidatePackage' 
 info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiCtor_candidateTrace' depends on axioms: [propext,
  sorryAx,
  Classical.choice,
- ptrEqExpr_eq,
  Quot.sound,
  Expr.eqv_eq,
  Expr.instantiate1_eq,
@@ -11530,7 +11724,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiFamily_candidateTrace' depen
 info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiNormalizationCandidate_produced' depends on axioms: [propext,
  sorryAx,
  Classical.choice,
- ptrEqExpr_eq,
  Quot.sound,
  Expr.eqv_eq,
  Expr.instantiate1_eq,

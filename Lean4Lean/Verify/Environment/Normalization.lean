@@ -269,7 +269,7 @@ structure WhnfRun (env : VEnv) (Us : List Name) (Δ : VLCtx)
   vlctx_eq : context.vlctx = Δ
   state_wf : VState.WF context {}
   lhs_tr : TrExprS env Us Δ lhs lhs'
-  rhs_tr : TrExpr env Us Δ rhs rhs'
+  rhs_tr : TrExprS env Us Δ rhs rhs'
   recursionFuel : Nat
   run_eq : ∃ state : State,
     Inner.whnf' lhs (Methods.withFuel recursionFuel)
@@ -293,7 +293,7 @@ def WhnfRun.ofCandidateStep
     (vlctx_eq : context.vlctx = Δ)
     (state_wf : VState.WF context {})
     (lhs_tr : TrExprS env Us Δ step.source lhs')
-    (rhs_tr : TrExpr env Us Δ step.result rhs')
+    (rhs_tr : TrExprS env Us Δ step.result rhs')
     (recursionFuel : Nat)
     (hdepth : step.context.fuel.recDepth = recursionFuel + 1) :
     WhnfRun env Us Δ step.source step.result lhs' rhs' where
@@ -333,8 +333,10 @@ theorem WhnfRun.isDefEqU
     simpa only [VContext.TrExprS, run.venv_eq, run.lparams_eq,
       run.vlctx_eq] using run.lhs_tr
   have hrhs : run.context.TrExpr rhs rhs' := by
-    simpa only [VContext.TrExpr, run.venv_eq, run.lparams_eq,
-      run.vlctx_eq] using run.rhs_tr
+    have strict : run.context.TrExprS rhs rhs' := by
+      simpa only [VContext.TrExprS, run.venv_eq, run.lparams_eq,
+        run.vlctx_eq] using run.rhs_tr
+    exact strict.trExpr run.context.Ewf run.context.Δwf
   obtain ⟨state, hrun⟩ := run.run_eq
   obtain ⟨_, _, _, _, _, htr⟩ :=
     (TypeChecker.Inner.whnf'.WF hlhs
@@ -786,8 +788,7 @@ theorem WhnfRun.exists_ofCandidateStep
   obtain ⟨result', result_tr, _⟩ := resultTranslation
   exact ⟨result', result_tr, ⟨WhnfRun.ofCandidateStep step hvalid
     contextRun.context contextRun.context_eq rfl rfl rfl
-    contextRun.state_wf source_tr
-    (result_tr.trExpr contextRun.context.Ewf contextRun.context.Δwf)
+    contextRun.state_wf source_tr result_tr
     recursionFuel hdepth⟩⟩
 
 /-- Extend a verified candidate context by precisely the raw local declaration
@@ -899,7 +900,7 @@ def CandidateNodeRun.ofCandidate
     (state_wf : VState.WF context {})
     (source_tr : TrExprS env Us Δ source source')
     (inferred_tr : TrExprS env Us Δ inferred inferred')
-    (result_tr : TrExpr env Us Δ result result')
+    (result_tr : TrExprS env Us Δ result result')
     (checkFuel whnfFuel : Nat)
     (checkDepth : candidateContext.fuel.recDepth = checkFuel)
     (whnfDepth : candidateContext.fuel.recDepth = whnfFuel + 1) :
@@ -963,7 +964,7 @@ theorem CandidateNodeRun.exists_ofCandidate
     candidateContext source inferred result checked normalized
     context context_eq rfl rfl rfl state_wf source_tr
     checkedTyping.2.2.1
-    (result_tr.trExpr context.Ewf context.Δwf)
+    result_tr
     checkFuel whnfFuel checkDepth whnfDepth
 
 /-- Construct a paired candidate node with a caller-selected Theory endpoint
@@ -982,7 +983,7 @@ theorem CandidateNodeRun.exists_ofCandidateAtResult
     (state_wf : VState.WF context {})
     (source' result' : VExpr)
     (source_tr : context.TrExprS source source')
-    (result_tr : context.TrExpr result result')
+    (result_tr : context.TrExprS result result')
     (checkFuel whnfFuel : Nat)
     (checkDepth : candidateContext.fuel.recDepth = checkFuel)
     (whnfDepth : candidateContext.fuel.recDepth = whnfFuel + 1) :
@@ -1281,13 +1282,11 @@ theorem CandidateExprRun.exists_ofIdentity
   induction identity generalizing source' with
   | @terminal result source context inferred checked normalized result_eq =>
     subst result
-    have result_tr : candidateRun.context.TrExpr source source' :=
-      source_tr.trExpr candidateRun.context.Ewf candidateRun.context.Δwf
     obtain ⟨inferred', ⟨node⟩⟩ :=
       CandidateNodeRun.exists_ofCandidateAtResult
         context source inferred source checked normalized
         candidateRun.context candidateRun.context_eq candidateRun.state_wf
-        source' source' source_tr result_tr
+        source' source' source_tr source_tr
         context.fuel.recDepth whnfFuel rfl whnfDepth
     exact ⟨inferred', ⟨.terminal node⟩⟩
   | @forallE context domain name binderInfo source inferred body fresh
@@ -1299,17 +1298,13 @@ theorem CandidateExprRun.exists_ofIdentity
       TypeChecker.TrExprS.forallE_components source_tr
     obtain ⟨u, domainType⟩ := domainWF
     obtain ⟨v, bodyType⟩ := bodyWF
-    have result_tr : candidateRun.context.TrExpr
-        (.forallE name domain body binderInfo)
-          (.forallE domain' body') :=
-      source_tr.trExpr candidateRun.context.Ewf candidateRun.context.Δwf
     obtain ⟨inferred', ⟨node⟩⟩ :=
       CandidateNodeRun.exists_ofCandidateAtResult
         context (.forallE name domain body binderInfo) inferred
         (.forallE name domain body binderInfo) checked normalized
         candidateRun.context candidateRun.context_eq candidateRun.state_wf
         (.forallE domain' body') (.forallE domain' body')
-        source_tr result_tr
+        source_tr source_tr
         context.fuel.recDepth whnfFuel rfl whnfDepth
     obtain ⟨domainInferred', ⟨domainRun⟩⟩ :=
       domainIH candidateRun domain' domain_tr whnfDepth
@@ -1491,7 +1486,15 @@ theorem CandidateExprRun.view_tr
     (run : CandidateExprRun env Us trace Δ source' view' inferred') :
     TrExpr env Us Δ trace.view view' := by
   induction run with
-  | terminal node => exact node.whnf.rhs_tr
+  | @terminal Δ context source inferred result source' result' inferred'
+      checked normalized node =>
+      have henv : VEnv.WF env := by
+        simpa only [node.whnf.venv_eq] using node.whnf.context.Ewf
+      have hΔ : VLCtx.WF env Us.length Δ := by
+        simpa only [node.whnf.venv_eq, node.whnf.lparams_eq,
+          node.whnf.vlctx_eq] using node.whnf.context.Δwf
+      simpa only [AddInductive.CandidateExprTrace.view] using
+        node.whnf.rhs_tr.trExpr henv hΔ
   | @forallE domain context name binderInfo Δ source inferred body
       source' domain' body' inferred' domainView' domainInferred'
       storedDomain' bodyΔ storedBody' bodyView' bodyInferred' u v fresh
@@ -1556,6 +1559,133 @@ theorem CandidateExprRun.view_tr
     · exact domainIH
     · simpa only [AddInductive.CandidateExprTrace.view,
         habstract] using bodyMoved
+
+/-- Exact-translation uniqueness for every expression that contributes to a
+candidate view.  The abstracted-body clause names the syntax stored by
+`CandidateExprTrace.view`, while the recursive body clause supports the next
+candidate node.  Projections are intentionally excluded: their verified
+Theory relation is only unique up to definitional equality. -/
+def CandidateExprTraceViewIsUnique :
+    {context : AddInductive.Context} → {source : Expr} →
+      AddInductive.CandidateExprTrace context source → Prop
+  | _, _, .terminal _ _ _ result _ _ => TrExprS.IsUnique result
+  | _, _, .forallE context _ _ _ _ _ _ _ _ _ _ _ domain body =>
+      CandidateExprTraceViewIsUnique domain ∧
+        CandidateExprTraceViewIsUnique body ∧
+        TrExprS.IsUnique (body.view.abstract #[context.freshExpr])
+
+/-- The recursive uniqueness certificate in particular covers the complete
+view reconstructed at this candidate node. -/
+theorem CandidateExprTraceViewIsUnique.view
+    {context : AddInductive.Context} {source : Expr}
+    {trace : AddInductive.CandidateExprTrace context source}
+    (unique : CandidateExprTraceViewIsUnique trace) :
+    TrExprS.IsUnique trace.view := by
+  induction trace with
+  | terminal => exact unique
+  | forallE context source inferred name domain body binderInfo fresh
+      annotations annotationsEq checked normalized domainCandidate bodyCandidate
+      domainIH bodyIH =>
+    exact ⟨domainIH unique.1, unique.2.2⟩
+
+/-- A projection-free candidate view retains the strict Theory translation
+selected componentwise by its recursive semantic run.
+
+The ordinary `view_tr` theorem must use weak translation because a projection
+endpoint is only definitionally determined.  Under the explicit uniqueness
+condition, recursive abstraction and context transport select the exact
+analyzer-owned expression instead. -/
+theorem CandidateExprRun.view_tr_strict
+    {env : VEnv} {Us : List Name}
+    {candidateContext : AddInductive.Context} {source : Expr}
+    {trace : AddInductive.CandidateExprTrace candidateContext source}
+    {Δ : VLCtx} {source' view' inferred' : VExpr}
+    (run : CandidateExprRun env Us trace Δ source' view' inferred')
+    (unique : CandidateExprTraceViewIsUnique trace) :
+    TrExprS env Us Δ trace.view view' := by
+  induction run with
+  | terminal node =>
+      simpa only [AddInductive.CandidateExprTrace.view] using
+        node.whnf.rhs_tr
+  | @forallE domain context name binderInfo Δ source inferred body
+      source' domain' body' inferred' domainView' domainInferred'
+      storedDomain' bodyΔ storedBody' bodyView' bodyInferred' u v fresh
+      checked normalized annotations annotationsEq domainCandidate
+      bodyCandidate node domainRun annotationsRun bodyRun domainType bodyType
+      bodySource bodyContext domainIH bodyIH =>
+    rcases unique with ⟨domainUnique, bodyUnique, abstractUnique⟩
+    have domainStrict := domainIH domainUnique
+    have bodyStrict : TrExprS env Us
+        ((some (context.freshFVarId,
+          annotations.consumed.fvarsList), .vlam storedDomain') :: Δ)
+        bodyCandidate.view bodyView' := by
+      simpa only [bodyContext] using bodyIH bodyUnique
+    have bodyAbstract := bodyStrict.abstract VLCtx.Abstract.zero
+    have henv : VEnv.WF env := by
+      simpa only [node.check.venv_eq] using node.check.context.Ewf
+    have hΔ : VLCtx.WF env Us.length Δ := by
+      simpa only [node.check.venv_eq, node.check.lparams_eq,
+        node.check.vlctx_eq] using node.check.context.Δwf
+    obtain ⟨_, domainTypeEq⟩ :=
+      domainType.uniq henv hΔ.toCtx domainRun.evidence.isDefEq
+    have domainDef : env.IsDefEq Us.length Δ.toCtx
+        domain' domainView' (.sort u) :=
+      (DefEqEvidence.change domainTypeEq.symm domainRun.evidence).isDefEq
+    have annotationDef :=
+      annotationsRun.isDefEqU.of_l henv hΔ.toCtx domainType
+    have storedToView : env.IsDefEq Us.length Δ.toCtx
+        storedDomain' domainView' (.sort u) :=
+      annotationDef.symm.trans domainDef
+    have hctx : VLCtx.IsDefEq env Us.length
+        ((none, .vlam storedDomain') :: Δ)
+        ((none, .vlam domainView') :: Δ) :=
+      .cons (.refl henv hΔ) (by nofun) (.vlam storedToView)
+    obtain ⟨bodyMoved', bodyMoved⟩ :=
+      bodyAbstract.defeqDFC henv hctx
+    have habstract :
+        bodyCandidate.view.abstract #[context.freshExpr] =
+          Expr.abstract1 context.freshFVarId bodyCandidate.view := by
+      rw [show #[context.freshExpr] =
+        ⟨[context.freshFVarId].map Expr.fvar⟩ by rfl]
+      simp only [Expr.abstract_eq, Expr.abstractList]
+    have bodyAbstractArray : TrExprS env Us
+        ((none, .vlam storedDomain') :: Δ)
+        (bodyCandidate.view.abstract #[context.freshExpr]) bodyView' := by
+      simpa only [habstract] using bodyAbstract
+    have bodyMovedArray : TrExprS env Us
+        ((none, .vlam domainView') :: Δ)
+        (bodyCandidate.view.abstract #[context.freshExpr]) bodyMoved' := by
+      simpa only [habstract] using bodyMoved
+    have bodyMoved_eq : bodyMoved' = bodyView' := by
+      exact (bodyAbstractArray.unique'
+        (.cons .base .vlam) abstractUnique bodyMovedArray).symm
+    subst bodyMoved'
+    have bodyEvidence := bodyRun.evidence
+    rw [bodyContext] at bodyEvidence
+    simp only [VLCtx.toCtx] at bodyEvidence
+    have annotationContext : VLCtx.IsDefEq env Us.length
+        ((none, .vlam domain') :: Δ)
+        ((none, .vlam storedDomain') :: Δ) :=
+      .cons (.refl henv hΔ) (by nofun) (.vlam annotationDef)
+    have bodyStoredType :=
+      bodySource.hasType.2.defeqDFC henv annotationContext.defeqCtx
+    have hBodyΓ : OnCtx (storedDomain' :: Δ.toCtx)
+        (env.IsType Us.length) :=
+      ⟨hΔ.toCtx, ⟨_, annotationDef.hasType.2⟩⟩
+    obtain ⟨_, bodyTypeEq⟩ :=
+      bodyStoredType.uniq henv hBodyΓ bodyEvidence.isDefEq
+    have bodyDefStored : env.IsDefEq Us.length
+        (storedDomain' :: Δ.toCtx) storedBody' bodyView' (.sort v) :=
+      (DefEqEvidence.change bodyTypeEq.symm bodyEvidence).isDefEq
+    have bodyDefMoved :=
+      bodyDefStored.defeqDFC henv hctx.defeqCtx
+    simpa only [AddInductive.CandidateExprTrace.view, habstract] using
+      TrExprS.forallE
+        (⟨u, domainDef.hasType.2⟩ :
+          env.IsType Us.length Δ.toCtx domainView')
+        (⟨v, bodyDefMoved.hasType.2⟩ :
+          env.IsType Us.length (domainView' :: Δ.toCtx) bodyView')
+        domainStrict bodyMoved
 
 /-- Root-level verified context and translations for an exact executable
 candidate expression and an explicitly named Theory view.
@@ -2309,6 +2439,138 @@ theorem CandidateExprRun.terminalContextRun
           terminalRun,
       terminalVenv, terminalLparams⟩
 
+private theorem candidateFVLift'_comp
+    (left : VLCtx.FVLift' Δ₁ Δ₂ 0 (.skipN .refl n₁) 0)
+    (right : VLCtx.FVLift' Δ₂ Δ₃ 0 (.skipN .refl n₂) 0) :
+    VLCtx.FVLift' Δ₁ Δ₃ 0 (.skipN .refl (n₁ + n₂)) 0 := by
+  simpa only [Lift.comp_skipN, Lift.comp, Lift.skipN_skipN] using
+    left.comp right
+
+/-- Recover the terminal implementation context together with the exact
+candidate-view telescope occupying the same local positions.
+
+The two `VLCtx`s keep the identical free-variable metadata and declaration
+kinds.  Their declaration types may differ, but strict translation uniqueness
+only needs this positional relation.  The view-side `toCtx` is definitionally
+the reversed telescope selected by the recursive semantic run, followed by
+the caller's view-side base context. -/
+theorem CandidateExprRun.terminalContextRunView
+    {env : VEnv} {Us : List Name}
+    {candidateContext : AddInductive.Context} {source : Expr}
+    {trace : AddInductive.CandidateExprTrace candidateContext source}
+    {Δ : VLCtx} {source' view' inferred' : VExpr}
+    (run : CandidateExprRun env Us trace Δ source' view' inferred')
+    (contextRun : CandidateContextRun candidateContext)
+    (venv_eq : contextRun.context.venv = env)
+    (lparams_eq : contextRun.context.lparams = Us)
+    (vlctx_eq : contextRun.context.vlctx = Δ)
+    {viewΔ : VLCtx}
+    (viewDefEq : VLCtx.IsDefEq env Us.length Δ viewΔ)
+    (viewContext : TrExprS.IsUniqueCtx Δ viewΔ) :
+    ∃ (terminalRun : CandidateContextRun trace.terminalContext)
+        (viewTerminal : VLCtx),
+      terminalRun.context.venv = env ∧
+      terminalRun.context.lparams = Us ∧
+      VLCtx.IsDefEq env Us.length terminalRun.context.vlctx viewTerminal ∧
+      TrExprS.IsUniqueCtx terminalRun.context.vlctx viewTerminal ∧
+      VLCtx.FVLift' viewΔ viewTerminal 0
+        (.skipN .refl trace.spineLength) 0 ∧
+      viewTerminal.toCtx =
+        (VExpr.telN trace.spineLength view').reverse ++ viewΔ.toCtx := by
+  induction run generalizing viewΔ with
+  | @terminal Δ context source inferred result source' result' inferred'
+      checked normalized node =>
+      let terminalRun : CandidateContextRun
+          (AddInductive.CandidateExprTrace.terminal
+            context source inferred result checked normalized).terminalContext := by
+        simpa only [AddInductive.CandidateExprTrace.terminalContext] using
+          contextRun
+      refine ⟨terminalRun, viewΔ, venv_eq, lparams_eq, ?_, ?_, .refl, ?_⟩
+      · change VLCtx.IsDefEq env Us.length contextRun.context.vlctx viewΔ
+        rw [vlctx_eq]
+        exact viewDefEq
+      · change TrExprS.IsUniqueCtx contextRun.context.vlctx viewΔ
+        rw [vlctx_eq]
+        exact viewContext
+      · simp only [AddInductive.CandidateExprTrace.spineLength,
+          VExpr.telN, List.reverse_nil, List.nil_append]
+  | @forallE domain context name binderInfo Δ source inferred body
+      source' domain' body' inferred' domainView' domainInferred'
+      storedDomain' bodyΔ storedBody' bodyView' bodyInferred' u v fresh
+      checked normalized annotations annotationsEq domainCandidate
+      bodyCandidate node domainRun annotationsRun bodyRun domainType bodyType
+      bodySource bodyContext domainIH bodyIH =>
+    have storedDomain_tr : contextRun.context.TrExprS
+        annotations.consumed storedDomain' := by
+      simpa only [VContext.TrExprS, venv_eq, lparams_eq, vlctx_eq] using
+        annotationsRun.rhs_tr
+    have henv : VEnv.WF env := by
+      simpa only [venv_eq] using contextRun.context.Ewf
+    have hΔ : OnCtx Δ.toCtx (env.IsType Us.length) := by
+      simpa only [venv_eq, lparams_eq, vlctx_eq] using
+        contextRun.context.Δwf.toCtx
+    have storedDomain_type : env.IsType Us.length Δ.toCtx storedDomain' := by
+      have annotationDef := annotationsRun.isDefEqU.of_l henv hΔ domainType
+      exact ⟨u, annotationDef.hasType.2⟩
+    have domainDef : env.IsDefEq Us.length Δ.toCtx
+        domain' domainView' (.sort u) :=
+      domainRun.evidence.isDefEq.toU.of_l henv hΔ domainType
+    have annotationDef : env.IsDefEq Us.length Δ.toCtx
+        domain' storedDomain' (.sort u) :=
+      annotationsRun.isDefEqU.of_l henv hΔ domainType
+    have storedToView : env.IsDefEq Us.length Δ.toCtx
+        storedDomain' domainView' (.sort u) :=
+      annotationDef.symm.trans domainDef
+    let nextContextRun := contextRun.pushLocalDecl name binderInfo
+      annotations.consumed fresh storedDomain' storedDomain_tr (by
+        change contextRun.context.venv.IsType
+          contextRun.context.lparams.length
+          contextRun.context.vlctx.toCtx storedDomain'
+        rw [venv_eq, lparams_eq, vlctx_eq]
+        exact storedDomain_type)
+    have nextVenv : nextContextRun.context.venv = env := by
+      simp only [nextContextRun, CandidateContextRun.pushLocalDecl_venv,
+        venv_eq]
+    have nextLparams : nextContextRun.context.lparams = Us := by
+      simp only [nextContextRun, CandidateContextRun.pushLocalDecl_lparams,
+        lparams_eq]
+    have nextVlctx : nextContextRun.context.vlctx = bodyΔ := by
+      simp only [nextContextRun, CandidateContextRun.pushLocalDecl_vlctx]
+      rw [vlctx_eq, bodyContext]
+    let viewBodyΔ : VLCtx :=
+      (some (context.freshFVarId, annotations.consumed.fvarsList),
+        .vlam domainView') :: viewΔ
+    have bodyWF := bodyRun.context_wf
+    rw [bodyContext] at bodyWF
+    have bodyViewDefEq : VLCtx.IsDefEq env Us.length bodyΔ viewBodyΔ := by
+      rw [bodyContext]
+      exact .cons viewDefEq bodyWF.2.1 (.vlam storedToView)
+    have bodyViewContext : TrExprS.IsUniqueCtx bodyΔ viewBodyΔ := by
+      rw [bodyContext]
+      exact viewContext.cons .vlam
+    obtain ⟨terminalRun, viewTerminal, terminalVenv, terminalLparams,
+        terminalViewDefEq, terminalViewContext, terminalViewLift,
+        terminalViewEq⟩ :=
+      bodyIH nextContextRun nextVenv nextLparams nextVlctx bodyViewDefEq
+        bodyViewContext
+    refine ⟨by
+        simpa only [AddInductive.CandidateExprTrace.terminalContext] using
+          terminalRun,
+      viewTerminal, terminalVenv, terminalLparams, terminalViewDefEq,
+      terminalViewContext, ?_, ?_⟩
+    · have headLift : VLCtx.FVLift' viewΔ viewBodyΔ 0
+          (.skipN .refl 1) 0 := by
+        exact VLCtx.FVLift'.skip_fvar
+          (context.freshFVarId, annotations.consumed.fvarsList)
+          (.vlam domainView') (.refl :
+            VLCtx.FVLift' viewΔ viewΔ 0 .refl 0)
+      simpa only [AddInductive.CandidateExprTrace.spineLength,
+        Nat.add_comm 1] using
+        candidateFVLift'_comp headLift terminalViewLift
+    simpa only [AddInductive.CandidateExprTrace.spineLength,
+      VExpr.telN, List.reverse_cons, List.singleton_append,
+      List.append_assoc, viewBodyΔ, VLCtx.toCtx] using terminalViewEq
+
 /-- Interpret the terminal-sort fact retained by family validation.
 
 At a terminal node the verified WHNF result translates the exact kernel sort.
@@ -2327,16 +2589,10 @@ theorem CandidateExprRun.view_isType_of_terminalSort
   induction run with
   | terminal node =>
     simp only [AddInductive.CandidateExprTrace.terminalResult] at terminal
-    have henv : VEnv.WF env := by
-      simpa only [node.check.venv_eq] using node.check.context.Ewf
-    obtain ⟨strict, strict_tr, strict_def⟩ := node.whnf.rhs_tr
-    rw [terminal] at strict_tr
-    cases strict_tr with
+    rw [terminal] at node
+    cases node.whnf.rhs_tr with
     | sort level_tr =>
-      exact VEnv.IsType.defeqU_l henv (by
-          simpa only [node.check.venv_eq, node.check.lparams_eq,
-            node.check.vlctx_eq] using node.check.context.Δwf.toCtx)
-        strict_def ⟨_, .sort (VLevel.WF.of_ofLevel level_tr)⟩
+      exact ⟨_, .sort (VLevel.WF.of_ofLevel level_tr)⟩
   | @forallE domain context name binderInfo Δ source inferred body
       source' domain' body' inferred' domainView' domainInferred'
       storedDomain' bodyΔ storedBody' bodyView' bodyInferred' u v fresh
@@ -2998,17 +3254,13 @@ theorem CandidateFamilyStagedInput.preValidationContextRun
   exact recursive.terminalContextRun semantic.contextRun semantic.venv_eq
     semantic.lparams_eq semantic.vlctx_eq
 
-/-- Rebuild the verified context in which constructor validation actually
-runs.
+/-- Rebuild the verified constructor-validation context from the exact
+pre-family terminal context run.
 
-Family candidates are interpreted before the raw family is inserted, so the
-recursive run reaches the correct local telescope in the pre-family Theory
-environment.  Constructor validation keeps that exact implementation local
-context while replacing only the kernel/Theory environment with the staged
-post-family pair.  Monotonicity of local-context verification justifies that
-replacement; no local declaration, free-variable identifier, or binder order
-is regenerated. -/
-theorem CandidateFamilyStagedInput.validationContextRun
+The returned run preserves the implementation local context definitionally;
+only the kernel/Theory environment and the primitive evidence are changed to
+the staged post-family pair. -/
+theorem CandidateFamilyStagedInput.validationContextRunFromPre
     {familyContext constructorContext : AddInductive.Context}
     {env : VEnv} {Us : List Name} {source : InductiveType}
     {candidate : AddInductive.CandidateFamilyType source}
@@ -3016,17 +3268,16 @@ theorem CandidateFamilyStagedInput.validationContextRun
     {preFamily : TypeChecker.CandidateSemanticStage familyContext env Us}
     (input : CandidateFamilyStagedInput familyContext constructorContext
       env Us candidate raw preFamily)
-    (semantic : TypeChecker.CandidateExprSemanticRootRun env Us
-      candidate.type raw.type) :
+    (terminalRun : TypeChecker.CandidateContextRun
+      candidate.type.trace.terminalContext)
+    (terminalVenv : terminalRun.context.venv = env)
+    (terminalLparams : terminalRun.context.lparams = Us) :
     ∃ validationRun : TypeChecker.CandidateContextRun
         { candidate.type.trace.terminalContext with
           env := constructorContext.env },
       validationRun.context.venv = input.typeEnv ∧
-      validationRun.context.lparams = Us := by
-  obtain ⟨inferred, recursive⟩ := semantic.recursive
-  obtain ⟨terminalRun, terminalVenv, terminalLparams⟩ :=
-    recursive.terminalContextRun semantic.contextRun semantic.venv_eq
-      semantic.lparams_eq semantic.vlctx_eq
+      validationRun.context.lparams = Us ∧
+      validationRun.context.vlctx = terminalRun.context.vlctx := by
   have terminalMLWF : terminalRun.context.mlctx.WF env Us := by
     simpa only [terminalVenv, terminalLparams] using
       terminalRun.context.mlctx_wf
@@ -3080,9 +3331,38 @@ theorem CandidateFamilyStagedInput.validationContextRun
         exact terminalRun.state_wf.ngen_wf fv (by
           simpa only [validationContext] using hfv)))
       terminalRun.namePrefix_ne
-  refine ⟨validationRun, ?_, ?_⟩
-  · rfl
-  · exact terminalLparams
+  exact ⟨validationRun, rfl, terminalLparams, rfl⟩
+
+/-- Rebuild the verified context in which constructor validation actually
+runs.
+
+Family candidates are interpreted before the raw family is inserted, so the
+recursive run reaches the correct local telescope in the pre-family Theory
+environment.  Constructor validation keeps that exact implementation local
+context while replacing only the kernel/Theory environment with the staged
+post-family pair.  Monotonicity of local-context verification justifies that
+replacement; no local declaration, free-variable identifier, or binder order
+is regenerated. -/
+theorem CandidateFamilyStagedInput.validationContextRun
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name} {source : InductiveType}
+    {candidate : AddInductive.CandidateFamilyType source}
+    {raw : VInductiveType}
+    {preFamily : TypeChecker.CandidateSemanticStage familyContext env Us}
+    (input : CandidateFamilyStagedInput familyContext constructorContext
+      env Us candidate raw preFamily)
+    (semantic : TypeChecker.CandidateExprSemanticRootRun env Us
+      candidate.type raw.type) :
+    ∃ validationRun : TypeChecker.CandidateContextRun
+        { candidate.type.trace.terminalContext with
+          env := constructorContext.env },
+      validationRun.context.venv = input.typeEnv ∧
+      validationRun.context.lparams = Us := by
+  obtain ⟨terminalRun, terminalVenv, terminalLparams⟩ :=
+    input.preValidationContextRun semantic
+  obtain ⟨validationRun, validationVenv, validationLparams, _⟩ :=
+    input.validationContextRunFromPre terminalRun terminalVenv terminalLparams
+  exact ⟨validationRun, validationVenv, validationLparams⟩
 
 /-- One source-indexed constructor interpreted in the shared post-family
 stage. Header equality and universe alignment stay attached to the exact raw
@@ -3261,6 +3541,7 @@ structure StagedNormalizationCandidateSemanticInput
   preFamily : TypeChecker.CandidateSemanticStage familyContext env Us
   family : CandidateFamilyStagedInput familyContext constructorContext env Us
     candidate.families.singleton.familyType raw preFamily
+  validation_nparams_eq : family.validation.nparams = rawDecl.nparams
   constructorValidation : AddInductive.ConstructorValidationRun
     source family.validation.stats false
       { candidate.families.singleton.familyType.type.trace.terminalContext with
@@ -4336,6 +4617,30 @@ private def
       _ = normalization.family.constructors.roots.views := rfl
   · exact fun _ hctor => hctor
 
+/-- Recover every analyzer-owned constructor pairing from the retained
+semantic hierarchy, dependent analysis, and executable structural gate.
+
+This projection deliberately does not require `Checked.WF`: it exposes only
+the exact source/candidate/raw/view alignment needed to derive that semantic
+fact in the constructor-validation layer. -/
+def NormalizationCandidateSemanticRun.constructorGenerationRuns
+    {env : VEnv} {Us : List Name}
+    {kernelSource : InductiveType} {source : VInductDecl}
+    {candidate : AddInductive.NormalizationCandidate [kernelSource]}
+    (normalization : NormalizationCandidateSemanticRun env Us candidate source)
+    (generation : GenerationChecked source)
+    (analysis : normalization.root.normalization.generation? =
+      some generation)
+    (shape : normalization.generationShape = true) :
+    CandidateSemanticNormalizedCtorListRun generation.block
+      normalization.family.typeEnv Us normalization.family.constructors
+      generation.block.ctorPairs := by
+  simp only [NormalizationCandidateSemanticRun.generationShape,
+    normalizationCandidateGenerationShape, Bool.and_eq_true,
+    beq_iff_eq] at shape
+  exact (CandidateConstructorSemanticGenerationShapeList.ofCheck
+    normalization.family.constructors shape.2).ofAnalysis analysis
+
 /-- Reconstruct the established semantic-generation run from the reduced
 shape boundary.  No raw/view pair or component equation is supplied here. -/
 def GenerationCandidateSemanticShapeRun.run
@@ -4350,55 +4655,6 @@ def GenerationCandidateSemanticShapeRun.run
   checked := input.checked
   family := input.family.generationRun input.analysis
   constructors := input.constructors.ofAnalysis input.analysis
-
-/-- Build the reduced semantic generation owner from exact dependent
-analysis, semantic WF of the analyzer-owned view declaration, and the single
-executable hierarchy shape check.
-
-`checked` is derived from the exact declaration analyzed by `generation?`;
-callers no longer provide a parallel `Checked.WF` value.  Likewise, the
-family and all constructor shape records are projections of one complete
-source-indexed Boolean gate. -/
-def GenerationCandidateSemanticRun.ofGenerationShape
-    {env : VEnv} {Us : List Name}
-    {kernelSource : InductiveType} {source : VInductDecl}
-    {candidate : AddInductive.NormalizationCandidate [kernelSource]}
-    (normalization : NormalizationCandidateSemanticRun env Us candidate source)
-    (generation : GenerationChecked source)
-    (analysis : normalization.root.normalization.generation? =
-      some generation)
-    (viewWF : normalization.root.viewDecl.WF env)
-    (shape : normalization.generationShape = true) :
-    GenerationCandidateSemanticRun normalization generation := by
-  simp only [NormalizationCandidateSemanticRun.generationShape,
-    normalizationCandidateGenerationShape, Bool.and_eq_true,
-    beq_iff_eq] at shape
-  have sourceType_eq : generation.block.sourceType = normalization.raw := by
-    simpa only [NormalizationCandidateSemanticRun.root] using
-      normalization.root.sourceType_eq generation
-  have normalization_eq : generation.block.normalization =
-      normalization.root.normalization :=
-    Normalization.generation?_normalization analysis
-  have view_eq : generation.block.normalization.view =
-      normalization.root.viewDecl := by
-    simpa only [NormalizationCandidateRun.normalization] using
-      congrArg (fun norm : Normalization source => norm.view)
-        normalization_eq
-  have checked : generation.block.checked.WF env :=
-    generation.block.checked.wf_of_decl (by
-      rw [view_eq]
-      exact viewWF)
-  apply GenerationCandidateSemanticShapeRun.run {
-    analysis := analysis
-    checked := checked
-    family := {
-      storedSpine := shape.1.1
-      spineLength_eq := by
-        simpa only [NormalizedChecked.rawParams,
-          NormalizedChecked.rawIndices, sourceType_eq] using shape.1.2 }
-    constructors :=
-      CandidateConstructorSemanticGenerationShapeList.ofCheck
-        normalization.family.constructors shape.2 }
 
 /-- Reconstruct well-formedness of the post-family environment from the
 retained pre-family context, candidate raw/view equality, checked family view,
@@ -4680,63 +4936,6 @@ def GenerationCandidateSemanticRun.producedPackage
           [kernelSource] numNested isUnsafe context = .ok candidate) :
     ProducedGenerationCandidatePackage env Us :=
   run.run.producedPackage context nparams numNested isUnsafe produced
-
-/-- Construct the complete produced package at the consolidated generation
-shape boundary.
-
-The exact outer metadata equation selects the source-indexed candidate.  The
-retained semantic hierarchy, dependent analysis, analyzer-owned view WF, and
-single executable shape check then determine the generation run used by the
-package.  In particular, callers do not separately provide checked WF or any
-family/constructor shape record. -/
-def NormalizationCandidateSemanticRun.producedPackageOfGenerationShape
-    {env : VEnv} {Us : List Name}
-    {kernelSource : InductiveType} {source : VInductDecl}
-    {candidate : AddInductive.NormalizationCandidate [kernelSource]}
-    (normalization : NormalizationCandidateSemanticRun env Us candidate source)
-    (generation : GenerationChecked source)
-    (analysis : normalization.root.normalization.generation? =
-      some generation)
-    (viewWF : normalization.root.viewDecl.WF env)
-    (shape : normalization.generationShape = true)
-    (context : AddInductive.Context)
-    (nparams numNested : Nat) (isUnsafe : Bool)
-    (produced :
-      AddInductive.buildNormalizationCandidate nparams
-          [kernelSource] numNested isUnsafe context = .ok candidate) :
-    ProducedGenerationCandidatePackage env Us :=
-  (GenerationCandidateSemanticRun.ofGenerationShape normalization generation
-    analysis viewWF shape).producedPackage context nparams numNested isUnsafe
-      produced
-
-/-- Interpret one successful executable shape-producing outer result as the
-complete semantic package for the same dependent candidate.
-
-`raw_eq` only identifies the raw family carried by the semantic hierarchy
-with the raw family passed to the executable shape gate.  All other
-provenance, including the candidate itself, the outer producer equation, and
-the complete family/constructor shape check, is owned by `producedCandidate`.
--/
-def ProducedGenerationShapeCandidate.producedPackage
-    {env : VEnv} {Us : List Name}
-    {kernelSource : InductiveType} {source : VInductDecl}
-    {raw : VInductiveType} {numNested : Nat} {isUnsafe : Bool}
-    {context : AddInductive.Context}
-    (producedCandidate : ProducedGenerationShapeCandidate source raw
-      kernelSource numNested isUnsafe context)
-    (normalization : NormalizationCandidateSemanticRun env Us
-      producedCandidate.candidate source)
-    (raw_eq : raw = normalization.raw)
-    (generation : GenerationChecked source)
-    (analysis : normalization.root.normalization.generation? =
-      some generation)
-    (viewWF : normalization.root.viewDecl.WF env) :
-    ProducedGenerationCandidatePackage env Us :=
-  normalization.producedPackageOfGenerationShape generation analysis viewWF
-    (by
-      simpa only [NormalizationCandidateSemanticRun.generationShape,
-        raw_eq] using producedCandidate.shape)
-    context source.nparams numNested isUnsafe producedCandidate.produced
 
 /-
 The evidence types mention exact verifier executions, so these semantic
@@ -5343,106 +5542,6 @@ info: 'Lean4Lean.VInductDecl.produceGenerationShapeCandidate_eq_ok' depends on a
 -/
 #guard_msgs in
 #print axioms produceGenerationShapeCandidate_eq_ok
-
-/--
-info: 'Lean4Lean.VInductDecl.GenerationCandidateSemanticRun.ofGenerationShape' depends on axioms: [propext,
- sorryAx,
- Classical.choice,
- ptrEqConstantInfo_eq,
- ptrEqExpr_eq,
- Quot.sound,
- Expr.abstractRange_eq,
- Expr.abstract_eq,
- Expr.eqv_eq,
- Expr.hasLooseBVar_eq,
- Expr.instantiate1_eq,
- Expr.instantiateRange_eq,
- Expr.instantiateRevRange_eq,
- Expr.instantiateRev_eq,
- Expr.instantiate_eq,
- Expr.looseBVarRange_eq,
- Expr.lowerLooseBVars_eq,
- Expr.mkAppData_eq,
- Expr.mkData_eq,
- Expr.replace_eq,
- Level.hasMVar_eq,
- Level.hasParam_eq,
- Level.instLawfulBEqLevel,
- PersistentArray.toList'_push,
- PersistentHashMap.findAux_isSome,
- Syntax.structEq_eq,
- PersistentHashMap.WF.find?_eq,
- PersistentHashMap.WF.toList'_insert]
--/
-#guard_msgs in
-#print axioms GenerationCandidateSemanticRun.ofGenerationShape
-
-/--
-info: 'Lean4Lean.VInductDecl.NormalizationCandidateSemanticRun.producedPackageOfGenerationShape' depends on axioms: [propext,
- sorryAx,
- Classical.choice,
- ptrEqConstantInfo_eq,
- ptrEqExpr_eq,
- Quot.sound,
- Expr.abstractRange_eq,
- Expr.abstract_eq,
- Expr.eqv_eq,
- Expr.hasLooseBVar_eq,
- Expr.instantiate1_eq,
- Expr.instantiateRange_eq,
- Expr.instantiateRevRange_eq,
- Expr.instantiateRev_eq,
- Expr.instantiate_eq,
- Expr.looseBVarRange_eq,
- Expr.lowerLooseBVars_eq,
- Expr.mkAppData_eq,
- Expr.mkData_eq,
- Expr.replace_eq,
- Level.hasMVar_eq,
- Level.hasParam_eq,
- Level.instLawfulBEqLevel,
- PersistentArray.toList'_push,
- PersistentHashMap.findAux_isSome,
- Syntax.structEq_eq,
- PersistentHashMap.WF.find?_eq,
- PersistentHashMap.WF.toList'_insert]
--/
-#guard_msgs in
-#print axioms NormalizationCandidateSemanticRun.producedPackageOfGenerationShape
-
-/--
-info: 'Lean4Lean.VInductDecl.ProducedGenerationShapeCandidate.producedPackage' depends on axioms: [propext,
- sorryAx,
- Classical.choice,
- ptrEqConstantInfo_eq,
- ptrEqExpr_eq,
- Quot.sound,
- Expr.abstractRange_eq,
- Expr.abstract_eq,
- Expr.eqv_eq,
- Expr.hasLooseBVar_eq,
- Expr.instantiate1_eq,
- Expr.instantiateRange_eq,
- Expr.instantiateRevRange_eq,
- Expr.instantiateRev_eq,
- Expr.instantiate_eq,
- Expr.looseBVarRange_eq,
- Expr.lowerLooseBVars_eq,
- Expr.mkAppData_eq,
- Expr.mkData_eq,
- Expr.replace_eq,
- Level.hasMVar_eq,
- Level.hasParam_eq,
- Level.instLawfulBEqLevel,
- PersistentArray.toList'_push,
- PersistentHashMap.findAux_isSome,
- Syntax.structEq_eq,
- PersistentHashMap.WF.find?_eq,
- PersistentHashMap.WF.toList'_insert]
--/
-#guard_msgs in
-#print axioms ProducedGenerationShapeCandidate.producedPackage
-
 /--
 info: 'Lean4Lean.VInductDecl.GenerationCandidateSemanticRun.package' depends on axioms: [propext,
  sorryAx,

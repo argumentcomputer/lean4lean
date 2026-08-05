@@ -223,6 +223,7 @@ noncomputable def indexedVecStagedUniverseInput :
     declaration_uvars_eq := rfl
     preFamily := indexedVecPreFamilyStage
     family := indexedVecFamilyStage
+    validation_nparams_eq := rfl
     constructorValidation :=
       AddInductive.ConstructorValidationRun.of_run
         indexedVecValidationCheckConstructors
@@ -1263,6 +1264,10 @@ noncomputable def indexedVecStagedPostFamilyInput :
                                             indexedVecValidationTailChecked
                                             (by simpa only
                                               [indexedVecValidationConsumeTail]
+                                              using
+                                                indexedVecValidationTailAnnotations)
+                                            (by simpa only
+                                              [indexedVecValidationConsumeTail]
                                               using indexedVecValidationTailChecked)
                                             tailPositivity
                                             tailPositivityAlignment
@@ -1287,6 +1292,10 @@ noncomputable def indexedVecStagedPostFamilyInput :
                                           exact .ordinary
                                             indexedVecValidationAlphaChecked
                                             indexedVecValidationAlphaChecked
+                                            (by simpa only
+                                              [indexedVecValidationConsumeAlpha]
+                                              using
+                                                indexedVecValidationAlphaAnnotations)
                                             (by simpa only
                                               [indexedVecValidationConsumeAlpha]
                                               using indexedVecValidationAlphaChecked)
@@ -1325,6 +1334,10 @@ noncomputable def indexedVecStagedPostFamilyInput :
                                           exact .ordinary
                                             indexedVecValidationNatChecked
                                             indexedVecValidationNatChecked
+                                            (by simpa only
+                                              [indexedVecValidationConsumeNat]
+                                              using
+                                                indexedVecValidationNatAnnotations)
                                             (by simpa only
                                               [indexedVecValidationConsumeNat]
                                               using indexedVecValidationNatChecked)
@@ -2551,6 +2564,28 @@ private theorem indexedVecPreFamilySafetyRun :
       indexedVecPreFamilyIndexTelescope, Expr.instantiate1_eq,
       Expr.instantiate1', Pure.pure, Except.pure]
   unfold AddInductive.checkConstructorPreFamilySafety
+  have translationUnique :
+      (AddInductive.theoryTranslationUnique indexedVecInfo.type &&
+        (AddInductive.CandidateList.cons indexedVecNilConstructorCandidate
+          (AddInductive.CandidateList.cons indexedVecConsConstructorCandidate
+            (AddInductive.CandidateList.nil : AddInductive.CandidateList
+              AddInductive.CandidateConstructor []))).viewTranslationUnique) =
+        true := by
+    change (AddInductive.theoryTranslationUnique indexedVecInfo.type &&
+      (nilCandidateTrace.viewTranslationUnique &&
+        (consCandidateTrace.viewTranslationUnique && true))) = true
+    rw [nilCandidateTrace.viewTranslationUnique_eq,
+      consCandidateTrace.viewTranslationUnique_eq]
+    change (AddInductive.theoryTranslationUnique indexedVecInfo.type &&
+      (AddInductive.theoryTranslationUnique nilCandidate.view &&
+        (AddInductive.theoryTranslationUnique consCandidate.view && true))) =
+          true
+    rw [nilCandidate_view_eq, consCandidate_view_eq,
+      indexedVecInfoTypeShape, nilInfoTypeShape, consInfoTypeShape]
+    simp [AddInductive.theoryTranslationUnique, vecFamilyTail,
+      nilCtorTypeRaw, nilCtorBodyRaw, consCtorTypeRaw, consNTypeRaw,
+      consHeadTypeRaw, consTailTypeRaw, consTerminalRaw]
+  rw [if_pos translationUnique]
   rw [parametersRun]
   simp only [Bind.bind, Except.bind]
   rw [constructorListRun]
@@ -2784,13 +2819,6 @@ theorem indexedVecSemanticCandidate_extraRawShape_rejected :
       .nil [indexedVecType.ctors[0]] = false :=
   rfl
 
-/-- Temporary L4L-01A view-WF compatibility premise. L4L-01D derives this
-from retained validation and L4L-01E removes it from package construction. -/
-theorem indexedVecSemanticCandidate_viewDecl_wf :
-    indexedVecSemanticNormalizationCandidateRun.viewDecl.WF natFinalEnv := by
-  change indexedVecDecl.WF natFinalEnv
-  exact indexedVecDecl_wf
-
 def indexedVecSemanticProducedGenerationShapeCandidate :
     VInductDecl.ProducedGenerationShapeCandidate indexedVecDecl indexedVecType
       indexedVecKernelType 0 false indexedVecFamilyCandidateContext where
@@ -2814,36 +2842,37 @@ theorem indexedVecSemanticGenerationShapeCandidate_produced :
       (source := indexedVecDecl) (raw := indexedVecType)
       produced indexedVecSemanticCandidate_generationShape
 
-def indexedVecSemanticGenerationCandidateSemanticRun :
-    VInductDecl.GenerationCandidateSemanticRun
+noncomputable def indexedVecSemanticGenerationCandidateSemanticRun :
+  VInductDecl.GenerationCandidateSemanticRun
       indexedVecSemanticNormalizationCandidateSemanticRun
       indexedVecChecked.identityGeneration :=
   VInductDecl.GenerationCandidateSemanticRun.ofGenerationShape
+    indexedVecStagedPreFamilyInput
     indexedVecSemanticNormalizationCandidateSemanticRun
     indexedVecChecked.identityGeneration rfl
-    indexedVecSemanticCandidate_viewDecl_wf
     indexedVecSemanticCandidate_generationShape
 
-def indexedVecSemanticGenerationCandidateRun :
+noncomputable def indexedVecSemanticGenerationCandidateRun :
     VInductDecl.GenerationCandidateRun
       indexedVecSemanticNormalizationCandidateRun
       indexedVecChecked.identityGeneration :=
   indexedVecSemanticGenerationCandidateSemanticRun.run
 
-def indexedVecSemanticGenerationCandidatePackage :
+noncomputable def indexedVecSemanticGenerationCandidatePackage :
     VInductDecl.GenerationCandidatePackage natFinalEnv [`u] :=
   indexedVecSemanticGenerationCandidateSemanticRun.package
 
-def indexedVecSemanticProducedGenerationCandidatePackage :
+noncomputable def indexedVecSemanticProducedGenerationCandidatePackage :
     VInductDecl.ProducedGenerationCandidatePackage natFinalEnv [`u] :=
   indexedVecSemanticProducedGenerationShapeCandidate.producedPackage
+    indexedVecStagedPreFamilyInput
     indexedVecSemanticNormalizationCandidateSemanticRun rfl
     indexedVecChecked.identityGeneration rfl
-    indexedVecSemanticCandidate_viewDecl_wf
 
 def indexedVecSemanticGenerationCertificate :
-    indexedVecDecl.GenerationCertificate natFinalEnv :=
-  indexedVecSemanticProducedGenerationCandidatePackage.package.certificate
+    indexedVecDecl.GenerationCertificate natFinalEnv where
+  generation := indexedVecChecked.identityGeneration
+  wf := indexedVecSemanticGenerationCandidateSemanticRun.run.wf
 
 theorem indexedVecSemantic_addInductCertified :
     natFinalEnv.addInductCertified indexedVecSemanticGenerationCertificate =
@@ -2860,7 +2889,7 @@ theorem indexedVecSemanticCertified_ordered :
   VEnv.addInductCertified_WF nat_env_wf.ordered
     indexedVecSemantic_addInductCertified
 
-def indexedVecSemanticAddInductTraceChecked :
+noncomputable def indexedVecSemanticAddInductTraceChecked :
     AddInductTrace natMap natFinalEnv indexedVecDecl indexedVecMap
       indexedVecFinalEnv := by
   refine indexedVecSemanticProducedGenerationCandidatePackage.package.addInductTrace
