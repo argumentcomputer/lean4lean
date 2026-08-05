@@ -1825,6 +1825,1286 @@ info: 'Lean4Lean.AddInductive.ConstructorSemanticValidationRun.universeSemantics
 #guard_msgs in
 #print axioms ConstructorSemanticValidationRun.universeSemantics
 
+/-!
+## Executable pre-family safety and replay
+
+The post-family validator introduces a local declaration for every constructor
+field.  A recursive field's local type mentions the family being defined, so
+that declaration cannot be reproduced in the pre-family verifier context.
+For the current singleton subset we omit such locals, advance the validator's
+fresh-name supply, and permit later checks only when their source expressions
+do not mention an omitted identifier.  Recursive fields must therefore form a
+suffix.
+
+The traces below are outputs of executable builders.  Their proof fields are
+exact `checkType`, `ensureType`, and `isDefEq` executions; they are operational
+evidence, not caller-supplied Theory judgments.
+-/
+
+/-- Advance the constructor traversal's fresh-name supply without adding the
+family-dependent local declaration for a recursive outer field. -/
+def Context.advanceFresh (context : Context) : Context :=
+  { context with ngen := context.ngen.next }
+
+/-- Advancing an omitted recursive field changes only the candidate name
+generator.  The verified checker context and its empty-state certificate remain
+the same because `Context.toTypeChecker` deliberately has no name-generator
+field. -/
+def advanceCandidateContextRun
+    (run : TypeChecker.CandidateContextRun context) :
+    TypeChecker.CandidateContextRun context.advanceFresh := by
+  refine ⟨run.context, ?_, run.state_wf, ?_⟩
+  · simpa [Context.advanceFresh, Context.toTypeChecker] using run.context_eq
+  · simpa [Context.advanceFresh, NameGenerator.next] using run.namePrefix_ne
+
+/-- Keep the fixed pre-family Theory environment/universe indices while the
+operational traversal advances past an omitted recursive outer field. -/
+def ConstructorContextRun.advanceFresh
+    (run : ConstructorContextRun env Us context) :
+    ConstructorContextRun env Us context.advanceFresh where
+  candidate := advanceCandidateContextRun run.candidate
+  venv_eq := run.venv_eq
+  lparams_eq := run.lparams_eq
+
+/-- Syntactic independence from the recursive outer-field locals omitted by
+the pre-family replay context. -/
+def constructorIndependentOf (source : Expr) (removed : List FVarId) : Bool :=
+  source.fvarsList.all fun fv => !removed.contains fv
+
+/-- Instantiate the analyzer-owned family view with the exact parameter FVars
+selected by family validation, leaving the index telescope exposed. -/
+def instantiateFamilyParameters : Expr → List Expr → Except Exception Expr
+  | familyType, [] => pure familyType
+  | .forallE _ _ body _, parameter :: parameters =>
+      instantiateFamilyParameters (body.instantiate1 parameter) parameters
+  | _, _ :: _ =>
+      throw <| .other
+        "candidate family view has fewer binders than retained parameters"
+
+/-- Exact successful pre-family `ensureType` observation. -/
+structure ConstructorEnsureTypeObservation
+    (context : Context) (source : Expr) where
+  result : Expr
+  valid : ConstructorEnsureTypeStep.Valid ⟨context, source, result⟩
+
+def observeConstructorEnsureType (context : Context) (source : Expr) :
+    Except Exception (ConstructorEnsureTypeObservation context source) :=
+  match hrun : TypeChecker.M.run context.env context.safety context.lctx
+      context.lparams context.fuel (TypeChecker.ensureType source) with
+  | .error error => .error error
+  | .ok result => .ok ⟨result, hrun⟩
+
+theorem observeConstructorEnsureType_of_run
+    (run : ConstructorEnsureTypeStep.Valid ⟨context, source, result⟩) :
+    observeConstructorEnsureType context source = .ok ⟨result, run⟩ := by
+  change TypeChecker.M.run context.env context.safety context.lctx
+      context.lparams context.fuel (TypeChecker.ensureType source) =
+    .ok result at run
+  unfold observeConstructorEnsureType
+  split
+  · simp_all
+  · rename_i observed hobserved
+    have : observed = result := by simp_all
+    subst observed
+    rfl
+
+theorem ConstructorEnsureTypeObservation.observe_eq
+    (observation : ConstructorEnsureTypeObservation context source) :
+    observeConstructorEnsureType context source = .ok observation := by
+  rw [observeConstructorEnsureType_of_run observation.valid]
+
+/-- One pre-family index argument checked against the corresponding binder of
+the parameter-instantiated family view. -/
+structure ConstructorPreFamilyIndexStep
+    (context : Context) (argument expected : Expr) where
+  argumentCheck : ConstructorCheckedExpr context argument
+  expectedCheck : ConstructorCheckedExpr context expected
+  comparison : CandidateIsDefEqObservation context
+    argumentCheck.observation.inferred expected
+
+/-- Source-ordered executable replay of a constructor result/recursive-target
+index spine against the analyzer-owned family index telescope. -/
+inductive ConstructorPreFamilyIndexSpineTrace :
+    (context : Context) → (expected : Expr) → List Expr → Type where
+  | nil
+      (context : Context) (expected : Expr)
+      (expectedCheck : ConstructorCheckedExpr context expected)
+      (terminal : expected.isForall = false) :
+      ConstructorPreFamilyIndexSpineTrace context expected []
+  | cons
+      (context : Context) (name : Name) (domain body : Expr)
+      (binderInfo : BinderInfo) (argument : Expr) (arguments : List Expr)
+      (expectedCheck : ConstructorCheckedExpr context
+        (.forallE name domain body binderInfo))
+      (step : ConstructorPreFamilyIndexStep context argument domain)
+      (tail : ConstructorPreFamilyIndexSpineTrace context
+        (body.instantiate1 argument) arguments) :
+      ConstructorPreFamilyIndexSpineTrace context
+        (.forallE name domain body binderInfo) (argument :: arguments)
+
+namespace ConstructorPreFamilyIndexSpineTrace
+
+def build : (context : Context) → (expected : Expr) →
+    (arguments : List Expr) →
+    Except Exception
+      (ConstructorPreFamilyIndexSpineTrace context expected arguments)
+  | context, expected, [] =>
+      if terminal : expected.isForall = false then do
+        let expectedCheck ← checkConstructorAlignedExpr context expected
+        pure <| .nil context expected expectedCheck terminal
+      else
+        throw <| .other
+          "constructor target supplies too few family indices"
+  | context, .forallE name domain body binderInfo, argument :: arguments => do
+      let telescopeCheck ← checkConstructorAlignedExpr context
+        (.forallE name domain body binderInfo)
+      let argumentCheck ← checkConstructorAlignedExpr context argument
+      let domainCheck ← checkConstructorAlignedExpr context domain
+      let comparison ← observeCandidateIsDefEq context
+        argumentCheck.observation.inferred domain
+      let tail ← build context (body.instantiate1 argument) arguments
+      pure <| .cons context name domain body binderInfo argument arguments
+        telescopeCheck ⟨argumentCheck, domainCheck, comparison⟩ tail
+  | _, _, _ :: _ =>
+      throw <| .other
+        "constructor target supplies too many family indices"
+
+end ConstructorPreFamilyIndexSpineTrace
+
+theorem ConstructorPreFamilyIndexSpineTrace.build_eq
+    (trace : ConstructorPreFamilyIndexSpineTrace context expected arguments) :
+    ConstructorPreFamilyIndexSpineTrace.build context expected arguments =
+      .ok trace := by
+  induction trace with
+  | nil expected expectedCheck terminal =>
+      simp only [ConstructorPreFamilyIndexSpineTrace.build]
+      rw [dif_pos terminal, expectedCheck.check_eq]
+      rfl
+  | cons name domain body binderInfo argument arguments
+      expectedCheck step tail ih =>
+      simp only [ConstructorPreFamilyIndexSpineTrace.build]
+      rw [expectedCheck.check_eq, step.argumentCheck.check_eq,
+        step.expectedCheck.check_eq]
+      simp only [Bind.bind, Except.bind]
+      rw [step.comparison.observe_eq, ih]
+      rfl
+
+/-- The exact full check retained at the root of an index-spine replay. -/
+def ConstructorPreFamilyIndexSpineTrace.expectedCheck :
+    (trace : ConstructorPreFamilyIndexSpineTrace context expected arguments) →
+      ConstructorCheckedExpr context expected
+  | .nil _ _ expectedCheck _ => expectedCheck
+  | .cons _ _ _ _ _ _ _ expectedCheck _ _ => expectedCheck
+
+/-!
+### Verified pre-family index spines
+
+The operational trace checks the complete expected family-index telescope at
+every recursive position. Its semantic interpretation follows the strict
+translation selected at the root, instantiates the translated Pi body with the
+translated argument, and therefore constructs an actual Theory `SpineWF`
+rather than a pointwise list whose dependencies have been forgotten.
+-/
+
+/-- Verified meaning of one pre-family index-spine replay. `expected'` is a
+strict translation of the exact parameter-instantiated family telescope in the
+current context; `arguments'` and `result'` are forced by the retained checker
+executions and dependent Pi instantiation. -/
+structure ConstructorPreFamilyIndexSpineSemanticRun
+    (env : VEnv) (Us : List Name)
+    (context : Context) (contextRun : ConstructorContextRun env Us context)
+    {expected : Expr} {arguments : List Expr}
+    (trace : ConstructorPreFamilyIndexSpineTrace context expected arguments)
+    (expected' : VExpr) where
+  expectedInferred' : VExpr
+  expectedRun : TypeChecker.CheckTypeRun env Us
+    contextRun.candidate.context.vlctx expected
+    trace.expectedCheck.observation.inferred expected' expectedInferred'
+  arguments' : List VExpr
+  result' : VExpr
+  arguments_tr : List.Forall₂
+    (TrExprS env Us contextRun.candidate.context.vlctx)
+    arguments arguments'
+  spine : env.SpineWF Us.length contextRun.candidate.context.vlctx.toCtx
+    expected' arguments' result'
+
+namespace ConstructorPreFamilyIndexSpineSemanticRun
+
+/-- Interpret a spine at a caller-fixed strict translation of its expected
+telescope. Recursive calls receive the translated Pi body instantiated with
+the exact checker-selected argument translation. -/
+theorem nonempty_at
+    (contextRun : ConstructorContextRun env Us context)
+    (trace : ConstructorPreFamilyIndexSpineTrace context expected arguments)
+    (expected' : VExpr)
+    (expected_tr : TrExprS env Us
+      contextRun.candidate.context.vlctx expected expected') :
+    Nonempty (ConstructorPreFamilyIndexSpineSemanticRun env Us context
+      contextRun trace expected') := by
+  induction trace generalizing expected' with
+  | nil expected expectedCheck terminal =>
+      have expected_tr' : contextRun.candidate.context.TrExprS expected
+          expected' := by
+        simpa only [VContext.TrExprS, contextRun.venv_eq,
+          contextRun.lparams_eq] using expected_tr
+      obtain ⟨expectedInferred', ⟨expectedRun⟩⟩ :=
+        TypeChecker.CheckTypeRun.exists_ofCandidateStep
+          ⟨context, expected, expectedCheck.observation.inferred⟩
+          expectedCheck.observation.valid contextRun.candidate expected'
+          expected_tr'
+      exact ⟨{
+        expectedInferred' := expectedInferred'
+        expectedRun := by
+          simpa only [ConstructorPreFamilyIndexSpineTrace.expectedCheck,
+            contextRun.venv_eq, contextRun.lparams_eq] using expectedRun
+        arguments' := []
+        result' := expected'
+        arguments_tr := .nil
+        spine := rfl }⟩
+  | cons name domain body binderInfo argument arguments telescopeCheck
+      step tail ih =>
+      obtain ⟨domain', body', rfl, domainType, bodyType, domain_tr,
+          body_tr⟩ := TypeChecker.TrExprS.forallE_components expected_tr
+      have telescope_tr' : contextRun.candidate.context.TrExprS
+          (.forallE name domain body binderInfo) (.forallE domain' body') := by
+        simpa only [VContext.TrExprS, contextRun.venv_eq,
+          contextRun.lparams_eq] using expected_tr
+      obtain ⟨expectedInferred', ⟨expectedRun⟩⟩ :=
+        TypeChecker.CheckTypeRun.exists_ofCandidateStep
+          ⟨context, .forallE name domain body binderInfo,
+            telescopeCheck.observation.inferred⟩
+          telescopeCheck.observation.valid contextRun.candidate
+          (.forallE domain' body') telescope_tr'
+      have domain_tr' : contextRun.candidate.context.TrExprS domain domain' := by
+        simpa only [VContext.TrExprS, contextRun.venv_eq,
+          contextRun.lparams_eq] using domain_tr
+      obtain ⟨domainInferred', ⟨domainCheck⟩⟩ :=
+        TypeChecker.CheckTypeRun.exists_ofCandidateStep
+          ⟨context, domain, step.expectedCheck.observation.inferred⟩
+          step.expectedCheck.observation.valid contextRun.candidate domain'
+          domain_tr'
+      let domainRun : ConstructorCheckedExpr.Run step.expectedCheck
+          contextRun.candidate := ⟨domain', domainInferred', domainCheck⟩
+      obtain ⟨argumentRun⟩ := ConstructorCheckedExpr.Run.exists
+        step.argumentCheck contextRun.candidate
+      let comparisonRun := TypeChecker.IsDefEqRun.ofCandidateStep
+        ⟨context, step.argumentCheck.observation.inferred, domain⟩
+        step.comparison.valid contextRun.candidate.context
+        contextRun.candidate.context_eq rfl rfl rfl
+        contextRun.candidate.state_wf argumentRun.check.inferred_tr
+        domainRun.check.expr_tr context.fuel.recDepth rfl
+      have argumentType' : contextRun.candidate.context.HasType
+          argumentRun.source' domain' :=
+        argumentRun.check.hasType.defeqU_r
+          contextRun.candidate.context.Ewf
+          contextRun.candidate.context.Δwf.toCtx comparisonRun.isDefEqU
+      have argumentType : env.HasType Us.length
+          contextRun.candidate.context.vlctx.toCtx argumentRun.source'
+          domain' := by
+        simpa only [VContext.HasType, contextRun.venv_eq,
+          contextRun.lparams_eq] using argumentType'
+      have argument_tr : TrExprS env Us
+          contextRun.candidate.context.vlctx argument argumentRun.source' := by
+        simpa only [contextRun.venv_eq, contextRun.lparams_eq] using
+          argumentRun.check.expr_tr
+      have henv : VEnv.WF env := by
+        simpa only [contextRun.venv_eq] using
+          contextRun.candidate.context.Ewf
+      have instantiatedBody_tr : TrExprS env Us
+          contextRun.candidate.context.vlctx
+          (body.instantiate1 argument) (body'.inst argumentRun.source') := by
+        simpa only [Expr.instantiate1_eq] using
+          body_tr.inst henv.ordered argumentType argument_tr
+      obtain ⟨tailRun⟩ := ih (body'.inst argumentRun.source')
+        instantiatedBody_tr
+      exact ⟨{
+        expectedInferred' := expectedInferred'
+        expectedRun := by
+          simpa only [ConstructorPreFamilyIndexSpineTrace.expectedCheck,
+            contextRun.venv_eq, contextRun.lparams_eq] using expectedRun
+        arguments' := argumentRun.source' :: tailRun.arguments'
+        result' := tailRun.result'
+        arguments_tr := .cons argument_tr tailRun.arguments_tr
+        spine := ⟨domain', body', rfl, argumentType, tailRun.spine⟩ }⟩
+
+/-- Every successful operational spine trace has a verified interpretation;
+the initial strict endpoint is selected by the trace's own root `checkType`. -/
+theorem nonempty
+    (contextRun : ConstructorContextRun env Us context)
+    (trace : ConstructorPreFamilyIndexSpineTrace context expected arguments) :
+    ∃ expected', Nonempty
+      (ConstructorPreFamilyIndexSpineSemanticRun env Us context contextRun
+        trace expected') := by
+  obtain ⟨expectedRun⟩ := ConstructorCheckedExpr.Run.exists
+    trace.expectedCheck contextRun.candidate
+  have expected_tr : TrExprS env Us
+      contextRun.candidate.context.vlctx expected expectedRun.source' := by
+    simpa only [contextRun.venv_eq, contextRun.lparams_eq] using
+      expectedRun.check.expr_tr
+  exact ⟨expectedRun.source', nonempty_at contextRun trace _ expected_tr⟩
+
+/-- Transport the exact pre-family index judgment below an arbitrary later
+prefix. This is the proved context weakening used when D4 places the same
+spine beneath the remaining constructor fields. -/
+theorem spine_weakPrefix
+    {expected : Expr} {arguments : List Expr}
+    {replay : ConstructorPreFamilyIndexSpineTrace context expected arguments}
+    {expected' : VExpr}
+    (run : ConstructorPreFamilyIndexSpineSemanticRun env Us context contextRun
+      replay expected') (Bs : List VExpr) :
+    env.SpineWF Us.length
+      (Bs ++ contextRun.candidate.context.vlctx.toCtx)
+      (expected'.liftN Bs.length 0)
+      (run.arguments'.map fun argument =>
+        argument.liftN Bs.length 0)
+      (run.result'.liftN Bs.length 0) := by
+  have henv : VEnv.WF env := by
+    simpa only [contextRun.venv_eq] using contextRun.candidate.context.Ewf
+  exact run.spine.weakN henv.ordered
+    (Ctx.LiftN.zero (n := Bs.length)
+      (Γ := contextRun.candidate.context.vlctx.toCtx) Bs)
+
+end ConstructorPreFamilyIndexSpineSemanticRun
+
+/-- Pre-family replay of the family-free pieces of one recursive field.  Π
+domains are checked and introduced normally; the terminal family application
+is replaced by an index-spine replay, so the absent family constant is never
+looked up. -/
+inductive ConstructorPreFamilyRecursiveTrace
+    (stats : InductiveStats) (familyIdx : Nat) (familyIndices : Expr) :
+    (context : Context) → (source : Expr) → (fuel : Nat) → Type where
+  | forallE
+      (context : Context) (name : Name) (domain body : Expr)
+      (binderInfo : BinderInfo)
+      (domainCheck : ConstructorCheckedExpr context domain)
+      (ensureType : ConstructorEnsureTypeObservation context domain)
+      (consumedCheck : ConstructorCheckedExpr context
+        (consumeTypeAnnotations domain))
+      (annotations : CandidateIsDefEqObservation context domain
+        (consumeTypeAnnotations domain))
+      (fresh : context.lctx.find? context.freshFVarId = none)
+      (tail : ConstructorPreFamilyRecursiveTrace stats familyIdx familyIndices
+        (context.pushLocalDecl name binderInfo
+          (consumeTypeAnnotations domain))
+        (body.instantiate1 context.freshExpr) fuel) :
+      ConstructorPreFamilyRecursiveTrace stats familyIdx familyIndices context
+        (.forallE name domain body binderInfo) (fuel + 1)
+  | target
+      (context : Context) (source : Expr)
+      (valid : isValidIndAppIdx stats source familyIdx = true)
+      (spine : ConstructorPreFamilyIndexSpineTrace context familyIndices
+        (source.getAppArgs.toList.drop stats.params.size)) :
+      ConstructorPreFamilyRecursiveTrace stats familyIdx familyIndices context
+        source (fuel + 1)
+
+namespace ConstructorPreFamilyRecursiveTrace
+
+def build (stats : InductiveStats) (familyIdx : Nat)
+    (familyIndices : Expr) :
+    (context : Context) → (source : Expr) → (fuel : Nat) →
+    Except Exception
+      (ConstructorPreFamilyRecursiveTrace stats familyIdx familyIndices
+        context source fuel)
+  | _, _, 0 => throw .deepRecursion
+  | context, .forallE name domain body binderInfo, fuel + 1 => do
+      let domainCheck ← checkConstructorAlignedExpr context domain
+      let ensureType ← observeConstructorEnsureType context domain
+      let consumedCheck ← checkConstructorAlignedExpr context
+        (consumeTypeAnnotations domain)
+      let annotations ← observeCandidateIsDefEq context domain
+        (consumeTypeAnnotations domain)
+      if fresh : context.lctx.find? context.freshFVarId = none then
+        let tail ← build stats familyIdx familyIndices
+          (context.pushLocalDecl name binderInfo
+            (consumeTypeAnnotations domain))
+          (body.instantiate1 context.freshExpr) fuel
+        pure <| .forallE context name domain body binderInfo domainCheck
+          ensureType consumedCheck annotations fresh tail
+      else
+        throw <| .other
+          "pre-family recursive replay reused a local identifier"
+  | context, source, _ + 1 => do
+      if valid : isValidIndAppIdx stats source familyIdx = true then
+        let spine ← ConstructorPreFamilyIndexSpineTrace.build context
+          familyIndices
+          (source.getAppArgs.toList.drop stats.params.size)
+        pure <| .target context source valid spine
+      else
+        throw <| .other
+          "pre-family recursive replay reached a non-family target"
+
+end ConstructorPreFamilyRecursiveTrace
+
+theorem ConstructorPreFamilyRecursiveTrace.forallE_build_eq
+    (domainCheck : ConstructorCheckedExpr context domain)
+    (ensureType : ConstructorEnsureTypeObservation context domain)
+    (consumedCheck : ConstructorCheckedExpr context
+      (consumeTypeAnnotations domain))
+    (annotations : CandidateIsDefEqObservation context domain
+      (consumeTypeAnnotations domain))
+    (fresh : context.lctx.find? context.freshFVarId = none)
+    (tail : ConstructorPreFamilyRecursiveTrace stats familyIdx familyIndices
+      (context.pushLocalDecl name binderInfo
+        (consumeTypeAnnotations domain))
+      (body.instantiate1 context.freshExpr) fuel)
+    (tailRun : ConstructorPreFamilyRecursiveTrace.build stats familyIdx
+      familyIndices
+      (context.pushLocalDecl name binderInfo
+        (consumeTypeAnnotations domain))
+      (body.instantiate1 context.freshExpr) fuel = .ok tail) :
+    ConstructorPreFamilyRecursiveTrace.build stats familyIdx familyIndices
+        context (.forallE name domain body binderInfo) (fuel + 1) =
+      .ok (.forallE context name domain body binderInfo domainCheck ensureType
+        consumedCheck annotations fresh tail) := by
+  simp only [ConstructorPreFamilyRecursiveTrace.build]
+  rw [domainCheck.check_eq, ensureType.observe_eq, consumedCheck.check_eq]
+  simp only [Bind.bind, Except.bind]
+  rw [annotations.observe_eq]
+  simp only [Bind.bind, Except.bind]
+  rw [dif_pos fresh, tailRun]
+  rfl
+
+theorem ConstructorPreFamilyRecursiveTrace.target_build_eq
+    (terminal : source.isForall = false)
+    (valid : isValidIndAppIdx stats source familyIdx = true)
+    (spine : ConstructorPreFamilyIndexSpineTrace context familyIndices
+      (source.getAppArgs.toList.drop stats.params.size)) :
+    ConstructorPreFamilyRecursiveTrace.build stats familyIdx familyIndices
+        context source (fuel + 1) =
+      .ok (.target context source valid spine) := by
+  cases source <;> simp only [ConstructorPreFamilyRecursiveTrace.build]
+  case forallE => simp [Expr.isForall] at terminal
+  all_goals
+    rw [dif_pos valid, spine.build_eq]
+    rfl
+
+/-!
+### Verified pre-family recursive fields
+
+Recursive outer-field locals are intentionally absent here. Nested Pi binders
+inside the field are family-free, so they are checked, interpreted, and pushed
+normally. The terminal family application contributes only its already-verified
+index spine.
+-/
+
+/-- Componentwise verified interpretation of a recursive field replay. -/
+inductive ConstructorPreFamilyRecursiveSemanticRun
+    (env : VEnv) (Us : List Name)
+    (stats : InductiveStats) (familyIdx : Nat) (familyIndices : Expr) :
+    {context : Context} → {source : Expr} → {fuel : Nat} →
+    (contextRun : ConstructorContextRun env Us context) →
+    ConstructorPreFamilyRecursiveTrace stats familyIdx familyIndices context
+      source fuel → Type where
+  | forallE
+      {context : Context} {name : Name} {domain body : Expr}
+      {binderInfo : BinderInfo} {fuel : Nat}
+      {domainCheck : ConstructorCheckedExpr context domain}
+      {ensureType : ConstructorEnsureTypeObservation context domain}
+      {consumedCheck : ConstructorCheckedExpr context
+        (consumeTypeAnnotations domain)}
+      {annotations : CandidateIsDefEqObservation context domain
+        (consumeTypeAnnotations domain)}
+      {fresh : context.lctx.find? context.freshFVarId = none}
+      {tailTrace : ConstructorPreFamilyRecursiveTrace stats familyIdx
+        familyIndices
+        (context.pushLocalDecl name binderInfo
+          (consumeTypeAnnotations domain))
+        (body.instantiate1 context.freshExpr) fuel}
+      {contextRun : ConstructorContextRun env Us context}
+      (domainRun : ConstructorCheckedExpr.Run domainCheck
+        contextRun.candidate)
+      (consumedRun : ConstructorCheckedExpr.Run consumedCheck
+        contextRun.candidate)
+      (ensureTypeRun : TypeChecker.EnsureTypeRun
+        contextRun.candidate.context.venv
+        contextRun.candidate.context.lparams
+        contextRun.candidate.context.vlctx domain ensureType.result
+        domainRun.source')
+      (annotationsRun : TypeChecker.IsDefEqRun
+        contextRun.candidate.context.venv
+        contextRun.candidate.context.lparams
+        contextRun.candidate.context.vlctx domain
+        (consumeTypeAnnotations domain) domainRun.source'
+        consumedRun.source')
+      (consumedType : contextRun.candidate.context.IsType
+        consumedRun.source')
+      (tail : ConstructorPreFamilyRecursiveSemanticRun env Us stats familyIdx
+        familyIndices
+        (contextRun.pushLocalDecl name binderInfo
+          (consumeTypeAnnotations domain) fresh consumedRun.source'
+          consumedRun.check.expr_tr consumedType)
+        tailTrace) :
+      ConstructorPreFamilyRecursiveSemanticRun env Us stats familyIdx
+        familyIndices contextRun
+        (.forallE context name domain body binderInfo domainCheck ensureType
+          consumedCheck annotations fresh tailTrace)
+  | target
+      {context : Context} {source : Expr} {fuel : Nat}
+      {valid : isValidIndAppIdx stats source familyIdx = true}
+      {spineTrace : ConstructorPreFamilyIndexSpineTrace context familyIndices
+        (source.getAppArgs.toList.drop stats.params.size)}
+      {contextRun : ConstructorContextRun env Us context}
+      (expected' : VExpr)
+      (spine : ConstructorPreFamilyIndexSpineSemanticRun env Us context
+        contextRun spineTrace expected') :
+      ConstructorPreFamilyRecursiveSemanticRun env Us stats familyIdx
+        familyIndices contextRun (.target context source valid spineTrace)
+
+namespace ConstructorPreFamilyRecursiveSemanticRun
+
+/-- Interpret every retained nested-binder and terminal-index operation in the
+exact verified pre-family context. -/
+theorem nonempty
+    (contextRun : ConstructorContextRun env Us context)
+    (trace : ConstructorPreFamilyRecursiveTrace stats familyIdx familyIndices
+      context source fuel) :
+    Nonempty (ConstructorPreFamilyRecursiveSemanticRun env Us stats familyIdx
+      familyIndices contextRun trace) := by
+  induction trace with
+  | forallE context name domain body binderInfo domainCheck ensureType
+      consumedCheck annotations fresh tailTrace ih =>
+      obtain ⟨domainRun⟩ := ConstructorCheckedExpr.Run.exists domainCheck
+        contextRun.candidate
+      obtain ⟨consumedRun⟩ := ConstructorCheckedExpr.Run.exists consumedCheck
+        contextRun.candidate
+      obtain ⟨ensureTypeRun⟩ :=
+        TypeChecker.EnsureTypeRun.exists_ofConstructorStep
+          ⟨context, domain, ensureType.result⟩ ensureType.valid
+          contextRun.candidate domainRun.source' domainRun.check.expr_tr
+      let annotationsRun := domainRun.isDefEq consumedRun annotations
+      have consumedType : contextRun.candidate.context.IsType
+          consumedRun.source' := by
+        have annotationDef := annotationsRun.isDefEqU.of_l
+          contextRun.candidate.context.Ewf
+          contextRun.candidate.context.Δwf.toCtx ensureTypeRun.source_type
+        exact ⟨ensureTypeRun.resultLevel', annotationDef.hasType.2⟩
+      let tailContext := contextRun.pushLocalDecl name binderInfo
+        (consumeTypeAnnotations domain) fresh consumedRun.source'
+        consumedRun.check.expr_tr consumedType
+      obtain ⟨tail⟩ := ih tailContext
+      exact ⟨.forallE domainRun consumedRun ensureTypeRun annotationsRun
+        consumedType tail⟩
+  | @target traceFuel context source valid spineTrace =>
+      obtain ⟨expected', ⟨spine⟩⟩ :=
+        ConstructorPreFamilyIndexSpineSemanticRun.nonempty contextRun spineTrace
+      exact ⟨@ConstructorPreFamilyRecursiveSemanticRun.target
+        env Us stats familyIdx familyIndices traceFuel
+        context source (traceFuel + 1) valid spineTrace contextRun expected' spine⟩
+
+/-- The verified nested Π-binder telescope retained by the recursive field. -/
+def binders
+    {context : Context} {source : Expr} {fuel : Nat}
+    {contextRun : ConstructorContextRun env Us context}
+    {trace : ConstructorPreFamilyRecursiveTrace stats familyIdx familyIndices
+      context source fuel}
+    (run : ConstructorPreFamilyRecursiveSemanticRun env Us stats familyIdx
+      familyIndices contextRun trace) : List VExpr :=
+  match run with
+  | .forallE _ consumedRun _ _ _ tail => consumedRun.source' :: tail.binders
+  | .target _ _ => []
+
+/-- Translation selected for the analyzer-owned family-index telescope. -/
+def expected'
+    {context : Context} {source : Expr} {fuel : Nat}
+    {contextRun : ConstructorContextRun env Us context}
+    {trace : ConstructorPreFamilyRecursiveTrace stats familyIdx familyIndices
+      context source fuel}
+    (run : ConstructorPreFamilyRecursiveSemanticRun env Us stats familyIdx
+      familyIndices contextRun trace) : VExpr :=
+  match run with
+  | .forallE _ _ _ _ _ tail => tail.expected'
+  | .target expected' _ => expected'
+
+/-- Translated terminal recursive indices, in source order. -/
+def indices'
+    {context : Context} {source : Expr} {fuel : Nat}
+    {contextRun : ConstructorContextRun env Us context}
+    {trace : ConstructorPreFamilyRecursiveTrace stats familyIdx familyIndices
+      context source fuel}
+    (run : ConstructorPreFamilyRecursiveSemanticRun env Us stats familyIdx
+      familyIndices contextRun trace) : List VExpr :=
+  match run with
+  | .forallE _ _ _ _ _ tail => tail.indices'
+  | .target _ spine => spine.arguments'
+
+/-- Translated result type of the terminal recursive index application. -/
+def result'
+    {context : Context} {source : Expr} {fuel : Nat}
+    {contextRun : ConstructorContextRun env Us context}
+    {trace : ConstructorPreFamilyRecursiveTrace stats familyIdx familyIndices
+      context source fuel}
+    (run : ConstructorPreFamilyRecursiveSemanticRun env Us stats familyIdx
+      familyIndices contextRun trace) : VExpr :=
+  match run with
+  | .forallE _ _ _ _ _ tail => tail.result'
+  | .target _ spine => spine.result'
+
+/-- The retained recursive Π domains form a verified Theory telescope in the
+exact pre-family context. -/
+theorem onTel
+    {context : Context} {source : Expr} {fuel : Nat}
+    {contextRun : ConstructorContextRun env Us context}
+    {trace : ConstructorPreFamilyRecursiveTrace stats familyIdx familyIndices
+      context source fuel}
+    (run : ConstructorPreFamilyRecursiveSemanticRun env Us stats familyIdx
+      familyIndices contextRun trace) :
+    env.OnTel Us.length contextRun.candidate.context.vlctx.toCtx run.binders := by
+  induction run with
+  | @forallE context name domain body binderInfo fuel domainCheck ensureType
+      consumedCheck annotations fresh tailTrace branchContextRun domainRun
+      consumedRun ensureTypeRun annotationsRun consumedType tail ih =>
+      constructor
+      · simpa only [VContext.IsType, branchContextRun.venv_eq,
+          branchContextRun.lparams_eq] using consumedType
+      · simpa only [binders, ConstructorContextRun.pushLocalDecl,
+          CandidateContextRun.pushLocalDecl_vlctx, VLCtx.toCtx] using ih
+  | target => trivial
+
+/-- The terminal recursive indices have the expected analyzer-owned family
+index telescope, below all retained nested Π binders. -/
+theorem spine
+    {context : Context} {source : Expr} {fuel : Nat}
+    {contextRun : ConstructorContextRun env Us context}
+    {trace : ConstructorPreFamilyRecursiveTrace stats familyIdx familyIndices
+      context source fuel}
+    (run : ConstructorPreFamilyRecursiveSemanticRun env Us stats familyIdx
+      familyIndices contextRun trace) :
+    env.SpineWF Us.length
+      (run.binders.reverse ++ contextRun.candidate.context.vlctx.toCtx)
+      run.expected' run.indices' run.result' := by
+  induction run with
+  | forallE domainRun consumedRun ensureTypeRun annotationsRun consumedType tail ih =>
+      simpa only [binders, expected', indices', result', List.reverse_cons,
+        List.singleton_append, List.append_assoc,
+        ConstructorContextRun.pushLocalDecl,
+        CandidateContextRun.pushLocalDecl_vlctx, VLCtx.toCtx] using ih
+  | target expectedType spine =>
+      simpa only [binders, expected', indices', result', List.reverse_nil,
+        List.nil_append] using spine.spine
+
+/-- Weaken the retained recursive Π telescope over a later prefix of omitted
+outer recursive fields. -/
+theorem onTel_weakPrefix
+    {context : Context} {source : Expr} {fuel : Nat}
+    {contextRun : ConstructorContextRun env Us context}
+    {trace : ConstructorPreFamilyRecursiveTrace stats familyIdx familyIndices
+      context source fuel}
+    (run : ConstructorPreFamilyRecursiveSemanticRun env Us stats familyIdx
+      familyIndices contextRun trace) (Bs : List VExpr) :
+    env.OnTel Us.length
+      (Bs ++ contextRun.candidate.context.vlctx.toCtx)
+      (VExpr.liftTelN Bs.length run.binders 0) := by
+  have henv : VEnv.WF env := by
+    simpa only [contextRun.venv_eq] using contextRun.candidate.context.Ewf
+  exact run.onTel.weakN henv.ordered
+    (Ctx.LiftN.zero (n := Bs.length)
+      (Γ := contextRun.candidate.context.vlctx.toCtx) Bs)
+
+/-- Weaken the terminal recursive index judgment below the same omitted outer
+field prefix, preserving the nested Π-binder depths. -/
+theorem spine_weakPrefix
+    {context : Context} {source : Expr} {fuel : Nat}
+    {contextRun : ConstructorContextRun env Us context}
+    {trace : ConstructorPreFamilyRecursiveTrace stats familyIdx familyIndices
+      context source fuel}
+    (run : ConstructorPreFamilyRecursiveSemanticRun env Us stats familyIdx
+      familyIndices contextRun trace) (Bs : List VExpr) :
+    env.SpineWF Us.length
+      ((VExpr.liftTelN Bs.length run.binders 0).reverse ++
+        Bs ++ contextRun.candidate.context.vlctx.toCtx)
+      (run.expected'.liftN Bs.length run.binders.length)
+      (run.indices'.map fun index =>
+        index.liftN Bs.length run.binders.length)
+      (run.result'.liftN Bs.length run.binders.length) := by
+  have henv : VEnv.WF env := by
+    simpa only [contextRun.venv_eq] using contextRun.candidate.context.Ewf
+  simpa only [List.append_assoc, Nat.add_zero] using
+    run.spine.weakN henv.ordered
+      (Ctx.LiftN.consTel run.binders
+        (Ctx.LiftN.zero (n := Bs.length)
+          (Γ := contextRun.candidate.context.vlctx.toCtx) Bs))
+
+end ConstructorPreFamilyRecursiveSemanticRun
+
+/-- Exact executable D3 replay for one analyzer-owned constructor view.
+
+`removed` contains precisely the validation FVars allocated for recursive
+outer fields that were not inserted into the pre-family checker context.
+`recursiveStarted` enforces that no ordinary field follows them. -/
+inductive ConstructorPreFamilyViewTrace
+    (stats : InductiveStats) (familyIdx : Nat) (familyIndices : Expr) :
+    (context : Context) → (view : Expr) → (argIdx : Nat) →
+      (removed : List FVarId) → (recursiveStarted : Bool) → Type where
+  | parameter
+      (context : Context) (argIdx : Nat) (removed : List FVarId)
+      (recursiveStarted : Bool)
+      (name : Name) (domain body : Expr) (binderInfo : BinderInfo)
+      (parameter : Expr)
+      (parameterAt : stats.params[argIdx]? = some parameter)
+      (tail : ConstructorPreFamilyViewTrace stats familyIdx familyIndices
+        context (body.instantiate1 parameter) (argIdx + 1) removed
+        recursiveStarted) :
+      ConstructorPreFamilyViewTrace stats familyIdx familyIndices context
+        (.forallE name domain body binderInfo) argIdx removed recursiveStarted
+  | ordinary
+      (context : Context) (argIdx : Nat) (removed : List FVarId)
+      (recursiveStarted : Bool)
+      (name : Name) (domain body : Expr) (binderInfo : BinderInfo)
+      (noParameter : stats.params[argIdx]? = none)
+      (nonrecursive : hasIndOcc stats.indConsts domain = false)
+      (notStarted : recursiveStarted = false)
+      (domainCheck : ConstructorCheckedExpr context domain)
+      (ensureType : ConstructorEnsureTypeObservation context domain)
+      (consumedCheck : ConstructorCheckedExpr context
+        (consumeTypeAnnotations domain))
+      (annotations : CandidateIsDefEqObservation context domain
+        (consumeTypeAnnotations domain))
+      (fresh : context.lctx.find? context.freshFVarId = none)
+      (tail : ConstructorPreFamilyViewTrace stats familyIdx familyIndices
+        (context.pushLocalDecl name binderInfo
+          (consumeTypeAnnotations domain))
+        (body.instantiate1 context.freshExpr) (argIdx + 1) removed false) :
+      ConstructorPreFamilyViewTrace stats familyIdx familyIndices context
+        (.forallE name domain body binderInfo) argIdx removed recursiveStarted
+  | recursive
+      (context : Context) (argIdx : Nat) (removed : List FVarId)
+      (recursiveStarted : Bool)
+      (name : Name) (domain body : Expr) (binderInfo : BinderInfo)
+      (noParameter : stats.params[argIdx]? = none)
+      (isRecursive : hasIndOcc stats.indConsts domain = true)
+      (independent : constructorIndependentOf domain removed = true)
+      (field : ConstructorPreFamilyRecursiveTrace stats familyIdx
+        familyIndices context domain context.fuel.inductiveFuel)
+      (fresh : context.lctx.find? context.freshFVarId = none)
+      (tail : ConstructorPreFamilyViewTrace stats familyIdx familyIndices
+        context.advanceFresh (body.instantiate1 context.freshExpr)
+        (argIdx + 1) (context.freshFVarId :: removed) true) :
+      ConstructorPreFamilyViewTrace stats familyIdx familyIndices context
+        (.forallE name domain body binderInfo) argIdx removed recursiveStarted
+  | terminal
+      (context : Context) (source : Expr) (argIdx : Nat)
+      (removed : List FVarId) (recursiveStarted : Bool)
+      (valid : isValidIndAppIdx stats source familyIdx = true)
+      (independent : constructorIndependentOf source removed = true)
+      (spine : ConstructorPreFamilyIndexSpineTrace context familyIndices
+        (source.getAppArgs.toList.drop stats.params.size)) :
+      ConstructorPreFamilyViewTrace stats familyIdx familyIndices context
+        source argIdx removed recursiveStarted
+
+namespace ConstructorPreFamilyViewTrace
+
+def build (stats : InductiveStats) (familyIdx : Nat)
+    (familyIndices : Expr) :
+    (context : Context) → (view : Expr) → (argIdx : Nat) →
+    (removed : List FVarId) → (recursiveStarted : Bool) → (fuel : Nat) →
+    Except Exception
+      (ConstructorPreFamilyViewTrace stats familyIdx familyIndices context view
+        argIdx removed recursiveStarted)
+  | _, _, _, _, _, 0 => throw .deepRecursion
+  | context, .forallE name domain body binderInfo, argIdx, removed,
+      recursiveStarted, fuel + 1 =>
+      match parameterAt : stats.params[argIdx]? with
+      | some param => do
+          let tail ← build stats familyIdx familyIndices context
+            (body.instantiate1 param) (argIdx + 1) removed
+            recursiveStarted fuel
+          pure <| .parameter context argIdx removed recursiveStarted name domain
+            body binderInfo param parameterAt tail
+      | none => do
+          match recursive : hasIndOcc stats.indConsts domain with
+          | false =>
+              match recursiveStarted with
+              | true =>
+                  throw <| .other
+                    "ordinary constructor field follows recursive suffix"
+              | false => do
+                let domainCheck ← checkConstructorAlignedExpr context domain
+                let ensureType ← observeConstructorEnsureType context domain
+                let consumedCheck ← checkConstructorAlignedExpr context
+                  (consumeTypeAnnotations domain)
+                let annotations ← observeCandidateIsDefEq context domain
+                  (consumeTypeAnnotations domain)
+                if fresh : context.lctx.find? context.freshFVarId = none then
+                  let tail ← build stats familyIdx familyIndices
+                    (context.pushLocalDecl name binderInfo
+                      (consumeTypeAnnotations domain))
+                    (body.instantiate1 context.freshExpr) (argIdx + 1)
+                    removed false fuel
+                  pure <| .ordinary context argIdx removed false name domain
+                    body binderInfo parameterAt recursive rfl domainCheck
+                    ensureType consumedCheck annotations fresh tail
+                else
+                  throw <| .other
+                    "pre-family ordinary replay reused a local identifier"
+          | true =>
+              if independent : constructorIndependentOf domain removed = true then
+                let field ← ConstructorPreFamilyRecursiveTrace.build stats
+                  familyIdx familyIndices context domain
+                  context.fuel.inductiveFuel
+                if fresh : context.lctx.find? context.freshFVarId = none then
+                  let tail ← build stats familyIdx familyIndices
+                    context.advanceFresh
+                    (body.instantiate1 context.freshExpr) (argIdx + 1)
+                    (context.freshFVarId :: removed) true fuel
+                  pure <| .recursive context argIdx removed recursiveStarted
+                    name domain body binderInfo parameterAt recursive independent
+                    field fresh tail
+                else
+                  throw <| .other
+                    "pre-family recursive replay reused a local identifier"
+              else
+                throw <| .other
+                  "constructor depends on an omitted recursive local"
+  | context, source, argIdx, removed, recursiveStarted, _ + 1 => do
+      if valid : isValidIndAppIdx stats source familyIdx = true then
+        if independent : constructorIndependentOf source removed = true then
+          let spine ← ConstructorPreFamilyIndexSpineTrace.build context
+            familyIndices
+            (source.getAppArgs.toList.drop stats.params.size)
+          pure <| .terminal context source argIdx removed recursiveStarted valid
+            independent spine
+        else
+          throw <| .other
+            "constructor result depends on an omitted recursive local"
+      else
+        throw <| .other
+          "pre-family replay reached a non-family constructor result"
+
+end ConstructorPreFamilyViewTrace
+
+theorem ConstructorPreFamilyViewTrace.terminal_build_eq
+    (terminal : source.isForall = false)
+    (valid : isValidIndAppIdx stats source familyIdx = true)
+    (independent : constructorIndependentOf source removed = true)
+    (spine : ConstructorPreFamilyIndexSpineTrace context familyIndices
+      (source.getAppArgs.toList.drop stats.params.size)) :
+    ConstructorPreFamilyViewTrace.build stats familyIdx familyIndices
+        context source argIdx removed recursiveStarted (fuel + 1) =
+      .ok (.terminal context source argIdx removed recursiveStarted valid
+        independent spine) := by
+  cases source <;> simp only [ConstructorPreFamilyViewTrace.build]
+  case forallE => simp [Expr.isForall] at terminal
+  all_goals
+    rw [dif_pos valid, dif_pos independent, spine.build_eq]
+    rfl
+
+/-!
+### Verified pre-family constructor views
+
+This interpretation follows the exact executable D3 trace. Ordinary fields
+are checked and pushed in the pre-family context, recursive outer fields are
+omitted while their family-free nested binders and indices are retained, and
+the terminal result contributes its verified index spine.
+-/
+
+/-- Verified meaning of every family-free operation retained by one exact
+pre-family constructor-view replay. -/
+inductive ConstructorPreFamilyViewSemanticRun
+    (env : VEnv) (Us : List Name)
+    (stats : InductiveStats) (familyIdx : Nat) (familyIndices : Expr) :
+    {context : Context} → {view : Expr} → {argIdx : Nat} →
+    {removed : List FVarId} → {recursiveStarted : Bool} →
+    (contextRun : ConstructorContextRun env Us context) →
+    ConstructorPreFamilyViewTrace stats familyIdx familyIndices context view
+      argIdx removed recursiveStarted → Type where
+  | parameter
+      {context : Context} {argIdx : Nat} {removed : List FVarId}
+      {recursiveStarted : Bool}
+      {name : Name} {domain body : Expr} {binderInfo : BinderInfo}
+      {parameter : Expr}
+      {parameterAt : stats.params[argIdx]? = some parameter}
+      {tailTrace : ConstructorPreFamilyViewTrace stats familyIdx familyIndices
+        context (body.instantiate1 parameter) (argIdx + 1) removed
+        recursiveStarted}
+      {contextRun : ConstructorContextRun env Us context}
+      (tail : ConstructorPreFamilyViewSemanticRun env Us stats familyIdx
+        familyIndices contextRun tailTrace) :
+      ConstructorPreFamilyViewSemanticRun env Us stats familyIdx familyIndices
+        contextRun
+        (.parameter context argIdx removed recursiveStarted name domain body
+          binderInfo parameter parameterAt tailTrace)
+  | ordinary
+      {context : Context} {argIdx : Nat} {removed : List FVarId}
+      {recursiveStarted : Bool}
+      {name : Name} {domain body : Expr} {binderInfo : BinderInfo}
+      {noParameter : stats.params[argIdx]? = none}
+      {nonrecursive : hasIndOcc stats.indConsts domain = false}
+      {notStarted : recursiveStarted = false}
+      {domainCheck : ConstructorCheckedExpr context domain}
+      {ensureType : ConstructorEnsureTypeObservation context domain}
+      {consumedCheck : ConstructorCheckedExpr context
+        (consumeTypeAnnotations domain)}
+      {annotations : CandidateIsDefEqObservation context domain
+        (consumeTypeAnnotations domain)}
+      {fresh : context.lctx.find? context.freshFVarId = none}
+      {tailTrace : ConstructorPreFamilyViewTrace stats familyIdx familyIndices
+        (context.pushLocalDecl name binderInfo
+          (consumeTypeAnnotations domain))
+        (body.instantiate1 context.freshExpr) (argIdx + 1) removed false}
+      {contextRun : ConstructorContextRun env Us context}
+      (domainRun : ConstructorCheckedExpr.Run domainCheck
+        contextRun.candidate)
+      (consumedRun : ConstructorCheckedExpr.Run consumedCheck
+        contextRun.candidate)
+      (ensureTypeRun : TypeChecker.EnsureTypeRun
+        contextRun.candidate.context.venv
+        contextRun.candidate.context.lparams
+        contextRun.candidate.context.vlctx domain ensureType.result
+        domainRun.source')
+      (annotationsRun : TypeChecker.IsDefEqRun
+        contextRun.candidate.context.venv
+        contextRun.candidate.context.lparams
+        contextRun.candidate.context.vlctx domain
+        (consumeTypeAnnotations domain) domainRun.source'
+        consumedRun.source')
+      (consumedType : contextRun.candidate.context.IsType
+        consumedRun.source')
+      (tail : ConstructorPreFamilyViewSemanticRun env Us stats familyIdx
+        familyIndices
+        (contextRun.pushLocalDecl name binderInfo
+          (consumeTypeAnnotations domain) fresh consumedRun.source'
+          consumedRun.check.expr_tr consumedType)
+        tailTrace) :
+      ConstructorPreFamilyViewSemanticRun env Us stats familyIdx familyIndices
+        contextRun
+        (.ordinary context argIdx removed recursiveStarted name domain body
+          binderInfo noParameter nonrecursive notStarted domainCheck ensureType
+          consumedCheck annotations fresh tailTrace)
+  | recursive
+      {context : Context} {argIdx : Nat} {removed : List FVarId}
+      {recursiveStarted : Bool}
+      {name : Name} {domain body : Expr} {binderInfo : BinderInfo}
+      {noParameter : stats.params[argIdx]? = none}
+      {isRecursive : hasIndOcc stats.indConsts domain = true}
+      {independent : constructorIndependentOf domain removed = true}
+      {fieldTrace : ConstructorPreFamilyRecursiveTrace stats familyIdx
+        familyIndices context domain context.fuel.inductiveFuel}
+      {fresh : context.lctx.find? context.freshFVarId = none}
+      {tailTrace : ConstructorPreFamilyViewTrace stats familyIdx familyIndices
+        context.advanceFresh (body.instantiate1 context.freshExpr)
+        (argIdx + 1) (context.freshFVarId :: removed) true}
+      {contextRun : ConstructorContextRun env Us context}
+      (field : ConstructorPreFamilyRecursiveSemanticRun env Us stats familyIdx
+        familyIndices contextRun fieldTrace)
+      (tail : ConstructorPreFamilyViewSemanticRun env Us stats familyIdx
+        familyIndices contextRun.advanceFresh tailTrace) :
+      ConstructorPreFamilyViewSemanticRun env Us stats familyIdx familyIndices
+        contextRun
+        (.recursive context argIdx removed recursiveStarted name domain body
+          binderInfo noParameter isRecursive independent fieldTrace fresh
+          tailTrace)
+  | terminal
+      {context : Context} {source : Expr} {argIdx : Nat}
+      {removed : List FVarId} {recursiveStarted : Bool}
+      {valid : isValidIndAppIdx stats source familyIdx = true}
+      {independent : constructorIndependentOf source removed = true}
+      {spineTrace : ConstructorPreFamilyIndexSpineTrace context familyIndices
+        (source.getAppArgs.toList.drop stats.params.size)}
+      {contextRun : ConstructorContextRun env Us context}
+      (expected' : VExpr)
+      (spine : ConstructorPreFamilyIndexSpineSemanticRun env Us context
+        contextRun spineTrace expected') :
+      ConstructorPreFamilyViewSemanticRun env Us stats familyIdx familyIndices
+        contextRun
+        (.terminal context source argIdx removed recursiveStarted valid
+          independent spineTrace)
+
+namespace ConstructorPreFamilyViewSemanticRun
+
+/-- Interpret every exact family-free checker observation in a successful
+constructor-view replay. -/
+theorem nonempty
+    (contextRun : ConstructorContextRun env Us context)
+    (trace : ConstructorPreFamilyViewTrace stats familyIdx familyIndices
+      context view argIdx removed recursiveStarted) :
+    Nonempty (ConstructorPreFamilyViewSemanticRun env Us stats familyIdx
+      familyIndices contextRun trace) := by
+  induction trace with
+  | parameter context argIdx removed recursiveStarted name domain body
+      binderInfo parameter parameterAt tailTrace ih =>
+      obtain ⟨tail⟩ := ih contextRun
+      exact ⟨.parameter tail⟩
+  | ordinary context argIdx removed recursiveStarted name domain body
+      binderInfo noParameter nonrecursive notStarted domainCheck ensureType
+      consumedCheck annotations fresh tailTrace ih =>
+      obtain ⟨domainRun⟩ := ConstructorCheckedExpr.Run.exists domainCheck
+        contextRun.candidate
+      obtain ⟨consumedRun⟩ := ConstructorCheckedExpr.Run.exists consumedCheck
+        contextRun.candidate
+      obtain ⟨ensureTypeRun⟩ :=
+        TypeChecker.EnsureTypeRun.exists_ofConstructorStep
+          ⟨context, domain, ensureType.result⟩ ensureType.valid
+          contextRun.candidate domainRun.source' domainRun.check.expr_tr
+      let annotationsRun := domainRun.isDefEq consumedRun annotations
+      have consumedType : contextRun.candidate.context.IsType
+          consumedRun.source' := by
+        have annotationDef := annotationsRun.isDefEqU.of_l
+          contextRun.candidate.context.Ewf
+          contextRun.candidate.context.Δwf.toCtx ensureTypeRun.source_type
+        exact ⟨ensureTypeRun.resultLevel', annotationDef.hasType.2⟩
+      let tailContext := contextRun.pushLocalDecl name binderInfo
+        (consumeTypeAnnotations domain) fresh consumedRun.source'
+        consumedRun.check.expr_tr consumedType
+      obtain ⟨tail⟩ := ih tailContext
+      exact ⟨.ordinary domainRun consumedRun ensureTypeRun annotationsRun
+        consumedType tail⟩
+  | recursive context argIdx removed recursiveStarted name domain body
+      binderInfo noParameter isRecursive independent fieldTrace fresh
+      tailTrace tailIH =>
+      obtain ⟨field⟩ :=
+        ConstructorPreFamilyRecursiveSemanticRun.nonempty contextRun fieldTrace
+      obtain ⟨tail⟩ := tailIH contextRun.advanceFresh
+      exact ⟨.recursive field tail⟩
+  | terminal context source argIdx removed recursiveStarted valid independent
+      spineTrace =>
+      obtain ⟨expected', ⟨spine⟩⟩ :=
+        ConstructorPreFamilyIndexSpineSemanticRun.nonempty contextRun spineTrace
+      exact ⟨.terminal expected' spine⟩
+
+/-- Weaken an exact ordinary-field type over any later field prefix. -/
+theorem ordinaryType_weakPrefix
+    (contextRun : ConstructorContextRun env Us context)
+    {fieldType : VExpr}
+    (fieldTypeWF : contextRun.candidate.context.IsType fieldType)
+    (Bs : List VExpr) :
+    env.IsType Us.length
+      (Bs ++ contextRun.candidate.context.vlctx.toCtx)
+      (fieldType.liftN Bs.length 0) := by
+  have henv : VEnv.WF env := by
+    simpa only [contextRun.venv_eq] using contextRun.candidate.context.Ewf
+  have fieldTypeWF' : env.IsType Us.length
+      contextRun.candidate.context.vlctx.toCtx fieldType := by
+    simpa only [VContext.IsType, contextRun.venv_eq,
+      contextRun.lparams_eq] using fieldTypeWF
+  exact fieldTypeWF'.weakN henv.ordered
+    (Ctx.LiftN.zero (n := Bs.length)
+      (Γ := contextRun.candidate.context.vlctx.toCtx) Bs)
+
+end ConstructorPreFamilyViewSemanticRun
+
+/-- Source-ordered D3 traces for the exact dependent constructor candidate
+list selected by the producer. -/
+inductive ConstructorPreFamilyListTrace
+    (stats : InductiveStats) (familyIdx : Nat) (familyIndices : Expr)
+    (context : Context) :
+    {constructors : List Constructor} →
+    AddInductive.CandidateList AddInductive.CandidateConstructor constructors →
+      Type where
+  | nil : ConstructorPreFamilyListTrace stats familyIdx familyIndices context
+      .nil
+  | cons
+      (head : ConstructorPreFamilyViewTrace stats familyIdx familyIndices
+        context candidate.type.view 0 [] false)
+      (tail : ConstructorPreFamilyListTrace stats familyIdx familyIndices
+        context candidates) :
+      ConstructorPreFamilyListTrace stats familyIdx familyIndices context
+        (.cons candidate candidates)
+
+namespace ConstructorPreFamilyListTrace
+
+def build (stats : InductiveStats) (familyIdx : Nat)
+    (familyIndices : Expr) (context : Context) :
+    (candidates : AddInductive.CandidateList
+      AddInductive.CandidateConstructor constructors) →
+    Except Exception
+      (ConstructorPreFamilyListTrace stats familyIdx familyIndices context
+        candidates)
+  | .nil => pure .nil
+  | .cons head tail => do
+      let headTrace ← ConstructorPreFamilyViewTrace.build stats familyIdx
+        familyIndices context head.type.view 0 [] false
+        context.fuel.inductiveFuel
+      let tailTrace ← build stats familyIdx familyIndices context tail
+      pure <| .cons headTrace tailTrace
+
+end ConstructorPreFamilyListTrace
+
+theorem ConstructorPreFamilyListTrace.cons_build_eq
+    (head : ConstructorPreFamilyViewTrace stats familyIdx familyIndices context
+      candidate.type.view 0 [] false)
+    (headRun : ConstructorPreFamilyViewTrace.build stats familyIdx
+      familyIndices context candidate.type.view 0 [] false
+      context.fuel.inductiveFuel = .ok head)
+    (tail : ConstructorPreFamilyListTrace stats familyIdx familyIndices context
+      candidates)
+    (tailRun : ConstructorPreFamilyListTrace.build stats familyIdx
+      familyIndices context candidates = .ok tail) :
+    ConstructorPreFamilyListTrace.build stats familyIdx familyIndices context
+        (.cons candidate candidates) = .ok (.cons head tail) := by
+  simp only [ConstructorPreFamilyListTrace.build]
+  rw [headRun]
+  simp only [Bind.bind, Except.bind]
+  rw [tailRun]
+  rfl
+
+/-- Source-ordered verified pre-family meaning for every analyzer-owned
+constructor candidate selected by the executable D3 gate. -/
+inductive ConstructorPreFamilyListSemanticRun
+    (env : VEnv) (Us : List Name)
+    (stats : InductiveStats) (familyIdx : Nat) (familyIndices : Expr)
+    (context : Context) (contextRun : ConstructorContextRun env Us context) :
+    {constructors : List Constructor} →
+    {candidates : AddInductive.CandidateList
+      AddInductive.CandidateConstructor constructors} →
+    ConstructorPreFamilyListTrace stats familyIdx familyIndices context
+      candidates → Type where
+  | nil : ConstructorPreFamilyListSemanticRun env Us stats familyIdx
+      familyIndices context contextRun (.nil)
+  | cons
+      {candidate : AddInductive.CandidateConstructor constructor}
+      {candidates : AddInductive.CandidateList
+        AddInductive.CandidateConstructor constructors}
+      {headTrace : ConstructorPreFamilyViewTrace stats familyIdx familyIndices
+        context candidate.type.view 0 [] false}
+      {tailTrace : ConstructorPreFamilyListTrace stats familyIdx familyIndices
+        context candidates}
+      (head : ConstructorPreFamilyViewSemanticRun env Us stats familyIdx
+        familyIndices contextRun headTrace)
+      (tail : ConstructorPreFamilyListSemanticRun env Us stats familyIdx
+        familyIndices context contextRun tailTrace) :
+      ConstructorPreFamilyListSemanticRun env Us stats familyIdx
+        familyIndices context contextRun (.cons headTrace tailTrace)
+
+namespace ConstructorPreFamilyListSemanticRun
+
+/-- Interpret every constructor position retained by a successful executable
+D3 list trace in the same verified pre-family context. -/
+theorem nonempty
+    (contextRun : ConstructorContextRun env Us context)
+    (trace : ConstructorPreFamilyListTrace stats familyIdx familyIndices
+      context candidates) :
+    Nonempty (ConstructorPreFamilyListSemanticRun env Us stats familyIdx
+      familyIndices context contextRun trace) := by
+  induction trace with
+  | nil => exact ⟨.nil⟩
+  | cons headTrace tailTrace ih =>
+      obtain ⟨head⟩ := ConstructorPreFamilyViewSemanticRun.nonempty contextRun
+        headTrace
+      obtain ⟨tail⟩ := ih
+      exact ⟨.cons head tail⟩
+
+end ConstructorPreFamilyListSemanticRun
+
+/-- Exact output of the executable D3 gate. -/
+structure ConstructorPreFamilySafetyTrace
+    (stats : InductiveStats) (familyView : Expr)
+    (candidates : AddInductive.CandidateList
+      AddInductive.CandidateConstructor constructors)
+    (context : Context) where
+  familyIndices : Expr
+  parameters : instantiateFamilyParameters familyView stats.params.toList =
+    .ok familyIndices
+  constructors : ConstructorPreFamilyListTrace stats 0 familyIndices context
+    candidates
+
+/-- Build the complete D3 trace or return the first structural/checker
+failure. -/
+def buildConstructorPreFamilySafety
+    (stats : InductiveStats) (familyView : Expr)
+    (candidates : AddInductive.CandidateList
+      AddInductive.CandidateConstructor constructors)
+    (context : Context) :
+    Except Exception
+      (ConstructorPreFamilySafetyTrace stats familyView candidates context) :=
+  match parameters :
+      instantiateFamilyParameters familyView stats.params.toList with
+  | .error error => .error error
+  | .ok familyIndices => do
+      let constructors ← ConstructorPreFamilyListTrace.build stats 0
+        familyIndices context candidates
+      pure ⟨familyIndices, parameters, constructors⟩
+
+/-! ### Executable pre-family rejection fixtures -/
+
+private def preFamilyNegativeStats : InductiveStats where
+  levels := []
+  resultLevel := .zero
+  nindices := #[0]
+  indConsts := #[.const `PreFamilyNegative []]
+  params := #[]
+  isNotZero := true
+
+private def preFamilyNegativeContext : Context where
+  env := Kernel.Environment.ofConstants `_preFamilyNegative
+    ({} : ConstMap)
+  lparams := []
+  safety := .safe
+  allowPrimitive := false
+
+/- The traversal begins from the public gate's initial state. Its first
+recursive field is valid and family-free; the following ordinary field must
+therefore be rejected specifically by the recursive-suffix check. -/
+private def preFamilyRecursiveFieldOrderView : Expr :=
+  .forallE `recursive (.const `PreFamilyNegative [])
+    (.forallE `ordinary (.sort .zero)
+      (.const `PreFamilyNegative []) .default)
+    .default
+
+private def preFamilyRecursiveFieldOrderRejected : Bool :=
+  match ConstructorPreFamilyViewTrace.build preFamilyNegativeStats 0
+      (.sort (.succ .zero)) preFamilyNegativeContext
+      preFamilyRecursiveFieldOrderView 0 [] false
+      preFamilyNegativeContext.fuel.inductiveFuel with
+  | .error (.other message) =>
+      message == "ordinary constructor field follows recursive suffix"
+  | _ => false
+
+#guard preFamilyRecursiveFieldOrderRejected
+
+/- The first recursive local is deliberately omitted. Instantiating the next
+recursive field exposes that FVar in its domain, so the dependency gate must
+reject it before attempting the recursive-field replay. -/
+private def preFamilyRecursiveLocalDependencyView : Expr :=
+  .forallE `recursive (.const `PreFamilyNegative [])
+    (.forallE `dependent
+      (.app (.const `PreFamilyNegative []) (.bvar 0))
+      (.const `PreFamilyNegative []) .default)
+    .default
+
+private def preFamilyRecursiveLocalDependencyRejected : Bool :=
+  match ConstructorPreFamilyViewTrace.build preFamilyNegativeStats 0
+      (.sort (.succ .zero)) preFamilyNegativeContext
+      preFamilyRecursiveLocalDependencyView 0 [] false
+      preFamilyNegativeContext.fuel.inductiveFuel with
+  | .error (.other message) =>
+      message == "constructor depends on an omitted recursive local"
+  | _ => false
+
+#guard preFamilyRecursiveLocalDependencyRejected
+
+/-- One executable D3 gate for the complete singleton constructor list.  It
+both enforces the recursive-suffix/dependency subset and re-runs every
+family-free checker operation in the supplied pre-family context. -/
+def checkConstructorPreFamilySafety
+    (stats : InductiveStats) (familyView : Expr)
+    (candidates : AddInductive.CandidateList
+      AddInductive.CandidateConstructor constructors) : M Unit := fun context =>
+  do
+    let familyIndices ← instantiateFamilyParameters familyView
+      stats.params.toList
+    let _ ← ConstructorPreFamilyListTrace.build stats 0 familyIndices context
+      candidates
+    pure ()
+
+/-- A successful executable D3 gate returns its exact parameter-instantiated
+family telescope and source-ordered replay trace. -/
+theorem ConstructorPreFamilyListTrace.nonempty_of_check
+    (success : checkConstructorPreFamilySafety stats familyView candidates
+      context = .ok ()) :
+    Nonempty (ConstructorPreFamilySafetyTrace stats familyView candidates
+      context) := by
+  unfold checkConstructorPreFamilySafety at success
+  cases parameters : instantiateFamilyParameters familyView
+      stats.params.toList with
+  | error error =>
+      simp [parameters, Bind.bind, Except.bind] at success
+  | ok familyIndices =>
+      cases constructorsRun : ConstructorPreFamilyListTrace.build stats 0
+          familyIndices context candidates with
+      | error error =>
+          simp [parameters, constructorsRun, Bind.bind, Except.bind] at success
+      | ok constructors => exact ⟨⟨familyIndices, parameters, constructors⟩⟩
+
 end AddInductive
 
 namespace VInductDecl
@@ -2026,6 +3306,139 @@ theorem StagedNormalizationCandidatePostFamilyInput.exists
     AddInductive.ConstructorPostFamilySemanticListRun.nonempty_of_alignment
       contextRun alignment produced.semantic.family.constructors
   exact ⟨⟨produced, contextRun, alignment, constructors⟩⟩
+
+/-!
+## Pre-family constructor ownership
+
+The D3 owner extends the staged D2 package with the output of one executable
+pre-family safety gate. Its semantic result is reconstructed from that exact
+trace in the verified context reached by family normalization before the raw
+family constant is inserted.
+-/
+
+/-- The staged D2 owner together with the exact executable pre-family safety
+trace for the same singleton family view and dependent constructor list. -/
+structure StagedNormalizationCandidatePreFamilyInput
+    (familyContext constructorContext : AddInductive.Context)
+    (env : VEnv) (Us : List Name)
+    {source : InductiveType}
+    (candidate : AddInductive.NormalizationCandidate [source])
+    (rawDecl : VInductDecl) where
+  postFamilyInput : StagedNormalizationCandidatePostFamilyInput familyContext
+    constructorContext env Us candidate rawDecl
+  safety : AddInductive.ConstructorPreFamilySafetyTrace
+    postFamilyInput.universeInput.staged.family.validation.stats
+    candidate.families.singleton.familyType.type.view
+    candidate.families.singleton.constructors
+    candidate.families.singleton.familyType.type.trace.terminalContext
+
+/-- Package a successful executable D3 gate into the staged owner. The gate
+itself, rather than a caller-supplied Theory premise, selects the retained
+parameter-instantiated family telescope and constructor traces. -/
+noncomputable def StagedNormalizationCandidatePreFamilyInput.ofRun
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name} {source : InductiveType}
+    {candidate : AddInductive.NormalizationCandidate [source]}
+    {rawDecl : VInductDecl}
+    (postFamilyInput : StagedNormalizationCandidatePostFamilyInput
+      familyContext constructorContext env Us candidate rawDecl)
+    (safetyRun : AddInductive.checkConstructorPreFamilySafety
+        postFamilyInput.universeInput.staged.family.validation.stats
+        candidate.families.singleton.familyType.type.view
+        candidate.families.singleton.constructors
+        candidate.families.singleton.familyType.type.trace.terminalContext =
+      .ok ()) :
+    StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us candidate rawDecl where
+  postFamilyInput := postFamilyInput
+  safety := Classical.choice <|
+    AddInductive.ConstructorPreFamilyListTrace.nonempty_of_check safetyRun
+
+/-- D3's produced meaning: D2's post-family semantics together with the exact
+verified pre-family context and source-ordered family-free replay selected by
+the executable safety trace. -/
+structure ProducedNormalizationCandidatePreFamilySemanticRun
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name} {source : InductiveType}
+    {candidate : AddInductive.NormalizationCandidate [source]}
+    {rawDecl : VInductDecl}
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us candidate rawDecl) where
+  postFamily : ProducedNormalizationCandidatePostFamilySemanticRun
+    input.postFamilyInput
+  contextRun : AddInductive.ConstructorContextRun env Us
+    candidate.families.singleton.familyType.type.trace.terminalContext
+  constructors : AddInductive.ConstructorPreFamilyListSemanticRun env Us
+    input.postFamilyInput.universeInput.staged.family.validation.stats 0
+    input.safety.familyIndices
+    candidate.families.singleton.familyType.type.trace.terminalContext
+    contextRun input.safety.constructors
+
+/-- Interpret the executable D3 safety trace in the exact verified pre-family
+context recovered from the retained family semantic normalization run. -/
+theorem StagedNormalizationCandidatePreFamilyInput.exists
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name} {source : InductiveType}
+    {candidate : AddInductive.NormalizationCandidate [source]}
+    {rawDecl : VInductDecl}
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us candidate rawDecl) :
+    Nonempty (ProducedNormalizationCandidatePreFamilySemanticRun input) := by
+  obtain ⟨postFamily⟩ := input.postFamilyInput.exists
+  have raw_eq : postFamily.produced.semantic.raw =
+      input.postFamilyInput.universeInput.staged.raw := by
+    have singleton_eq :=
+      postFamily.produced.semantic.raw_types_eq.symm.trans
+        input.postFamilyInput.universeInput.staged.raw_types_eq
+    injection singleton_eq
+  have familyType : TypeChecker.CandidateExprSemanticRootRun env Us
+      candidate.families.singleton.familyType.type
+      input.postFamilyInput.universeInput.staged.raw.type := by
+    rw [← raw_eq]
+    exact postFamily.produced.semantic.family.type
+  obtain ⟨candidateContext, venv_eq, lparams_eq⟩ :=
+    input.postFamilyInput.universeInput.staged.family.preValidationContextRun
+      familyType
+  let contextRun : AddInductive.ConstructorContextRun env Us
+      candidate.families.singleton.familyType.type.trace.terminalContext :=
+    ⟨candidateContext, venv_eq, lparams_eq⟩
+  obtain ⟨constructors⟩ :=
+    AddInductive.ConstructorPreFamilyListSemanticRun.nonempty contextRun
+      input.safety.constructors
+  exact ⟨⟨postFamily, contextRun, constructors⟩⟩
+
+/--
+info: 'Lean4Lean.VInductDecl.StagedNormalizationCandidatePreFamilyInput.exists' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms StagedNormalizationCandidatePreFamilyInput.exists
 
 /--
 info: 'Lean4Lean.VInductDecl.StagedNormalizationCandidatePostFamilyInput.exists' depends on axioms: [propext,

@@ -1431,6 +1431,1146 @@ theorem indexedVecProducedPostFamilySemantic_exists :
       indexedVecStagedPostFamilyInput) :=
   indexedVecStagedPostFamilyInput.exists
 
+/-! ## Pre-family constructor safety
+
+The D3 replay uses the terminal family-analysis context, whose environment is
+still exactly `natMap`.  Ordinary constructor fields extend that context;
+recursive fields advance only the fresh-name generator so their locals cannot
+be used by later fields or the result. -/
+
+private def indexedVecPreFamilyContext : AddInductive.Context :=
+  indexedVecFamilyCandidate.trace.terminalContext
+
+private def indexedVecPreFamilyNContext : AddInductive.Context :=
+  indexedVecPreFamilyContext.pushLocalDecl
+    consNName .implicit (.const ``Nat [])
+
+private def indexedVecPreFamilyHeadContext : AddInductive.Context :=
+  indexedVecPreFamilyNContext.pushLocalDecl
+    consHeadName .default indexedVecValidationAlpha
+
+private def indexedVecPreFamilyResultContext : AddInductive.Context :=
+  indexedVecPreFamilyHeadContext.advanceFresh
+
+private theorem indexedVecPreFamilyContext_eq :
+    indexedVecPreFamilyContext = indexedVecValidationFamilyContext := rfl
+
+private theorem indexedVecPreFamilyNContext_eq :
+    indexedVecPreFamilyNContext =
+      { indexedVecValidationNContext with env := indexedVecKernelEnv } := rfl
+
+private theorem indexedVecPreFamilyHeadContext_eq :
+    indexedVecPreFamilyHeadContext =
+      { indexedVecValidationHeadContext with env := indexedVecKernelEnv } := rfl
+
+private theorem indexedVecPreFamilySortCheckValid
+    (context : AddInductive.Context)
+    (contextEnv : context.env = indexedVecKernelEnv)
+    (contextSafety : context.safety = .safe)
+    (contextLparams : context.lparams = [`u])
+    (contextFuel : context.fuel = ({} : FuelConfig)) :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨context, .sort (.succ (.param `u)),
+        .sort (.succ (.succ (.param `u)))⟩ := by
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  rw [contextEnv, contextSafety, contextLparams, contextFuel]
+  exact indexedVecPreFamilySortCheckTypeM context.lctx
+
+private theorem indexedVecPreFamilyNatCheckValid
+    (context : AddInductive.Context)
+    (contextEnv : context.env = indexedVecKernelEnv)
+    (contextSafety : context.safety = .safe)
+    (contextLparams : context.lparams = [`u])
+    (contextFuel : context.fuel = ({} : FuelConfig)) :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨context, .const ``Nat [], .sort (.succ .zero)⟩ := by
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  rw [contextEnv, contextSafety, contextLparams, contextFuel]
+  exact indexedVecPreFamilyNatCheckTypeM context.lctx
+
+private theorem indexedVecPreFamilyNatEnsureValid
+    (context : AddInductive.Context)
+    (contextEnv : context.env = indexedVecKernelEnv)
+    (contextSafety : context.safety = .safe)
+    (contextLparams : context.lparams = [`u])
+    (contextFuel : context.fuel = ({} : FuelConfig)) :
+    AddInductive.ConstructorEnsureTypeStep.Valid
+      ⟨context, .const ``Nat [], .sort (.succ .zero)⟩ := by
+  unfold AddInductive.ConstructorEnsureTypeStep.Valid
+  rw [contextEnv, contextSafety, contextLparams, contextFuel]
+  exact indexedVecPreFamilyNatEnsureTypeM context.lctx
+
+private theorem indexedVecPreFamilyTelescopeCheckValid
+    (context : AddInductive.Context)
+    (contextEnv : context.env = indexedVecKernelEnv)
+    (contextSafety : context.safety = .safe)
+    (contextLparams : context.lparams = [`u])
+    (contextFuel : context.fuel = ({} : FuelConfig)) :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨context, indexedVecPreFamilyIndexTelescope,
+        .sort (mkLevelIMax' (.succ .zero)
+          (.succ (.succ (.param `u))))⟩ := by
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  rw [contextEnv, contextSafety, contextLparams, contextFuel]
+  exact indexedVecPreFamilyIndexTelescopeCheckTypeM context.lctx
+
+private theorem indexedVecPreFamilyFVarCheckTypeM
+    (lctx : LocalContext) (id : FVarId) (type : Expr)
+    (find : lctx.find? id =
+      some (.cdecl index id name type bi kind)) :
+    TypeChecker.M.run indexedVecKernelEnv .safe lctx [`u]
+      ({} : FuelConfig) (TypeChecker.checkType (.fvar id)) =
+        .ok type := by
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+    (TypeChecker.Inner.inferType' (.fvar id) false
+      (TypeChecker.Methods.withFuel 9999)
+      (indexedVecTypeCheckerContext lctx)
+      ({} : TypeChecker.State)) = _
+  rw [indexedVecPreFamilyInferTypeFVarCore 9999 lctx
+    ({} : TypeChecker.State) id type Std.HashMap.getElem?_empty find]
+  rfl
+
+private def indexedVecPreFamilyFVarInferOnlyState
+    (id : FVarId) (type : Expr) : TypeChecker.State :=
+  { ({} : TypeChecker.State) with
+    inferTypeI := ({} : TypeChecker.State).inferTypeI.insert
+      (.fvar id) type }
+
+private theorem indexedVecPreFamilyFVarInferOnly
+    (lctx : LocalContext) (id : FVarId) (type : Expr)
+    (find : lctx.find? id =
+      some (.cdecl index id name type bi kind)) :
+    TypeChecker.Inner.inferType (.fvar id) true
+      (TypeChecker.Methods.withFuel 10000)
+      (indexedVecTypeCheckerContext lctx)
+      ({} : TypeChecker.State) =
+        .ok (type, indexedVecPreFamilyFVarInferOnlyState id type) := by
+  change TypeChecker.Inner.inferType' (.fvar id) true
+    (TypeChecker.Methods.withFuel 9999)
+    (indexedVecTypeCheckerContext lctx)
+    ({} : TypeChecker.State) = _
+  unfold TypeChecker.Inner.inferType'
+  simp [indexedVecPreFamilyFVarInferOnlyState,
+    Expr.hasLooseBVars, Expr.looseBVarRange',
+    TypeChecker.Inner.inferFVar, indexedVecTypeCheckerContext,
+    find, LocalDecl.type, Bind.bind, ReaderT.bind,
+    StateT.bind, Except.bind]
+
+private theorem indexedVecPreFamilyFVarEnsureTypeM
+    (lctx : LocalContext) (id : FVarId) (level : Level)
+    (find : lctx.find? id =
+      some (.cdecl index id name (.sort level) bi kind)) :
+    TypeChecker.M.run indexedVecKernelEnv .safe lctx [`u]
+      ({} : FuelConfig) (TypeChecker.ensureType (.fvar id)) =
+        .ok (.sort level) := by
+  unfold TypeChecker.ensureType TypeChecker.inferType
+    TypeChecker.ensureSort TypeChecker.RecM.run TypeChecker.M.run
+  simp only [readThe, MonadReaderOf.read, ReaderT.read,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind,
+    Pure.pure, StateT.pure, Except.pure, StateT.run',
+    Functor.map, Except.map]
+  rw [show TypeChecker.Inner.inferType (.fvar id) true
+      (TypeChecker.Methods.withFuel 10000)
+      { env := indexedVecKernelEnv, lctx := lctx, safety := .safe,
+        lparams := [`u], fuel := ({} : FuelConfig) }
+      ({} : TypeChecker.State) =
+        .ok (.sort level,
+          indexedVecPreFamilyFVarInferOnlyState id (.sort level)) by
+    simpa [indexedVecTypeCheckerContext] using
+      indexedVecPreFamilyFVarInferOnly lctx id (.sort level) find]
+  rfl
+
+private theorem indexedVecPreFamilyZeroCheckTypeM
+    (lctx : LocalContext) :
+    TypeChecker.M.run indexedVecKernelEnv .safe lctx [`u]
+      ({} : FuelConfig) (TypeChecker.checkType (.const ``Nat.zero [])) =
+        .ok (.const ``Nat []) := by
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+    (TypeChecker.Inner.inferType' (.const ``Nat.zero []) false
+      (TypeChecker.Methods.withFuel 9999)
+      (indexedVecTypeCheckerContext lctx)
+      ({} : TypeChecker.State)) = _
+  rw [indexedVecPreFamilyInferTypeZeroCore 9999 lctx
+    ({} : TypeChecker.State) Std.HashMap.getElem?_empty]
+  rfl
+
+private theorem indexedVecPreFamilySuccFVarCheckTypeM
+    (lctx : LocalContext) (id : FVarId)
+    (find : lctx.find? id =
+      some (.cdecl index id name (.const ``Nat []) bi kind)) :
+    TypeChecker.M.run indexedVecKernelEnv .safe lctx [`u]
+      ({} : FuelConfig)
+      (TypeChecker.checkType (replaySuccApp (.fvar id))) =
+        .ok (.const ``Nat []) := by
+  let succState := replayInsert ({} : TypeChecker.State)
+    (.const ``Nat.succ [])
+    (.forallE `n (.const ``Nat []) (.const ``Nat []) .default)
+  let argumentState := replayInsert succState (.fvar id) (.const ``Nat [])
+  have succRun : TypeChecker.Inner.inferType' (.const ``Nat.succ []) false
+      (TypeChecker.Methods.withFuel 9999)
+      (indexedVecTypeCheckerContext lctx) ({} : TypeChecker.State) =
+      .ok (.forallE `n (.const ``Nat []) (.const ``Nat []) .default,
+        succState) := by
+    simpa [succState, replayInsert] using
+      (indexedVecPreFamilyInferTypeSuccCore 9999 lctx
+        ({} : TypeChecker.State) Std.HashMap.getElem?_empty)
+  have argumentRun : TypeChecker.Inner.inferType' (.fvar id) false
+      (TypeChecker.Methods.withFuel 9999)
+      (indexedVecTypeCheckerContext lctx) succState =
+      .ok (.const ``Nat [], argumentState) := by
+    apply indexedVecPreFamilyInferTypeFVarCore
+    · simp [succState, replayInsert]
+    · exact find
+  have appRun := inferAppCoreOf 9999
+    (indexedVecTypeCheckerContext lctx)
+    ({} : TypeChecker.State) succState argumentState
+    (.const ``Nat.succ []) (.fvar id) (.const ``Nat [])
+    (.const ``Nat []) `n .default
+    (by simp [Expr.hasLooseBVars, Expr.looseBVarRange'])
+    (by simp [replaySuccApp]) succRun argumentRun (by rfl)
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+    (TypeChecker.Inner.inferType' (replaySuccApp (.fvar id)) false
+      (TypeChecker.Methods.withFuel 9999)
+      (indexedVecTypeCheckerContext lctx)
+      ({} : TypeChecker.State)) = _
+  rw [show TypeChecker.Inner.inferType'
+      (replaySuccApp (.fvar id)) false
+      (TypeChecker.Methods.withFuel 9999)
+      (indexedVecTypeCheckerContext lctx)
+      ({} : TypeChecker.State) =
+        .ok (.const ``Nat [],
+          { argumentState with inferTypeC :=
+            (argumentState.inferTypeC.insert
+              (replaySuccApp (.fvar id)) (.const ``Nat [])) }) by
+    simpa [replaySuccApp, Expr.instantiate1_eq,
+      Expr.instantiate1'] using appRun]
+  rfl
+
+private theorem indexedVecPreFamilyFVarCheckValid
+    (context : AddInductive.Context) (id : FVarId) (type : Expr)
+    (find : context.lctx.find? id =
+      some (.cdecl index id name type bi kind))
+    (contextEnv : context.env = indexedVecKernelEnv)
+    (contextSafety : context.safety = .safe)
+    (contextLparams : context.lparams = [`u])
+    (contextFuel : context.fuel = ({} : FuelConfig)) :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨context, .fvar id, type⟩ := by
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  rw [contextEnv, contextSafety, contextLparams, contextFuel]
+  exact indexedVecPreFamilyFVarCheckTypeM context.lctx id type find
+
+private theorem indexedVecPreFamilyFVarEnsureValid
+    (context : AddInductive.Context) (id : FVarId) (level : Level)
+    (find : context.lctx.find? id =
+      some (.cdecl index id name (.sort level) bi kind))
+    (contextEnv : context.env = indexedVecKernelEnv)
+    (contextSafety : context.safety = .safe)
+    (contextLparams : context.lparams = [`u])
+    (contextFuel : context.fuel = ({} : FuelConfig)) :
+    AddInductive.ConstructorEnsureTypeStep.Valid
+      ⟨context, .fvar id, .sort level⟩ := by
+  unfold AddInductive.ConstructorEnsureTypeStep.Valid
+  rw [contextEnv, contextSafety, contextLparams, contextFuel]
+  exact indexedVecPreFamilyFVarEnsureTypeM context.lctx id level find
+
+private theorem indexedVecPreFamilyZeroCheckValid
+    (context : AddInductive.Context)
+    (contextEnv : context.env = indexedVecKernelEnv)
+    (contextSafety : context.safety = .safe)
+    (contextLparams : context.lparams = [`u])
+    (contextFuel : context.fuel = ({} : FuelConfig)) :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨context, .const ``Nat.zero [], .const ``Nat []⟩ := by
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  rw [contextEnv, contextSafety, contextLparams, contextFuel]
+  exact indexedVecPreFamilyZeroCheckTypeM context.lctx
+
+private theorem indexedVecPreFamilySuccCheckValid
+    (context : AddInductive.Context) (id : FVarId)
+    (find : context.lctx.find? id =
+      some (.cdecl index id name (.const ``Nat []) bi kind))
+    (contextEnv : context.env = indexedVecKernelEnv)
+    (contextSafety : context.safety = .safe)
+    (contextLparams : context.lparams = [`u])
+    (contextFuel : context.fuel = ({} : FuelConfig)) :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨context, replaySuccApp (.fvar id), .const ``Nat []⟩ := by
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  rw [contextEnv, contextSafety, contextLparams, contextFuel]
+  exact indexedVecPreFamilySuccFVarCheckTypeM context.lctx id find
+
+private theorem indexedVecNormalizationFamilyView_eq :
+    indexedVecNormalizationCandidate.families.singleton.familyType.type.view =
+      indexedVecInfo.type := by
+  change indexedVecFamilyCandidate.view = indexedVecInfo.type
+  exact indexedVecFamilyCandidate_view_eq
+
+private theorem indexedVecNormalizationConstructors_eq :
+    indexedVecNormalizationCandidate.families.singleton.constructors =
+      .cons indexedVecNilConstructorCandidate
+        (.cons indexedVecConsConstructorCandidate .nil) := rfl
+
+private theorem indexedVecNormalizationPreFamilyContext_eq :
+    indexedVecNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext =
+      indexedVecPreFamilyContext := rfl
+
+private theorem indexedVecPreFamilySafetyRun :
+    AddInductive.checkConstructorPreFamilySafety
+        indexedVecStagedUniverseInput.staged.family.validation.stats
+        indexedVecNormalizationCandidate.families.singleton.familyType.type.view
+        indexedVecNormalizationCandidate.families.singleton.constructors
+        indexedVecNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext =
+      .ok () := by
+  rw [indexedVecStagedStats_eq]
+  rw [indexedVecNormalizationFamilyView_eq,
+    indexedVecNormalizationConstructors_eq,
+    indexedVecNormalizationPreFamilyContext_eq]
+  change AddInductive.checkConstructorPreFamilySafety
+    indexedVecCandidateInductiveStats indexedVecInfo.type
+    (.cons indexedVecNilConstructorCandidate
+      (.cons indexedVecConsConstructorCandidate .nil))
+    indexedVecPreFamilyContext = .ok ()
+  have alphaFind : indexedVecPreFamilyContext.lctx.find?
+      indexedVecValidationAlphaId =
+        some (.cdecl 0 indexedVecValidationAlphaId
+          indexedVecValidationParamName
+          (.sort (.succ (.param `u))) .default .default) := by
+    change indexedVecCtorValidationContext.lctx.find?
+      indexedVecValidationAlphaId = _
+    exact indexedVecValidationAlphaFind
+  have alphaFindN : indexedVecPreFamilyNContext.lctx.find?
+      indexedVecValidationAlphaId =
+        some (.cdecl 0 indexedVecValidationAlphaId
+          indexedVecValidationParamName
+          (.sort (.succ (.param `u))) .default .default) := by
+    change indexedVecValidationNContext.lctx.find?
+      indexedVecValidationAlphaId = _
+    exact indexedVecValidationAlphaFindInN
+  have alphaFindHead : indexedVecPreFamilyHeadContext.lctx.find?
+      indexedVecValidationAlphaId =
+        some (.cdecl 0 indexedVecValidationAlphaId
+          indexedVecValidationParamName
+          (.sort (.succ (.param `u))) .default .default) := by
+    change indexedVecValidationHeadContext.lctx.find?
+      indexedVecValidationAlphaId = _
+    exact indexedVecValidationAlphaFindInHead
+  have nFindHead : indexedVecPreFamilyHeadContext.lctx.find?
+      indexedVecValidationNId =
+        some (.cdecl 2 indexedVecValidationNId consNName
+          (.const ``Nat []) .implicit .default) := by
+    change indexedVecValidationHeadContext.lctx.find?
+      indexedVecValidationNId = _
+    exact indexedVecValidationNFindInHead
+  have nFindResult : indexedVecPreFamilyResultContext.lctx.find?
+      indexedVecValidationNId =
+        some (.cdecl 2 indexedVecValidationNId consNName
+          (.const ``Nat []) .implicit .default) := by
+    simpa [indexedVecPreFamilyResultContext,
+      AddInductive.Context.advanceFresh] using nFindHead
+  have baseFresh : indexedVecPreFamilyContext.lctx.find?
+      indexedVecPreFamilyContext.freshFVarId = none := by
+    change indexedVecCtorValidationContext.lctx.find?
+      indexedVecCtorValidationContext.freshFVarId = none
+    exact indexedVecCtorValidationContextFresh
+  have nFresh : indexedVecPreFamilyNContext.lctx.find?
+      indexedVecPreFamilyNContext.freshFVarId = none := by
+    change indexedVecValidationNContext.lctx.find?
+      indexedVecValidationNContext.freshFVarId = none
+    exact indexedVecValidationNContextFresh
+  have headFresh : indexedVecPreFamilyHeadContext.lctx.find?
+      indexedVecPreFamilyHeadContext.freshFVarId = none := by
+    change indexedVecValidationHeadContext.lctx.find?
+      indexedVecValidationHeadContext.freshFVarId = none
+    exact indexedVecValidationHeadContextFresh
+  let baseTelescope : AddInductive.ConstructorCheckedExpr
+      indexedVecPreFamilyContext indexedVecPreFamilyIndexTelescope :=
+    .ofRun (by
+      simp [indexedVecPreFamilyIndexTelescope, FVarsIn,
+        Level.hasMVar'])
+      (indexedVecPreFamilyTelescopeCheckValid
+        indexedVecPreFamilyContext rfl rfl rfl rfl)
+  let headTelescope : AddInductive.ConstructorCheckedExpr
+      indexedVecPreFamilyHeadContext indexedVecPreFamilyIndexTelescope :=
+    .ofRun (by
+      simp [indexedVecPreFamilyIndexTelescope, FVarsIn,
+        Level.hasMVar'])
+      (indexedVecPreFamilyTelescopeCheckValid
+        indexedVecPreFamilyHeadContext rfl rfl rfl rfl)
+  let resultTelescope : AddInductive.ConstructorCheckedExpr
+      indexedVecPreFamilyResultContext indexedVecPreFamilyIndexTelescope :=
+    .ofRun (by
+      simp [indexedVecPreFamilyIndexTelescope, FVarsIn,
+        Level.hasMVar'])
+      (indexedVecPreFamilyTelescopeCheckValid
+        indexedVecPreFamilyResultContext rfl rfl rfl rfl)
+  let baseSort : AddInductive.ConstructorCheckedExpr
+      indexedVecPreFamilyContext (.sort (.succ (.param `u))) :=
+    .ofRun (by simp [FVarsIn, Level.hasMVar'])
+      (indexedVecPreFamilySortCheckValid
+        indexedVecPreFamilyContext rfl rfl rfl rfl)
+  let headSort : AddInductive.ConstructorCheckedExpr
+      indexedVecPreFamilyHeadContext (.sort (.succ (.param `u))) :=
+    .ofRun (by simp [FVarsIn, Level.hasMVar'])
+      (indexedVecPreFamilySortCheckValid
+        indexedVecPreFamilyHeadContext rfl rfl rfl rfl)
+  let resultSort : AddInductive.ConstructorCheckedExpr
+      indexedVecPreFamilyResultContext (.sort (.succ (.param `u))) :=
+    .ofRun (by simp [FVarsIn, Level.hasMVar'])
+      (indexedVecPreFamilySortCheckValid
+        indexedVecPreFamilyResultContext rfl rfl rfl rfl)
+  let baseNat : AddInductive.ConstructorCheckedExpr
+      indexedVecPreFamilyContext (.const ``Nat []) :=
+    .ofRun (by simp [FVarsIn])
+      (indexedVecPreFamilyNatCheckValid
+        indexedVecPreFamilyContext rfl rfl rfl rfl)
+  let headNat : AddInductive.ConstructorCheckedExpr
+      indexedVecPreFamilyHeadContext (.const ``Nat []) :=
+    .ofRun (by simp [FVarsIn])
+      (indexedVecPreFamilyNatCheckValid
+        indexedVecPreFamilyHeadContext rfl rfl rfl rfl)
+  let resultNat : AddInductive.ConstructorCheckedExpr
+      indexedVecPreFamilyResultContext (.const ``Nat []) :=
+    .ofRun (by simp [FVarsIn])
+      (indexedVecPreFamilyNatCheckValid
+        indexedVecPreFamilyResultContext rfl rfl rfl rfl)
+  let zeroChecked : AddInductive.ConstructorCheckedExpr
+      indexedVecPreFamilyContext (.const ``Nat.zero []) :=
+    .ofRun (by simp [FVarsIn])
+      (indexedVecPreFamilyZeroCheckValid
+        indexedVecPreFamilyContext rfl rfl rfl rfl)
+  let nChecked : AddInductive.ConstructorCheckedExpr
+      indexedVecPreFamilyHeadContext indexedVecValidationNExpr := by
+    rw [indexedVecValidationNExprShape]
+    exact .ofRun (by
+      change (indexedVecPreFamilyHeadContext.lctx.find?
+        indexedVecValidationNId).isSome = true
+      rw [nFindHead]
+      rfl) (indexedVecPreFamilyFVarCheckValid
+        indexedVecPreFamilyHeadContext indexedVecValidationNId
+        (.const ``Nat []) nFindHead rfl rfl rfl rfl)
+  let succChecked : AddInductive.ConstructorCheckedExpr
+      indexedVecPreFamilyResultContext
+        (replaySuccApp indexedVecValidationNExpr) := by
+    rw [indexedVecValidationNExprShape]
+    exact .ofRun (by
+      simp [replaySuccApp, FVarsIn]
+      change (indexedVecPreFamilyResultContext.lctx.find?
+        indexedVecValidationNId).isSome = true
+      rw [nFindResult]
+      rfl) (indexedVecPreFamilySuccCheckValid
+        indexedVecPreFamilyResultContext indexedVecValidationNId
+        nFindResult rfl rfl rfl rfl)
+  let zeroComparison : AddInductive.CandidateIsDefEqObservation
+      indexedVecPreFamilyContext (.const ``Nat []) (.const ``Nat []) :=
+    ⟨candidateIsDefEqSelfValid indexedVecPreFamilyContext
+      (.const ``Nat []) 9999 rfl⟩
+  let nComparison : AddInductive.CandidateIsDefEqObservation
+      indexedVecPreFamilyHeadContext (.const ``Nat []) (.const ``Nat []) :=
+    ⟨candidateIsDefEqSelfValid indexedVecPreFamilyHeadContext
+      (.const ``Nat []) 9999 rfl⟩
+  let succComparison : AddInductive.CandidateIsDefEqObservation
+      indexedVecPreFamilyResultContext (.const ``Nat []) (.const ``Nat []) :=
+    ⟨candidateIsDefEqSelfValid indexedVecPreFamilyResultContext
+      (.const ``Nat []) 9999 rfl⟩
+  let nilSpine : AddInductive.ConstructorPreFamilyIndexSpineTrace
+      indexedVecPreFamilyContext indexedVecPreFamilyIndexTelescope
+        [.const ``Nat.zero []] := by
+    unfold indexedVecPreFamilyIndexTelescope
+    exact .cons indexedVecPreFamilyContext
+      indexedVecInfo.type.bindingBody!.bindingName!
+      (.const ``Nat []) (.sort (.succ (.param `u))) .default
+      (.const ``Nat.zero []) [] baseTelescope
+      ⟨zeroChecked, baseNat, zeroComparison⟩
+      (by
+        simpa [Expr.instantiate1_eq, Expr.instantiate1'] using
+          (AddInductive.ConstructorPreFamilyIndexSpineTrace.nil
+            indexedVecPreFamilyContext
+            (.sort (.succ (.param `u))) baseSort rfl))
+  let recursiveSpine : AddInductive.ConstructorPreFamilyIndexSpineTrace
+      indexedVecPreFamilyHeadContext indexedVecPreFamilyIndexTelescope
+        [indexedVecValidationNExpr] := by
+    unfold indexedVecPreFamilyIndexTelescope
+    exact .cons indexedVecPreFamilyHeadContext
+      indexedVecInfo.type.bindingBody!.bindingName!
+      (.const ``Nat []) (.sort (.succ (.param `u))) .default
+      indexedVecValidationNExpr [] headTelescope
+      ⟨nChecked, headNat, nComparison⟩
+      (by
+        simpa [Expr.instantiate1_eq, Expr.instantiate1'] using
+          (AddInductive.ConstructorPreFamilyIndexSpineTrace.nil
+            indexedVecPreFamilyHeadContext
+            (.sort (.succ (.param `u))) headSort rfl))
+  let resultSpine : AddInductive.ConstructorPreFamilyIndexSpineTrace
+      indexedVecPreFamilyResultContext indexedVecPreFamilyIndexTelescope
+        [replaySuccApp indexedVecValidationNExpr] := by
+    unfold indexedVecPreFamilyIndexTelescope
+    exact .cons indexedVecPreFamilyResultContext
+      indexedVecInfo.type.bindingBody!.bindingName!
+      (.const ``Nat []) (.sort (.succ (.param `u))) .default
+      (replaySuccApp indexedVecValidationNExpr) [] resultTelescope
+      ⟨succChecked, resultNat, succComparison⟩
+      (by
+        simpa [Expr.instantiate1_eq, Expr.instantiate1'] using
+          (AddInductive.ConstructorPreFamilyIndexSpineTrace.nil
+            indexedVecPreFamilyResultContext
+            (.sort (.succ (.param `u))) resultSort rfl))
+  have nilArgs : indexedVecValidationNilResult.getAppArgs.toList.drop
+      indexedVecCandidateInductiveStats.params.size =
+        [.const ``Nat.zero []] := by
+    simp [indexedVecValidationNilResult,
+      indexedVecValidationStatsParams, ctorIndexedVecAppGetAppArgs]
+  obtain ⟨nilTargetSpine, nilTargetSpineRun⟩ :
+      ∃ nilTargetSpine : AddInductive.ConstructorPreFamilyIndexSpineTrace
+          indexedVecPreFamilyContext indexedVecPreFamilyIndexTelescope
+          (indexedVecValidationNilResult.getAppArgs.toList.drop
+            indexedVecCandidateInductiveStats.params.size),
+        AddInductive.ConstructorPreFamilyIndexSpineTrace.build
+            indexedVecPreFamilyContext indexedVecPreFamilyIndexTelescope
+            (indexedVecValidationNilResult.getAppArgs.toList.drop
+              indexedVecCandidateInductiveStats.params.size) =
+          .ok nilTargetSpine := by
+    rw [nilArgs]
+    exact ⟨nilSpine, nilSpine.build_eq⟩
+  have nilIndependent : AddInductive.constructorIndependentOf
+      indexedVecValidationNilResult [] = true := by
+    simp [AddInductive.constructorIndependentOf]
+  let nilTerminalTrace : AddInductive.ConstructorPreFamilyViewTrace
+      indexedVecCandidateInductiveStats 0
+      indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+      indexedVecValidationNilResult 1 [] false :=
+    .terminal indexedVecPreFamilyContext indexedVecValidationNilResult
+      1 [] false indexedVecValidationNilResultIsValid nilIndependent
+      nilTargetSpine
+  have nilTerminalRun :
+      AddInductive.ConstructorPreFamilyViewTrace.build
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+          indexedVecValidationNilResult 1 [] false 999 =
+        .ok nilTerminalTrace := by
+    exact AddInductive.ConstructorPreFamilyViewTrace.terminal_build_eq
+      (fuel := 998) rfl indexedVecValidationNilResultIsValid nilIndependent
+      nilTargetSpine
+  obtain ⟨nilTailTrace, nilTailRun⟩ :
+      ∃ nilTailTrace : AddInductive.ConstructorPreFamilyViewTrace
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+          (nilCtorBodyRaw.instantiate1 indexedVecValidationAlpha)
+          1 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+            (nilCtorBodyRaw.instantiate1 indexedVecValidationAlpha)
+            1 [] false 999 =
+          .ok nilTailTrace := by
+    rw [show nilCtorBodyRaw.instantiate1 indexedVecValidationAlpha =
+        indexedVecValidationNilResult by
+      simpa [nilInfoTypeShape, nilCtorTypeRaw] using
+        indexedVecValidationNilResultShape]
+    exact ⟨nilTerminalTrace, nilTerminalRun⟩
+  have parameterAtZero : indexedVecCandidateInductiveStats.params[0]? =
+      some indexedVecValidationAlpha := by
+    rw [indexedVecValidationStatsParams]
+    rfl
+  obtain ⟨nilRawViewTrace, nilRawViewRun⟩ :
+      ∃ nilRawViewTrace : AddInductive.ConstructorPreFamilyViewTrace
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+          nilCtorTypeRaw 0 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+            nilCtorTypeRaw 0 [] false 1000 = .ok nilRawViewTrace := by
+    simp only [nilCtorTypeRaw,
+      AddInductive.ConstructorPreFamilyViewTrace.build]
+    split
+    · rename_i parameter parameterAt
+      rw [parameterAtZero] at parameterAt
+      cases parameterAt
+      rw [nilTailRun]
+      exact ⟨_, rfl⟩
+    · rename_i noParameter
+      rw [parameterAtZero] at noParameter
+      contradiction
+  obtain ⟨nilViewTrace, nilViewRun⟩ :
+      ∃ nilViewTrace : AddInductive.ConstructorPreFamilyViewTrace
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+          indexedVecNilInfo.type 0 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+            indexedVecNilInfo.type 0 [] false 1000 =
+          .ok nilViewTrace := by
+    rw [nilInfoTypeShape]
+    exact ⟨nilRawViewTrace, nilRawViewRun⟩
+  obtain ⟨nilHeadTrace, nilHeadRun⟩ :
+      ∃ nilHeadTrace : AddInductive.ConstructorPreFamilyViewTrace
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+          indexedVecNilConstructorCandidate.type.view 0 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+            indexedVecNilConstructorCandidate.type.view 0 [] false 1000 =
+          .ok nilHeadTrace := by
+    change ∃ nilHeadTrace : AddInductive.ConstructorPreFamilyViewTrace
+        indexedVecCandidateInductiveStats 0
+        indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+        nilCandidate.view 0 [] false,
+      AddInductive.ConstructorPreFamilyViewTrace.build
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+          nilCandidate.view 0 [] false 1000 = .ok nilHeadTrace
+    rw [nilCandidate_view_eq]
+    exact ⟨nilViewTrace, nilViewRun⟩
+  let baseNatEnsure : AddInductive.ConstructorEnsureTypeObservation
+      indexedVecPreFamilyContext (.const ``Nat []) :=
+    ⟨.sort (.succ .zero), indexedVecPreFamilyNatEnsureValid
+      indexedVecPreFamilyContext rfl rfl rfl rfl⟩
+  let baseNatConsumed : AddInductive.ConstructorCheckedExpr
+      indexedVecPreFamilyContext
+      (AddInductive.consumeTypeAnnotations (.const ``Nat [])) := by
+    rw [indexedVecValidationConsumeNat]
+    exact baseNat
+  let baseNatAnnotations : AddInductive.CandidateIsDefEqObservation
+      indexedVecPreFamilyContext (.const ``Nat [])
+      (AddInductive.consumeTypeAnnotations (.const ``Nat [])) := by
+    rw [indexedVecValidationConsumeNat]
+    exact ⟨candidateIsDefEqSelfValid indexedVecPreFamilyContext
+      (.const ``Nat []) 9999 rfl⟩
+  let alphaChecked : AddInductive.ConstructorCheckedExpr
+      indexedVecPreFamilyNContext indexedVecValidationAlpha := by
+    rw [indexedVecValidationAlphaShape]
+    exact .ofRun (by
+      change (indexedVecPreFamilyNContext.lctx.find?
+        indexedVecValidationAlphaId).isSome = true
+      rw [alphaFindN]
+      rfl) (indexedVecPreFamilyFVarCheckValid
+        indexedVecPreFamilyNContext indexedVecValidationAlphaId
+        (.sort (.succ (.param `u))) alphaFindN rfl rfl rfl rfl)
+  let alphaEnsure : AddInductive.ConstructorEnsureTypeObservation
+      indexedVecPreFamilyNContext indexedVecValidationAlpha := by
+    rw [indexedVecValidationAlphaShape]
+    exact ⟨.sort (.succ (.param `u)),
+      indexedVecPreFamilyFVarEnsureValid indexedVecPreFamilyNContext
+        indexedVecValidationAlphaId (.succ (.param `u)) alphaFindN
+        rfl rfl rfl rfl⟩
+  let alphaConsumed : AddInductive.ConstructorCheckedExpr
+      indexedVecPreFamilyNContext
+      (AddInductive.consumeTypeAnnotations indexedVecValidationAlpha) := by
+    rw [indexedVecValidationConsumeAlpha]
+    exact alphaChecked
+  let alphaAnnotations : AddInductive.CandidateIsDefEqObservation
+      indexedVecPreFamilyNContext indexedVecValidationAlpha
+      (AddInductive.consumeTypeAnnotations indexedVecValidationAlpha) := by
+    rw [indexedVecValidationConsumeAlpha]
+    exact ⟨candidateIsDefEqSelfValid indexedVecPreFamilyNContext
+      indexedVecValidationAlpha 9999 rfl⟩
+  have alphaNeRemoved : indexedVecValidationAlphaId ≠
+      indexedVecPreFamilyHeadContext.freshFVarId := by
+    intro equality
+    have fresh := headFresh
+    rw [← equality, alphaFindHead] at fresh
+    contradiction
+  have nNeRemoved : indexedVecValidationNId ≠
+      indexedVecPreFamilyHeadContext.freshFVarId := by
+    intro equality
+    have fresh := headFresh
+    rw [← equality, nFindHead] at fresh
+    contradiction
+  have recursiveArgs :
+      (ctorIndexedVecApp indexedVecValidationAlpha
+          indexedVecValidationNExpr).getAppArgs.toList.drop
+        indexedVecCandidateInductiveStats.params.size =
+      [indexedVecValidationNExpr] := by
+    simp [indexedVecValidationStatsParams, ctorIndexedVecAppGetAppArgs]
+  obtain ⟨recursiveTargetSpine, recursiveTargetSpineRun⟩ :
+      ∃ recursiveTargetSpine :
+          AddInductive.ConstructorPreFamilyIndexSpineTrace
+            indexedVecPreFamilyHeadContext
+            indexedVecPreFamilyIndexTelescope
+            ((ctorIndexedVecApp indexedVecValidationAlpha
+                indexedVecValidationNExpr).getAppArgs.toList.drop
+              indexedVecCandidateInductiveStats.params.size),
+        AddInductive.ConstructorPreFamilyIndexSpineTrace.build
+            indexedVecPreFamilyHeadContext
+            indexedVecPreFamilyIndexTelescope
+            ((ctorIndexedVecApp indexedVecValidationAlpha
+                indexedVecValidationNExpr).getAppArgs.toList.drop
+              indexedVecCandidateInductiveStats.params.size) =
+          .ok recursiveTargetSpine := by
+    rw [recursiveArgs]
+    exact ⟨recursiveSpine, recursiveSpine.build_eq⟩
+  have recursiveTargetValid : AddInductive.isValidIndAppIdx
+      indexedVecCandidateInductiveStats
+      (ctorIndexedVecApp indexedVecValidationAlpha
+        indexedVecValidationNExpr) 0 = true :=
+    indexedVecValidationAppIsValidIdx indexedVecValidationNExpr
+      indexedVecValidationNHasNoIndOcc
+  let recursiveFieldTrace : AddInductive.ConstructorPreFamilyRecursiveTrace
+      indexedVecCandidateInductiveStats 0 indexedVecPreFamilyIndexTelescope
+      indexedVecPreFamilyHeadContext
+      (ctorIndexedVecApp indexedVecValidationAlpha
+        indexedVecValidationNExpr)
+      indexedVecPreFamilyHeadContext.fuel.inductiveFuel :=
+    .target indexedVecPreFamilyHeadContext
+      (ctorIndexedVecApp indexedVecValidationAlpha
+        indexedVecValidationNExpr)
+      recursiveTargetValid recursiveTargetSpine
+  have recursiveFieldRun : AddInductive.ConstructorPreFamilyRecursiveTrace.build
+      indexedVecCandidateInductiveStats 0 indexedVecPreFamilyIndexTelescope
+      indexedVecPreFamilyHeadContext
+      (ctorIndexedVecApp indexedVecValidationAlpha
+        indexedVecValidationNExpr)
+      indexedVecPreFamilyHeadContext.fuel.inductiveFuel =
+        .ok recursiveFieldTrace := by
+    exact AddInductive.ConstructorPreFamilyRecursiveTrace.target_build_eq
+      (fuel := 999) rfl recursiveTargetValid recursiveTargetSpine
+  have recursiveIndependent : AddInductive.constructorIndependentOf
+      (ctorIndexedVecApp indexedVecValidationAlpha
+        indexedVecValidationNExpr) [] = true := by
+    simp [AddInductive.constructorIndependentOf]
+  have resultArgs : indexedVecValidationConsResult.getAppArgs.toList.drop
+      indexedVecCandidateInductiveStats.params.size =
+        [replaySuccApp indexedVecValidationNExpr] := by
+    simp [indexedVecValidationConsResult,
+      indexedVecValidationStatsParams, ctorIndexedVecAppGetAppArgs]
+  obtain ⟨resultTargetSpine, resultTargetSpineRun⟩ :
+      ∃ resultTargetSpine :
+          AddInductive.ConstructorPreFamilyIndexSpineTrace
+            indexedVecPreFamilyResultContext
+            indexedVecPreFamilyIndexTelescope
+            (indexedVecValidationConsResult.getAppArgs.toList.drop
+              indexedVecCandidateInductiveStats.params.size),
+        AddInductive.ConstructorPreFamilyIndexSpineTrace.build
+            indexedVecPreFamilyResultContext
+            indexedVecPreFamilyIndexTelescope
+            (indexedVecValidationConsResult.getAppArgs.toList.drop
+              indexedVecCandidateInductiveStats.params.size) =
+          .ok resultTargetSpine := by
+    rw [resultArgs]
+    exact ⟨resultSpine, resultSpine.build_eq⟩
+  have resultIndependent : AddInductive.constructorIndependentOf
+      indexedVecValidationConsResult
+      [indexedVecPreFamilyHeadContext.freshFVarId] = true := by
+    simp [AddInductive.constructorIndependentOf,
+      indexedVecValidationConsResult, ctorIndexedVecApp, replaySuccApp,
+      Expr.fvarsList,
+      indexedVecValidationAlphaShape, indexedVecValidationNExprShape,
+      alphaNeRemoved, nNeRemoved]
+  let resultTerminalTrace : AddInductive.ConstructorPreFamilyViewTrace
+      indexedVecCandidateInductiveStats 0 indexedVecPreFamilyIndexTelescope
+      indexedVecPreFamilyResultContext indexedVecValidationConsResult 4
+      [indexedVecPreFamilyHeadContext.freshFVarId] true :=
+    .terminal indexedVecPreFamilyResultContext
+      indexedVecValidationConsResult 4
+      [indexedVecPreFamilyHeadContext.freshFVarId] true
+      indexedVecValidationConsResultIsValid resultIndependent
+      resultTargetSpine
+  have resultTerminalRun : AddInductive.ConstructorPreFamilyViewTrace.build
+      indexedVecCandidateInductiveStats 0 indexedVecPreFamilyIndexTelescope
+      indexedVecPreFamilyResultContext indexedVecValidationConsResult 4
+      [indexedVecPreFamilyHeadContext.freshFVarId] true 996 =
+        .ok resultTerminalTrace := by
+    exact AddInductive.ConstructorPreFamilyViewTrace.terminal_build_eq
+      (fuel := 995) rfl indexedVecValidationConsResultIsValid
+      resultIndependent resultTargetSpine
+  obtain ⟨consResultTailTrace, consResultTailRun⟩ :
+      ∃ consResultTailTrace : AddInductive.ConstructorPreFamilyViewTrace
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope
+          indexedVecPreFamilyHeadContext.advanceFresh
+          (indexedVecValidationConsAfterHead.bindingBody!.instantiate1
+            indexedVecPreFamilyHeadContext.freshExpr)
+          4 [indexedVecPreFamilyHeadContext.freshFVarId] true,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope
+            indexedVecPreFamilyHeadContext.advanceFresh
+            (indexedVecValidationConsAfterHead.bindingBody!.instantiate1
+              indexedVecPreFamilyHeadContext.freshExpr)
+            4 [indexedVecPreFamilyHeadContext.freshFVarId] true 996 =
+          .ok consResultTailTrace := by
+    rw [show indexedVecValidationConsAfterHead.bindingBody!.instantiate1
+        indexedVecPreFamilyHeadContext.freshExpr =
+          indexedVecValidationConsResult by
+      change indexedVecValidationConsAfterHead.bindingBody!.instantiate1
+        indexedVecValidationHeadContext.freshExpr = _
+      exact indexedVecValidationConsResultShape]
+    exact ⟨resultTerminalTrace, resultTerminalRun⟩
+  obtain ⟨explicitResultTailTrace, explicitResultTailRun⟩ :
+      ∃ explicitResultTailTrace :
+          AddInductive.ConstructorPreFamilyViewTrace
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope
+            indexedVecPreFamilyHeadContext.advanceFresh
+            ((ctorIndexedVecApp indexedVecValidationAlpha
+              (replaySuccApp indexedVecValidationNExpr)).instantiate1
+                indexedVecPreFamilyHeadContext.freshExpr)
+            4 [indexedVecPreFamilyHeadContext.freshFVarId] true,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope
+            indexedVecPreFamilyHeadContext.advanceFresh
+            ((ctorIndexedVecApp indexedVecValidationAlpha
+              (replaySuccApp indexedVecValidationNExpr)).instantiate1
+                indexedVecPreFamilyHeadContext.freshExpr)
+            4 [indexedVecPreFamilyHeadContext.freshFVarId] true 996 =
+          .ok explicitResultTailTrace := by
+    change ∃ explicitResultTailTrace :
+        AddInductive.ConstructorPreFamilyViewTrace
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope
+          indexedVecPreFamilyHeadContext.advanceFresh
+          (indexedVecValidationConsAfterHead.bindingBody!.instantiate1
+            indexedVecPreFamilyHeadContext.freshExpr)
+          4 [indexedVecPreFamilyHeadContext.freshFVarId] true,
+      AddInductive.ConstructorPreFamilyViewTrace.build
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope
+          indexedVecPreFamilyHeadContext.advanceFresh
+          (indexedVecValidationConsAfterHead.bindingBody!.instantiate1
+            indexedVecPreFamilyHeadContext.freshExpr)
+          4 [indexedVecPreFamilyHeadContext.freshFVarId] true 996 =
+        .ok explicitResultTailTrace
+    exact ⟨consResultTailTrace, consResultTailRun⟩
+  have noParameterThree : indexedVecCandidateInductiveStats.params[3]? =
+      none := by
+    rw [indexedVecValidationStatsParams]
+    rfl
+  obtain ⟨consAfterHeadTrace, consAfterHeadRun⟩ :
+      ∃ consAfterHeadTrace : AddInductive.ConstructorPreFamilyViewTrace
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyHeadContext
+          indexedVecValidationConsAfterHead 3 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope indexedVecPreFamilyHeadContext
+            indexedVecValidationConsAfterHead 3 [] false 997 =
+          .ok consAfterHeadTrace := by
+    simp only [indexedVecValidationConsAfterHead,
+      AddInductive.ConstructorPreFamilyViewTrace.build]
+    split
+    · rename_i parameter parameterAt
+      rw [noParameterThree] at parameterAt
+      contradiction
+    · split
+      · rename_i nonrecursive
+        rw [indexedVecValidationTailHasIndOcc] at nonrecursive
+        contradiction
+      · rw [dif_pos recursiveIndependent, recursiveFieldRun]
+        simp only [Bind.bind, Except.bind]
+        rw [dif_pos headFresh]
+        rw [explicitResultTailRun]
+        exact ⟨_, rfl⟩
+  obtain ⟨consHeadTailTrace, consHeadTailRun⟩ :
+      ∃ consHeadTailTrace : AddInductive.ConstructorPreFamilyViewTrace
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyHeadContext
+          (indexedVecValidationConsAfterN.bindingBody!.instantiate1
+            indexedVecPreFamilyNContext.freshExpr)
+          3 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope indexedVecPreFamilyHeadContext
+            (indexedVecValidationConsAfterN.bindingBody!.instantiate1
+              indexedVecPreFamilyNContext.freshExpr)
+            3 [] false 997 = .ok consHeadTailTrace := by
+    rw [show indexedVecValidationConsAfterN.bindingBody!.instantiate1
+        indexedVecPreFamilyNContext.freshExpr =
+          indexedVecValidationConsAfterHead by
+      change indexedVecValidationConsAfterN.bindingBody!.instantiate1
+        indexedVecValidationNContext.freshExpr = _
+      exact indexedVecValidationConsAfterHeadShape]
+    exact ⟨consAfterHeadTrace, consAfterHeadRun⟩
+  obtain ⟨explicitHeadTailTrace, explicitHeadTailRun⟩ :
+      ∃ explicitHeadTailTrace :
+          AddInductive.ConstructorPreFamilyViewTrace
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope
+            (indexedVecPreFamilyNContext.pushLocalDecl consHeadName .default
+              (AddInductive.consumeTypeAnnotations
+                indexedVecValidationAlpha))
+            ((Expr.forallE consTailName
+              (ctorIndexedVecApp indexedVecValidationAlpha
+                indexedVecValidationNExpr)
+              (ctorIndexedVecApp indexedVecValidationAlpha
+                (replaySuccApp indexedVecValidationNExpr))
+              .default).instantiate1 indexedVecPreFamilyNContext.freshExpr)
+            3 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope
+            (indexedVecPreFamilyNContext.pushLocalDecl consHeadName .default
+              (AddInductive.consumeTypeAnnotations
+                indexedVecValidationAlpha))
+            ((Expr.forallE consTailName
+              (ctorIndexedVecApp indexedVecValidationAlpha
+                indexedVecValidationNExpr)
+              (ctorIndexedVecApp indexedVecValidationAlpha
+                (replaySuccApp indexedVecValidationNExpr))
+              .default).instantiate1 indexedVecPreFamilyNContext.freshExpr)
+            3 [] false 997 = .ok explicitHeadTailTrace := by
+    rw [indexedVecValidationConsumeAlpha]
+    rw [show Expr.forallE consTailName
+        (ctorIndexedVecApp indexedVecValidationAlpha
+          indexedVecValidationNExpr)
+        (ctorIndexedVecApp indexedVecValidationAlpha
+          (replaySuccApp indexedVecValidationNExpr)) .default =
+          indexedVecValidationConsAfterN.bindingBody! by rfl]
+    exact ⟨consHeadTailTrace, consHeadTailRun⟩
+  have noParameterTwo : indexedVecCandidateInductiveStats.params[2]? =
+      none := by
+    rw [indexedVecValidationStatsParams]
+    rfl
+  obtain ⟨consAfterNTrace, consAfterNRun⟩ :
+      ∃ consAfterNTrace : AddInductive.ConstructorPreFamilyViewTrace
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyNContext
+          indexedVecValidationConsAfterN 2 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope indexedVecPreFamilyNContext
+            indexedVecValidationConsAfterN 2 [] false 998 =
+          .ok consAfterNTrace := by
+    simp only [indexedVecValidationConsAfterN,
+      AddInductive.ConstructorPreFamilyViewTrace.build]
+    split
+    · rename_i parameter parameterAt
+      rw [noParameterTwo] at parameterAt
+      contradiction
+    · split
+      · rw [alphaChecked.check_eq, alphaEnsure.observe_eq,
+          alphaConsumed.check_eq]
+        simp only [Bind.bind, Except.bind]
+        rw [alphaAnnotations.observe_eq]
+        simp only [Bind.bind, Except.bind]
+        rw [dif_pos nFresh]
+        rw [explicitHeadTailRun]
+        exact ⟨_, rfl⟩
+      · rename_i recursive
+        rw [indexedVecValidationAlphaHasNoIndOcc] at recursive
+        contradiction
+  obtain ⟨consNTailTrace, consNTailRun⟩ :
+      ∃ consNTailTrace : AddInductive.ConstructorPreFamilyViewTrace
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyNContext
+          (indexedVecValidationConsAfterParam.bindingBody!.instantiate1
+            indexedVecPreFamilyContext.freshExpr)
+          2 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope indexedVecPreFamilyNContext
+            (indexedVecValidationConsAfterParam.bindingBody!.instantiate1
+              indexedVecPreFamilyContext.freshExpr)
+            2 [] false 998 = .ok consNTailTrace := by
+    rw [show indexedVecValidationConsAfterParam.bindingBody!.instantiate1
+        indexedVecPreFamilyContext.freshExpr =
+          indexedVecValidationConsAfterN by
+      change indexedVecValidationConsAfterParam.bindingBody!.instantiate1
+        indexedVecValidationNExpr = _
+      exact indexedVecValidationConsAfterNShape]
+    exact ⟨consAfterNTrace, consAfterNRun⟩
+  obtain ⟨explicitNTailTrace, explicitNTailRun⟩ :
+      ∃ explicitNTailTrace : AddInductive.ConstructorPreFamilyViewTrace
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope
+          (indexedVecPreFamilyContext.pushLocalDecl consNName .implicit
+            (AddInductive.consumeTypeAnnotations (.const ``Nat [])))
+          ((Expr.forallE consHeadName indexedVecValidationAlpha
+            (Expr.forallE consTailName
+              (ctorIndexedVecApp indexedVecValidationAlpha (.bvar 1))
+              (ctorIndexedVecApp indexedVecValidationAlpha
+                (replaySuccApp (.bvar 2))) .default)
+            .default).instantiate1 indexedVecPreFamilyContext.freshExpr)
+          2 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope
+            (indexedVecPreFamilyContext.pushLocalDecl consNName .implicit
+              (AddInductive.consumeTypeAnnotations (.const ``Nat [])))
+            ((Expr.forallE consHeadName indexedVecValidationAlpha
+              (Expr.forallE consTailName
+                (ctorIndexedVecApp indexedVecValidationAlpha (.bvar 1))
+                (ctorIndexedVecApp indexedVecValidationAlpha
+                  (replaySuccApp (.bvar 2))) .default)
+              .default).instantiate1 indexedVecPreFamilyContext.freshExpr)
+            2 [] false 998 = .ok explicitNTailTrace := by
+    rw [indexedVecValidationConsumeNat]
+    rw [show Expr.forallE consHeadName indexedVecValidationAlpha
+        (Expr.forallE consTailName
+          (ctorIndexedVecApp indexedVecValidationAlpha (.bvar 1))
+          (ctorIndexedVecApp indexedVecValidationAlpha
+            (replaySuccApp (.bvar 2))) .default) .default =
+          indexedVecValidationConsAfterParam.bindingBody! by
+      rw [indexedVecValidationConsAfterParamExplicitShape]
+      rfl]
+    exact ⟨consNTailTrace, consNTailRun⟩
+  have noParameterOne : indexedVecCandidateInductiveStats.params[1]? =
+      none := by
+    rw [indexedVecValidationStatsParams]
+    rfl
+  obtain ⟨consAfterParamTrace, consAfterParamRun⟩ :
+      ∃ consAfterParamTrace : AddInductive.ConstructorPreFamilyViewTrace
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+          indexedVecValidationConsAfterParam 1 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+            indexedVecValidationConsAfterParam 1 [] false 999 =
+          .ok consAfterParamTrace := by
+    rw [indexedVecValidationConsAfterParamExplicitShape]
+    simp only [AddInductive.ConstructorPreFamilyViewTrace.build]
+    split
+    · rename_i parameter parameterAt
+      rw [noParameterOne] at parameterAt
+      contradiction
+    · split
+      · rw [baseNat.check_eq, baseNatEnsure.observe_eq,
+          baseNatConsumed.check_eq]
+        simp only [Bind.bind, Except.bind]
+        rw [baseNatAnnotations.observe_eq]
+        simp only [Bind.bind, Except.bind]
+        rw [dif_pos baseFresh]
+        rw [explicitNTailRun]
+        exact ⟨_, rfl⟩
+      · rename_i recursive
+        rw [indexedVecValidationNatHasNoIndOcc] at recursive
+        contradiction
+  obtain ⟨consParameterTailTrace, consParameterTailRun⟩ :
+      ∃ consParameterTailTrace :
+          AddInductive.ConstructorPreFamilyViewTrace
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+            (consNTypeRaw.instantiate1 indexedVecValidationAlpha)
+            1 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+            (consNTypeRaw.instantiate1 indexedVecValidationAlpha)
+            1 [] false 999 = .ok consParameterTailTrace := by
+    change ∃ consParameterTailTrace :
+        AddInductive.ConstructorPreFamilyViewTrace
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+          indexedVecValidationConsAfterParam 1 [] false,
+      AddInductive.ConstructorPreFamilyViewTrace.build
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+          indexedVecValidationConsAfterParam 1 [] false 999 =
+        .ok consParameterTailTrace
+    exact ⟨consAfterParamTrace, consAfterParamRun⟩
+  obtain ⟨consRawViewTrace, consRawViewRun⟩ :
+      ∃ consRawViewTrace : AddInductive.ConstructorPreFamilyViewTrace
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+          consCtorTypeRaw 0 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+            consCtorTypeRaw 0 [] false 1000 = .ok consRawViewTrace := by
+    simp only [consCtorTypeRaw,
+      AddInductive.ConstructorPreFamilyViewTrace.build]
+    split
+    · rename_i parameter parameterAt
+      rw [parameterAtZero] at parameterAt
+      cases parameterAt
+      rw [consParameterTailRun]
+      exact ⟨_, rfl⟩
+    · rename_i noParameter
+      rw [parameterAtZero] at noParameter
+      contradiction
+  obtain ⟨consViewTrace, consViewRun⟩ :
+      ∃ consViewTrace : AddInductive.ConstructorPreFamilyViewTrace
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+          indexedVecConsInfo.type 0 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+            indexedVecConsInfo.type 0 [] false 1000 = .ok consViewTrace := by
+    rw [consInfoTypeShape]
+    exact ⟨consRawViewTrace, consRawViewRun⟩
+  obtain ⟨consHeadTrace, consHeadRun⟩ :
+      ∃ consHeadTrace : AddInductive.ConstructorPreFamilyViewTrace
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+          indexedVecConsConstructorCandidate.type.view 0 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            indexedVecCandidateInductiveStats 0
+            indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+            indexedVecConsConstructorCandidate.type.view 0 [] false 1000 =
+          .ok consHeadTrace := by
+    change ∃ consHeadTrace : AddInductive.ConstructorPreFamilyViewTrace
+        indexedVecCandidateInductiveStats 0
+        indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+        consCandidate.view 0 [] false,
+      AddInductive.ConstructorPreFamilyViewTrace.build
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+          consCandidate.view 0 [] false 1000 = .ok consHeadTrace
+    rw [consCandidate_view_eq]
+    exact ⟨consViewTrace, consViewRun⟩
+  let consListTrace : AddInductive.ConstructorPreFamilyListTrace
+      indexedVecCandidateInductiveStats 0 indexedVecPreFamilyIndexTelescope
+      indexedVecPreFamilyContext
+      (.cons indexedVecConsConstructorCandidate .nil) :=
+    .cons consHeadTrace .nil
+  have consListRun : AddInductive.ConstructorPreFamilyListTrace.build
+      indexedVecCandidateInductiveStats 0 indexedVecPreFamilyIndexTelescope
+      indexedVecPreFamilyContext
+      (.cons indexedVecConsConstructorCandidate .nil) =
+        .ok consListTrace := by
+    exact AddInductive.ConstructorPreFamilyListTrace.cons_build_eq
+      consHeadTrace consHeadRun .nil rfl
+  let constructorListTrace : AddInductive.ConstructorPreFamilyListTrace
+      indexedVecCandidateInductiveStats 0 indexedVecPreFamilyIndexTelescope
+      indexedVecPreFamilyContext
+      (.cons indexedVecNilConstructorCandidate
+        (.cons indexedVecConsConstructorCandidate .nil)) :=
+    .cons nilHeadTrace consListTrace
+  have constructorListRun :
+      AddInductive.ConstructorPreFamilyListTrace.build
+          indexedVecCandidateInductiveStats 0
+          indexedVecPreFamilyIndexTelescope indexedVecPreFamilyContext
+          (.cons indexedVecNilConstructorCandidate
+            (.cons indexedVecConsConstructorCandidate .nil)) =
+        .ok constructorListTrace := by
+    exact AddInductive.ConstructorPreFamilyListTrace.cons_build_eq
+      nilHeadTrace nilHeadRun consListTrace consListRun
+  have parametersRun : AddInductive.instantiateFamilyParameters
+      indexedVecInfo.type indexedVecCandidateInductiveStats.params.toList =
+        .ok indexedVecPreFamilyIndexTelescope := by
+    rw [indexedVecPreFamilyIndexTelescope_eq]
+    rw [indexedVecValidationStatsParams]
+    rw [indexedVecInfoTypeShape]
+    simp [AddInductive.instantiateFamilyParameters, vecFamilyTail,
+      vecIndexName,
+      indexedVecPreFamilyIndexTelescope, Expr.instantiate1_eq,
+      Expr.instantiate1', Pure.pure, Except.pure]
+  unfold AddInductive.checkConstructorPreFamilySafety
+  rw [parametersRun]
+  simp only [Bind.bind, Except.bind]
+  rw [constructorListRun]
+  rfl
+
+private noncomputable def indexedVecStagedPreFamilyInput :
+    VInductDecl.StagedNormalizationCandidatePreFamilyInput
+      indexedVecFamilyCandidateContext ctorContext natFinalEnv [`u]
+      indexedVecNormalizationCandidate indexedVecDecl :=
+  VInductDecl.StagedNormalizationCandidatePreFamilyInput.ofRun
+    indexedVecStagedPostFamilyInput indexedVecPreFamilySafetyRun
+
+/-- IndexedVec's ordinary fields are retained, its recursive tail is omitted,
+and both constructor-result index spines admit the exact pre-family semantic
+replay. -/
+theorem indexedVecProducedPreFamilySemantic_exists :
+    Nonempty (VInductDecl.ProducedNormalizationCandidatePreFamilySemanticRun
+      indexedVecStagedPreFamilyInput) :=
+  indexedVecStagedPreFamilyInput.exists
+
 private def indexedVecReorderedViewType : VInductiveType :=
   { indexedVecType with
     ctors := [indexedVecType.ctors[1], indexedVecType.ctors[0]] }
@@ -1853,6 +2993,39 @@ info: 'Lean4Lean.InductiveReplayFixtures.indexedVecProducedPostFamilySemantic_ex
 -/
 #guard_msgs in
 #print axioms indexedVecProducedPostFamilySemantic_exists
+
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.indexedVecProducedPreFamilySemantic_exists' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms indexedVecProducedPreFamilySemantic_exists
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.indexedVecProducedSemanticHierarchy_constructorHeaders' depends on axioms: [propext,

@@ -7577,6 +7577,117 @@ private noncomputable def aliasFormerStagedPostFamilyInput :
   VInductDecl.StagedNormalizationCandidatePostFamilyInput.ofRun
     aliasFormerStagedUniverseInput aliasFormerAlignmentRun
 
+private theorem aliasFormerPreFamilySafetyRun :
+    AddInductive.checkConstructorPreFamilySafety
+        aliasFormerStagedUniverseInput.staged.family.validation.stats
+        aliasFormerNormalizationCandidate.families.singleton.familyType.type.view
+        aliasFormerNormalizationCandidate.families.singleton.constructors
+        aliasFormerNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext =
+      .ok () := by
+  change AddInductive.checkConstructorPreFamilySafety
+    aliasFormerInductiveStats (.sort (.succ .zero))
+    (.cons aliasFormerConstructorCandidate .nil)
+    aliasFormerCandidateContext = .ok ()
+  let sortStep : AddInductive.CandidateCheckTypeStep :=
+    ⟨aliasFormerCandidateContext, .sort (.succ .zero),
+      .sort (.succ (.succ .zero))⟩
+  have sortRun : sortStep.Valid := by
+    change Except.map (fun x : Expr × TypeChecker.State => x.1)
+      (TypeChecker.Inner.inferType' (.sort (.succ .zero)) false
+        (TypeChecker.Methods.withFuel 9999)
+        aliasFormerCandidateContext.toTypeChecker
+        ({} : TypeChecker.State)) = _
+    unfold TypeChecker.Inner.inferType'
+    simp [Expr.hasLooseBVars, Expr.looseBVarRange',
+      annotatedPi_checkLevelSuccZero, Bind.bind, ReaderT.bind,
+      StateT.bind, Except.bind]
+    rfl
+  have sortHasMVar : (Expr.sort (.succ .zero)).hasMVar = false := by
+    simp [Expr.hasMVar, annotatedPiSortOne_data_hasExprMVar_false,
+      annotatedPiSortOne_data_hasLevelMVar_false]
+  obtain ⟨sortChecked, sortCheckedRun⟩ :=
+    AddInductive.checkConstructorAlignedExpr.exists_of_run
+      (context := aliasFormerCandidateContext)
+      (source := .sort (.succ .zero))
+      (inferred := .sort (.succ (.succ .zero))) rfl sortHasMVar sortRun
+  have aliasArgs :
+      (Expr.const ``AliasFormer []).getAppArgs.toList.drop 0 = [] := by
+    rfl
+  have paramsSize : aliasFormerInductiveStats.params.size = 0 := rfl
+  have targetArgs :
+      (Expr.const ``AliasFormer []).getAppArgs.toList.drop
+        aliasFormerInductiveStats.params.size = [] := by
+    rw [paramsSize]
+    exact aliasArgs
+  have inductiveFuel :
+      aliasFormerCandidateContext.fuel.inductiveFuel = 1000 := rfl
+  unfold AddInductive.checkConstructorPreFamilySafety
+  have parametersRun :
+      AddInductive.instantiateFamilyParameters (.sort (.succ .zero))
+      aliasFormerInductiveStats.params.toList = .ok (.sort (.succ .zero)) := by
+    rfl
+  have sortTerminal : (Expr.sort (.succ .zero)).isForall = false := rfl
+  let spineTrace : AddInductive.ConstructorPreFamilyIndexSpineTrace
+      aliasFormerCandidateContext (.sort (.succ .zero)) [] :=
+    .nil aliasFormerCandidateContext (.sort (.succ .zero)) sortChecked
+      sortTerminal
+  have spineRun :
+      AddInductive.ConstructorPreFamilyIndexSpineTrace.build
+          aliasFormerCandidateContext (.sort (.succ .zero)) [] =
+        .ok spineTrace := by
+    unfold AddInductive.ConstructorPreFamilyIndexSpineTrace.build
+    rw [dif_pos sortTerminal, sortCheckedRun]
+    rfl
+  obtain ⟨targetSpineTrace, targetSpineRun⟩ :
+      ∃ targetSpineTrace : AddInductive.ConstructorPreFamilyIndexSpineTrace
+          aliasFormerCandidateContext (.sort (.succ .zero))
+          ((Expr.const ``AliasFormer []).getAppArgs.toList.drop
+            aliasFormerInductiveStats.params.size),
+        AddInductive.ConstructorPreFamilyIndexSpineTrace.build
+            aliasFormerCandidateContext (.sort (.succ .zero))
+          ((Expr.const ``AliasFormer []).getAppArgs.toList.drop
+              aliasFormerInductiveStats.params.size) =
+          .ok targetSpineTrace := by
+    rw [targetArgs]
+    exact ⟨spineTrace, spineRun⟩
+  have valid : AddInductive.isValidIndAppIdx aliasFormerInductiveStats
+      (.const ``AliasFormer []) 0 = true :=
+    aliasFormerCtor_isValidIndAppIdx
+  have independent : AddInductive.constructorIndependentOf
+      (.const ``AliasFormer []) [] = true := by
+    rfl
+  obtain ⟨viewTrace, viewRun⟩ : ∃ viewTrace,
+      AddInductive.ConstructorPreFamilyViewTrace.build
+          aliasFormerInductiveStats 0 (.sort (.succ .zero))
+          aliasFormerCandidateContext (.const ``AliasFormer []) 0 [] false
+          aliasFormerCandidateContext.fuel.inductiveFuel = .ok viewTrace := by
+    rw [inductiveFuel]
+    rw [show 1000 = 999 + 1 by rfl]
+    simp only [AddInductive.ConstructorPreFamilyViewTrace.build]
+    rw [dif_pos valid, dif_pos independent]
+    rw [targetSpineRun]
+    exact ⟨_, rfl⟩
+  obtain ⟨listTrace, listRun⟩ : ∃ listTrace,
+      AddInductive.ConstructorPreFamilyListTrace.build
+          aliasFormerInductiveStats 0 (.sort (.succ .zero))
+          aliasFormerCandidateContext
+          (.cons aliasFormerConstructorCandidate .nil) = .ok listTrace := by
+    refine ⟨.cons viewTrace .nil, ?_⟩
+    simp [AddInductive.ConstructorPreFamilyListTrace.build,
+      aliasFormerConstructorCandidate, aliasFormerCtorCandidate,
+      AddInductive.CandidateExpr.view, AddInductive.CandidateExprTrace.view,
+      viewRun, Bind.bind, Except.bind, Except.pure, Pure.pure]
+  simp [parametersRun, listRun, Bind.bind, Except.bind,
+    Except.pure, Pure.pure]
+
+private noncomputable def aliasFormerStagedPreFamilyInput :
+    VInductDecl.StagedNormalizationCandidatePreFamilyInput
+      aliasFormerCandidateContext aliasFormerCtorCandidateContext
+      typeFamilyAliasEnv [] aliasFormerNormalizationCandidate
+      aliasFormerRawDecl :=
+  VInductDecl.StagedNormalizationCandidatePreFamilyInput.ofRun
+    aliasFormerStagedPostFamilyInput aliasFormerPreFamilySafetyRun
+
 /-- The exact family/constructor producer traversals and verified translations
 automatically determine a complete retained AliasFormer hierarchy. -/
 theorem aliasFormerProducedSemanticHierarchy_exists :
@@ -7593,6 +7704,13 @@ theorem aliasFormerProducedPostFamilySemantic_exists :
     Nonempty (VInductDecl.ProducedNormalizationCandidatePostFamilySemanticRun
       aliasFormerStagedPostFamilyInput) :=
   aliasFormerStagedPostFamilyInput.exists
+
+/-- AliasFormer's analyzer-owned constructor candidate passes the executable
+pre-family suffix/dependency gate and admits the exact family-free replay. -/
+theorem aliasFormerProducedPreFamilySemantic_exists :
+    Nonempty (VInductDecl.ProducedNormalizationCandidatePreFamilySemanticRun
+      aliasFormerStagedPreFamilyInput) :=
+  aliasFormerStagedPreFamilyInput.exists
 
 def aliasFormerNormalizationCandidateRun :
     VInductDecl.NormalizationCandidateRun typeFamilyAliasEnv []
@@ -9205,6 +9323,376 @@ private noncomputable def annotatedPiStagedPostFamilyInput :
                               ((∅ : NameSet).insert
                                 annotatedPiKernelCtor.name))
 
+private theorem annotatedPiPreFamilySortZeroCheckTypeStep_valid
+    (context : AddInductive.Context)
+    (depth : context.fuel.recDepth = 10000) :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨context, .sort .zero, .sort (.succ .zero)⟩ := by
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+      (TypeChecker.Inner.inferType (.sort .zero) false
+        (TypeChecker.Methods.withFuel context.fuel.recDepth)
+        context.toTypeChecker ({} : TypeChecker.State)) = _
+  rw [depth]
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+      (TypeChecker.Inner.inferType' (.sort .zero) false
+        (TypeChecker.Methods.withFuel 9999)
+        context.toTypeChecker ({} : TypeChecker.State)) = _
+  unfold TypeChecker.Inner.inferType'
+  simp [Expr.hasLooseBVars, Expr.looseBVarRange',
+    annotatedPi_checkLevelZero, Bind.bind, ReaderT.bind,
+    StateT.bind, Except.bind]
+  rfl
+
+private theorem annotatedPiPreFamilySortOneCheckTypeStep_valid
+    (context : AddInductive.Context)
+    (depth : context.fuel.recDepth = 10000) :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨context, .sort (.succ .zero),
+        .sort (.succ (.succ .zero))⟩ := by
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+      (TypeChecker.Inner.inferType (.sort (.succ .zero)) false
+        (TypeChecker.Methods.withFuel context.fuel.recDepth)
+        context.toTypeChecker ({} : TypeChecker.State)) = _
+  rw [depth]
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+      (TypeChecker.Inner.inferType' (.sort (.succ .zero)) false
+        (TypeChecker.Methods.withFuel 9999)
+        context.toTypeChecker ({} : TypeChecker.State)) = _
+  unfold TypeChecker.Inner.inferType'
+  simp [Expr.hasLooseBVars, Expr.looseBVarRange',
+    annotatedPi_checkLevelSuccZero, Bind.bind, ReaderT.bind,
+    StateT.bind, Except.bind]
+  rfl
+
+private def annotatedPiPreFamilySortZeroInferState : TypeChecker.State :=
+  { ({} : TypeChecker.State) with
+    inferTypeI := ({} : TypeChecker.State).inferTypeI.insert
+      (.sort .zero) (.sort (.succ .zero)) }
+
+private theorem annotatedPiPreFamilySortZeroInferTypeInner
+    (context : AddInductive.Context)
+    (depth : context.fuel.recDepth = 10000) :
+    TypeChecker.Inner.inferType (.sort .zero) true
+        (TypeChecker.Methods.withFuel context.fuel.recDepth)
+        context.toTypeChecker ({} : TypeChecker.State) =
+      .ok (.sort (.succ .zero),
+        annotatedPiPreFamilySortZeroInferState) := by
+  rw [depth]
+  change TypeChecker.Inner.inferType' (.sort .zero) true
+      (TypeChecker.Methods.withFuel 9999) context.toTypeChecker
+      ({} : TypeChecker.State) = _
+  unfold TypeChecker.Inner.inferType'
+  simp [annotatedPiPreFamilySortZeroInferState,
+    Expr.hasLooseBVars, Expr.looseBVarRange', Bind.bind,
+    ReaderT.bind, StateT.bind, Except.bind]
+
+private theorem annotatedPiPreFamilySortZeroEnsureTypeStep_valid
+    (context : AddInductive.Context)
+    (depth : context.fuel.recDepth = 10000) :
+    AddInductive.ConstructorEnsureTypeStep.Valid
+      ⟨context, .sort .zero, .sort (.succ .zero)⟩ := by
+  unfold AddInductive.ConstructorEnsureTypeStep.Valid
+    TypeChecker.ensureType TypeChecker.inferType TypeChecker.ensureSort
+    TypeChecker.RecM.run TypeChecker.M.run
+  simp only [readThe, MonadReaderOf.read, ReaderT.read,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind,
+    Pure.pure, StateT.pure, Except.pure, StateT.run',
+    Functor.map, Except.map]
+  rw [show TypeChecker.Inner.inferType (.sort .zero) true
+      (TypeChecker.Methods.withFuel context.fuel.recDepth)
+      { env := context.env
+        lctx := context.lctx
+        safety := context.safety
+        lparams := context.lparams
+        fuel := context.fuel }
+      ({} : TypeChecker.State) =
+        .ok (.sort (.succ .zero),
+          annotatedPiPreFamilySortZeroInferState) by
+    simpa [AddInductive.Context.toTypeChecker] using
+      annotatedPiPreFamilySortZeroInferTypeInner context depth]
+  rfl
+
+private theorem annotatedPiPreFamilySafetyRun :
+    AddInductive.checkConstructorPreFamilySafety
+        annotatedPiStagedUniverseInput.staged.family.validation.stats
+        annotatedPiNormalizationCandidate.families.singleton.familyType.type.view
+        annotatedPiNormalizationCandidate.families.singleton.constructors
+        annotatedPiNormalizationCandidate.families.singleton.familyType.type.trace.terminalContext =
+      .ok () := by
+  change AddInductive.checkConstructorPreFamilySafety
+    annotatedPiInductiveStats (.sort (.succ .zero))
+    (.cons annotatedPiConstructorCandidate .nil)
+    annotatedPiFamilyCandidateContext = .ok ()
+  have consumeSortZero : AddInductive.consumeTypeAnnotations
+      (.sort .zero) = .sort .zero := by
+    simp [AddInductive.consumeTypeAnnotations]
+  let nestedContext := annotatedPiFamilyCandidateContext.pushLocalDecl
+    `p .default (AddInductive.consumeTypeAnnotations (.sort .zero))
+  let resultContext := annotatedPiFamilyCandidateContext.advanceFresh
+  let rootSortZero : AddInductive.ConstructorCheckedExpr
+      annotatedPiFamilyCandidateContext (.sort .zero) :=
+    .ofRun (by simp [FVarsIn, Level.hasMVar'])
+      (annotatedPiPreFamilySortZeroCheckTypeStep_valid
+        annotatedPiFamilyCandidateContext rfl)
+  let rootSortOne : AddInductive.ConstructorCheckedExpr
+      annotatedPiFamilyCandidateContext (.sort (.succ .zero)) :=
+    .ofRun (by simp [FVarsIn, Level.hasMVar'])
+      (annotatedPiPreFamilySortOneCheckTypeStep_valid
+        annotatedPiFamilyCandidateContext rfl)
+  let nestedSortOne : AddInductive.ConstructorCheckedExpr
+      nestedContext (.sort (.succ .zero)) :=
+    .ofRun (by simp [FVarsIn, Level.hasMVar'])
+      (annotatedPiPreFamilySortOneCheckTypeStep_valid nestedContext rfl)
+  let resultSortOne : AddInductive.ConstructorCheckedExpr
+      resultContext (.sort (.succ .zero)) :=
+    .ofRun (by simp [FVarsIn, Level.hasMVar'])
+      (annotatedPiPreFamilySortOneCheckTypeStep_valid resultContext rfl)
+  let rootEnsure : AddInductive.ConstructorEnsureTypeObservation
+      annotatedPiFamilyCandidateContext (.sort .zero) :=
+    ⟨.sort (.succ .zero),
+      annotatedPiPreFamilySortZeroEnsureTypeStep_valid
+        annotatedPiFamilyCandidateContext rfl⟩
+  let consumedSortZero : AddInductive.ConstructorCheckedExpr
+      annotatedPiFamilyCandidateContext
+        (AddInductive.consumeTypeAnnotations (.sort .zero)) := by
+    rw [consumeSortZero]
+    exact rootSortZero
+  let annotations : AddInductive.CandidateIsDefEqObservation
+      annotatedPiFamilyCandidateContext (.sort .zero)
+        (AddInductive.consumeTypeAnnotations (.sort .zero)) :=
+    ⟨by
+      rw [consumeSortZero]
+      exact AddInductive.candidateIsDefEqRefl
+        annotatedPiFamilyCandidateContext (.sort .zero)⟩
+  have rootFresh : annotatedPiFamilyCandidateContext.lctx.find?
+      annotatedPiFamilyCandidateContext.freshFVarId = none := by
+    have h := LocalContext.WF.find?_eq_find?_toList
+      (fv := annotatedPiFamilyCandidateContext.freshFVarId)
+      LocalContext.WF.nil
+    change
+      ({ fvarIdToDecl := PersistentHashMap.empty
+         decls := PersistentArray.empty
+         auxDeclToFullName := Std.TreeMap.empty } : LocalContext).find?
+        annotatedPiFamilyCandidateContext.freshFVarId = none
+    rw [h]
+    simp [LocalContext.toList]
+  let rootSpine : AddInductive.ConstructorPreFamilyIndexSpineTrace
+      annotatedPiFamilyCandidateContext (.sort (.succ .zero)) [] :=
+    .nil annotatedPiFamilyCandidateContext (.sort (.succ .zero))
+      rootSortOne rfl
+  let nestedSpine : AddInductive.ConstructorPreFamilyIndexSpineTrace
+      nestedContext (.sort (.succ .zero)) [] :=
+    .nil nestedContext (.sort (.succ .zero)) nestedSortOne rfl
+  let resultSpine : AddInductive.ConstructorPreFamilyIndexSpineTrace
+      resultContext (.sort (.succ .zero)) [] :=
+    .nil resultContext (.sort (.succ .zero)) resultSortOne rfl
+  have valid : AddInductive.isValidIndAppIdx annotatedPiInductiveStats
+      (.const ``AnnotatedPi []) 0 = true :=
+    annotatedPiConst_isValidIndAppIdx
+  have targetArgs :
+      (Expr.const ``AnnotatedPi []).getAppArgs.toList.drop
+        annotatedPiInductiveStats.params.size = [] := by
+    rfl
+  obtain ⟨nestedTargetSpine, nestedTargetSpineRun⟩ :
+      ∃ nestedTargetSpine :
+          AddInductive.ConstructorPreFamilyIndexSpineTrace nestedContext
+            (.sort (.succ .zero))
+            ((Expr.const ``AnnotatedPi []).getAppArgs.toList.drop
+              annotatedPiInductiveStats.params.size),
+        AddInductive.ConstructorPreFamilyIndexSpineTrace.build nestedContext
+            (.sort (.succ .zero))
+            ((Expr.const ``AnnotatedPi []).getAppArgs.toList.drop
+              annotatedPiInductiveStats.params.size) =
+          .ok nestedTargetSpine := by
+    rw [targetArgs]
+    exact ⟨nestedSpine, nestedSpine.build_eq⟩
+  let targetTrace : AddInductive.ConstructorPreFamilyRecursiveTrace
+      annotatedPiInductiveStats 0 (.sort (.succ .zero)) nestedContext
+        (.const ``AnnotatedPi []) 999 :=
+    .target nestedContext (.const ``AnnotatedPi []) valid nestedTargetSpine
+  have targetRun :
+      AddInductive.ConstructorPreFamilyRecursiveTrace.build
+          annotatedPiInductiveStats 0 (.sort (.succ .zero)) nestedContext
+          (.const ``AnnotatedPi []) 999 = .ok targetTrace := by
+    simp only [AddInductive.ConstructorPreFamilyRecursiveTrace.build]
+    rw [dif_pos valid, nestedTargetSpineRun]
+    rfl
+  obtain ⟨recursiveTailTrace, recursiveTailRun⟩ :
+      ∃ recursiveTailTrace :
+          AddInductive.ConstructorPreFamilyRecursiveTrace
+            annotatedPiInductiveStats 0 (.sort (.succ .zero)) nestedContext
+            ((Expr.const ``AnnotatedPi []).instantiate1
+              annotatedPiFamilyCandidateContext.freshExpr) 999,
+        AddInductive.ConstructorPreFamilyRecursiveTrace.build
+            annotatedPiInductiveStats 0 (.sort (.succ .zero)) nestedContext
+            ((Expr.const ``AnnotatedPi []).instantiate1
+              annotatedPiFamilyCandidateContext.freshExpr) 999 =
+          .ok recursiveTailTrace := by
+    rw [annotatedPiConst_instantiate1]
+    exact ⟨targetTrace, targetRun⟩
+  let recursiveTrace : AddInductive.ConstructorPreFamilyRecursiveTrace
+      annotatedPiInductiveStats 0 (.sort (.succ .zero))
+        annotatedPiFamilyCandidateContext annotatedPiViewInnerKernel
+        annotatedPiFamilyCandidateContext.fuel.inductiveFuel :=
+    .forallE annotatedPiFamilyCandidateContext `p (.sort .zero)
+      (.const ``AnnotatedPi []) .default rootSortZero rootEnsure
+      consumedSortZero annotations rootFresh (by
+        simpa only [nestedContext] using recursiveTailTrace)
+  have recursiveRun :
+      AddInductive.ConstructorPreFamilyRecursiveTrace.build
+          annotatedPiInductiveStats 0 (.sort (.succ .zero))
+          annotatedPiFamilyCandidateContext annotatedPiViewInnerKernel
+          annotatedPiFamilyCandidateContext.fuel.inductiveFuel =
+        .ok recursiveTrace := by
+    change AddInductive.ConstructorPreFamilyRecursiveTrace.build
+        annotatedPiInductiveStats 0 (.sort (.succ .zero))
+        annotatedPiFamilyCandidateContext annotatedPiViewInnerKernel 1000 =
+      .ok recursiveTrace
+    simp only [annotatedPiViewInnerKernel,
+      AddInductive.ConstructorPreFamilyRecursiveTrace.build]
+    rw [rootSortZero.check_eq, rootEnsure.observe_eq,
+      consumedSortZero.check_eq]
+    simp only [Bind.bind, Except.bind]
+    rw [annotations.observe_eq]
+    simp only [Bind.bind, Except.bind]
+    rw [dif_pos rootFresh]
+    rw [recursiveTailRun]
+    rfl
+  have resultIndependent : AddInductive.constructorIndependentOf
+      (.const ``AnnotatedPi [])
+      [annotatedPiFamilyCandidateContext.freshFVarId] = true := by
+    rfl
+  obtain ⟨resultTargetSpine, resultTargetSpineRun⟩ :
+      ∃ resultTargetSpine :
+          AddInductive.ConstructorPreFamilyIndexSpineTrace resultContext
+            (.sort (.succ .zero))
+            ((Expr.const ``AnnotatedPi []).getAppArgs.toList.drop
+              annotatedPiInductiveStats.params.size),
+        AddInductive.ConstructorPreFamilyIndexSpineTrace.build resultContext
+            (.sort (.succ .zero))
+            ((Expr.const ``AnnotatedPi []).getAppArgs.toList.drop
+              annotatedPiInductiveStats.params.size) =
+          .ok resultTargetSpine := by
+    rw [targetArgs]
+    exact ⟨resultSpine, resultSpine.build_eq⟩
+  let terminalTrace : AddInductive.ConstructorPreFamilyViewTrace
+      annotatedPiInductiveStats 0 (.sort (.succ .zero)) resultContext
+        (.const ``AnnotatedPi []) 1
+        [annotatedPiFamilyCandidateContext.freshFVarId] true :=
+    .terminal resultContext (.const ``AnnotatedPi []) 1
+      [annotatedPiFamilyCandidateContext.freshFVarId] true valid
+      resultIndependent resultTargetSpine
+  have terminalRun :
+      AddInductive.ConstructorPreFamilyViewTrace.build
+          annotatedPiInductiveStats 0 (.sort (.succ .zero)) resultContext
+          (.const ``AnnotatedPi []) 1
+          [annotatedPiFamilyCandidateContext.freshFVarId] true 999 =
+        .ok terminalTrace := by
+    simp only [AddInductive.ConstructorPreFamilyViewTrace.build]
+    rw [dif_pos valid, dif_pos resultIndependent, resultTargetSpineRun]
+    rfl
+  obtain ⟨viewTailTrace, viewTailRun⟩ :
+      ∃ viewTailTrace : AddInductive.ConstructorPreFamilyViewTrace
+          annotatedPiInductiveStats 0 (.sort (.succ .zero)) resultContext
+          ((Expr.const ``AnnotatedPi []).instantiate1
+            annotatedPiFamilyCandidateContext.freshExpr)
+          1 [annotatedPiFamilyCandidateContext.freshFVarId] true,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            annotatedPiInductiveStats 0 (.sort (.succ .zero)) resultContext
+            ((Expr.const ``AnnotatedPi []).instantiate1
+              annotatedPiFamilyCandidateContext.freshExpr)
+            1 [annotatedPiFamilyCandidateContext.freshFVarId] true 999 =
+          .ok viewTailTrace := by
+    rw [annotatedPiConst_instantiate1]
+    exact ⟨terminalTrace, terminalRun⟩
+  have noParameter : annotatedPiInductiveStats.params[0]? = none := rfl
+  have recursive : AddInductive.hasIndOcc annotatedPiInductiveStats.indConsts
+      annotatedPiViewInnerKernel = true := by
+    simp [AddInductive.hasIndOcc, annotatedPiInductiveStats,
+      annotatedPiViewInnerKernel, Expr.constName!]
+  have fieldIndependent : AddInductive.constructorIndependentOf
+      annotatedPiViewInnerKernel [] = true := by
+    simp [AddInductive.constructorIndependentOf,
+      annotatedPiViewInnerKernel]
+  let viewTrace : AddInductive.ConstructorPreFamilyViewTrace
+      annotatedPiInductiveStats 0 (.sort (.succ .zero))
+        annotatedPiFamilyCandidateContext annotatedPiViewCtorKernel 0 [] false :=
+    .recursive annotatedPiFamilyCandidateContext 0 [] false
+      annotatedPiOuterName annotatedPiViewInnerKernel
+      (.const ``AnnotatedPi []) .default noParameter recursive
+      fieldIndependent recursiveTrace rootFresh (by
+        simpa only [resultContext] using viewTailTrace)
+  have viewRun :
+      AddInductive.ConstructorPreFamilyViewTrace.build
+          annotatedPiInductiveStats 0 (.sort (.succ .zero))
+          annotatedPiFamilyCandidateContext annotatedPiViewCtorKernel 0 []
+          false 1000 = .ok viewTrace := by
+    simp only [annotatedPiViewCtorKernel,
+      AddInductive.ConstructorPreFamilyViewTrace.build]
+    split
+    · rename_i parameter parameterAt
+      rw [noParameter] at parameterAt
+      contradiction
+    · split
+      · rename_i nonrecursive
+        rw [recursive] at nonrecursive
+        contradiction
+      · rw [dif_pos fieldIndependent]
+        rw [recursiveRun]
+        simp only [Bind.bind, Except.bind]
+        rw [dif_pos rootFresh]
+        rw [viewTailRun]
+        rfl
+  have candidateViewEq : annotatedPiConstructorCandidate.type.view =
+      annotatedPiViewCtorKernel := by
+    change annotatedPiCtorCandidate.trace.view = annotatedPiViewCtorKernel
+    change annotatedPiAlignedViewCtorKernel = annotatedPiViewCtorKernel
+    exact annotatedPiAlignedViewCtorKernel_eq
+  obtain ⟨headTrace, headRun⟩ :
+      ∃ headTrace : AddInductive.ConstructorPreFamilyViewTrace
+          annotatedPiInductiveStats 0 (.sort (.succ .zero))
+          annotatedPiFamilyCandidateContext
+          annotatedPiConstructorCandidate.type.view 0 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            annotatedPiInductiveStats 0 (.sort (.succ .zero))
+            annotatedPiFamilyCandidateContext
+            annotatedPiConstructorCandidate.type.view 0 [] false 1000 =
+          .ok headTrace := by
+    rw [candidateViewEq]
+    exact ⟨viewTrace, viewRun⟩
+  let listTrace : AddInductive.ConstructorPreFamilyListTrace
+      annotatedPiInductiveStats 0 (.sort (.succ .zero))
+        annotatedPiFamilyCandidateContext
+        (.cons annotatedPiConstructorCandidate .nil) :=
+    .cons headTrace .nil
+  have listRun :
+      AddInductive.ConstructorPreFamilyListTrace.build
+          annotatedPiInductiveStats 0 (.sort (.succ .zero))
+          annotatedPiFamilyCandidateContext
+          (.cons annotatedPiConstructorCandidate .nil) = .ok listTrace := by
+    simp only [AddInductive.ConstructorPreFamilyListTrace.build]
+    rw [show annotatedPiFamilyCandidateContext.fuel.inductiveFuel = 1000 by
+      rfl, headRun]
+    rfl
+  have parametersRun : AddInductive.instantiateFamilyParameters
+      (.sort (.succ .zero)) annotatedPiInductiveStats.params.toList =
+        .ok (.sort (.succ .zero)) := by
+    rfl
+  unfold AddInductive.checkConstructorPreFamilySafety
+  rw [parametersRun]
+  simp only [Bind.bind, Except.bind]
+  rw [listRun]
+  rfl
+
+private noncomputable def annotatedPiStagedPreFamilyInput :
+    VInductDecl.StagedNormalizationCandidatePreFamilyInput
+      annotatedPiFamilyCandidateContext annotatedPiCtorCandidateContext
+      outParamEnv [] annotatedPiNormalizationCandidate annotatedPiRawDecl :=
+  VInductDecl.StagedNormalizationCandidatePreFamilyInput.ofRun
+    annotatedPiStagedPostFamilyInput annotatedPiPreFamilySafetyRun
+
 /-- AnnotatedPi's retained validator telescope and candidate telescope admit
 the complete post-family semantic interpretation, including the nested
 annotation-bearing recursive field. -/
@@ -9212,6 +9700,14 @@ theorem annotatedPiProducedPostFamilySemantic_exists :
     Nonempty (VInductDecl.ProducedNormalizationCandidatePostFamilySemanticRun
       annotatedPiStagedPostFamilyInput) :=
   annotatedPiStagedPostFamilyInput.exists
+
+/-- AnnotatedPi's recursive outer field is omitted from the pre-family local
+context while its nested Pi binder and both family-index spines receive the
+exact verified family-free interpretation. -/
+theorem annotatedPiProducedPreFamilySemantic_exists :
+    Nonempty (VInductDecl.ProducedNormalizationCandidatePreFamilySemanticRun
+      annotatedPiStagedPreFamilyInput) :=
+  annotatedPiStagedPreFamilyInput.exists
 
 /-- The exact family/constructor producer traversals and verified translations
 automatically determine the complete retained AnnotatedPi hierarchy, including
@@ -10204,6 +10700,39 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerProducedPostFamilySemantic_e
 #print axioms aliasFormerProducedPostFamilySemantic_exists
 
 /--
+info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerProducedPreFamilySemantic_exists' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms aliasFormerProducedPreFamilySemantic_exists
+
+/--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerGenerationCandidateSemanticRun' depends on axioms: [propext,
  sorryAx,
  Classical.choice,
@@ -10791,6 +11320,39 @@ info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiProducedPostFamilySemantic_e
 -/
 #guard_msgs in
 #print axioms annotatedPiProducedPostFamilySemantic_exists
+
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiProducedPreFamilySemantic_exists' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms annotatedPiProducedPreFamilySemantic_exists
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiNormalizationCandidateRun' depends on axioms: [propext,

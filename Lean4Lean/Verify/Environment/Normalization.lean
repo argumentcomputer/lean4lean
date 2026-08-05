@@ -2973,6 +2973,31 @@ def CandidateFamilyStagedInput.postFamily
       _ = Us := preFamily.lparams_eq
   vlctx_eq := rfl
 
+/-- Recover the exact verified pre-family context at the end of the family
+telescope.
+
+Constructor validation starts from this local telescope after changing only
+the kernel/Theory environment to the staged post-family pair.  D3 reuses the
+pre-change context to replay family-free constructor checks; no local
+declaration or fresh identifier is reconstructed. -/
+theorem CandidateFamilyStagedInput.preValidationContextRun
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name} {source : InductiveType}
+    {candidate : AddInductive.CandidateFamilyType source}
+    {raw : VInductiveType}
+    {preFamily : TypeChecker.CandidateSemanticStage familyContext env Us}
+    (_input : CandidateFamilyStagedInput familyContext constructorContext
+      env Us candidate raw preFamily)
+    (semantic : TypeChecker.CandidateExprSemanticRootRun env Us
+      candidate.type raw.type) :
+    ∃ preRun : TypeChecker.CandidateContextRun
+        candidate.type.trace.terminalContext,
+      preRun.context.venv = env ∧
+      preRun.context.lparams = Us := by
+  obtain ⟨inferred, recursive⟩ := semantic.recursive
+  exact recursive.terminalContextRun semantic.contextRun semantic.venv_eq
+    semantic.lparams_eq semantic.vlctx_eq
+
 /-- Rebuild the verified context in which constructor validation actually
 runs.
 
