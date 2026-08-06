@@ -2343,6 +2343,12 @@ theorem TelDefEq.generationParams {env : VEnv} {U : Nat}
         (.succ (.zero (Γ₀ := Γ)) head)
     · exact ⟨⟨u, head⟩, TelDefEq.generationParams ord tail⟩
 
+/--
+info: 'Lean4Lean.VEnv.TelDefEq.generationParams' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms TelDefEq.generationParams
+
 /-- Transport application-spine typing across definitionally equal
 contexts. -/
 theorem SpineWF.defeqDFC {env : VEnv} {U : Nat} (ord : env.Ordered)
@@ -2805,6 +2811,12 @@ theorem generationParams_ctx_rec :
     (U' := source.uvars + 1) VLevel.params'_one_wf
   simpa [GenerationChecked.paramsTel, List.map_reverse] using h.ctx
 
+/--
+info: 'Lean4Lean.VInductDecl.GenerationEnv.generationParams_defeq' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms generationParams_defeq
+
 /-- Stored constructor fields are well formed over the exact generated
 parameter surface after universe transport. -/
 theorem generationFields_onTel_rec {ctor : NormalizedCtor}
@@ -3075,6 +3087,12 @@ theorem familyConst_generation_decl :
   obtain ⟨_, htel⟩ := S.generationFamilyTel.forallN_defeq
     (by simpa [VEnv.HasType] using hresultGeneration.hasType.1)
   exact htel.defeq' S.familyConst_emitted_decl
+
+/--
+info: 'Lean4Lean.VInductDecl.GenerationEnv.familyConst_generation_decl' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms familyConst_generation_decl
 
 /-- The family applied to its checked-parameter/raw-index self-spine has the
 normalized result sort. -/
