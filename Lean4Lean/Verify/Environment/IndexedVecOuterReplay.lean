@@ -1562,7 +1562,7 @@ theorem indexedVecValidationConsUniverseLoopN :
   simp only [Except.bind]
   simp [Expr.sortLevel!, AddInductive.constructorUniverseSemanticGe,
     indexedVecCandidateInductiveStats_resultLevel,
-    AddInductive.levelStructGe, AddInductive.levelStructEq, Pure.pure]
+    AddInductive.levelStructGe, Pure.pure]
   simp only [ReaderT.pure, Pure.pure, ReaderT.bind, Bind.bind,
     Except.pure, Except.bind]
   rw [AddInductive.withLocalDecl_apply]
@@ -1612,8 +1612,8 @@ theorem indexedVecValidationConsUniverseRun :
     ReaderT.bind, Bind.bind, ReaderT.pure, Pure.pure,
     Except.bind, Except.pure] using indexedVecValidationConsUniverseLoop
 
-/-- Both source-ordered `IndexedVec` constructors pass the executable
-structural/`Prop` universe subset. -/
+/-- Both source-ordered `IndexedVec` constructors pass the executable verified
+universe gate. -/
 theorem indexedVecValidationCheckConstructorUniverseSemantics :
     AddInductive.checkConstructorUniverseListSemantics
       indexedVecCandidateInductiveStats indexedVecKernelType.ctors

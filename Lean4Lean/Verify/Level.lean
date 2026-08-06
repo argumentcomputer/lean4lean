@@ -557,6 +557,24 @@ private theorem subset_subset {xs ys : List Name} (h : subset Name.cmp xs ys) :
         exact List.cons_subset_cons _ (ih h)
       · exact List.subset_cons_of_subset _ (ih h)
 
+private theorem leVars_dominated {xs ys : List VarNode} (h : leVars xs ys)
+    (hv : v ∈ xs) : ∃ w ∈ ys, v.var = w.var ∧ v.offset ≤ w.offset := by
+  induction xs, ys using leVars.induct with
+  | case1 ys => cases hv
+  | case2 xs => simp [leVars] at h
+  | case3 x xs y ys hcmp => simp [leVars, hcmp] at h
+  | case4 x xs y ys hcmp ih =>
+    simp only [leVars, hcmp, Bool.and_eq_true] at h
+    have hvar : x.var = y.var := by simpa using hcmp
+    rcases List.mem_cons.mp hv with rfl | hv
+    · exact ⟨y, by simp, hvar, of_decide_eq_true h.1⟩
+    · rcases ih h.2 hv with ⟨w, hw, hvar, hoff⟩
+      exact ⟨w, by simp [hw], hvar, hoff⟩
+  | case5 x xs y ys hcmp ih =>
+    simp only [leVars, hcmp] at h
+    rcases ih h hv with ⟨w, hw, hvar, hoff⟩
+    exact ⟨w, by simp [hw], hvar, hoff⟩
+
 private theorem subsumeVars_subset {xs ys : List VarNode} :
     subsumeVars xs ys ⊆ xs := by
   induction xs, ys using subsumeVars.induct with
@@ -943,7 +961,73 @@ theorem NormLevel.eval_congr {a b : NormLevel} (H : a == b) : a.eval ls ρ = b.e
   simp only [eval, Std.TreeMap.foldl_eq_foldl_toList]
   exact evalList_congr H 0
 
+theorem NormLevel.le_eval {a b : NormLevel} (h : a.le b) :
+    a.eval ls ρ ≤ b.eval ls ρ := by
+  rw [NormLevel.eval_le]
+  intro p₁ n₁ hget₁
+  have hmem₁ : (p₁, n₁) ∈ a.toList :=
+    Std.TreeMap.mem_toList_iff_getElem?_eq_some.2 hget₁
+  simp only [NormLevel.le, List.all_eq_true] at h
+  have hentry := h (p₁, n₁) hmem₁
+  dsimp only at hentry
+  split at hentry
+  · rename_i hz
+    simp only [Bool.and_eq_true] at hz
+    have hc : n₁.const = 0 := of_decide_eq_true hz.1
+    have hv : n₁.var = [] := by simpa using hz.2
+    simp [Node.eval, hc, hv, evalPath]
+  · simp only [List.any_eq_true] at hentry
+    rcases hentry with ⟨⟨p₂, n₂⟩, hmem₂, hcmp⟩
+    dsimp only at hcmp
+    simp only [Bool.and_eq_true, Bool.or_eq_true, List.any_eq_true] at hcmp
+    have hsub := hcmp.1.1.2
+    have hconst := hcmp.1.2
+    have hvars := hcmp.2
+    have hget₂ : b.get? p₂ = some n₂ :=
+      Std.TreeMap.mem_toList_iff_getElem?_eq_some.1 hmem₂
+    apply evalPath_le.2
+    intro hnz₁
+    have hnz₂ := allNZ_mono (subset_subset hsub) hnz₁
+    have hnode : n₁.eval ls ρ ≤ n₂.eval ls ρ := by
+      apply Node.eval_le.2
+      constructor
+      · rcases hconst with hc | ⟨w, hw, hpath, hoff⟩
+        · exact Nat.le_trans (of_decide_eq_true hc)
+            (Node.eval_le.1 (Nat.le_refl _) |>.1)
+        · have hpath' : w.var ∈ p₂ := by simpa using hpath
+          exact Nat.le_trans
+            (const_le_activeVar_eval hpath' hnz₂ (of_decide_eq_true hoff))
+            (Node.eval_le.1 (Nat.le_refl _) |>.2 w hw)
+      · intro v hv
+        rcases leVars_dominated hvars hv with ⟨w, hw, hvar, hoff⟩
+        exact Nat.le_trans (varNode_eval_mono hvar hoff)
+          (Node.eval_le.1 (Nat.le_refl _) |>.2 w hw)
+    exact Nat.le_trans hnode
+      (evalPath_le.1 (NormLevel.eval_le.1 (Nat.le_refl _) p₂ n₂ hget₂) hnz₂)
+
 end Normalize
+
+theorem geq'_wf (h : geq' u v)
+    (hu : VLevel.ofLevel ls u = some u') (hv : VLevel.ofLevel ls v = some v') :
+    v' ≤ u' := by
+  intro ρ
+  rw [← Normalize.normalize_eval hv, ← Normalize.normalize_eval hu]
+  exact Normalize.NormLevel.le_eval h
+
+/- The verified comparison bridge closes over Lean's standard logical
+quotient/classical basis only.  In particular it does not inherit a project
+axiom or any of this repository's remaining sorry frontier. -/
+/--
+info: 'Lean.Level.Normalize.NormLevel.le_eval' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms Normalize.NormLevel.le_eval
+
+/--
+info: 'Lean.Level.geq'_wf' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms geq'_wf
 
 theorem isStructEq_eq {u v : Level} (h : isStructEq u v) : u = v := by
   induction u generalizing v with

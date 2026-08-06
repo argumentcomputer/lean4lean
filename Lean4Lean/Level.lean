@@ -170,12 +170,13 @@ def leVars : List VarNode → List VarNode → Bool
     | .gt => leVars (x :: xs) ys
 
 def NormLevel.le (l₁ l₂ : NormLevel) : Bool :=
-  l₁.all fun p₁ n₁ =>
+  l₁.toList.all fun (p₁, n₁) =>
     if n₁.const = 0 && n₁.var.isEmpty then true else
-    l₂.any fun p₂ n₂ =>
+    l₂.toList.any fun (p₂, n₂) =>
       (!n₂.var.isEmpty || n₁.var.isEmpty) &&
       subset compare p₂ p₁ &&
-      (n₁.const ≤ n₂.const || n₂.var.any (n₁.const ≤ ·.offset + 1)) &&
+      (n₁.const ≤ n₂.const ||
+        n₂.var.any fun v => p₂.contains v.var && n₁.const ≤ v.offset + 1) &&
       leVars n₁.var n₂.var
 
 def NormLevel.buildPaths : StateM NormLevel Unit := do

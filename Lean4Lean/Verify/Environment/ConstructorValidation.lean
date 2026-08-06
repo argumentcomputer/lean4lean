@@ -188,23 +188,26 @@ theorem ofLevel_eq_zero_of_isZero
     level' = .zero := by
   cases level <;> simp_all [Level.isZero, VLevel.ofLevel]
 
-/-- Executable universe comparison supported by the current semantic proof.
+/-- Executable universe comparison supported by the semantic proof.
 
-This is deliberately an under-approximation of Lean's constructor validator:
-it accepts the transparent structural comparison and the impredicative Prop
-exception, but not the normalized `Level.geq` fallback.  Soundness of that
-fallback requires a correctness theorem for Lean's core `Level.normalize`,
-which Lean 4.31 does not currently expose. -/
+The structural and impredicative `Prop` branches mirror the ordinary
+validator directly.  A normalized non-`Prop` comparison is admitted only
+when Lean's ordinary `Level.geq` decision and the verified project `geq'`
+decision both succeed.  The former preserves the kernel-facing acceptance
+boundary; the latter supplies the semantic inequality without trusting
+Lean's opaque normalizer. -/
 def constructorUniverseSemanticGe (resultLevel fieldLevel : Level) : Bool :=
-  levelStructGe resultLevel fieldLevel || resultLevel.isZero
+  levelStructGe resultLevel fieldLevel ||
+    (resultLevel.isZero ||
+      (resultLevel.geq fieldLevel && resultLevel.geq' fieldLevel))
 
 /-- Replay just the universe-bearing part of one constructor telescope.
 
 The traversal deliberately follows the validator's parameter substitution,
 ordinary-field local contexts, annotation consumption, and recursion fuel.
-Unlike `checkConstructorType`, it accepts an ordinary field only through the
-proved structural/`Prop` comparison above.  Running this audit in addition to
-the ordinary validator is therefore an executable under-approximation, not a
+Unlike `checkConstructorType`, its normalized fallback also requires the
+proved project comparison above.  Running this audit in addition to the
+ordinary validator is therefore an executable verified intersection, not a
 replacement validator and not a proof-only semantic premise. -/
 def checkConstructorUniverseSemantics (stats : InductiveStats) (t : Expr) :
     M Unit := do
@@ -1744,7 +1747,7 @@ theorem run
   semantic.validation.run
 
 /-- Every universe-bearing node of the retained ordinary trace passed the
-executable structural/`Prop` gate. -/
+executable verified universe gate. -/
 theorem universeSemantics
     (semantic : ConstructorSemanticValidationRun indType stats isUnsafe
       context) :
@@ -1760,13 +1763,17 @@ theorem ConstructorUniverseTrace.nonempty_of_semanticGe
     (valid : constructorUniverseSemanticGe resultLevel fieldLevel = true) :
     Nonempty (ConstructorUniverseTrace resultLevel fieldLevel) := by
   unfold constructorUniverseSemanticGe at valid
-  simp only [Bool.or_eq_true] at valid
-  rcases valid with structural | prop
+  simp only [Bool.or_eq_true, Bool.and_eq_true] at valid
+  rcases valid with structural | prop | ⟨core, _verified⟩
   · exact ⟨.structural structural⟩
-  · cases structural : levelStructGe resultLevel fieldLevel with
-    | true => exact ⟨.structural structural⟩
+  · cases hstruct : levelStructGe resultLevel fieldLevel with
+    | true => exact ⟨.structural hstruct⟩
     | false =>
-        exact ⟨.fallback structural (by simp [prop])⟩
+        exact ⟨.fallback hstruct (by simp [prop])⟩
+  · cases hstruct : levelStructGe resultLevel fieldLevel with
+    | true => exact ⟨.structural hstruct⟩
+    | false =>
+        exact ⟨.fallback hstruct (by simp [core])⟩
 
 /-- The executable semantic subset implies exactly the disjunct required for
 a non-recursive field in `VInductDecl.fieldsWF`: either the family is Prop or
@@ -1777,32 +1784,58 @@ theorem constructorUniverseSemanticGe_ofLevel
     (field_tr : VLevel.ofLevel Us fieldLevel = some field') :
     result' = .zero ∨ field' ≤ result' := by
   unfold constructorUniverseSemanticGe at valid
-  simp only [Bool.or_eq_true] at valid
-  rcases valid with structural | prop
+  simp only [Bool.or_eq_true, Bool.and_eq_true] at valid
+  rcases valid with structural | prop | ⟨_core, verified⟩
   · exact .inr (levelStructGe_ofLevel structural result_tr field_tr)
   · exact .inl (ofLevel_eq_zero_of_isZero prop result_tr)
+  · exact .inr (Level.geq'_wf verified result_tr field_tr)
 
-/-- A fallback accepted solely by normalized `Level.geq` lies outside the
-current sound semantic subset.  L4L-02C may widen this gate only after the
-core level comparison has its own soundness proof. -/
-theorem constructorUniverseSemanticGe_eq_false_of_geq_only
-    (structural : levelStructGe resultLevel fieldLevel = false)
-    (notProp : resultLevel.isZero = false) :
-    constructorUniverseSemanticGe resultLevel fieldLevel = false := by
-  simp [constructorUniverseSemanticGe, structural, notProp]
+/-- Agreement between the ordinary and verified normalized comparisons opens
+the semantic fallback without weakening the ordinary acceptance boundary. -/
+theorem constructorUniverseSemanticGe_eq_true_of_geq_agreement
+    (core : resultLevel.geq fieldLevel = true)
+    (verified : resultLevel.geq' fieldLevel = true) :
+    constructorUniverseSemanticGe resultLevel fieldLevel = true := by
+  simp [constructorUniverseSemanticGe, core, verified]
 
-/- Regression for the v4.31 comparison gap: core normalization recognizes a
-parameter below a `max`, while the sound structural/`Prop` subset deliberately
-rejects that non-`Prop` comparison.  `Level.geq` is opaque, so its executable
-outcome is pinned with `#guard` rather than promoted to an unproved theorem. -/
-#guard (Level.max (.param `u) (.param `v)).geq (.param `u)
-#guard !constructorUniverseSemanticGe
-  (Level.max (.param `u) (.param `v)) (.param `u)
+private def constructorUniverseComparisonSamples : List Level :=
+  [.zero,
+   .succ .zero,
+   .succ (.succ .zero),
+   .param `u,
+   .param `v,
+   .succ (.param `u),
+   .max (.param `u) (.param `v),
+   .max (.succ (.param `u)) (.param `v),
+   .imax (.param `u) (.param `v),
+   .imax (.param `u) (.succ (.param `v)),
+   .imax (.max (.param `u) (.param `v)) (.succ .zero),
+   .max (.imax (.param `u) (.param `v)) (.succ (.param `v))]
 
-/- The universe bridge stays within Theory's accepted quotient/propositional
-baseline.  In particular it does not inherit the project's pending
-level-normalizer sorries, a custom axiom, or Lean's opaque `Level.geq`
-implementation. -/
+/- Differential audit for the mvar-free surface accepted by constructors.
+Every pair in this matrix compares Lean v4.31's core decision with the proved
+project decision; the samples exercise zero, successor, maximum, impredicative
+maximum, parameters, and nested combinations. -/
+#guard constructorUniverseComparisonSamples.all fun resultLevel =>
+  constructorUniverseComparisonSamples.all fun fieldLevel =>
+    resultLevel.geq fieldLevel == resultLevel.geq' fieldLevel
+
+/- Regression for the former D1 gap: the structural and `Prop` branches both
+miss a parameter below a `max`, while core/project normalized comparison
+agrees and the verified semantic fallback now accepts it. -/
+private def constructorUniverseNormalizedResult : Level :=
+  .max (.param `u) (.param `v)
+
+#guard !levelStructGe constructorUniverseNormalizedResult (.param `u)
+#guard !constructorUniverseNormalizedResult.isZero
+#guard constructorUniverseNormalizedResult.geq (.param `u)
+#guard constructorUniverseNormalizedResult.geq' (.param `u)
+#guard constructorUniverseSemanticGe constructorUniverseNormalizedResult
+  (.param `u)
+
+/- The universe bridge stays within Lean's standard logical basis.  In
+particular it does not inherit the project's pending sorries, a custom axiom,
+or a semantic premise for Lean's opaque `Level.geq` implementation. -/
 /--
 info: 'Lean4Lean.AddInductive.levelStructEq_ofLevel' depends on axioms: [propext, Quot.sound]
 -/
@@ -1816,13 +1849,17 @@ info: 'Lean4Lean.AddInductive.levelStructGe_ofLevel' depends on axioms: [propext
 #print axioms levelStructGe_ofLevel
 
 /--
-info: 'Lean4Lean.AddInductive.constructorUniverseSemanticGe_ofLevel' depends on axioms: [propext, Quot.sound]
+info: 'Lean4Lean.AddInductive.constructorUniverseSemanticGe_ofLevel' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
 -/
 #guard_msgs in
 #print axioms constructorUniverseSemanticGe_ofLevel
 
 /--
-info: 'Lean4Lean.AddInductive.ConstructorUniverseTrace.nonempty_of_semanticGe' depends on axioms: [propext, Quot.sound]
+info: 'Lean4Lean.AddInductive.ConstructorUniverseTrace.nonempty_of_semanticGe' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
 -/
 #guard_msgs in
 #print axioms ConstructorUniverseTrace.nonempty_of_semanticGe
@@ -4035,8 +4072,9 @@ namespace VInductDecl
 
 The ordinary outer producer deliberately remains unchanged: its successful
 equation records kernel validation, while this additive wrapper retains the
-strictly smaller universe-semantic audit required by L4L-01D1.  Later
-constructor-semantic checkpoints can extend this owner without making bare
+verified universe-semantic audit introduced by L4L-01D1 and extended by
+L4L-02C.  The normalized branch intersects the ordinary core decision with
+the proved project comparison, without making bare
 `buildNormalizationCandidate` success carry Theory meaning.
 -/
 
@@ -4080,7 +4118,7 @@ def StagedNormalizationCandidateUniverseInput.semanticValidation
   universeRun := input.universeRun
 
 /-- Every universe-bearing node in the staged source-ordered validation trace
-passes the structural/`Prop` semantic subset. -/
+passes the verified semantic universe gate. -/
 theorem StagedNormalizationCandidateUniverseInput.universeSemantics
     {familyContext constructorContext : AddInductive.Context}
     {env : VEnv} {Us : List Name} {source : InductiveType}
