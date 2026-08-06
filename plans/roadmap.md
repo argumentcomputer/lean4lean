@@ -66,8 +66,8 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-01E active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
-| Current formalization source | local-committed L4L-01D4 checkpoint `98921daf15aaf8ec5d1765b4fc274e21f48382ea` at `jcb/formalization`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
+| Ladder position | **L4L-02A active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
+| Current formalization source | local-committed L4L-01E checkpoint `ae6726cef1e1763fc76f03d1fb68fd68267d9b22` at `jcb/formalization`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 22 live sorries and 29 custom-axiom declarations, both pinned by exact audits |
@@ -112,10 +112,13 @@ proof field), a `storedSpine` invariant, and arbitrary-length dependent
 `Produced` list witnesses. Semantic-hierarchy assembly is automatic under
 `Nonempty`; the consolidated generation-readiness gate plus exact dependent
 analysis and analyzer-owned view WF derive checked WF and every per-position
-shape record, so fixtures supply no component equations. The staged
-semantic-input owner, family-validation semantics with post-family staging,
-and the complete retained constructor-validation trace (with source-list
-inversion and phase-local failure theorems) are in place. The source-ordered
+shape record, so fixtures supply no component equations. The generic singleton
+closure combines that staged owner, the exact dependent analysis, and the
+produced generation shape into an exact package while deriving its public
+package; no caller supplies a view, view-WF proof, or per-component equation.
+The staged semantic-input owner, family-validation semantics with post-family
+staging, and the complete retained constructor-validation trace (with
+source-list inversion and phase-local failure theorems) are in place. The source-ordered
 constructor-universe audit accepts only proved structural order or the
 impredicative-Prop exception, retains that stronger result in the staged
 semantic owner, and excludes normalized `Level.geq`-only acceptance until its
@@ -137,9 +140,10 @@ AnnotatedPi (nested recursive-Π with retained `outParam Prop`, generated
 recursor and iota rule), and `IndexedVec` (one parameter, one index, ordered
 `nil`/`cons`, identity normalization) each prove the exact successful whole
 `buildNormalizationCandidate` call, inhabit
-`ProducedGenerationCandidatePackage`, and route both the certified Theory
-transaction and the checked replay through that package. All three also pass
-the strengthened constructor-universe gate and inhabit both produced
+`ExactProducedGenerationCandidatePackage` through the generic closure, erase
+it to `ProducedGenerationCandidatePackage`, and route both the certified
+Theory transaction and the checked replay through that package. All three also
+pass the strengthened constructor-universe gate and inhabit both produced
 post-family and pre-family semantic owners. `IndexedVec` additionally proves
 that validator and candidate field FVars differ while their Theory positions
 still align. Negatives stay sharp:
@@ -159,8 +163,7 @@ indices as `Nat.zero`/`Nat.succ`, deliberately excluding notation's
 replay. `AliasRec` remains the compositional constructor-normalization
 specification until its candidate list is migrated.
 
-**Not claimed.** Generic package construction from an arbitrary successful
-producer call (L4L-01E); WHNF/defeq validation parity, full positivity, small
+**Not claimed.** WHNF/defeq validation parity, full positivity, small
 elimination, K behavior, the complete differential matrix, mutual/nested
 blocks, patterns, projections, and the remaining metatheory/checker roots.
 Bare producer success is never generation-shape authority or Theory semantics.
@@ -352,38 +355,9 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Singleton constructor soundness (L4L-01E)
-
-Constructor fields are checked after the raw family constant is inserted, but
-`VInductDecl.fieldsWF` is intentionally stated over the pre-family
-environment. A general "remove the fresh constant whenever the conclusion is
-family-free" lemma is false — a beta-redex can use the fresh constant in a
-discarded argument — so the remaining work follows one dependency-ordered
-checkpoint, and no stage may claim the strengthened
-theorem from bare `buildNormalizationCandidate` success. Throughout,
-AliasFormer, AnnotatedPi, and `IndexedVec` remain the terminal-alias, nested
-annotated-Π, and parameter/index/multi-constructor regressions; do not weaken
-any boundary to erasure equality, unchecked `zip`, whole-Pi injectivity, a
-caller-selected view, or an assumed normalization theorem, and the
-opaque-`outParam` whole-candidate rejection must stay green and fail before
-package construction.
-
-**L4L-01E — generic singleton package closure (active).** Combine the staged
-owner, exact dependent analysis, and `ProducedGenerationShapeCandidate` into an
-exact `Nonempty ProducedGenerationCandidatePackage`. The theorem must retain
-the successful ordinary producer equation but may not infer the strengthened
-gate or Theory meaning from that equation, and must not accept a view or
-view-WF premise. Raw/view pairing, component equations, checked WF,
-per-position shape records, dependent-list alignment, view telescopes,
-terminal typing, normalization identity, and post-family WF remain derived.
-*Exit:* AliasFormer, AnnotatedPi, and `IndexedVec` use only the generic
-closure theorem; missing/extra/reordered/truncated/non-defeq negatives remain
-sharp; no manual semantic-input/view-WF scaffolding remains; universal gates
-pass. Mutual/nested generalization begins only after L4L-07.
-
 ### Level-comparison proofs (L4L-02A–L4L-02C)
 
-**L4L-02A — level subsumption evaluation.** Prove
+**L4L-02A — level subsumption evaluation (active).** Prove
 `NormLevel.subsumption_eval` with its existing statement and remove exactly
 that sorry-frontier entry. Keep the patch independent of inductive APIs.
 *Exit:* focused Level and full builds pass; the exact axiom closure is
