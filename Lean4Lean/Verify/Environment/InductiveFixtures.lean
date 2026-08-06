@@ -4861,7 +4861,7 @@ private theorem annotatedPiQuickIsDefEqSortZeroAny
       MonadStateOf.modifyGet, monadLift, MonadLift.monadLift,
       StateT.modifyGet, pure, ReaderT.pure, StateT.pure,
       Except.pure, hr', annotatedPiWithEqvManager,
-      Level.isEquiv, Level.isEquiv',
+      Level.isEquiv, Level.isEquiv', Level.isStructEq,
       Bind.bind, ReaderT.bind, StateT.bind,
       Except.bind]
 

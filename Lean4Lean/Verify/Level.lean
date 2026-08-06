@@ -916,32 +916,73 @@ theorem normalize_eval (hu : VLevel.ofLevel ls u = some u') :
 theorem Node.eval_congr {a b : Node} (H : a == b) : a.eval ls ρ = b.eval ls ρ := by
   simp +instances [instBEqNode] at H; simp [H, eval]
 
+private theorem evalList_congr {a b : List (List Name × Node)} (H : a == b) (init : Nat) :
+    a.foldl (init := init) (fun n x => max' n (evalPath ls ρ x.1 (x.2.eval ls ρ))) =
+    b.foldl (init := init) (fun n x => max' n (evalPath ls ρ x.1 (x.2.eval ls ρ))) := by
+  induction a generalizing b init with
+  | nil =>
+    cases b <;> simp_all
+  | cons x xs ih =>
+    cases b with
+    | nil => simp_all
+    | cons y ys =>
+      rcases x with ⟨px, nx⟩
+      rcases y with ⟨py, ny⟩
+      simp [BEq.beq, List.beq] at H
+      have hp : px = py := LawfulBEq.eq_of_beq H.1.1
+      have hv : nx.var = ny.var := LawfulBEq.eq_of_beq H.1.2.2
+      have hn := Node.eval_congr (ls := ls) (ρ := ρ) (show nx == ny by
+        simp +instances [instBEqNode, H.1.2.1, hv])
+      cases hp
+      simp only [List.foldl_cons]
+      rw [hn]
+      exact ih H.2 _
+
 theorem NormLevel.eval_congr {a b : NormLevel} (H : a == b) : a.eval ls ρ = b.eval ls ρ := by
-  simp +instances only [instBEqNormLevel, Std.TreeMap.all_eq_all_toList,
-    Bool.and_eq_true, List.all_eq_true] at H
-  suffices ∀ {a b : NormLevel}, (∀ x ∈ a.toList, b.get? x.1 == some x.2) →
-      a.eval ls ρ ≤ b.eval ls ρ from Nat.le_antisymm (this H.1) (this H.2)
-  clear a b H; intro a b H
+  change a.toList == b.toList at H
   simp only [eval, Std.TreeMap.foldl_eq_foldl_toList]
-  rw [← a.toList.reverse_reverse] at H ⊢; generalize a.toList.reverse = a at H ⊢
-  simp only [List.mem_reverse, Std.TreeMap.get?_eq_getElem?, List.foldl_reverse] at H ⊢
-  induction a with | nil => exact Nat.zero_le _ | cons p l ih; let (x, y) := p
-  simp only [List.mem_cons, or_imp, forall_and, forall_eq, List.foldr_cons] at H ⊢
-  refine Nat.max_le.2 ⟨ih H.2, ?_⟩
-  let ⟨y', h1, h2⟩ := Option.beq_some_iff.1 H.1
-  have H := Std.TreeMap.mem_toList_iff_getElem?_eq_some.2 h1
-  rw [← b.toList.reverse_reverse] at H ⊢; generalize b.toList.reverse = b at H ⊢
-  simp only [List.mem_reverse, List.foldl_reverse] at H ⊢
-  induction b with | nil => cases H | cons p l ih; let (x, y) := p
-  simp; obtain ⟨⟩ | ⟨_, (H : _ ∈ l)⟩ := H
-  · exact Node.eval_congr h2 ▸ Nat.le_max_right ..
-  · exact Nat.le_trans (ih H) (Nat.le_max_left ..)
+  exact evalList_congr H 0
 
 end Normalize
 
-theorem isEquiv_wf (h : isEquiv u v)
+theorem isStructEq_eq {u v : Level} (h : isStructEq u v) : u = v := by
+  induction u generalizing v with
+  | zero => cases v <;> simp_all [isStructEq]
+  | succ u ih =>
+    cases v <;> simp [isStructEq] at h
+    exact congrArg Level.succ (ih h)
+  | max u₁ u₂ ih₁ ih₂ =>
+    cases v <;> simp [isStructEq] at h
+    cases ih₁ h.1
+    cases ih₂ h.2
+    rfl
+  | imax u₁ u₂ ih₁ ih₂ =>
+    cases v <;> simp [isStructEq] at h
+    cases ih₁ h.1
+    cases ih₂ h.2
+    rfl
+  | param u =>
+    cases v <;> simp_all [isStructEq]
+  | mvar u =>
+    rcases u with ⟨u⟩
+    cases v <;> simp_all [isStructEq]
+
+theorem isStructEq_iff_eq {u v : Level} : isStructEq u v ↔ u = v := by
+  constructor
+  · exact isStructEq_eq
+  · rintro rfl
+    induction u <;> simp_all [isStructEq]
+
+theorem isEquiv_wf (h : isEquiv' u v)
     (hu : VLevel.ofLevel ls u = some u') (hv : VLevel.ofLevel ls v = some v') : u' ≈ v' := by
-  sorry
+  simp only [isEquiv', Bool.or_eq_true] at h
+  obtain h | h := h
+  · cases isStructEq_iff_eq.1 h
+    cases hu.symm.trans hv
+    rfl
+  · refine VLevel.equiv_def.2 fun ls' => ?_
+    rw [← Normalize.normalize_eval hu, ← Normalize.normalize_eval hv]
+    exact Normalize.NormLevel.eval_congr h
 
 theorem isEquivList_wf (H : Level.isEquivList us vs) :
     List.mapM (VLevel.ofLevel Us) us = some us' →

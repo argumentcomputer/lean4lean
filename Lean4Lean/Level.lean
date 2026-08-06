@@ -74,9 +74,7 @@ def NormLevel := Std.TreeMap (List Name) Node compare
   deriving Repr
 
 instance : BEq NormLevel where
-  beq l₁ l₂ :=
-    (l₁.all fun p n => l₂.get? p == some n) &&
-    (l₂.all fun p n => l₁.get? p == some n)
+  beq l₁ l₂ := l₁.toList == l₂.toList
 
 def VarNode.addVar (v : Name) (k : Nat) : List VarNode → List VarNode
   | [] => [⟨v, k⟩]
@@ -253,9 +251,22 @@ end Normalize
 
 def normalize' (l : Level) : Level := (Normalize.normalize l (paths := true)).toTree.reify
 
-def isEquiv' (u v : Level) : Bool := u == v || Normalize.normalize u == Normalize.normalize v
+/-- A transparent structural equality test for levels.  Unlike `Level.beq`,
+this test has no opaque runtime contract, so its successful branch can be used
+directly by the verified checker. -/
+def isStructEq : Level → Level → Bool
+  | .zero, .zero => true
+  | .succ u, .succ v => isStructEq u v
+  | .max u₁ u₂, .max v₁ v₂
+  | .imax u₁ u₂, .imax v₁ v₂ => isStructEq u₁ v₁ && isStructEq u₂ v₂
+  | .param u, .param v => u == v
+  | .mvar ⟨u⟩, .mvar ⟨v⟩ => u == v
+  | _, _ => false
 
-def isEquivList : List Level → List Level → Bool := List.all2 isEquiv
+def isEquiv' (u v : Level) : Bool :=
+  isStructEq u v || Normalize.normalize u == Normalize.normalize v
+
+def isEquivList : List Level → List Level → Bool := List.all2 isEquiv'
 
 def geq' (u v : Level) : Bool := (Normalize.normalize v).le (Normalize.normalize u)
 
