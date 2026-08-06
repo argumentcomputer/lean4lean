@@ -131,17 +131,27 @@ def findParent (f : List Name → Bool) : (l₁ l₂ : List Name) → List Name
   | _, [] => []
   | l₁, a :: l₂ => if f (l₁.reverseAux l₂) then [a] else findParent f (a :: l₁) l₂
 
+/-- Whether `n₁.const` is semantically dominated while comparing the node at
+`p₁` with the node at `p₂`.  The path-membership witnesses make the test sound
+for every `NormLevel`, not only maps produced by `normalizeAux`: a variable in
+an active path evaluates to at least one. -/
+abbrev Node.constIsSubsumedBy (n₁ : Node) (p₁ p₂ : List Name) (n₂ : Node) : Prop :=
+  (p₁.length ≠ p₂.length ∧ n₁.const ≤ n₂.const) ∨
+  (n₂.var ≠ [] ∧ ∃ v ∈ n₁.var, v.var ∈ p₁ ∧ n₁.const ≤ v.offset + 1) ∨
+  (p₁.length ≠ p₂.length ∧ n₁.const ≤ 1 ∧ ∃ v ∈ n₂.var, v.var ∈ p₂)
+
+def Node.subsumptionStep (n₁ : Node) (p₁ p₂ : List Name) (n₂ : Node) : Node :=
+  if !subset compare p₂ p₁ then n₁ else
+  let same := p₁.length == p₂.length
+  let n₁ := if n₁.const = 0 ∨ ¬n₁.constIsSubsumedBy p₁ p₂ n₂ then
+    n₁
+  else
+    { n₁ with const := 0 }
+  if same || n₂.var.isEmpty then n₁ else { n₁ with var := subsumeVars n₁.var n₂.var }
+
 def NormLevel.subsumption (acc : NormLevel) (paths := false) : NormLevel :=
   acc.foldl (init := acc) fun acc p₁ n₁ =>
-    let n₁ := acc.foldl (init := n₁) fun n₁ p₂ n₂ =>
-      if !subset compare p₂ p₁ then n₁ else
-      let same := p₁.length == p₂.length
-      let n₁ :=
-        if n₁.const = 0 ||
-          (same || n₁.const > n₂.const) &&
-          (n₂.var.isEmpty || n₁.const > n₁.var.foldl (·.max ·.offset) 0 + 1)
-        then n₁ else { n₁ with const := 0 }
-      if same || n₂.var.isEmpty then n₁ else { n₁ with var := subsumeVars n₁.var n₂.var }
+    let n₁ := acc.foldl (init := n₁) fun n₁ p₂ n₂ => n₁.subsumptionStep p₁ p₂ n₂
     let n₁ := if paths then
       let path := findParent acc.contains [] p₁
       let var := if let [v] := path then subsumeVars n₁.var [⟨v, 0⟩] else n₁.var

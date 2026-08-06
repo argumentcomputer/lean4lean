@@ -540,9 +540,373 @@ theorem normalizeAux_eval (hu : VLevel.ofLevel ls u = some u')
       · rw [NormLevel.addVar_eval H, this, evalPath_cons, evalPath_cons]
         congr 2; split <;> simp [VLevel.eval, ← evalParam_eq hv]
 
+private theorem subset_subset {xs ys : List Name} (h : subset Name.cmp xs ys) :
+    xs ⊆ ys := by
+  induction ys generalizing xs with
+  | nil => cases xs <;> simp_all [subset]
+  | cons y ys ih =>
+    cases xs with
+    | nil => simp
+    | cons x xs =>
+      simp only [subset] at h
+      split at h
+      · contradiction
+      · rename_i hxy
+        have : x = y := by simpa using hxy
+        subst y
+        exact List.cons_subset_cons _ (ih h)
+      · exact List.subset_cons_of_subset _ (ih h)
+
+private theorem subsumeVars_subset {xs ys : List VarNode} :
+    subsumeVars xs ys ⊆ xs := by
+  induction xs, ys using subsumeVars.induct with
+  | case1 ys => simp [subsumeVars]
+  | case2 xs h => simp [subsumeVars]
+  | case3 x xs y ys hcmp ih => simpa [subsumeVars, hcmp] using List.cons_subset_cons x ih
+  | case4 x xs y ys hcmp hoff ih =>
+    simpa [subsumeVars, hcmp, hoff] using
+      List.Subset.trans ih (List.subset_cons_self x xs)
+  | case5 x xs y ys hcmp hoff ih =>
+    simpa [subsumeVars, hcmp, hoff] using List.cons_subset_cons x ih
+  | case6 x xs y ys hcmp ih => simpa [subsumeVars, hcmp] using ih
+
+private theorem subsumeVars_dominated {xs ys : List VarNode} (hz : z ∈ xs) :
+    z ∈ subsumeVars xs ys ∨
+      ∃ y ∈ ys, z.var = y.var ∧ z.offset ≤ y.offset := by
+  induction xs, ys using subsumeVars.induct with
+  | case1 ys => cases hz
+  | case2 xs h => exact .inl (by simpa [subsumeVars])
+  | case3 x xs y ys hcmp ih =>
+    rcases List.mem_cons.mp hz with hzx | hz
+    · subst x; exact .inl (by simp [subsumeVars, hcmp])
+    · exact (ih hz).imp
+        (by simp only [subsumeVars, hcmp, List.mem_cons]; exact .inr)
+        (by rintro ⟨w, hw, hvar, hoff⟩; exact ⟨w, by simp [hw], hvar, hoff⟩)
+  | case4 x xs y ys hcmp hoff ih =>
+    have hvar : x.var = y.var := by simpa using hcmp
+    rcases List.mem_cons.mp hz with hzx | hz
+    · subst x; exact .inr ⟨y, by simp, hvar, hoff⟩
+    · rcases ih hz with hout | ⟨w, hw, hvar, hoff⟩
+      · exact .inl (by simpa [subsumeVars, hcmp, hoff] using hout)
+      · exact .inr ⟨w, by simp [hw], hvar, hoff⟩
+  | case5 x xs y ys hcmp hoff ih =>
+    rcases List.mem_cons.mp hz with hzx | hz
+    · subst x; exact .inl (by simp [subsumeVars, hcmp, hoff])
+    · rcases ih hz with hout | ⟨w, hw, hvar, hoff'⟩
+      · exact .inl (by
+          simp only [subsumeVars, hcmp, if_neg hoff, List.mem_cons]
+          exact .inr hout)
+      · exact .inr ⟨w, by simp [hw], hvar, hoff'⟩
+  | case6 x xs y ys hcmp ih =>
+    exact (ih hz).imp
+      (by simp [subsumeVars, hcmp])
+      (by rintro ⟨w, hw, hvar, hoff⟩; exact ⟨w, by simp [hw], hvar, hoff⟩)
+
+private theorem eval_insert_le {m : NormLevel} {p : List Name} {n : Node}
+    (h : evalPath ls ρ p (n.eval ls ρ) ≤ m.eval ls ρ) :
+    NormLevel.eval ls ρ (m.insert p n) ≤ m.eval ls ρ := by
+  rw [NormLevel.eval_le]
+  intro a b hab
+  simp only [Std.TreeMap.get?_eq_getElem?, Std.TreeMap.getElem?_insert] at hab
+  split at hab
+  · rename_i heq
+    have : p = a := by simpa using heq
+    subst a
+    cases hab
+    exact h
+  · exact NormLevel.eval_le.1 (Nat.le_refl _) _ _ hab
+
+private theorem eval_le_insert {m : NormLevel} {p : List Name} {old new : Node}
+    (hget : m.get? p = some old)
+    (h : evalPath ls ρ p (old.eval ls ρ) ≤ NormLevel.eval ls ρ (m.insert p new)) :
+    m.eval ls ρ ≤ NormLevel.eval ls ρ (m.insert p new) := by
+  rw [NormLevel.eval_le]
+  intro a b hab
+  by_cases hpa : p = a
+  · subst a
+    cases hget.symm.trans hab
+    exact h
+  · apply NormLevel.eval_le.1 (Nat.le_refl _) a b
+    simp only [Std.TreeMap.get?_eq_getElem?, Std.TreeMap.getElem?_insert]
+    have hcmp : compare p a ≠ .eq := by simpa using hpa
+    rw [if_neg hcmp]
+    exact hab
+
+private theorem eval_insert_eq {m : NormLevel} {p : List Name} {old new : Node}
+    (hget : m.get? p = some old)
+    (hnew : evalPath ls ρ p (new.eval ls ρ) ≤ evalPath ls ρ p (old.eval ls ρ))
+    (hold : evalPath ls ρ p (old.eval ls ρ) ≤ NormLevel.eval ls ρ (m.insert p new)) :
+    NormLevel.eval ls ρ (m.insert p new) = m.eval ls ρ := by
+  apply Nat.le_antisymm
+  · apply eval_insert_le
+    exact Nat.le_trans hnew (NormLevel.eval_le.1 (Nat.le_refl _) p old hget)
+  · exact eval_le_insert hget hold
+
+private theorem node_eval_mono {a b : Node} (hc : a.const ≤ b.const)
+    (hv : a.var ⊆ b.var) : a.eval ls ρ ≤ b.eval ls ρ := by
+  apply Node.eval_le.2
+  refine ⟨Nat.le_trans hc (Node.eval_le.1 (Nat.le_refl _) |>.1), ?_⟩
+  intro v hv'
+  exact Node.eval_le.1 (Nat.le_refl _) |>.2 v (hv hv')
+
+private theorem eval_replace_eq {m : NormLevel} {p : List Name} {old new : Node}
+    (hnew : evalPath ls ρ p (new.eval ls ρ) ≤ evalPath ls ρ p (old.eval ls ρ))
+    (hold : evalPath ls ρ p (old.eval ls ρ) ≤ NormLevel.eval ls ρ (m.insert p new)) :
+    NormLevel.eval ls ρ (m.insert p new) = NormLevel.eval ls ρ (m.insert p old) := by
+  apply Nat.le_antisymm
+  · rw [NormLevel.eval_le]
+    intro a b hab
+    simp only [Std.TreeMap.get?_eq_getElem?, Std.TreeMap.getElem?_insert] at hab
+    split at hab
+    · rename_i heq
+      have : p = a := by simpa using heq
+      subst a
+      cases hab
+      exact Nat.le_trans hnew
+        (NormLevel.eval_le.1 (Nat.le_refl _) p old (by
+          simpa only [Std.TreeMap.get?_eq_getElem?] using
+            (Std.TreeMap.getElem?_insert_self (t := m) (k := p) (v := old))))
+    · rename_i hneq
+      apply NormLevel.eval_le.1 (Nat.le_refl _) a b
+      simp only [Std.TreeMap.get?_eq_getElem?, Std.TreeMap.getElem?_insert]
+      rw [if_neg hneq]
+      exact hab
+  · rw [NormLevel.eval_le]
+    intro a b hab
+    simp only [Std.TreeMap.get?_eq_getElem?, Std.TreeMap.getElem?_insert] at hab
+    split at hab
+    · rename_i heq
+      have : p = a := by simpa using heq
+      subst a
+      cases hab
+      exact hold
+    · rename_i hneq
+      apply NormLevel.eval_le.1 (Nat.le_refl _) a b
+      simp only [Std.TreeMap.get?_eq_getElem?, Std.TreeMap.getElem?_insert]
+      rw [if_neg hneq]
+      exact hab
+
+private theorem subsumptionStep_eval_le (n₁ n₂ : Node) (p₁ p₂ : List Name) :
+    (n₁.subsumptionStep p₁ p₂ n₂).eval ls ρ ≤ n₁.eval ls ρ := by
+  unfold Node.subsumptionStep
+  split
+  · exact Nat.le_refl _
+  · dsimp only
+    split <;> split
+    all_goals apply node_eval_mono
+    all_goals simp [subsumeVars_subset]
+
+private theorem insert_self_bound {m : NormLevel} {p : List Name} {n : Node} :
+    evalPath ls ρ p (n.eval ls ρ) ≤ NormLevel.eval ls ρ (m.insert p n) := by
+  apply NormLevel.eval_le.1 (Nat.le_refl _) p n
+  simpa only [Std.TreeMap.get?_eq_getElem?] using
+    (Std.TreeMap.getElem?_insert_self (t := m) (k := p) (v := n))
+
+private theorem insert_other_bound {m : NormLevel} {p q : List Name} {new n : Node}
+    (hpq : p ≠ q) (hget : m.get? q = some n) :
+    evalPath ls ρ q (n.eval ls ρ) ≤ NormLevel.eval ls ρ (m.insert p new) := by
+  apply NormLevel.eval_le.1 (Nat.le_refl _) q n
+  simp only [Std.TreeMap.get?_eq_getElem?, Std.TreeMap.getElem?_insert]
+  have hcmp : compare p q ≠ .eq := by simpa using hpq
+  rw [if_neg hcmp]
+  exact hget
+
+private theorem const_le_activeVar_eval {v : VarNode} (hv : v.var ∈ p)
+    (hnz : allNZ ls ρ p) (hc : c ≤ v.offset + 1) : c ≤ v.eval ls ρ := by
+  simp [allNZ] at hnz
+  simp only [VarNode.eval]
+  specialize hnz _ hv
+  omega
+
+private theorem varNode_eval_mono {v w : VarNode} (hvar : v.var = w.var)
+    (hoff : v.offset ≤ w.offset) : v.eval ls ρ ≤ w.eval ls ρ := by
+  simp only [VarNode.eval, hvar]
+  omega
+
+private theorem vars_le_self {m : NormLevel} {p : List Name} {old new : Node}
+    (hvars : old.var ⊆ new.var) (hnz : allNZ ls ρ p) :
+    ∀ v ∈ old.var, v.eval ls ρ ≤ NormLevel.eval ls ρ (m.insert p new) := by
+  have hnode := evalPath_le.1 (insert_self_bound (ls := ls) (ρ := ρ)
+    (m := m) (p := p) (n := new)) hnz
+  exact fun v hv => Node.eval_le.1 hnode |>.2 v (hvars hv)
+
+private theorem vars_le_after_subsume {m : NormLevel} {p₁ p₂ : List Name}
+    {old new n₂ : Node} (hvars : new.var = subsumeVars old.var n₂.var)
+    (hsub : subset Name.cmp p₂ p₁) (hlen : p₁.length ≠ p₂.length)
+    (hget : m.get? p₂ = some n₂) (hnz : allNZ ls ρ p₁) :
+    ∀ v ∈ old.var, v.eval ls ρ ≤ NormLevel.eval ls ρ (m.insert p₁ new) := by
+  intro v hv
+  rcases subsumeVars_dominated hv with hkeep | ⟨w, hw, hvar, hoff⟩
+  · have hnode := evalPath_le.1 (insert_self_bound (ls := ls) (ρ := ρ)
+      (m := m) (p := p₁) (n := new)) hnz
+    exact Node.eval_le.1 hnode |>.2 v (by rw [hvars]; exact hkeep)
+  · have hpne : p₁ ≠ p₂ := fun h => hlen (congrArg List.length h)
+    have hnz₂ := allNZ_mono (subset_subset hsub) hnz
+    have hnode := evalPath_le.1 (insert_other_bound (ls := ls) (ρ := ρ)
+      (m := m) (p := p₁) (q := p₂) (new := new) hpne hget) hnz₂
+    exact Nat.le_trans (varNode_eval_mono hvar hoff)
+      (Node.eval_le.1 hnode |>.2 w hw)
+
+private theorem const_le_of_subsumed {m : NormLevel} {p₁ p₂ : List Name}
+    {old new n₂ : Node} (hdom : old.constIsSubsumedBy p₁ p₂ n₂)
+    (hsub : subset Name.cmp p₂ p₁) (hget : m.get? p₂ = some n₂)
+    (hvars : ∀ v ∈ old.var,
+      v.eval ls ρ ≤ NormLevel.eval ls ρ (m.insert p₁ new))
+    (hnz : allNZ ls ρ p₁) :
+    old.const ≤ NormLevel.eval ls ρ (m.insert p₁ new) := by
+  rcases hdom with ⟨hlen, hc⟩ | ⟨hne, v, hv, hvp, hc⟩ |
+      ⟨hlen, hc, v, hv, hvp⟩
+  · have hpne : p₁ ≠ p₂ := fun h => hlen (congrArg List.length h)
+    have hnz₂ := allNZ_mono (subset_subset hsub) hnz
+    have hnode := evalPath_le.1 (insert_other_bound (ls := ls) (ρ := ρ)
+      (m := m) (p := p₁) (q := p₂) (new := new) hpne hget) hnz₂
+    exact Nat.le_trans hc (Node.eval_le.1 hnode |>.1)
+  · exact Nat.le_trans (const_le_activeVar_eval hvp hnz hc) (hvars v hv)
+  · have hpne : p₁ ≠ p₂ := fun h => hlen (congrArg List.length h)
+    have hnz₂ := allNZ_mono (subset_subset hsub) hnz
+    have hnode := evalPath_le.1 (insert_other_bound (ls := ls) (ρ := ρ)
+      (m := m) (p := p₁) (q := p₂) (new := new) hpne hget) hnz₂
+    have hcv : old.const ≤ v.offset + 1 := by omega
+    exact Nat.le_trans (const_le_activeVar_eval hvp hnz₂ hcv)
+      (Node.eval_le.1 hnode |>.2 v hv)
+
+private theorem subsumptionStep_bound {m : NormLevel} {p₁ p₂ : List Name}
+    {n₁ n₂ : Node} (hget : m.get? p₂ = some n₂) :
+    evalPath ls ρ p₁ (n₁.eval ls ρ) ≤
+      NormLevel.eval ls ρ (m.insert p₁ (n₁.subsumptionStep p₁ p₂ n₂)) := by
+  unfold Node.subsumptionStep
+  split
+  · exact insert_self_bound
+  · rename_i hsub'
+    simp at hsub'
+    change subset Name.cmp p₂ p₁ at hsub'
+    have hsub := hsub'
+    dsimp only
+    split
+    · rename_i hvars'
+      split
+      · exact insert_self_bound
+      · rename_i hconst
+        have hdom : n₁.constIsSubsumedBy p₁ p₂ n₂ := by
+          by_cases hdom : n₁.constIsSubsumedBy p₁ p₂ n₂
+          · exact hdom
+          · exact False.elim (hconst (.inr hdom))
+        apply evalPath_le.2
+        intro hnz
+        apply Node.eval_le.2
+        have hvars := vars_le_self (ls := ls) (ρ := ρ)
+          (m := m) (p := p₁) (old := n₁) (new := { n₁ with const := 0 })
+          (by simp) hnz
+        exact ⟨const_le_of_subsumed (ls := ls) (ρ := ρ)
+          hdom hsub hget hvars hnz, hvars⟩
+    · rename_i hvars'
+      simp at hvars'
+      split
+      · rename_i hconst
+        apply evalPath_le.2
+        intro hnz
+        apply Node.eval_le.2
+        have hvars := vars_le_after_subsume (ls := ls) (ρ := ρ)
+          (m := m) (p₁ := p₁) (p₂ := p₂) (old := n₁)
+          (new := { n₁ with var := subsumeVars n₁.var n₂.var }) (n₂ := n₂)
+          (by simp) hsub hvars'.1 hget hnz
+        have hnode := evalPath_le.1 (insert_self_bound (ls := ls) (ρ := ρ)
+          (m := m) (p := p₁) (n := { n₁ with var := subsumeVars n₁.var n₂.var })) hnz
+        exact ⟨Node.eval_le.1 hnode |>.1, hvars⟩
+      · rename_i hconst
+        have hdom : n₁.constIsSubsumedBy p₁ p₂ n₂ := by
+          by_cases hdom : n₁.constIsSubsumedBy p₁ p₂ n₂
+          · exact hdom
+          · exact False.elim (hconst (.inr hdom))
+        apply evalPath_le.2
+        intro hnz
+        apply Node.eval_le.2
+        have hvars := vars_le_after_subsume (ls := ls) (ρ := ρ)
+          (m := m) (p₁ := p₁) (p₂ := p₂) (old := n₁)
+          (new := { n₁ with const := 0, var := subsumeVars n₁.var n₂.var })
+          (n₂ := n₂) (by simp) hsub hvars'.1 hget hnz
+        exact ⟨const_le_of_subsumed (ls := ls) (ρ := ρ)
+          hdom hsub hget hvars hnz, hvars⟩
+
+private theorem subsumptionStep_eval {m : NormLevel} {p₁ p₂ : List Name}
+    {n₁ n₂ : Node} (hget : m.get? p₂ = some n₂) :
+    NormLevel.eval ls ρ (m.insert p₁ (n₁.subsumptionStep p₁ p₂ n₂)) =
+      NormLevel.eval ls ρ (m.insert p₁ n₁) := by
+  apply eval_replace_eq
+  · exact evalPath_mono (subsumptionStep_eval_le n₁ n₂ p₁ p₂)
+  · exact subsumptionStep_bound hget
+
+private theorem subsumptionList_eval {m : NormLevel} {p₁ : List Name}
+    {entries : List (List Name × Node)}
+    (hentries : ∀ x ∈ entries, m.get? x.1 = some x.2) (n₁ : Node) :
+    NormLevel.eval ls ρ
+      (m.insert p₁ (entries.foldl (init := n₁)
+        fun n₁ x => n₁.subsumptionStep p₁ x.1 x.2)) =
+      NormLevel.eval ls ρ (m.insert p₁ n₁) := by
+  induction entries generalizing n₁ with
+  | nil => rfl
+  | cons x entries ih =>
+    rcases x with ⟨p₂, n₂⟩
+    simp only [List.foldl_cons]
+    calc
+      NormLevel.eval ls ρ
+          (m.insert p₁ (entries.foldl (init := n₁.subsumptionStep p₁ p₂ n₂)
+            fun n₁ x => n₁.subsumptionStep p₁ x.1 x.2)) =
+        NormLevel.eval ls ρ (m.insert p₁ (n₁.subsumptionStep p₁ p₂ n₂)) :=
+          ih (fun x hx => hentries x (List.Mem.tail _ hx)) _
+      _ = NormLevel.eval ls ρ (m.insert p₁ n₁) :=
+        subsumptionStep_eval (hentries _ (.head _))
+
+private theorem subsumptionFold_eval {m : NormLevel} {p₁ : List Name} (n₁ : Node) :
+    NormLevel.eval ls ρ
+      (m.insert p₁ (m.foldl (init := n₁)
+        fun n₁ p₂ n₂ => n₁.subsumptionStep p₁ p₂ n₂)) =
+      NormLevel.eval ls ρ (m.insert p₁ n₁) := by
+  rw [Std.TreeMap.foldl_eq_foldl_toList]
+  apply subsumptionList_eval
+  intro x hx
+  exact Std.TreeMap.mem_toList_iff_getElem?_eq_some.1 hx
+
+private theorem subsumptionOuterList_eval {entries : List (List Name × Node)}
+    {m : NormLevel}
+    (hentries : ∀ x ∈ entries, m.get? x.1 = some x.2)
+    (hdistinct : entries.Pairwise fun a b => ¬compare a.1 b.1 = .eq) :
+    NormLevel.eval ls ρ
+      (entries.foldl (init := m) fun m x =>
+        m.insert x.1 (m.foldl (init := x.2)
+          fun n₁ p₂ n₂ => n₁.subsumptionStep x.1 p₂ n₂)) =
+      NormLevel.eval ls ρ m := by
+  induction entries generalizing m with
+  | nil => rfl
+  | cons x entries ih =>
+    rcases x with ⟨p₁, n₁⟩
+    simp only [List.pairwise_cons] at hdistinct
+    simp only [List.foldl_cons]
+    let n₁' := m.foldl (init := n₁)
+      fun n₁ p₂ n₂ => n₁.subsumptionStep p₁ p₂ n₂
+    let m' := m.insert p₁ n₁'
+    have hentries' : ∀ x ∈ entries, m'.get? x.1 = some x.2 := by
+      intro x hx
+      simp only [m', Std.TreeMap.get?_eq_getElem?, Std.TreeMap.getElem?_insert]
+      rw [if_neg (hdistinct.1 x hx)]
+      exact hentries x (.tail _ hx)
+    have hstep : NormLevel.eval ls ρ m' = NormLevel.eval ls ρ m := by
+      calc
+        NormLevel.eval ls ρ m' = NormLevel.eval ls ρ (m.insert p₁ n₁) :=
+          subsumptionFold_eval n₁
+        _ = NormLevel.eval ls ρ m := eval_insert_eq
+          (hentries _ (.head _)) (Nat.le_refl _) insert_self_bound
+    exact (ih hentries' hdistinct.2).trans hstep
+
 theorem NormLevel.subsumption_eval {s : NormLevel} :
     s.subsumption.eval ls ρ = s.eval ls ρ := by
-  sorry
+  unfold NormLevel.subsumption
+  rw [Std.TreeMap.foldl_eq_foldl_toList]
+  simp only [Bool.false_eq_true, if_false]
+  apply subsumptionOuterList_eval
+  · intro x hx
+    exact Std.TreeMap.mem_toList_iff_getElem?_eq_some.1 hx
+  · exact Std.TreeMap.distinct_keys_toList
 
 theorem normalize_eval (hu : VLevel.ofLevel ls u = some u') :
     (normalize u).eval ls ρ = u'.eval ρ := by
