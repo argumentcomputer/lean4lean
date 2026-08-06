@@ -139,12 +139,51 @@ theorem cvmFamilyValidationAnnotations :
   simpa [cvmCandidate,
     AddInductive.NormalizationCandidateExecution.candidate] using h
 
+private theorem cvmFamilyData_hasExprMVar_false :
+    constructorValidityMatrixInfo.type.data.hasExprMVar = false := by
+  change constructorValidityMatrixInfo.type.hasExprMVar = false
+  rw [Expr.hasExprMVar_eq]
+  rfl
+
+private theorem cvmFamilyData_hasLevelMVar_false :
+    constructorValidityMatrixInfo.type.data.hasLevelMVar = false := by
+  change constructorValidityMatrixInfo.type.hasLevelMVar = false
+  rw [Expr.hasLevelMVar_eq]
+  simp [constructorValidityMatrixInfo, ConstantInfo.type,
+    ConstantInfo.toConstantVal, Expr.hasLevelMVar',
+    Level.hasMVar_eq, Level.hasMVar']
+
+private theorem cvmFamilyData_hasFVar_false :
+    constructorValidityMatrixInfo.type.data.hasFVar = false := by
+  change constructorValidityMatrixInfo.type.hasFVar = false
+  rw [Expr.hasFVar_eq]
+  rfl
+
+private theorem cvmFamily_hasMVar_false :
+    constructorValidityMatrixInfo.type.hasMVar = false := by
+  change (constructorValidityMatrixInfo.type.data.hasExprMVar ||
+    constructorValidityMatrixInfo.type.data.hasLevelMVar) = false
+  rw [cvmFamilyData_hasExprMVar_false,
+    cvmFamilyData_hasLevelMVar_false]
+  rfl
+
+private theorem cvmFamily_hasFVar_false :
+    constructorValidityMatrixInfo.type.hasFVar = false :=
+  cvmFamilyData_hasFVar_false
+
 theorem cvmFamilyClosed :
     cvmCandidate.families.singleton.familyType.type.context.env.checkNoMVarNoFVar
         constructorValidityMatrixKernelType.name
         constructorValidityMatrixKernelType.type = .ok () := by
-  apply exceptUnit_eq_ok_of_isOk
-  native_decide
+  unfold Kernel.Environment.checkNoMVarNoFVar
+    Kernel.Environment.checkNoMVar Kernel.Environment.checkNoFVar
+  rw [show constructorValidityMatrixKernelType.type.hasMVar = false by
+    simpa [constructorValidityMatrixKernelType] using
+      cvmFamily_hasMVar_false]
+  rw [show constructorValidityMatrixKernelType.type.hasFVar = false by
+    simpa [constructorValidityMatrixKernelType] using
+      cvmFamily_hasFVar_false]
+  rfl
 
 theorem cvmFamilyEnsureSort :
     TypeChecker.M.run
@@ -658,12 +697,51 @@ theorem prbFamilyValidationAnnotations :
   simpa [prbCandidate,
     AddInductive.NormalizationCandidateExecution.candidate] using h
 
+private theorem prbFamilyData_hasExprMVar_false :
+    propRecursiveBoundaryInfo.type.data.hasExprMVar = false := by
+  change propRecursiveBoundaryInfo.type.hasExprMVar = false
+  rw [Expr.hasExprMVar_eq]
+  rfl
+
+private theorem prbFamilyData_hasLevelMVar_false :
+    propRecursiveBoundaryInfo.type.data.hasLevelMVar = false := by
+  change propRecursiveBoundaryInfo.type.hasLevelMVar = false
+  rw [Expr.hasLevelMVar_eq]
+  simp [propRecursiveBoundaryInfo, ConstantInfo.type,
+    ConstantInfo.toConstantVal, Expr.hasLevelMVar',
+    Level.hasMVar_eq, Level.hasMVar']
+
+private theorem prbFamilyData_hasFVar_false :
+    propRecursiveBoundaryInfo.type.data.hasFVar = false := by
+  change propRecursiveBoundaryInfo.type.hasFVar = false
+  rw [Expr.hasFVar_eq]
+  rfl
+
+private theorem prbFamily_hasMVar_false :
+    propRecursiveBoundaryInfo.type.hasMVar = false := by
+  change (propRecursiveBoundaryInfo.type.data.hasExprMVar ||
+    propRecursiveBoundaryInfo.type.data.hasLevelMVar) = false
+  rw [prbFamilyData_hasExprMVar_false,
+    prbFamilyData_hasLevelMVar_false]
+  rfl
+
+private theorem prbFamily_hasFVar_false :
+    propRecursiveBoundaryInfo.type.hasFVar = false :=
+  prbFamilyData_hasFVar_false
+
 theorem prbFamilyClosed :
     prbCandidate.families.singleton.familyType.type.context.env.checkNoMVarNoFVar
         propRecursiveBoundaryKernelType.name
         propRecursiveBoundaryKernelType.type = .ok () := by
-  apply exceptUnit_eq_ok_of_isOk
-  native_decide
+  unfold Kernel.Environment.checkNoMVarNoFVar
+    Kernel.Environment.checkNoMVar Kernel.Environment.checkNoFVar
+  rw [show propRecursiveBoundaryKernelType.type.hasMVar = false by
+    simpa [propRecursiveBoundaryKernelType] using
+      prbFamily_hasMVar_false]
+  rw [show propRecursiveBoundaryKernelType.type.hasFVar = false by
+    simpa [propRecursiveBoundaryKernelType] using
+      prbFamily_hasFVar_false]
+  rfl
 
 theorem prbFamilyEnsureSort :
     TypeChecker.M.run
@@ -1556,7 +1634,7 @@ theorem cvmReplayMk_fresh :
       none := by
   rw [cvmReplayTypeMap,
     SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
-  native_decide
+  simp [constructorValidityMatrixType, SMap.find?]
 
 theorem cvmReplayCtorMap_wf : cvmReplayCtorMap.WF :=
   cvmReplayTypeMap_wf.insert _ _ cvmReplayMk_fresh
@@ -1566,7 +1644,7 @@ theorem cvmReplayRec_fresh :
   rw [cvmReplayCtorMap, cvmReplayTypeMap_wf.find?_insert,
     cvmReplayTypeMap,
     SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
-  native_decide
+  simp [constructorValidityMatrixType, SMap.find?]
 
 noncomputable def cvmAddInductTraceChecked :
     AddInductTrace ({} : ConstMap) VEnv.empty constructorValidityMatrixDecl
@@ -1796,7 +1874,7 @@ theorem prbReplayMk_fresh :
       none := by
   rw [prbReplayTypeMap,
     SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
-  native_decide
+  simp [propRecursiveBoundaryType, SMap.find?]
 
 theorem prbReplayCtorMap_wf : prbReplayCtorMap.WF :=
   prbReplayTypeMap_wf.insert _ _ prbReplayMk_fresh
@@ -1806,7 +1884,7 @@ theorem prbReplayRec_fresh :
   rw [prbReplayCtorMap, prbReplayTypeMap_wf.find?_insert,
     prbReplayTypeMap,
     SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
-  native_decide
+  simp [propRecursiveBoundaryType, SMap.find?]
 
 noncomputable def prbAddInductTraceChecked :
     AddInductTrace ({} : ConstMap) VEnv.empty propRecursiveBoundaryDecl
