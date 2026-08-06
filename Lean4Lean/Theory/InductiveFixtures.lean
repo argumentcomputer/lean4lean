@@ -1582,6 +1582,137 @@ info: 'Lean4Lean.InductiveFixtures.aliasRecFinalEnv_ordered' depends on axioms: 
 #guard_msgs in
 #print axioms aliasRecFinalEnv_ordered
 
+/-! ## Normalization differential matrix
+
+The isolated `AliasFormer` and `AliasRec` fixtures above establish that Lean
+retains reducible aliases at family results and direct recursive targets.  The
+single indexed declaration below covers every remaining normalization
+position in one real kernel payload: parameter and index domains, ordinary
+fields, direct recursion, recursion hidden behind a Pi-producing alias, and
+beta/let redexes retained in alias definitions.  Its view is deliberately
+written out so changes to either Lean's stored metadata or the Theory
+normalizer fail by computation.
+-/
+
+abbrev MatrixBetaAlias (alpha : Sort u) :=
+  (fun type : Sort u => type) alpha
+
+abbrev MatrixLetAlias (alpha : Sort u) :=
+  let type := alpha
+  type
+
+abbrev MatrixPiAlias (alpha : Sort u) := (proof : Prop) → alpha
+
+abbrev MatrixIndexAlias
+    (index : TypeFamilyAlias) : TypeFamilyAlias := index
+
+inductive NormalizationMatrix (alpha : TypeFamilyAlias) :
+    TypeFamilyAlias → Type 1 where
+  | mk (index : TypeFamilyAlias)
+      (ordinary : RecAlias Prop)
+      (beta : MatrixBetaAlias Prop)
+      (letBound : MatrixLetAlias Prop)
+      (direct : RecAlias
+        (NormalizationMatrix alpha (MatrixIndexAlias index)))
+      (piHidden : MatrixPiAlias
+        (NormalizationMatrix alpha (MatrixIndexAlias index)))
+      (betaRecursive : MatrixBetaAlias
+        (NormalizationMatrix alpha (MatrixIndexAlias index)))
+      (letRecursive : MatrixLetAlias
+        (NormalizationMatrix alpha (MatrixIndexAlias index))) :
+      NormalizationMatrix alpha (MatrixIndexAlias index)
+
+def normalizationMatrixRawType : VInductiveType where
+  name := ``NormalizationMatrix
+  uvars := 0
+  type := vconst(type_of% @NormalizationMatrix).type
+  ctors := [⟨vconst(type_of% @NormalizationMatrix.mk),
+    ``NormalizationMatrix.mk⟩]
+
+def normalizationMatrixRawDecl : VInductDecl :=
+  ⟨0, 1, [normalizationMatrixRawType]⟩
+
+def normalizationMatrixTarget (alpha index : VExpr) : VExpr :=
+  (VExpr.const ``NormalizationMatrix []).app alpha |>.app
+    ((VExpr.const ``MatrixIndexAlias []).app index)
+
+def normalizationMatrixViewCtorType : VExpr :=
+  .forallE (.sort (.succ .zero)) <|
+  .forallE (.sort (.succ .zero)) <|
+  .forallE (.sort .zero) <|
+  .forallE (.sort .zero) <|
+  .forallE (.sort .zero) <|
+  .forallE (normalizationMatrixTarget (.bvar 4) (.bvar 3)) <|
+  .forallE (.forallE (.sort .zero)
+    (normalizationMatrixTarget (.bvar 6) (.bvar 5))) <|
+  .forallE (normalizationMatrixTarget (.bvar 6) (.bvar 5)) <|
+  .forallE (normalizationMatrixTarget (.bvar 7) (.bvar 6)) <|
+  normalizationMatrixTarget (.bvar 8) (.bvar 7)
+
+def normalizationMatrixViewCtor : VConstVal :=
+  { normalizationMatrixRawType.ctors[0] with
+    type := normalizationMatrixViewCtorType }
+
+def normalizationMatrixViewType : VInductiveType :=
+  { normalizationMatrixRawType with
+    type := .forallE (.sort (.succ .zero))
+      (.forallE (.sort (.succ .zero))
+        (.sort (.succ (.succ .zero))))
+    ctors := [normalizationMatrixViewCtor] }
+
+def normalizationMatrixViewDecl : VInductDecl :=
+  ⟨0, 1, [normalizationMatrixViewType]⟩
+
+example : normalizationMatrixRawType.type =
+    (VExpr.const ``TypeFamilyAlias []).forallE
+      ((VExpr.const ``TypeFamilyAlias []).forallE
+        (VExpr.sort (.succ (.succ .zero)))) := rfl
+
+example : normalizationMatrixRawType.ctors[0].type =
+    vconst(type_of% @NormalizationMatrix.mk).type := rfl
+
+example : normalizationMatrixRawDecl.checked? = none := rfl
+example : normalizationMatrixViewDecl.checked?.isSome = true := rfl
+example : normalizationShape normalizationMatrixRawDecl
+    normalizationMatrixViewDecl = true := rfl
+
+def normalizationMatrixNormalization :
+    Normalization normalizationMatrixRawDecl where
+  view := normalizationMatrixViewDecl
+  shape_eq := rfl
+
+def normalizationMatrixViewChecked :
+    normalizationMatrixViewDecl.Checked :=
+  normalizationMatrixViewDecl.checked?.get (by decide)
+
+def normalizationMatrixBlock :
+    NormalizedChecked normalizationMatrixRawDecl :=
+  normalizationMatrixNormalization.check?.get (by decide)
+
+def normalizationMatrixGenerationChecked :
+    GenerationChecked normalizationMatrixRawDecl :=
+  normalizationMatrixBlock.generation?.get (by decide)
+
+example : normalizationMatrixNormalization.accepted = true := rfl
+example : (normalizedChecked? normalizationMatrixRawDecl
+    normalizationMatrixViewDecl).isSome = true := rfl
+example : normalizationMatrixBlock.checked.type =
+    normalizationMatrixViewType := rfl
+example : normalizationMatrixViewChecked.params =
+    [.sort (.succ .zero)] := rfl
+example : normalizationMatrixViewChecked.indices =
+    [.sort (.succ .zero)] := rfl
+example : normalizationMatrixViewChecked.constructors[0].fields.length = 8 :=
+  rfl
+example : normalizationMatrixViewChecked.constructors[0].recursive.length = 4 :=
+  rfl
+example : normalizationMatrixViewChecked.constructors[0].recursive.map
+    (fun position => (position.fieldIndex, position.binders.length)) =
+      [(4, 0), (5, 1), (6, 0), (7, 0)] := rfl
+example : normalizationMatrixGenerationChecked.recursor =
+    vconst(type_of% @NormalizationMatrix.rec) := rfl
+example : normalizationMatrixGenerationChecked.generatedRules.length = 1 := rfl
+
 /-! ## Checked-analysis rejection fixtures -/
 
 /-

@@ -649,6 +649,48 @@ def NormalizedChecked.rawResult {source : VInductDecl}
     (block : NormalizedChecked source) : VExpr :=
   VExpr.resultOf (VExpr.dropN source.nparams block.sourceType.type)
 
+/-- Whether a stored parameter domain has one of the four top-level type
+annotations consumed by Lean before it creates the common recursor parameter
+telescope.  Ordinary reducible constants are intentionally not inspected:
+their raw syntax remains observable in generated kernel metadata. -/
+def _root_.Lean4Lean.VExpr.hasTypeAnnotation : VExpr → Bool
+  | .app (.const name _) _ =>
+    name == ``_root_.outParam || name == ``_root_.semiOutParam
+  | .app (.app (.const name _) _) _ =>
+    name == ``_root_.optParam || name == ``_root_.autoParam
+  | _ => false
+
+/-- Parameter surface emitted by recursor generation. Annotation wrappers use
+the analyzer-owned consumed view; every other parameter keeps the stored raw
+domain even when its WHNF differs. -/
+def generationParam (raw view : VExpr) : VExpr :=
+  if raw.hasTypeAnnotation then view else raw
+
+/-- Positional common-parameter telescope used by generated artifacts. -/
+def generationParams : List VExpr → List VExpr → List VExpr
+  | raw :: raws, view :: views =>
+    generationParam raw view :: generationParams raws views
+  | _, _ => []
+
+@[simp] theorem generationParams_self :
+    ∀ params, generationParams params params = params
+  | [] => rfl
+  | param :: params => by
+    simp [generationParams, generationParam, generationParams_self params]
+
+theorem generationParams_length_of_eq :
+    ∀ {raw view : List VExpr}, raw.length = view.length →
+      (generationParams raw view).length = raw.length
+  | [], [], _ => rfl
+  | _ :: _, _ :: _, h => by
+    simp only [generationParams, List.length_cons]
+    exact congrArg Nat.succ
+      (generationParams_length_of_eq (Nat.succ.inj h))
+
+def NormalizedChecked.generationParams {source : VInductDecl}
+    (block : NormalizedChecked source) : List VExpr :=
+  VInductDecl.generationParams block.rawParams block.checked.params
+
 def NormalizedChecked.ctorPairs {source : VInductDecl}
     (block : NormalizedChecked source) : List NormalizedCtor :=
   pairNormalizedCtors block.sourceType.ctors block.checked.constructors
@@ -1023,14 +1065,14 @@ below re-runs `recArg?` on raw metadata.
 
 namespace GenerationChecked
 
-/-- Checked family-parameter telescope in recursor universes.
+/-- Kernel-observable family-parameter telescope in recursor universes.
 
-This deliberately does not use `rawParams`: annotations such as `outParam`
-are present in stored metadata but are consumed before Lean emits the common
-recursor parameter telescope. -/
+Lean consumes the four parameter annotations before emission, but otherwise
+retains stored syntax rather than replacing reducible aliases by their WHNF. -/
 def paramsTel {source : VInductDecl} (gen : GenerationChecked source) :
     List VExpr :=
-  gen.block.checked.params.map (VExpr.instL (VLevel.params' source.uvars 1))
+  gen.block.generationParams.map
+    (VExpr.instL (VLevel.params' source.uvars 1))
 
 /-- Raw index-binder telescope in recursor universes. -/
 def idxTel {source : VInductDecl} (gen : GenerationChecked source) :
@@ -1142,6 +1184,7 @@ private theorem identity_paramsTel {decl : VInductDecl}
     checked.identityGeneration.paramsTel =
       VInductDecl.paramsTel decl.uvars decl.nparams checked.type := by
   simp [GenerationChecked.paramsTel, VInductDecl.paramsTel,
+    NormalizedChecked.generationParams, NormalizedChecked.rawParams,
     Checked.identityGeneration, Checked.identityBlock, checked.params_eq]
 
 private theorem identity_idxTel {decl : VInductDecl}
