@@ -7506,17 +7506,6 @@ private def aliasFormerCandidateFamilyRun :
       aliasFormerFamilyListCandidate aliasFormerRawType :=
   aliasFormerCandidateFamilySemanticRun.root
 
-/-- Temporary L4L-01A compatibility witness used by downstream generation.
-The staged owner above independently proves existence without choosing this
-value; L4L-01E removes the explicit witness. -/
-private def aliasFormerNormalizationCandidateSemanticRun :
-    VInductDecl.NormalizationCandidateSemanticRun typeFamilyAliasEnv []
-      aliasFormerNormalizationCandidate aliasFormerRawDecl where
-  raw := aliasFormerRawType
-  raw_types_eq := rfl
-  uvars_eq := rfl
-  family := aliasFormerCandidateFamilySemanticRun
-
 private noncomputable def aliasFormerStagedUniverseInput :
     VInductDecl.StagedNormalizationCandidateUniverseInput
       aliasFormerCandidateContext aliasFormerCtorCandidateContext
@@ -7778,8 +7767,11 @@ theorem aliasFormerProducedPreFamilySemantic_exists :
 
 def aliasFormerNormalizationCandidateRun :
     VInductDecl.NormalizationCandidateRun typeFamilyAliasEnv []
-      aliasFormerNormalizationCandidate aliasFormerRawDecl :=
-  aliasFormerNormalizationCandidateSemanticRun.root
+      aliasFormerNormalizationCandidate aliasFormerRawDecl where
+  raw := aliasFormerRawType
+  raw_types_eq := rfl
+  uvars_eq := rfl
+  family := aliasFormerCandidateFamilyRun
 
 example : aliasFormerNormalizationCandidateRun.viewDecl =
     aliasFormerViewDecl := rfl
@@ -7870,7 +7862,8 @@ theorem aliasFormerCtor_isType_checked :
   ⟨.succ .zero, aliasFormerCtor_hasSort_checked⟩
 
 private theorem aliasFormerCandidate_generationShape :
-    aliasFormerNormalizationCandidateSemanticRun.generationShape = true :=
+    VInductDecl.normalizationCandidateGenerationShape aliasFormerRawDecl
+      aliasFormerRawType aliasFormerNormalizationCandidate = true :=
   rfl
 
 private def aliasFormerProducedGenerationShapeCandidate :
@@ -7898,20 +7891,49 @@ theorem aliasFormerGenerationShapeCandidate_produced :
       (source := aliasFormerRawDecl) (raw := aliasFormerRawType)
       produced aliasFormerCandidate_generationShape
 
+private theorem aliasFormerCandidate_analysis
+    (normalization : VInductDecl.NormalizationCandidateSemanticRun
+      typeFamilyAliasEnv [] aliasFormerNormalizationCandidate
+      aliasFormerRawDecl) :
+    normalization.root.normalization.generation? =
+      some aliasFormerGenerationChecked := by
+  let reference : VInductDecl.NormalizationCandidateSemanticRun
+      typeFamilyAliasEnv [] aliasFormerNormalizationCandidate
+      aliasFormerRawDecl := {
+    raw := aliasFormerRawType
+    raw_types_eq := rfl
+    uvars_eq := rfl
+    family := aliasFormerCandidateFamilySemanticRun }
+  rw [aliasFormerStagedPreFamilyInput.normalization_eq normalization reference]
+  rfl
+
+/-- The staged owner, exact dependent analysis, and strengthened producer
+close AliasFormer without exposing a caller-selected semantic hierarchy. -/
+theorem aliasFormerExactProducedGenerationCandidatePackage_exists :
+    Nonempty (VInductDecl.ExactProducedGenerationCandidatePackage
+      typeFamilyAliasEnv [] aliasFormerProducedGenerationShapeCandidate
+      aliasFormerGenerationChecked) :=
+  aliasFormerProducedGenerationShapeCandidate.exactProducedPackage_nonempty
+    aliasFormerStagedPreFamilyInput rfl aliasFormerGenerationChecked
+    aliasFormerCandidate_analysis
+
+private noncomputable def
+    aliasFormerExactProducedGenerationCandidatePackage :
+    VInductDecl.ExactProducedGenerationCandidatePackage typeFamilyAliasEnv []
+      aliasFormerProducedGenerationShapeCandidate aliasFormerGenerationChecked :=
+  Classical.choice aliasFormerExactProducedGenerationCandidatePackage_exists
+
 /-- Complete source-indexed candidate certificate for the non-identity
 AliasFormer generation transaction. -/
 noncomputable def aliasFormerGenerationCandidateSemanticRun :
   VInductDecl.GenerationCandidateSemanticRun
-      aliasFormerNormalizationCandidateSemanticRun
+      aliasFormerExactProducedGenerationCandidatePackage.normalization
       aliasFormerGenerationChecked :=
-  VInductDecl.GenerationCandidateSemanticRun.ofGenerationShape
-    aliasFormerStagedPreFamilyInput
-    aliasFormerNormalizationCandidateSemanticRun
-    aliasFormerGenerationChecked rfl aliasFormerCandidate_generationShape
+  aliasFormerExactProducedGenerationCandidatePackage.semantic
 
 noncomputable def aliasFormerGenerationCandidateRun :
     VInductDecl.GenerationCandidateRun
-      aliasFormerNormalizationCandidateRun
+      aliasFormerExactProducedGenerationCandidatePackage.normalization.root
       aliasFormerGenerationChecked :=
   aliasFormerGenerationCandidateSemanticRun.run
 
@@ -7927,17 +7949,14 @@ successful whole-call metadata producer, including its pre-family and
 post-family checker environments. -/
 noncomputable def aliasFormerProducedGenerationCandidatePackage :
     VInductDecl.ProducedGenerationCandidatePackage typeFamilyAliasEnv [] :=
-  aliasFormerProducedGenerationShapeCandidate.producedPackage
-    aliasFormerStagedPreFamilyInput
-    aliasFormerNormalizationCandidateSemanticRun rfl
-    aliasFormerGenerationChecked rfl
+  aliasFormerExactProducedGenerationCandidatePackage.package
 
 /-- Theory-only erasure of the AliasFormer producer package. This is the
 consumer-facing value accepted by the public non-identity transaction. -/
 def aliasFormerGenerationCertificate :
     aliasFormerRawDecl.GenerationCertificate typeFamilyAliasEnv where
   generation := aliasFormerGenerationChecked
-  wf := aliasFormerGenerationCandidateSemanticRun.run.wf
+  wf := aliasFormerExactProducedGenerationCandidatePackage.semantic.run.wf
 
 /-- The public proof-carrying path exposes AliasFormer's candidate-derived
 non-identity generation without exposing its checker package. -/
@@ -8552,17 +8571,6 @@ private def annotatedPiCandidateFamilyRun :
     VInductDecl.CandidateFamilyRun outParamEnv []
       annotatedPiFamilyListCandidate annotatedPiRawType :=
   annotatedPiCandidateFamilySemanticRun.root
-
-/-- Temporary L4L-01A compatibility witness for the annotation-bearing
-recursive Pi fixture. The staged owner proves existence without choosing it;
-L4L-01E removes this explicit downstream value. -/
-private def annotatedPiNormalizationCandidateSemanticRun :
-    VInductDecl.NormalizationCandidateSemanticRun outParamEnv []
-      annotatedPiNormalizationCandidate annotatedPiRawDecl where
-  raw := annotatedPiRawType
-  raw_types_eq := rfl
-  uvars_eq := rfl
-  family := annotatedPiCandidateFamilySemanticRun
 
 private noncomputable def annotatedPiStagedUniverseInput :
     VInductDecl.StagedNormalizationCandidateUniverseInput
@@ -9924,8 +9932,11 @@ theorem annotatedPiProducedSemanticHierarchy_exists :
 
 def annotatedPiNormalizationCandidateRun :
     VInductDecl.NormalizationCandidateRun outParamEnv []
-      annotatedPiNormalizationCandidate annotatedPiRawDecl :=
-  annotatedPiNormalizationCandidateSemanticRun.root
+      annotatedPiNormalizationCandidate annotatedPiRawDecl where
+  raw := annotatedPiRawType
+  raw_types_eq := rfl
+  uvars_eq := rfl
+  family := annotatedPiCandidateFamilyRun
 
 example : annotatedPiNormalizationCandidateRun.viewDecl =
     annotatedPiViewDecl := rfl
@@ -9949,7 +9960,8 @@ theorem annotatedPiBlock_wf_checked :
   exact annotatedPiViewChecked_wf
 
 private theorem annotatedPiCandidate_generationShape :
-    annotatedPiNormalizationCandidateSemanticRun.generationShape = true := by
+    VInductDecl.normalizationCandidateGenerationShape annotatedPiRawDecl
+      annotatedPiRawType annotatedPiNormalizationCandidate = true := by
   change ((true && true) &&
     (annotatedPiCtorCandidate.trace.storedSpine && true && true)) = true
   rw [annotatedPiCtorCandidate_storedSpine]
@@ -9980,21 +9992,49 @@ theorem annotatedPiGenerationShapeCandidate_produced :
       (source := annotatedPiRawDecl) (raw := annotatedPiRawType)
       produced annotatedPiCandidate_generationShape
 
+private theorem annotatedPiCandidate_analysis
+    (normalization : VInductDecl.NormalizationCandidateSemanticRun
+      outParamEnv [] annotatedPiNormalizationCandidate
+      annotatedPiRawDecl) :
+    normalization.root.normalization.generation? =
+      some annotatedPiGenerationChecked := by
+  let reference : VInductDecl.NormalizationCandidateSemanticRun outParamEnv []
+      annotatedPiNormalizationCandidate annotatedPiRawDecl := {
+    raw := annotatedPiRawType
+    raw_types_eq := rfl
+    uvars_eq := rfl
+    family := annotatedPiCandidateFamilySemanticRun }
+  rw [annotatedPiStagedPreFamilyInput.normalization_eq normalization reference]
+  rfl
+
+/-- AnnotatedPi's nested annotation-normalizing candidate closes through the
+same generic staged-owner boundary as the ordinary singleton fixture. -/
+theorem annotatedPiExactProducedGenerationCandidatePackage_exists :
+    Nonempty (VInductDecl.ExactProducedGenerationCandidatePackage
+      outParamEnv [] annotatedPiProducedGenerationShapeCandidate
+      annotatedPiGenerationChecked) :=
+  annotatedPiProducedGenerationShapeCandidate.exactProducedPackage_nonempty
+    annotatedPiStagedPreFamilyInput rfl annotatedPiGenerationChecked
+    annotatedPiCandidate_analysis
+
+private noncomputable def
+    annotatedPiExactProducedGenerationCandidatePackage :
+    VInductDecl.ExactProducedGenerationCandidatePackage outParamEnv []
+      annotatedPiProducedGenerationShapeCandidate annotatedPiGenerationChecked :=
+  Classical.choice annotatedPiExactProducedGenerationCandidatePackage_exists
+
 /-- Complete source-indexed checker certificate for annotated recursive-Π
 generation. This is the first live generation run whose main constructor
 spine contains an annotation-normalized recursive function domain. -/
 noncomputable def annotatedPiGenerationCandidateSemanticRun :
   VInductDecl.GenerationCandidateSemanticRun
-      annotatedPiNormalizationCandidateSemanticRun
+      annotatedPiExactProducedGenerationCandidatePackage.normalization
       annotatedPiGenerationChecked :=
-  VInductDecl.GenerationCandidateSemanticRun.ofGenerationShape
-    annotatedPiStagedPreFamilyInput
-    annotatedPiNormalizationCandidateSemanticRun
-    annotatedPiGenerationChecked rfl annotatedPiCandidate_generationShape
+  annotatedPiExactProducedGenerationCandidatePackage.semantic
 
 noncomputable def annotatedPiGenerationCandidateRun :
     VInductDecl.GenerationCandidateRun
-      annotatedPiNormalizationCandidateRun
+      annotatedPiExactProducedGenerationCandidatePackage.normalization.root
       annotatedPiGenerationChecked :=
   annotatedPiGenerationCandidateSemanticRun.run
 
@@ -10009,16 +10049,13 @@ successful whole-call metadata producer, including its nested annotation-
 consuming traversal in the post-family environment. -/
 noncomputable def annotatedPiProducedGenerationCandidatePackage :
     VInductDecl.ProducedGenerationCandidatePackage outParamEnv [] :=
-  annotatedPiProducedGenerationShapeCandidate.producedPackage
-    annotatedPiStagedPreFamilyInput
-    annotatedPiNormalizationCandidateSemanticRun rfl
-    annotatedPiGenerationChecked rfl
+  annotatedPiExactProducedGenerationCandidatePackage.package
 
 /-- Theory-only erasure consumed by the public certified transaction. -/
 def annotatedPiGenerationCertificate :
     annotatedPiRawDecl.GenerationCertificate outParamEnv where
   generation := annotatedPiGenerationChecked
-  wf := annotatedPiGenerationCandidateSemanticRun.run.wf
+  wf := annotatedPiExactProducedGenerationCandidatePackage.semantic.run.wf
 
 noncomputable def annotatedPiGenerationRun :
     VInductDecl.GenerationRun annotatedPiGenerationChecked outParamEnv :=
@@ -11048,6 +11085,24 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerNormalizationCandidate_produ
 info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerGenerationShapeCandidate_produced' depends on axioms: [propext,
  sorryAx,
  Classical.choice,
+ Quot.sound,
+ Expr.eqv_eq,
+ Expr.looseBVarRange_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Level.instLawfulBEqLevel,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms aliasFormerGenerationShapeCandidate_produced
+
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerExactProducedGenerationCandidatePackage_exists' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
  ptrEqConstantInfo_eq,
  ptrEqExpr_eq,
  Quot.sound,
@@ -11075,7 +11130,7 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerGenerationShapeCandidate_pro
  PersistentHashMap.WF.toList'_insert]
 -/
 #guard_msgs in
-#print axioms aliasFormerGenerationShapeCandidate_produced
+#print axioms aliasFormerExactProducedGenerationCandidatePackage_exists
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerProducedGenerationCandidatePackage' depends on axioms: [propext,
@@ -11751,6 +11806,33 @@ info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiNormalizationCandidate_produ
 info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiGenerationShapeCandidate_produced' depends on axioms: [propext,
  sorryAx,
  Classical.choice,
+ Quot.sound,
+ Expr.eqv_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms annotatedPiGenerationShapeCandidate_produced
+
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiExactProducedGenerationCandidatePackage_exists' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
  ptrEqConstantInfo_eq,
  ptrEqExpr_eq,
  Quot.sound,
@@ -11778,7 +11860,7 @@ info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiGenerationShapeCandidate_pro
  PersistentHashMap.WF.toList'_insert]
 -/
 #guard_msgs in
-#print axioms annotatedPiGenerationShapeCandidate_produced
+#print axioms annotatedPiExactProducedGenerationCandidatePackage_exists
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiProducedGenerationCandidatePackage' depends on axioms: [propext,

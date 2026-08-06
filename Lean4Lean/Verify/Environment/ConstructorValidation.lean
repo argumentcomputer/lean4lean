@@ -8331,6 +8331,228 @@ def ProducedGenerationShapeCandidate.producedPackage
         rawEq] using producedCandidate.shape)
     context source.nparams numNested isUnsafe producedCandidate.produced
 
+/-- Projection-free D3 candidates determine one exact Theory constructor
+view at every source position, independently of the existential checker run
+that selected it. -/
+theorem CandidateConstructorSemanticListRun.roots_views_eq
+    {env : VEnv} {Us : List Name} {constructors : List Constructor}
+    {candidates : AddInductive.CandidateList
+      AddInductive.CandidateConstructor constructors}
+    {raws : List VConstVal}
+    (unique : candidates.ViewTranslationUnique)
+    (left right : CandidateConstructorSemanticListRun env Us candidates raws) :
+    left.roots.views = right.roots.views := by
+  induction left with
+  | nil =>
+      cases right
+      rfl
+  | @cons constructor constructors candidate candidates raw raws head tail ih =>
+      cases right with
+      | cons otherHead otherTail =>
+          obtain ⟨_, headRecursive⟩ := head.type.recursive
+          obtain ⟨_, otherHeadRecursive⟩ := otherHead.type.recursive
+          have headViewEq : head.type.view = otherHead.type.view :=
+            TrExprS.unique unique.1.view
+              (headRecursive.view_tr_strict unique.1)
+              (otherHeadRecursive.view_tr_strict unique.1)
+          have tailViewsEq := ih unique.2 otherTail
+          simp only [CandidateConstructorSemanticListRun.roots,
+            CandidateConstructorListRun.views,
+            CandidateConstructorSemanticRun.root,
+            CandidateConstructorRun.view]
+          rw [headViewEq, tailViewsEq]
+
+/-- Transport the positional uniqueness theorem across the uniquely produced
+post-family environment and raw constructor list. -/
+theorem CandidateConstructorSemanticListRun.roots_views_eq_of_eq
+    {leftEnv rightEnv : VEnv} {Us : List Name}
+    {constructors : List Constructor}
+    {candidates : AddInductive.CandidateList
+      AddInductive.CandidateConstructor constructors}
+    {leftRaws rightRaws : List VConstVal}
+    (unique : candidates.ViewTranslationUnique)
+    (envEq : leftEnv = rightEnv) (rawsEq : leftRaws = rightRaws)
+    (left : CandidateConstructorSemanticListRun leftEnv Us candidates leftRaws)
+    (right : CandidateConstructorSemanticListRun rightEnv Us candidates
+      rightRaws) :
+    left.roots.views = right.roots.views := by
+  subst rightEnv
+  subst rightRaws
+  exact left.roots_views_eq unique right
+
+private theorem candidateFamilyView_eq_of_components
+    {rawLeft rawRight : VInductiveType}
+    {typeLeft typeRight : VExpr}
+    {ctorsLeft ctorsRight : List VConstVal}
+    (rawEq : rawLeft = rawRight) (typeEq : typeLeft = typeRight)
+    (ctorsEq : ctorsLeft = ctorsRight) :
+    ({ rawLeft with type := typeLeft, ctors := ctorsLeft } :
+        VInductiveType) =
+      { rawRight with type := typeRight, ctors := ctorsRight } := by
+  cases rawEq
+  cases typeEq
+  cases ctorsEq
+  rfl
+
+private theorem Normalization.eq_of_view_eq
+    {source : VInductDecl} {left right : Normalization source}
+    (viewEq : left.view = right.view) : left = right := by
+  cases left with
+  | mk leftView leftShape =>
+      cases right with
+      | mk rightView rightShape =>
+          cases viewEq
+          rfl
+
+/-- The D3 projection-free safety gate makes the complete normalization
+selected by the staged semantic owner syntactically unique.  In particular,
+fixtures may state dependent analysis once for the known normalization and
+transport it to whichever semantic hierarchy `input.exists` selects. -/
+theorem StagedNormalizationCandidatePreFamilyInput.normalization_eq
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name}
+    {kernelSource : InductiveType} {source : VInductDecl}
+    {candidate : AddInductive.NormalizationCandidate [kernelSource]}
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us candidate source)
+    (left right : NormalizationCandidateSemanticRun env Us candidate source) :
+    left.root.normalization = right.root.normalization := by
+  have rawEq : left.raw = right.raw := by
+    have singletonEq := left.raw_types_eq.symm.trans right.raw_types_eq
+    injection singletonEq
+  have typeEnvEq : left.family.typeEnv = right.family.typeEnv := by
+    exact Option.some.inj <| left.family.addType.symm.trans <| by
+      simpa only [rawEq] using right.family.addType
+  have familyViewEq : left.family.type.view = right.family.type.view := by
+    obtain ⟨_, leftRecursive⟩ := left.family.type.recursive
+    obtain ⟨_, rightRecursive⟩ := right.family.type.recursive
+    exact TrExprS.unique input.safety.familyTranslationUnique
+      (leftRecursive.view_tr_strict <|
+        AddInductive.CandidateExprTrace.viewTranslationUnique_sound _ <| by
+          rw [AddInductive.CandidateExprTrace.viewTranslationUnique_eq]
+          have gate := input.safety.translationUnique
+          simp only [Bool.and_eq_true] at gate
+          exact gate.1)
+      (rightRecursive.view_tr_strict <|
+        AddInductive.CandidateExprTrace.viewTranslationUnique_sound _ <| by
+          rw [AddInductive.CandidateExprTrace.viewTranslationUnique_eq]
+          have gate := input.safety.translationUnique
+          simp only [Bool.and_eq_true] at gate
+          exact gate.1)
+  have constructorViewsEq : left.family.constructors.roots.views =
+      right.family.constructors.roots.views := by
+    exact left.family.constructors.roots_views_eq_of_eq
+      input.safety.constructorTranslationUnique typeEnvEq
+      (congrArg VInductiveType.ctors rawEq) right.family.constructors
+  have familyEq : left.family.root.view = right.family.root.view := by
+    exact candidateFamilyView_eq_of_components rawEq familyViewEq
+      constructorViewsEq
+  have viewDeclEq : left.root.viewDecl = right.root.viewDecl := by
+    simp only [NormalizationCandidateSemanticRun.root,
+      NormalizationCandidateRun.viewDecl]
+    rw [familyEq]
+  exact Normalization.eq_of_view_eq viewDeclEq
+
+/-- Exact, source-indexed refinement of the public producer package.
+
+The public `ProducedGenerationCandidatePackage` deliberately erases its
+dependent source, normalization, and generation indices.  Keeping those
+indices in this closure result lets clients choose the `Nonempty` witness and
+still recover a package whose projections reduce to the requested source and
+generation. -/
+structure ExactProducedGenerationCandidatePackage
+    {source : VInductDecl} {raw : VInductiveType}
+    {kernelSource : InductiveType} {numNested : Nat} {isUnsafe : Bool}
+    {context : AddInductive.Context}
+    (env : VEnv) (Us : List Name)
+    (producedCandidate : ProducedGenerationShapeCandidate source raw
+      kernelSource numNested isUnsafe context)
+    (generation : GenerationChecked source) where
+  normalization : NormalizationCandidateSemanticRun env Us
+    producedCandidate.candidate source
+  raw_eq : raw = normalization.raw
+  semantic : GenerationCandidateSemanticRun normalization generation
+
+/-- Erase only the exact dependent indices retained by the generic closure.
+The ordinary producer equation is copied from the same strengthened producer
+value; it contributes provenance, not semantic authority. -/
+def ExactProducedGenerationCandidatePackage.package
+    {source : VInductDecl} {raw : VInductiveType}
+    {kernelSource : InductiveType} {numNested : Nat} {isUnsafe : Bool}
+    {context : AddInductive.Context} {env : VEnv} {Us : List Name}
+    {producedCandidate : ProducedGenerationShapeCandidate source raw
+      kernelSource numNested isUnsafe context}
+    {generation : GenerationChecked source}
+    (exact : ExactProducedGenerationCandidatePackage env Us
+      producedCandidate generation) :
+    ProducedGenerationCandidatePackage env Us :=
+  exact.semantic.producedPackage context source.nparams numNested isUnsafe
+    producedCandidate.produced
+
+/-- Close one strengthened singleton producer from the staged D1--D4 owner
+without choosing a semantic hierarchy at the API boundary, while retaining
+the exact dependent source and generation indices needed by consumers. -/
+theorem ProducedGenerationShapeCandidate.exactProducedPackage_nonempty
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name}
+    {kernelSource : InductiveType} {source : VInductDecl}
+    {raw : VInductiveType} {numNested : Nat} {isUnsafe : Bool}
+    {context : AddInductive.Context}
+    (producedCandidate : ProducedGenerationShapeCandidate source raw
+      kernelSource numNested isUnsafe context)
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us producedCandidate.candidate source)
+    (rawOwnerEq : raw =
+      input.postFamilyInput.universeInput.staged.raw)
+    (generation : GenerationChecked source)
+    (analysis : ∀ normalization : NormalizationCandidateSemanticRun env Us
+        producedCandidate.candidate source,
+      normalization.root.normalization.generation? = some generation) :
+    Nonempty (ExactProducedGenerationCandidatePackage env Us
+      producedCandidate generation) := by
+  obtain ⟨preFamily⟩ := input.exists
+  let normalization := preFamily.postFamily.produced.semantic
+  have semanticRawEq : normalization.raw =
+      input.postFamilyInput.universeInput.staged.raw := by
+    have singletonEq := normalization.raw_types_eq.symm.trans
+      input.postFamilyInput.universeInput.staged.raw_types_eq
+    injection singletonEq
+  have rawEq := rawOwnerEq.trans semanticRawEq.symm
+  let semantic := GenerationCandidateSemanticRun.ofGenerationShape input
+    normalization generation (analysis normalization) (by
+      simpa only [NormalizationCandidateSemanticRun.generationShape,
+        rawEq] using producedCandidate.shape)
+  exact ⟨{ normalization, raw_eq := rawEq, semantic }⟩
+
+/-- Close one strengthened singleton producer from the staged D1--D4 owner
+without choosing a semantic hierarchy at the API boundary.
+
+`analysis` is exact for every checker-selected semantic normalization owned by
+the staged input.  The proof eliminates `input.exists` only into `Nonempty`,
+then applies D4 to that exact selected normalization.  The ordinary producer
+equation and the independent generation-shape gate remain the two fields of
+`producedCandidate`; neither supplies Theory meaning by itself. -/
+theorem ProducedGenerationShapeCandidate.producedPackage_nonempty
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name}
+    {kernelSource : InductiveType} {source : VInductDecl}
+    {raw : VInductiveType} {numNested : Nat} {isUnsafe : Bool}
+    {context : AddInductive.Context}
+    (producedCandidate : ProducedGenerationShapeCandidate source raw
+      kernelSource numNested isUnsafe context)
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us producedCandidate.candidate source)
+    (rawOwnerEq : raw =
+      input.postFamilyInput.universeInput.staged.raw)
+    (generation : GenerationChecked source)
+    (analysis : ∀ normalization : NormalizationCandidateSemanticRun env Us
+        producedCandidate.candidate source,
+      normalization.root.normalization.generation? = some generation) :
+    Nonempty (ProducedGenerationCandidatePackage env Us) := by
+  obtain ⟨exact⟩ := producedCandidate.exactProducedPackage_nonempty input
+    rawOwnerEq generation analysis
+  exact ⟨exact.package⟩
+
 end VInductDecl
 
 namespace VInductDecl
@@ -8501,6 +8723,39 @@ info: 'Lean4Lean.VInductDecl.ProducedGenerationShapeCandidate.producedPackage' d
 -/
 #guard_msgs in
 #print axioms ProducedGenerationShapeCandidate.producedPackage
+
+/--
+info: 'Lean4Lean.VInductDecl.ProducedGenerationShapeCandidate.exactProducedPackage_nonempty' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms ProducedGenerationShapeCandidate.exactProducedPackage_nonempty
 
 /--
 info: 'Lean4Lean.VInductDecl.StagedNormalizationCandidatePreFamilyInput.exists' depends on axioms: [propext,

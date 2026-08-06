@@ -2747,21 +2747,13 @@ def indexedVecSemanticFamilyRun :
       indexedVecFamilyListCandidate indexedVecType :=
   indexedVecSemanticFamilySemanticRun.root
 
-/-- Temporary L4L-01A compatibility witness. The two-stage owner proves a
-semantic run exists without choosing this concrete identity value; L4L-01E
-removes the explicit downstream witness. -/
-def indexedVecSemanticNormalizationCandidateSemanticRun :
-    VInductDecl.NormalizationCandidateSemanticRun natFinalEnv [`u]
+def indexedVecSemanticNormalizationCandidateRun :
+    VInductDecl.NormalizationCandidateRun natFinalEnv [`u]
       indexedVecNormalizationCandidate indexedVecDecl where
   raw := indexedVecType
   raw_types_eq := rfl
   uvars_eq := rfl
-  family := indexedVecSemanticFamilySemanticRun
-
-def indexedVecSemanticNormalizationCandidateRun :
-    VInductDecl.NormalizationCandidateRun natFinalEnv [`u]
-      indexedVecNormalizationCandidate indexedVecDecl :=
-  indexedVecSemanticNormalizationCandidateSemanticRun.root
+  family := indexedVecSemanticFamilyRun
 
 /-- Reconstructing every family and constructor payload leaves the identity
 IndexedVec declaration unchanged. -/
@@ -2797,8 +2789,8 @@ def indexedVecSemanticConsSpineRun :
     consCandidate_identity.storedSpine
 
 theorem indexedVecSemanticCandidate_generationShape :
-    indexedVecSemanticNormalizationCandidateSemanticRun.generationShape =
-      true := by
+    VInductDecl.normalizationCandidateGenerationShape indexedVecDecl
+      indexedVecType indexedVecNormalizationCandidate = true := by
   change ((indexedVecFamilyCandidate.trace.storedSpine && true) &&
     ((nilCandidate.trace.storedSpine && true) &&
       ((consCandidate.trace.storedSpine && true) && true))) = true
@@ -2842,19 +2834,47 @@ theorem indexedVecSemanticGenerationShapeCandidate_produced :
       (source := indexedVecDecl) (raw := indexedVecType)
       produced indexedVecSemanticCandidate_generationShape
 
+private theorem indexedVecSemanticCandidate_analysis
+    (normalization : VInductDecl.NormalizationCandidateSemanticRun
+      natFinalEnv [`u] indexedVecNormalizationCandidate indexedVecDecl) :
+    normalization.root.normalization.generation? =
+      some indexedVecChecked.identityGeneration := by
+  let reference : VInductDecl.NormalizationCandidateSemanticRun natFinalEnv
+      [`u] indexedVecNormalizationCandidate indexedVecDecl := {
+    raw := indexedVecType
+    raw_types_eq := rfl
+    uvars_eq := rfl
+    family := indexedVecSemanticFamilySemanticRun }
+  rw [indexedVecStagedPreFamilyInput.normalization_eq normalization reference]
+  rfl
+
+/-- The parameter/index and two-constructor fixture closes through the same
+generic staged-owner theorem without supplying its semantic hierarchy. -/
+theorem indexedVecSemanticExactProducedGenerationCandidatePackage_exists :
+    Nonempty (VInductDecl.ExactProducedGenerationCandidatePackage
+      natFinalEnv [`u] indexedVecSemanticProducedGenerationShapeCandidate
+      indexedVecChecked.identityGeneration) :=
+  indexedVecSemanticProducedGenerationShapeCandidate
+    |>.exactProducedPackage_nonempty indexedVecStagedPreFamilyInput rfl
+      indexedVecChecked.identityGeneration indexedVecSemanticCandidate_analysis
+
+private noncomputable def
+    indexedVecSemanticExactProducedGenerationCandidatePackage :
+    VInductDecl.ExactProducedGenerationCandidatePackage natFinalEnv [`u]
+      indexedVecSemanticProducedGenerationShapeCandidate
+      indexedVecChecked.identityGeneration :=
+  Classical.choice
+    indexedVecSemanticExactProducedGenerationCandidatePackage_exists
+
 noncomputable def indexedVecSemanticGenerationCandidateSemanticRun :
   VInductDecl.GenerationCandidateSemanticRun
-      indexedVecSemanticNormalizationCandidateSemanticRun
+      indexedVecSemanticExactProducedGenerationCandidatePackage.normalization
       indexedVecChecked.identityGeneration :=
-  VInductDecl.GenerationCandidateSemanticRun.ofGenerationShape
-    indexedVecStagedPreFamilyInput
-    indexedVecSemanticNormalizationCandidateSemanticRun
-    indexedVecChecked.identityGeneration rfl
-    indexedVecSemanticCandidate_generationShape
+  indexedVecSemanticExactProducedGenerationCandidatePackage.semantic
 
 noncomputable def indexedVecSemanticGenerationCandidateRun :
     VInductDecl.GenerationCandidateRun
-      indexedVecSemanticNormalizationCandidateRun
+      indexedVecSemanticExactProducedGenerationCandidatePackage.normalization.root
       indexedVecChecked.identityGeneration :=
   indexedVecSemanticGenerationCandidateSemanticRun.run
 
@@ -2864,15 +2884,13 @@ noncomputable def indexedVecSemanticGenerationCandidatePackage :
 
 noncomputable def indexedVecSemanticProducedGenerationCandidatePackage :
     VInductDecl.ProducedGenerationCandidatePackage natFinalEnv [`u] :=
-  indexedVecSemanticProducedGenerationShapeCandidate.producedPackage
-    indexedVecStagedPreFamilyInput
-    indexedVecSemanticNormalizationCandidateSemanticRun rfl
-    indexedVecChecked.identityGeneration rfl
+  indexedVecSemanticExactProducedGenerationCandidatePackage.package
 
 def indexedVecSemanticGenerationCertificate :
     indexedVecDecl.GenerationCertificate natFinalEnv where
   generation := indexedVecChecked.identityGeneration
-  wf := indexedVecSemanticGenerationCandidateSemanticRun.run.wf
+  wf :=
+    indexedVecSemanticExactProducedGenerationCandidatePackage.semantic.run.wf
 
 theorem indexedVecSemantic_addInductCertified :
     natFinalEnv.addInductCertified indexedVecSemanticGenerationCertificate =
@@ -3131,6 +3149,32 @@ info: 'Lean4Lean.InductiveReplayFixtures.indexedVecSemanticCandidate_extraRawSha
 info: 'Lean4Lean.InductiveReplayFixtures.indexedVecSemanticGenerationShapeCandidate_produced' depends on axioms: [propext,
  sorryAx,
  Classical.choice,
+ Quot.sound,
+ Expr.eqv_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms indexedVecSemanticGenerationShapeCandidate_produced
+
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.indexedVecSemanticExactProducedGenerationCandidatePackage_exists' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
  ptrEqConstantInfo_eq,
  ptrEqExpr_eq,
  Quot.sound,
@@ -3158,7 +3202,7 @@ info: 'Lean4Lean.InductiveReplayFixtures.indexedVecSemanticGenerationShapeCandid
  PersistentHashMap.WF.toList'_insert]
 -/
 #guard_msgs in
-#print axioms indexedVecSemanticGenerationShapeCandidate_produced
+#print axioms indexedVecSemanticExactProducedGenerationCandidatePackage_exists
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.indexedVecSemanticGenerationCandidateSemanticRun' depends on axioms: [propext,
