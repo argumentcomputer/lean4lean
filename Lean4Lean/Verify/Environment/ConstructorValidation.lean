@@ -1880,8 +1880,8 @@ field.  A recursive field's local type mentions the family being defined, so
 that declaration cannot be reproduced in the pre-family verifier context.
 For the current singleton subset we omit such locals, advance the validator's
 fresh-name supply, and permit later checks only when their source expressions
-do not mention an omitted identifier.  Recursive fields must therefore form a
-suffix.
+do not mention an omitted identifier.  Independent ordinary fields may still
+follow recursive fields; genuinely dependent uses remain outside this replay.
 
 The traces below are outputs of executable builders.  Their proof fields are
 exact `checkType`, `ensureType`, and `isDefEq` executions; they are operational
@@ -2748,11 +2748,12 @@ theorem spine_weakPrefix
 
 end ConstructorPreFamilyRecursiveSemanticRun
 
-/-- Exact executable D3 replay for one analyzer-owned constructor view.
+/-- Exact executable pre-family replay for one analyzer-owned constructor view.
 
 `removed` contains precisely the validation FVars allocated for recursive
 outer fields that were not inserted into the pre-family checker context.
-`recursiveStarted` enforces that no ordinary field follows them. -/
+`recursiveStarted` records whether such a field has been crossed; later
+ordinary fields are admitted exactly when they are independent of `removed`. -/
 inductive ConstructorPreFamilyViewTrace
     (stats : InductiveStats) (familyIdx : Nat) (familyIndices : Expr) :
     (context : Context) → (view : Expr) → (argIdx : Nat) →
@@ -2774,7 +2775,7 @@ inductive ConstructorPreFamilyViewTrace
       (name : Name) (domain body : Expr) (binderInfo : BinderInfo)
       (noParameter : stats.params[argIdx]? = none)
       (nonrecursive : hasIndOcc stats.indConsts domain = false)
-      (notStarted : recursiveStarted = false)
+      (independent : constructorIndependentOf domain removed = true)
       (domainCheck : ConstructorCheckedExpr context domain)
       (ensureType : ConstructorEnsureTypeObservation context domain)
       (consumedCheck : ConstructorCheckedExpr context
@@ -2785,7 +2786,8 @@ inductive ConstructorPreFamilyViewTrace
       (tail : ConstructorPreFamilyViewTrace stats familyIdx familyIndices
         (context.pushLocalDecl name binderInfo
           (consumeTypeAnnotations domain))
-        (body.instantiate1 context.freshExpr) (argIdx + 1) removed false) :
+        (body.instantiate1 context.freshExpr) (argIdx + 1) removed
+        recursiveStarted) :
       ConstructorPreFamilyViewTrace stats familyIdx familyIndices context
         (.forallE name domain body binderInfo) argIdx removed recursiveStarted
   | recursive
@@ -2835,11 +2837,7 @@ def build (stats : InductiveStats) (familyIdx : Nat)
       | none => do
           match recursive : hasIndOcc stats.indConsts domain with
           | false =>
-              match recursiveStarted with
-              | true =>
-                  throw <| .other
-                    "ordinary constructor field follows recursive suffix"
-              | false => do
+              if independent : constructorIndependentOf domain removed = true then
                 let domainCheck ← checkConstructorAlignedExpr context domain
                 let ensureType ← observeConstructorEnsureType context domain
                 let consumedCheck ← checkConstructorAlignedExpr context
@@ -2851,13 +2849,16 @@ def build (stats : InductiveStats) (familyIdx : Nat)
                     (context.pushLocalDecl name binderInfo
                       (consumeTypeAnnotations domain))
                     (body.instantiate1 context.freshExpr) (argIdx + 1)
-                    removed false fuel
-                  pure <| .ordinary context argIdx removed false name domain
-                    body binderInfo parameterAt recursive rfl domainCheck
+                    removed recursiveStarted fuel
+                  pure <| .ordinary context argIdx removed recursiveStarted
+                    name domain body binderInfo parameterAt recursive independent domainCheck
                     ensureType consumedCheck annotations fresh tail
                 else
                   throw <| .other
                     "pre-family ordinary replay reused a local identifier"
+              else
+                throw <| .other
+                  "constructor depends on an omitted recursive local"
           | true =>
               if independent : constructorIndependentOf domain removed = true then
                 let field ← ConstructorPreFamilyRecursiveTrace.build stats
@@ -2951,7 +2952,7 @@ inductive ConstructorPreFamilyViewSemanticRun
       {name : Name} {domain body : Expr} {binderInfo : BinderInfo}
       {noParameter : stats.params[argIdx]? = none}
       {nonrecursive : hasIndOcc stats.indConsts domain = false}
-      {notStarted : recursiveStarted = false}
+      {independent : constructorIndependentOf domain removed = true}
       {domainCheck : ConstructorCheckedExpr context domain}
       {ensureType : ConstructorEnsureTypeObservation context domain}
       {consumedCheck : ConstructorCheckedExpr context
@@ -2962,7 +2963,8 @@ inductive ConstructorPreFamilyViewSemanticRun
       {tailTrace : ConstructorPreFamilyViewTrace stats familyIdx familyIndices
         (context.pushLocalDecl name binderInfo
           (consumeTypeAnnotations domain))
-        (body.instantiate1 context.freshExpr) (argIdx + 1) removed false}
+        (body.instantiate1 context.freshExpr) (argIdx + 1) removed
+        recursiveStarted}
       {contextRun : ConstructorContextRun env Us context}
       (domainRun : ConstructorCheckedExpr.Run domainCheck
         contextRun.candidate)
@@ -2990,7 +2992,7 @@ inductive ConstructorPreFamilyViewSemanticRun
       ConstructorPreFamilyViewSemanticRun env Us stats familyIdx familyIndices
         contextRun
         (.ordinary context argIdx removed recursiveStarted name domain body
-          binderInfo noParameter nonrecursive notStarted domainCheck ensureType
+          binderInfo noParameter nonrecursive independent domainCheck ensureType
           consumedCheck annotations fresh tailTrace)
   | recursive
       {context : Context} {argIdx : Nat} {removed : List FVarId}
@@ -3047,7 +3049,7 @@ theorem nonempty
       obtain ⟨tail⟩ := ih contextRun
       exact ⟨.parameter tail⟩
   | ordinary context argIdx removed recursiveStarted name domain body
-      binderInfo noParameter nonrecursive notStarted domainCheck ensureType
+      binderInfo noParameter nonrecursive independent domainCheck ensureType
       consumedCheck annotations fresh tailTrace ih =>
       obtain ⟨domainRun⟩ := ConstructorCheckedExpr.Run.exists domainCheck
         contextRun.candidate
@@ -3172,7 +3174,7 @@ theorem afterParameters
         simp at parameterAt
       exact ih (by omega) instantiation
   | @ordinary context argIdx removed recursiveStarted name domain body
-      binderInfo noParameter nonrecursive notStarted domainCheck ensureType
+      binderInfo noParameter nonrecursive independent domainCheck ensureType
       consumedCheck annotations fresh tailTrace contextRun domainRun consumedRun
       ensureTypeRun annotationsRun consumedType tail =>
       have noParameterList : stats.params.toList[argIdx]? = none := by
@@ -3193,7 +3195,7 @@ theorem afterParameters
       subst rest
       let suffixTrace := ConstructorPreFamilyViewTrace.ordinary context
         stats.params.size removed recursiveStarted name domain body binderInfo
-        noParameter nonrecursive notStarted domainCheck ensureType consumedCheck
+        noParameter nonrecursive independent domainCheck ensureType consumedCheck
         annotations fresh tailTrace
       exact ⟨⟨suffixTrace,
         ConstructorPreFamilyViewSemanticRun.ordinary domainRun consumedRun
@@ -3691,24 +3693,23 @@ private def preFamilyNegativeContext : Context where
   allowPrimitive := false
 
 /- The traversal begins from the public gate's initial state. Its first
-recursive field is valid and family-free; the following ordinary field must
-therefore be rejected specifically by the recursive-suffix check. -/
-private def preFamilyRecursiveFieldOrderView : Expr :=
+recursive field is omitted from the pre-family context, while the following
+ordinary field is independent of that local and is therefore admissible. -/
+private def preFamilyOrdinaryAfterRecursiveView : Expr :=
   .forallE `recursive (.const `PreFamilyNegative [])
     (.forallE `ordinary (.sort .zero)
       (.const `PreFamilyNegative []) .default)
     .default
 
-private def preFamilyRecursiveFieldOrderRejected : Bool :=
+private def preFamilyOrdinaryAfterRecursiveAccepted : Bool :=
   match ConstructorPreFamilyViewTrace.build preFamilyNegativeStats 0
       (.sort (.succ .zero)) preFamilyNegativeContext
-      preFamilyRecursiveFieldOrderView 0 [] false
+      preFamilyOrdinaryAfterRecursiveView 0 [] false
       preFamilyNegativeContext.fuel.inductiveFuel with
-  | .error (.other message) =>
-      message == "ordinary constructor field follows recursive suffix"
-  | _ => false
+  | .ok _ => true
+  | .error _ => false
 
-#guard preFamilyRecursiveFieldOrderRejected
+#guard preFamilyOrdinaryAfterRecursiveAccepted
 
 /- The first recursive local is deliberately omitted. Instantiating the next
 recursive field exposes that FVar in its domain, so the dependency gate must
@@ -6335,6 +6336,14 @@ private theorem forallN_hasConst_of_terminal
       simp only [VExpr.forallN, VExpr.hasConst, Bool.or_eq_true]
       exact .inr ih
 
+/-- Context lifting changes only bound-variable indices and therefore
+preserves the set of constants occurring in a Theory expression. -/
+private theorem VExpr.hasConst_lift' (expression : VExpr) (lift : Lift)
+    (name : Name) :
+    (expression.lift' lift).hasConst name = expression.hasConst name := by
+  induction expression generalizing lift <;>
+    simp [VExpr.hasConst, *]
+
 /-- A typed Theory expression cannot mention a constant absent from its
 environment. -/
 theorem VEnv.HasType.hasConst_false_of_absent
@@ -6963,11 +6972,6 @@ theorem constructorFields_exactAnalyzer
     (analyzerState : AnalyzerPostContextState typeEnv Us full
       d2ContextRun.candidate.context.vlctx analyzerViewContext
       analyzerViewLift)
-    (ordinaryState : recursiveStarted = false →
-      ConstructorOrdinaryContextState env typeEnv Us full
-        d3ContextRun.candidate.context.vlctx d3ViewContext
-        d2ContextRun.candidate.context.vlctx viewLift)
-    (removedEmpty : recursiveStarted = false → removed = [])
     (removedInvariant : FullRemovedInvariant common full removed)
     (ngenEq : d3Context.ngen = d2Context.ngen)
     {commonIndices checkedIndices fields : List VExpr}
@@ -7006,7 +7010,7 @@ theorem constructorFields_exactAnalyzer
         exact Array.getElem?_eq_some_iff.mp parameterAt |>.1
       omega
   | @ordinary context ordinaryArgIdx removed recursiveStarted name domain body
-      binderInfo noParameter nonrecursive notStarted domainCheck ensureType
+      binderInfo noParameter nonrecursive independent domainCheck ensureType
       consumedCheck annotations fresh tailTrace contextRun domainRun
       consumedRun ensureTypeRun annotationsRun consumedType tail ih =>
       cases d2 with
@@ -7039,13 +7043,6 @@ theorem constructorFields_exactAnalyzer
               | cons field fields =>
                   simp only [VExpr.forallN, VExpr.forallE.injEq] at targetEq
                   obtain ⟨rfl, rfl⟩ := targetEq
-                  have prefixState : ConstructorOrdinaryContextState
-                      env typeEnv Us full
-                      contextRun.candidate.context.vlctx d3ViewContext
-                      d2ContextRun.candidate.context.vlctx viewLift :=
-                    ordinaryState notStarted
-                  have removedEq := removedEmpty notStarted
-                  subst removed
                   have actualFieldTr : TrExprS env Us
                       contextRun.candidate.context.vlctx domain
                       domainRun.source' := by
@@ -7135,46 +7132,12 @@ theorem constructorFields_exactAnalyzer
                   have rawBound :=
                     AddInductive.constructorUniverseSemanticGe_ofLevel
                       universeSemantics.1 resultLevelTr fieldLevelTr
-                  obtain ⟨fieldBaseType, levelEq, fieldBound⟩ :=
-                    ordinaryField_baseTypes henv typeEnvWF addType
-                      prefixState.baseWF prefixState.actualWF
-                      prefixState.postWF prefixState.postRelation
-                      prefixState.viewDefEq prefixState.viewUnique
-                      prefixState.viewLift sourceUnique.1 sourceClosed.1
-                      fieldTr.fvarsIn fieldTr actualFieldTr actualFieldType
-                      postViewTr postRawType postRawView rawBound
-                  have fieldFree : field.hasConst familyName = false :=
-                    VEnv.HasType.hasConst_false_of_absent henv.ordered
-                      prefixState.baseWF.toCtx absent fieldBaseType
-                  have recNone := recArg?_eq_none_of_hasConst_false
-                    (U := Us.length) (np := stats.params.size)
-                    (ni := checkedIndices.length) (fieldIndex := fieldIndex)
-                    fieldFree
-                  have consumedEq := ordinaryConsumed_defeqAt typeEnvWF
-                    addType prefixState.actualWF prefixState.postRelation
-                    actualFieldTr actualAnnotations actualConsumedType'
-                    postViewTr postRawView postAnnotations
-                  have depsSubset :
-                      (consumeTypeAnnotations domain).fvarsList ⊆ full.fvars :=
-                    (FVarsIn.consumeTypeAnnotations fieldTr.fvarsIn
-                      |> fvarsIn_iff.mp).1
                   have freshEq : context.freshFVarId =
                       d2Context.freshFVarId :=
                     Context.freshFVarId_eq_of_ngen_eq ngenEq
-                  have postTailWF' : VLCtx.WF typeEnv Us.length
-                      ((some (context.freshFVarId,
-                          (consumeTypeAnnotations rawDomain).fvarsList),
-                        .vlam consumedRun₂.source') ::
-                        d2ContextRun.candidate.context.vlctx) := by
-                    rw [freshEq]
-                    exact postTailWF
-                  have nextPrefixState := prefixState.push henv typeEnvWF
-                    addType sourceUnique.1 fieldTr actualFieldTr
-                    actualAnnotations actualConsumedType' fieldBaseType
-                    depsSubset actualTailWF rfl postTailWF' consumedEq
                   have domainFVars : FVarsIn (· ∈ common.fvars) domain :=
-                    fieldTr.fvarsIn.mono fun fv member =>
-                      removedInvariant fv member (by simp)
+                    constructorIndependentOf_fvars fieldTr.fvarsIn
+                      independent removedInvariant
                   obtain ⟨commonDomain, commonDomainTr, fieldEq,
                       commonDomainType, nextD3State⟩ :=
                     d3State.push (name := name) (binderInfo := binderInfo)
@@ -7186,19 +7149,32 @@ theorem constructorFields_exactAnalyzer
                     analyzerState.push typeEnvWF sourceUnique.1 sourceClosed.1
                       fieldTr postViewTr postRawType postRawView
                       postAnnotations postTailWF
-                  have viewWF : VLCtx.WF env Us.length d3ViewContext :=
-                    (d3State.viewDefEq.symm henv.ordered).wf
-                  have fieldAtView : TrExprS typeEnv Us d3ViewContext domain
-                      (field.lift' viewLift) :=
-                    fieldTr.weakFV' typeEnvWF.ordered prefixState.viewLift
-                      (viewWF.mono addType)
-                  have commonAtView : TrExprS typeEnv Us d3ViewContext domain
-                      (commonDomain.lift' viewLift) :=
-                    commonDomainTr.weakFV' typeEnvWF.ordered
-                      d3State.viewExtension (viewWF.mono addType)
-                  have viewFieldEq : field.lift' viewLift =
-                      commonDomain.lift' viewLift :=
-                    fieldAtView.unique sourceUnique.1 commonAtView
+                  have fieldBaseType : env.HasType Us.length full.toCtx field
+                      (.sort ensureTypeRun.resultLevel') := by
+                    rw [fieldEq]
+                    exact commonDomainType.weak' henv.ordered
+                      d3State.fullExtension.toCtx
+                  have levelEq : ensureTypeRun.resultLevel' ≈
+                      ensureTypeRun₂.resultLevel' :=
+                    (fieldBaseType.mono addType).uniqU typeEnvWF
+                      d3State.fullWF.toCtx postAnalyzerType |>.sort_inv
+                        typeEnvWF d3State.fullWF.toCtx
+                  have fieldBound : level = .zero ∨
+                      ensureTypeRun.resultLevel' ≤ level := by
+                    rcases rawBound with prop | bound
+                    · exact .inl prop
+                    · exact .inr <| VLevel.le_trans
+                        (VLevel.le_antisymm_iff.mp levelEq).1 bound
+                  have commonFree : commonDomain.hasConst familyName = false :=
+                    VEnv.HasType.hasConst_false_of_absent henv.ordered
+                      d3State.commonWF.toCtx absent commonDomainType
+                  have fieldFree : field.hasConst familyName = false := by
+                    rw [fieldEq, VExpr.hasConst_lift']
+                    exact commonFree
+                  have recNone := recArg?_eq_none_of_hasConst_false
+                    (U := Us.length) (np := stats.params.size)
+                    (ni := checkedIndices.length) (fieldIndex := fieldIndex)
+                    fieldFree
                   have nextD3State' : D3FullContextState env typeEnv Us
                       (context.pushLocalDecl name binderInfo
                         (consumeTypeAnnotations domain))
@@ -7211,9 +7187,8 @@ theorem constructorFields_exactAnalyzer
                       nextD3ContextRun.candidate.context.vlctx
                       ((some (context.freshFVarId,
                           (consumeTypeAnnotations domain).fvarsList),
-                        .vlam (field.lift' viewLift)) :: d3ViewContext)
+                        .vlam (commonDomain.lift' viewLift)) :: d3ViewContext)
                       (.consN fullLift 1) (.consN viewLift 1) := by
-                    rw [viewFieldEq]
                     simpa only [vlctxCons, nextD3ContextRun,
                       AddInductive.ConstructorContextRun.pushLocalDecl,
                       CandidateContextRun.pushLocalDecl_vlctx] using
@@ -7234,32 +7209,6 @@ theorem constructorFields_exactAnalyzer
                       AddInductive.ConstructorContextRun.pushLocalDecl,
                       CandidateContextRun.pushLocalDecl_vlctx] using
                       nextAnalyzerState
-                  have nextPrefixState' : ConstructorOrdinaryContextState
-                      env typeEnv Us
-                      ((some (context.freshFVarId,
-                          (consumeTypeAnnotations domain).fvarsList),
-                        .vlam field) :: full)
-                      nextD3ContextRun.candidate.context.vlctx
-                      ((some (context.freshFVarId,
-                          (consumeTypeAnnotations domain).fvarsList),
-                        .vlam (field.lift' viewLift)) :: d3ViewContext)
-                      nextD2ContextRun.candidate.context.vlctx
-                      (.consN viewLift 1) := by
-                    have nextD2VlctxEq :
-                        nextD2ContextRun.candidate.context.vlctx =
-                          ((some (context.freshFVarId,
-                              (consumeTypeAnnotations rawDomain).fvarsList),
-                            .vlam consumedRun₂.source') ::
-                            d2ContextRun.candidate.context.vlctx) := by
-                      simp only [nextD2ContextRun,
-                        AddInductive.ConstructorContextRun.pushLocalDecl,
-                        CandidateContextRun.pushLocalDecl_vlctx]
-                      rw [← freshEq]
-                    rw [nextD2VlctxEq]
-                    simpa only [nextD3ContextRun,
-                      AddInductive.ConstructorContextRun.pushLocalDecl,
-                      CandidateContextRun.pushLocalDecl_vlctx] using
-                      nextPrefixState
                   have familyCommonNext : TrExprS env Us
                       ((some (context.freshFVarId,
                           (consumeTypeAnnotations domain).fvarsList),
@@ -7353,7 +7302,6 @@ theorem constructorFields_exactAnalyzer
                   obtain ⟨tailFields, tailSpine⟩ := ih
                     (fieldIndex := fieldIndex + 1) tailAlignment' tail₂'
                     nextD3State' nextAnalyzerState'
-                    (fun _ => nextPrefixState') (fun _ => rfl)
                     (removedInvariant.push) nextNgenEq familyCommonNext
                     familyFullNext nextIndexLength familyTargetNextEq
                     tailUnique tailClosed bodyOpened (by omega)
@@ -7564,8 +7512,6 @@ theorem constructorFields_exactAnalyzer
                   obtain ⟨tailFields, tailSpine⟩ := ih
                     (fieldIndex := fieldIndex + 1) tailAlignment' tail₂'
                     nextD3State nextAnalyzerState'
-                    (fun impossible => by simp at impossible)
-                    (fun impossible => by simp at impossible)
                     (removedInvariant.skip freshFull) nextNgenEq
                     familyCommonTr familyFullNext indexLength
                     familyTargetNextEq tailUnique tailClosed bodyOpened
@@ -7808,9 +7754,6 @@ theorem CandidateSemanticNormalizedCtorRun.checkedConstructorWF
     (analyzerState : AnalyzerPostContextState typeEnv Us parameterΔ
       d2ContextRun.candidate.context.vlctx analyzerViewContext
       analyzerViewLift)
-    (ordinaryState : ConstructorOrdinaryContextState env typeEnv Us
-      parameterΔ d3ContextRun.candidate.context.vlctx d3ViewContext
-      d2ContextRun.candidate.context.vlctx viewLift)
     (ngenEq : d3Context.ngen = d2Context.ngen)
     (parametersEq : stats.params.toList = parameters)
     {familyName : Name} {familyLevels : List Level}
@@ -7898,7 +7841,7 @@ theorem CandidateSemanticNormalizedCtorRun.checkedConstructorWF
     (d3 := d3Suffix.semantic)
     (d2Alignment := d2Suffix.alignment) (d2 := d2Suffix.semantic)
     henv typeEnvWF addType d3State analyzerState
-    (fun _ => ordinaryState) (fun _ => rfl) removedInvariant ngenEq
+    removedInvariant ngenEq
     familyTr (familyTr.mono addType) familyUnique indexLength
     familyHead
     familyTargetEq resultNotForall resultLevelTr absent sourceUnique
@@ -7956,9 +7899,6 @@ theorem CandidateSemanticNormalizedCtorListRun.checkedConstructorsWF
     (analyzerState : AnalyzerPostContextState typeEnv Us parameterΔ
       d2ContextRun.candidate.context.vlctx analyzerViewContext
       analyzerViewLift)
-    (ordinaryState : ConstructorOrdinaryContextState env typeEnv Us
-      parameterΔ d3ContextRun.candidate.context.vlctx d3ViewContext
-      d2ContextRun.candidate.context.vlctx viewLift)
     (ngenEq : d3Context.ngen = d2Context.ngen)
     (parametersEq : stats.params.toList = parameters)
     {familyName : Name} {familyLevels : List Level}
@@ -8039,7 +7979,7 @@ theorem CandidateSemanticNormalizedCtorListRun.checkedConstructorsWF
               exact generationHead.checkedConstructorWF d3Head
                 headAlignment d2Head hctor henv typeEnvWF addType
                 parameterContext parameterWF parameterCtx d3State analyzerState
-                ordinaryState ngenEq parametersEq indConsts familyTr
+                ngenEq parametersEq indConsts familyTr
                 familyUnique indexLength resultLevelTr absent unique.1
                 universeSemantics.1 stageFields
             · exact ih d2Tail generationTail
@@ -8147,20 +8087,6 @@ theorem StagedNormalizationCandidatePreFamilyInput.checkedWF
       exact (terminalViewDefEq.mono
         (VEnv.addConst_le normalization.family.addType)).toFVars
     viewExtension := terminalViewLift }
-  have ordinaryState : ConstructorOrdinaryContextState env
-      normalization.family.typeEnv Us parameterΔ terminalRun.context.vlctx
-      viewTerminal validationRun.context.vlctx
-      (.skipN .refl generation.block.checked.indices.length) := {
-    baseWF := parameterWF
-    actualWF := terminalWF
-    postWF := validationWF
-    postRelation := by
-      rw [validationVlctx]
-      exact ((VLCtx.IsDefEq.refl henv.ordered terminalWF).mono
-        (VEnv.addConst_le normalization.family.addType)).toFVars
-    viewDefEq := terminalViewDefEq
-    viewUnique := terminalViewUnique
-    viewLift := terminalViewLift }
   have parametersEq : validation.stats.params.toList =
       candidate.families.singleton.familyType.type.trace.parameterList
         source.nparams := by
@@ -8216,7 +8142,7 @@ theorem StagedNormalizationCandidatePreFamilyInput.checkedWF
   have pairWF := generationRuns.checkedConstructorsWF
     d3Constructors d2Constructors (fun _ member => member) henv typeEnvWF
     (VEnv.addConst_le normalization.family.addType) parameterContext
-    parameterWF parameterCtx d3State analyzerState ordinaryState rfl
+    parameterWF parameterCtx d3State analyzerState rfl
     parametersEq indConsts familyTr familyUnique indexLength resultLevelTr
     absent input.safety.constructorTranslationUnique
     input.postFamilyInput.universeInput.universeSemantics

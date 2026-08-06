@@ -664,6 +664,70 @@ theorem annotatedPiViewChecked_wf :
         some outParamConstEnv)).trans VEnv.addDefEq_le)
   exact annotatedPiViewChecked.wf_of_decl annotatedPiViewDecl_wf
 
+/-! ## AnnotatedParam: definitionally equal constructor parameters
+
+Family validation consumes the `outParam` annotation before recording its
+parameter local. Constructor metadata retains the annotation, so the ordinary
+validator must use definitional equality rather than syntax when it checks the
+constructor's parameter prefix. -/
+
+inductive AnnotatedParam (alpha : outParam Type) : Type where
+  | mk : AnnotatedParam alpha
+
+def annotatedParamRawType : VInductiveType where
+  name := ``AnnotatedParam
+  uvars := 0
+  type := vconst(type_of% @AnnotatedParam).type
+  ctors := [⟨vconst(type_of% @AnnotatedParam.mk), ``AnnotatedParam.mk⟩]
+
+def annotatedParamRawDecl : VInductDecl :=
+  ⟨0, 1, [annotatedParamRawType]⟩
+
+def annotatedParamViewCtor : VConstVal where
+  name := ``AnnotatedParam.mk
+  uvars := 0
+  type := .forallE (.sort (.succ .zero))
+    (.app (.const ``AnnotatedParam []) (.bvar 0))
+
+def annotatedParamViewType : VInductiveType where
+  name := ``AnnotatedParam
+  uvars := 0
+  type := .forallE (.sort (.succ .zero)) (.sort (.succ .zero))
+  ctors := [annotatedParamViewCtor]
+
+def annotatedParamViewDecl : VInductDecl :=
+  ⟨0, 1, [annotatedParamViewType]⟩
+
+example : annotatedParamRawType.type =
+    .forallE
+      (.app (.const ``outParam [.succ (.succ .zero)])
+        (.sort (.succ .zero)))
+      (.sort (.succ .zero)) := rfl
+
+example : annotatedParamRawType.ctors[0].type =
+    .forallE
+      (.app (.const ``outParam [.succ (.succ .zero)])
+        (.sort (.succ .zero)))
+      (.app (.const ``AnnotatedParam []) (.bvar 0)) := rfl
+
+example : annotatedParamViewDecl.checked?.isSome = true := rfl
+example : normalizationShape annotatedParamRawDecl annotatedParamViewDecl =
+    true := rfl
+
+def annotatedParamNormalization : Normalization annotatedParamRawDecl where
+  view := annotatedParamViewDecl
+  shape_eq := rfl
+
+def annotatedParamViewChecked : annotatedParamViewDecl.Checked :=
+  annotatedParamViewDecl.checked?.get (by decide)
+
+def annotatedParamBlock : NormalizedChecked annotatedParamRawDecl :=
+  annotatedParamNormalization.check?.get (by decide)
+
+def annotatedParamGenerationChecked :
+    GenerationChecked annotatedParamRawDecl :=
+  annotatedParamBlock.generation?.get (by decide)
+
 /-! ## Explicit normalization boundary
 
 Lean stores reducible aliases in inductive metadata even though
