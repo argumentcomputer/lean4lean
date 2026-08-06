@@ -10483,6 +10483,277 @@ theorem annotatedPi_rec_lookup_unique :
   annotatedPi_aligned_checked.find?_uniq annotatedPi_rec_map_lookup
     annotatedPiFinalEnv_rec_lookup
 
+/-! ## Definitionally equal parameter transaction replay -/
+
+/-- Consumer-facing certificate for the exact mixed generation value whose
+stored parameter is `outParam Type` and whose emitted recursor parameter is
+the definitionally equal checked `Type`. -/
+def annotatedParamGenerationCertificate :
+    annotatedParamRawDecl.GenerationCertificate outParamEnv where
+  generation := annotatedParamGenerationChecked
+  wf := annotatedParamGenerationChecked_wf
+
+def annotatedParamCtorEnv : VEnv :=
+  (annotatedParamTypeEnv.addConst annotatedParamRawType.ctors[0].name
+    annotatedParamRawType.ctors[0].toVConstant).get!
+
+def annotatedParamRecEnv : VEnv :=
+  (annotatedParamCtorEnv.addConst ``AnnotatedParam.rec
+    annotatedParamGenerationChecked.recursor).get!
+
+def annotatedParamFinalEnv : VEnv :=
+  (outParamEnv.addInductGeneration
+    annotatedParamGenerationChecked).get (by decide)
+
+theorem annotatedParam_addInductGeneration :
+    outParamEnv.addInductGeneration annotatedParamGenerationChecked =
+      some annotatedParamFinalEnv := rfl
+
+/-- The public proof-carrying transaction accepts the raw/checked parameter
+normalization and computes the same environment as the underlying generation
+transaction. -/
+theorem annotatedParam_addInductCertified :
+    outParamEnv.addInductCertified annotatedParamGenerationCertificate =
+      some annotatedParamFinalEnv :=
+  annotatedParam_addInductGeneration
+
+theorem annotatedParamCertified_ordered :
+    annotatedParamFinalEnv.Ordered :=
+  VEnv.addInductCertified_WF outParamEnv_ordered
+    annotatedParam_addInductCertified
+
+private theorem annotatedParamRawCtor_wf :
+    annotatedParamRawType.ctors[0].toVConstant.WF
+      annotatedParamTypeEnv := by
+  change annotatedParamTypeEnv.IsType 0 []
+    annotatedParamRawType.ctors[0].type
+  let ctor : VInductDecl.NormalizedCtor :=
+    ⟨annotatedParamRawType.ctors[0],
+      annotatedParamViewChecked.constructors[0]⟩
+  have hctor : ctor ∈
+      annotatedParamGenerationChecked.block.ctorPairs := by
+    change ctor ∈ [⟨annotatedParamRawType.ctors[0],
+      annotatedParamViewChecked.constructors[0]⟩]
+    exact .head _
+  simpa [ctor, annotatedParamRawDecl] using
+    annotatedParamGenerationChecked_wf.rawCtor_isType
+      (envT := annotatedParamTypeEnv) rfl hctor
+
+private theorem annotatedParamCtorEnv_ordered :
+    annotatedParamCtorEnv.Ordered :=
+  .const (n := annotatedParamRawType.ctors[0].name)
+    (ci := annotatedParamRawType.ctors[0].toVConstant)
+    annotatedParamTypeEnv_ordered annotatedParamRawCtor_wf rfl
+
+private theorem annotatedParamGenerationEnv :
+    VInductDecl.GenerationEnv annotatedParamGenerationChecked
+      annotatedParamCtorEnv := by
+  apply annotatedParamGenerationChecked_wf.toGenerationEnv
+    (envT := annotatedParamTypeEnv)
+  · rfl
+  · exact (VEnv.addConst_le (show
+      outParamEnv.addConst annotatedParamRawType.name
+        annotatedParamRawType.toVConstant =
+          some annotatedParamTypeEnv from rfl)).trans
+      (VEnv.addConst_le (show
+        annotatedParamTypeEnv.addConst
+          annotatedParamRawType.ctors[0].name
+          annotatedParamRawType.ctors[0].toVConstant =
+            some annotatedParamCtorEnv from rfl))
+  · exact VEnv.addConst_le (show
+      annotatedParamTypeEnv.addConst
+        annotatedParamRawType.ctors[0].name
+        annotatedParamRawType.ctors[0].toVConstant =
+          some annotatedParamCtorEnv from rfl)
+  · exact annotatedParamCtorEnv_ordered
+  · rfl
+  · intro ctor hctor
+    change ctor ∈ [⟨annotatedParamRawType.ctors[0],
+      annotatedParamViewChecked.constructors[0]⟩] at hctor
+    obtain rfl := List.mem_singleton.1 hctor
+    rfl
+
+private theorem annotatedParamMkInfo_tr :
+    TrConstVal .safe annotatedParamTypeEnv annotatedParamMkInfo
+      annotatedParamRawType.ctors[0] := by
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr annotatedParamTypeEnv
+      annotatedParamMkInfo.levelParams [] annotatedParamMkInfo.type
+      annotatedParamRawType.ctors[0].type := by
+    tr_type_expr_tac
+  obtain ⟨u, htype⟩ := annotatedParamRawCtor_wf
+  exact hshape.to_trExprS annotatedParamTypeEnv_ordered trivial
+    ⟨.sort u, htype⟩
+
+private theorem annotatedParamRecInfo_tr :
+    TrConstVal .safe annotatedParamCtorEnv annotatedParamRecInfo
+      (inductGenerationRecVal annotatedParamGenerationChecked) := by
+  have hfamily : annotatedParamCtorEnv.constants ``AnnotatedParam =
+      some annotatedParamRawType.toVConstant := rfl
+  have hmk : annotatedParamCtorEnv.constants ``AnnotatedParam.mk =
+      some annotatedParamRawType.ctors[0].toVConstant := rfl
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr annotatedParamCtorEnv
+      annotatedParamRecInfo.levelParams [] annotatedParamRecInfo.type
+      (inductGenerationRecVal annotatedParamGenerationChecked).type := by
+    tr_type_expr_tac
+  obtain ⟨u, hrec⟩ := annotatedParamGenerationEnv.recursor_wf
+  exact hshape.to_trExprS annotatedParamCtorEnv_ordered trivial
+    ⟨.sort u, hrec⟩
+
+private def annotatedParamCtorMap : ConstMap :=
+  annotatedParamTypeMap.insert ``AnnotatedParam.mk annotatedParamMkInfo
+
+private def annotatedParamMap : ConstMap :=
+  annotatedParamCtorMap.insert ``AnnotatedParam.rec annotatedParamRecInfo
+
+private theorem annotatedParamMk_fresh :
+    annotatedParamTypeMap.find? ``AnnotatedParam.mk = none := by
+  rw [annotatedParamTypeMap, outParamMap_wf.find?_insert,
+    outParamMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
+
+private theorem annotatedParamCtorMap_wf : annotatedParamCtorMap.WF :=
+  annotatedParamTypeMap_wf.insert _ _ annotatedParamMk_fresh
+
+private theorem annotatedParamRec_fresh :
+    annotatedParamCtorMap.find? ``AnnotatedParam.rec = none := by
+  rw [annotatedParamCtorMap, annotatedParamTypeMap_wf.find?_insert,
+    annotatedParamTypeMap, outParamMap_wf.find?_insert, outParamMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
+
+/-- Real `ConstantInfo` replay for the definitionally equal parameter case.
+The generation certificate and the emitted recursor/rule payload are the same
+values checked against kernel metadata above. -/
+def annotatedParamAddInductTraceChecked :
+    AddInductTrace outParamMap outParamEnv annotatedParamRawDecl
+      annotatedParamMap annotatedParamFinalEnv := by
+  refine {
+    generation := annotatedParamGenerationChecked
+    generation_wf := annotatedParamGenerationChecked_wf
+    typeMap := annotatedParamTypeMap
+    typeEnv := annotatedParamTypeEnv
+    ctorMap := annotatedParamCtorMap
+    ctorEnv := annotatedParamCtorEnv
+    recEnv := annotatedParamRecEnv
+    addType := annotatedParamAddType
+    addCtors := ?_
+    addRec := {
+      info := annotatedParamRecInfo
+      kind_eq := by
+        simp [annotatedParamRecInfo, InductConstantKind.Matches]
+      tr := annotatedParamRecInfo_tr
+      map_fresh := by
+        rw [show
+          (inductGenerationRecVal annotatedParamGenerationChecked).name =
+            ``AnnotatedParam.rec by rfl]
+        exact annotatedParamRec_fresh
+      env_add := rfl
+      map_add := rfl }
+    addRules := ⟨rfl⟩ }
+  exact .cons {
+    info := annotatedParamMkInfo
+    kind_eq := by
+      simp [annotatedParamMkInfo, InductConstantKind.Matches]
+    tr := annotatedParamMkInfo_tr
+    map_fresh := by
+      simpa [annotatedParamRawType] using annotatedParamMk_fresh
+    env_add := rfl
+    map_add := rfl } .nil
+
+theorem annotatedParam_addInduct_checked :
+    AddInduct outParamMap outParamEnv annotatedParamRawDecl
+      annotatedParamMap annotatedParamFinalEnv :=
+  ⟨annotatedParamAddInductTraceChecked⟩
+
+theorem annotatedParam_trEnv'_checked :
+    TrEnv' .safe annotatedParamMap false annotatedParamFinalEnv :=
+  .induct annotatedParam_addInduct_checked outParam_trEnv'
+
+theorem annotatedParam_env_wf_checked : annotatedParamFinalEnv.WF :=
+  annotatedParam_trEnv'_checked.wf
+
+theorem annotatedParam_aligned_checked :
+    Aligned .safe annotatedParamMap annotatedParamFinalEnv :=
+  annotatedParam_trEnv'_checked.aligned
+
+theorem annotatedParamCertified_trace :
+    Nonempty (VEnv.AddInductGenerationTrace outParamEnv
+      annotatedParamFinalEnv annotatedParamGenerationChecked) :=
+  VEnv.addInductCertified_trace annotatedParam_addInductCertified
+
+theorem annotatedParamFinalEnv_family_lookup :
+    annotatedParamFinalEnv.constants ``AnnotatedParam =
+      some annotatedParamRawType.toVConstant := by
+  rcases annotatedParamCertified_trace with ⟨trace⟩
+  exact trace.family_lookup
+
+theorem annotatedParamFinalEnv_ctor_lookup :
+    annotatedParamFinalEnv.constants ``AnnotatedParam.mk =
+      some annotatedParamRawType.ctors[0].toVConstant := by
+  rcases annotatedParamCertified_trace with ⟨trace⟩
+  exact trace.ctor_lookup (.head _)
+
+theorem annotatedParamFinalEnv_rec_lookup :
+    annotatedParamFinalEnv.constants ``AnnotatedParam.rec =
+      some annotatedParamGenerationChecked.recursor := by
+  rcases annotatedParamCertified_trace with ⟨trace⟩
+  exact trace.rec_lookup
+
+theorem annotatedParamFinalEnv_iota_mem :
+    annotatedParamFinalEnv.defeqs
+      annotatedParamGenerationChecked.generatedRules[0] := by
+  rcases annotatedParamCertified_trace with ⟨trace⟩
+  exact trace.rule_mem (.head _)
+
+theorem annotatedParam_iota_rhs_matches_kernel :
+    annotatedParamKernelRuleRhs =
+      annotatedParamGenerationChecked.generatedRules[0].rhs := rfl
+
+theorem annotatedParam_type_map_lookup :
+    annotatedParamMap.find? ``AnnotatedParam =
+      some annotatedParamInfo := by
+  rw [annotatedParamMap, annotatedParamCtorMap_wf.find?_insert,
+    annotatedParamCtorMap, annotatedParamTypeMap_wf.find?_insert,
+    annotatedParamTypeMap, outParamMap_wf.find?_insert]
+  simp +decide
+
+theorem annotatedParam_mk_map_lookup :
+    annotatedParamMap.find? ``AnnotatedParam.mk =
+      some annotatedParamMkInfo := by
+  rw [annotatedParamMap, annotatedParamCtorMap_wf.find?_insert,
+    annotatedParamCtorMap, annotatedParamTypeMap_wf.find?_insert]
+  rfl
+
+theorem annotatedParam_rec_map_lookup :
+    annotatedParamMap.find? ``AnnotatedParam.rec =
+      some annotatedParamRecInfo := by
+  rw [annotatedParamMap, annotatedParamCtorMap_wf.find?_insert]
+  rfl
+
+theorem annotatedParam_type_lookup_unique :
+    annotatedParamInfo.name = ``AnnotatedParam ∧
+      TrConstant .safe annotatedParamFinalEnv annotatedParamInfo
+        annotatedParamRawType.toVConstant :=
+  annotatedParam_aligned_checked.find?_uniq annotatedParam_type_map_lookup
+    annotatedParamFinalEnv_family_lookup
+
+theorem annotatedParam_mk_lookup_unique :
+    annotatedParamMkInfo.name = ``AnnotatedParam.mk ∧
+      TrConstant .safe annotatedParamFinalEnv annotatedParamMkInfo
+        annotatedParamRawType.ctors[0].toVConstant :=
+  annotatedParam_aligned_checked.find?_uniq annotatedParam_mk_map_lookup
+    annotatedParamFinalEnv_ctor_lookup
+
+theorem annotatedParam_rec_lookup_unique :
+    annotatedParamRecInfo.name = ``AnnotatedParam.rec ∧
+      TrConstant .safe annotatedParamFinalEnv annotatedParamRecInfo
+        annotatedParamGenerationChecked.recursor :=
+  annotatedParam_aligned_checked.find?_uniq annotatedParam_rec_map_lookup
+    annotatedParamFinalEnv_rec_lookup
+
 /-- The complete AliasFormer metadata trace with the generation-WF field
 supplied by the checker-produced certificate. All computational metadata
 witnesses are shared with the existing replay. -/

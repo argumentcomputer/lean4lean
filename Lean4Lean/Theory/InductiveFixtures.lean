@@ -737,6 +737,190 @@ example : annotatedParamGenerationChecked.generatedRules[0]? =
       (mk : motive (@AnnotatedParam.mk alpha)) =>
       @AnnotatedParam.rec alpha motive mk (@AnnotatedParam.mk alpha) ≡ mk)) := rfl
 
+/-- The raw parameter domain retained by kernel metadata before annotation
+consumption. -/
+def annotatedParamRawDomain : VExpr :=
+  .app (.const ``outParam [.succ (.succ .zero)])
+    (.sort (.succ .zero))
+
+/-- The stored `outParam Type` parameter and the checked `Type` parameter are
+definitionally equal in the exact pre-declaration environment. -/
+theorem annotatedParamRawDomain_defeq :
+    outParamEnv.IsDefEq 0 [] annotatedParamRawDomain
+      (.sort (.succ .zero)) (.sort (.succ (.succ .zero))) := by
+  have hfn : outParamEnv.IsDefEq 0 []
+      (.const ``outParam [.succ (.succ .zero)])
+      (.lam (.sort (.succ (.succ .zero))) (.bvar 0))
+      (.forallE (.sort (.succ (.succ .zero)))
+        (.sort (.succ (.succ .zero)))) := by
+    simpa [outParamDefEq, VExpr.instL, VLevel.inst] using
+      (VEnv.IsDefEq.extra (env := outParamEnv) (uvars := 0) (Γ := [])
+        (df := outParamDefEq) (ls := [.succ (.succ .zero)])
+        (by simp [outParamEnv, VEnv.addDefEq])
+        (by simp; decide) rfl)
+  have harg : outParamEnv.HasType 0 []
+      (.sort (.succ .zero)) (.sort (.succ (.succ .zero))) :=
+    VEnv.HasType.sort (by decide)
+  exact (VEnv.IsDefEq.appDF hfn harg).trans
+    (VEnv.IsDefEq.beta (VEnv.HasType.bvar .zero) harg)
+
+/-- The annotation-consumed declaration accepted by the structural analyzer
+has the ordinary direct semantic interpretation. -/
+theorem annotatedParamViewDecl_wf :
+    annotatedParamViewDecl.WF VEnv.empty := by
+  refine ⟨rfl, ?_⟩
+  intro ty hty
+  have hty' : ty = annotatedParamViewType :=
+    List.mem_singleton.1 (by
+      simpa [annotatedParamViewDecl] using hty)
+  subst ty
+  refine ⟨?_, ?_⟩
+  · change VEnv.OnTel VEnv.empty 0 [] [.sort (.succ .zero)]
+    exact ⟨⟨_, VEnv.HasType.sort (by decide)⟩, trivial⟩
+  · intro c hc
+    have hc' : c = annotatedParamViewCtor :=
+      List.mem_singleton.1 (by
+        simpa [annotatedParamViewType] using hc)
+    subst c
+    exact ⟨trivial, rfl⟩
+
+/-- Exact Theory environment after staging the stored family constant. -/
+def annotatedParamTypeEnv : VEnv :=
+  (outParamEnv.addConst annotatedParamRawType.name
+    annotatedParamRawType.toVConstant).get (by decide)
+
+theorem annotatedParamTypeEnv_ordered :
+    annotatedParamTypeEnv.Ordered := by
+  have hbody : outParamEnv.HasType 0 [annotatedParamRawDomain]
+      (.sort (.succ .zero)) (.sort (.succ (.succ .zero))) :=
+    VEnv.HasType.sort (by decide)
+  apply VEnv.Ordered.const (n := annotatedParamRawType.name)
+    (ci := annotatedParamRawType.toVConstant)
+    outParamEnv_ordered
+  · exact ⟨.imax (.succ (.succ .zero)) (.succ (.succ .zero)),
+      VEnv.HasType.forallE
+        (VEnv.IsDefEq.hasType annotatedParamRawDomain_defeq).1 hbody⟩
+  · rfl
+
+private theorem annotatedParamFamilyApp_hasType (domain : VExpr)
+    (hdomain : annotatedParamTypeEnv.HasType 0 [domain]
+      (.bvar 0) annotatedParamRawDomain) :
+    annotatedParamTypeEnv.HasType 0 [domain]
+      (.app (.const ``AnnotatedParam []) (.bvar 0))
+      (.sort (.succ .zero)) := by
+  apply VEnv.HasType.app
+    (A := annotatedParamRawDomain) (B := .sort (.succ .zero))
+  · simpa [annotatedParamRawType, annotatedParamRawDomain,
+        VExpr.instL, VLevel.inst] using
+      VEnv.HasType.const (env := annotatedParamTypeEnv) (U := 0)
+        (Γ := [domain]) (c := ``AnnotatedParam)
+        (ci := annotatedParamRawType.toVConstant) (ls := [])
+        (VEnv.addConst_self (show
+          outParamEnv.addConst annotatedParamRawType.name
+            annotatedParamRawType.toVConstant =
+              some annotatedParamTypeEnv from rfl))
+        (by simp) rfl
+  · exact hdomain
+
+theorem annotatedParamRawCtorBody_hasType :
+    annotatedParamTypeEnv.HasType 0 [annotatedParamRawDomain]
+      (.app (.const ``AnnotatedParam []) (.bvar 0))
+      (.sort (.succ .zero)) := by
+  apply annotatedParamFamilyApp_hasType
+  simpa [annotatedParamRawDomain, VExpr.liftN] using
+    (VEnv.HasType.bvar (env := annotatedParamTypeEnv) (U := 0)
+      (Lookup.zero (Γ := []) (ty := annotatedParamRawDomain)))
+
+theorem annotatedParamCheckedCtorBody_hasType :
+    annotatedParamTypeEnv.HasType 0 [.sort (.succ .zero)]
+      (.app (.const ``AnnotatedParam []) (.bvar 0))
+      (.sort (.succ .zero)) := by
+  apply annotatedParamFamilyApp_hasType
+  have hb : annotatedParamTypeEnv.HasType 0 [.sort (.succ .zero)]
+      (.bvar 0) (.sort (.succ .zero)) := by
+    simpa [VExpr.liftN] using
+      (VEnv.HasType.bvar (env := annotatedParamTypeEnv) (U := 0)
+        (Lookup.zero (Γ := []) (ty := .sort (.succ .zero))))
+  have hd := annotatedParamRawDomain_defeq.mono
+    (VEnv.addConst_le (show
+      outParamEnv.addConst annotatedParamRawType.name
+        annotatedParamRawType.toVConstant =
+          some annotatedParamTypeEnv from rfl))
+  exact (hd.weak0 annotatedParamTypeEnv_ordered).symm.defeq hb
+
+/-- The raw family and constructor metadata are semantically related to the
+annotation-consumed analyzer view at their exact declaration stages. -/
+theorem annotatedParamNormalization_wf :
+    annotatedParamNormalization.WF outParamEnv := by
+  refine ⟨annotatedParamRawType, annotatedParamViewType,
+    rfl, rfl, ?_, ?_⟩
+  · have hbody : outParamEnv.HasType 0 [annotatedParamRawDomain]
+        (.sort (.succ .zero)) (.sort (.succ (.succ .zero))) :=
+      VEnv.HasType.sort (by decide)
+    exact ⟨_, VEnv.IsDefEq.forallEDF
+      annotatedParamRawDomain_defeq hbody⟩
+  · intro envT hadd
+    have henv : envT = annotatedParamTypeEnv := by
+      have : some envT = some annotatedParamTypeEnv :=
+        hadd.symm.trans (show
+          outParamEnv.addConst annotatedParamRawType.name
+            annotatedParamRawType.toVConstant =
+              some annotatedParamTypeEnv from rfl)
+      exact Option.some.inj this
+    subst envT
+    exact .cons ⟨_, VEnv.IsDefEq.forallEDF
+      (annotatedParamRawDomain_defeq.mono
+        (VEnv.addConst_le (show
+          outParamEnv.addConst annotatedParamRawType.name
+            annotatedParamRawType.toVConstant =
+              some annotatedParamTypeEnv from rfl)))
+      annotatedParamRawCtorBody_hasType⟩ .nil
+
+theorem annotatedParamViewChecked_wf :
+    annotatedParamViewChecked.WF outParamEnv := by
+  apply VInductDecl.Checked.WF.mono
+    ((VEnv.addConst_le (by rfl :
+      VEnv.empty.addConst ``outParam (vconst(type_of% @outParam)) =
+        some outParamConstEnv)).trans VEnv.addDefEq_le)
+  exact annotatedParamViewChecked.wf_of_decl annotatedParamViewDecl_wf
+
+/-- The mixed generation value uses the checked parameter for emitted
+recursor binders while retaining the raw constructor surface, and all four
+raw/view telescope/result obligations hold in their respective contexts. -/
+theorem annotatedParamGenerationChecked_wf :
+    annotatedParamGenerationChecked.WF outParamEnv := by
+  refine {
+    blockWF := ⟨annotatedParamNormalization_wf,
+      annotatedParamViewChecked_wf⟩
+    familyTel := ?_
+    familyResult := ?_
+    ctors := ?_ }
+  · change outParamEnv.TelDefEq 0 [] [annotatedParamRawDomain]
+      [.sort (.succ .zero)]
+    exact ⟨⟨_, annotatedParamRawDomain_defeq⟩, trivial⟩
+  · exact VEnv.HasType.sort (by decide)
+  · intro envT hadd ctor hctor
+    have henv : envT = annotatedParamTypeEnv := by
+      have : some envT = some annotatedParamTypeEnv :=
+        hadd.symm.trans (show
+          outParamEnv.addConst annotatedParamRawType.name
+            annotatedParamRawType.toVConstant =
+              some annotatedParamTypeEnv from rfl)
+      exact Option.some.inj this
+    subst envT
+    change ctor ∈ [⟨annotatedParamRawType.ctors[0],
+      annotatedParamViewChecked.constructors[0]⟩] at hctor
+    obtain rfl := List.mem_singleton.1 hctor
+    refine {
+      declaredTel := ⟨⟨_, annotatedParamRawDomain_defeq.mono
+        (VEnv.addConst_le (show
+          outParamEnv.addConst annotatedParamRawType.name
+            annotatedParamRawType.toVConstant =
+              some annotatedParamTypeEnv from rfl))⟩, trivial⟩
+      declaredResult := annotatedParamRawCtorBody_hasType
+      emittedTel := ⟨⟨_, VEnv.HasType.sort (by decide)⟩, trivial⟩
+      emittedResult := annotatedParamCheckedCtorBody_hasType }
+
 /-! ## Explicit normalization boundary
 
 Lean stores reducible aliases in inductive metadata even though
