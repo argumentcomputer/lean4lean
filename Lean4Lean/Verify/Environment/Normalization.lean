@@ -1133,6 +1133,167 @@ inductive CandidateExprIdentity :
           annotations annotationsEq checked normalized
           domainCandidate bodyCandidate)
 
+private def candidateExprIdentityBinderInfoEq :
+    Lean.BinderInfo → Lean.BinderInfo → Bool
+  | .default, .default
+  | .implicit, .implicit
+  | .strictImplicit, .strictImplicit
+  | .instImplicit, .instImplicit => true
+  | _, _ => false
+
+private theorem candidateExprIdentityBinderInfoEq_sound
+    (left right : Lean.BinderInfo)
+    (h : candidateExprIdentityBinderInfoEq left right = true) :
+    left = right := by
+  cases left <;> cases right <;>
+    simp_all [candidateExprIdentityBinderInfoEq]
+
+/-- Transparent structural equality sufficient for identity-normalizing
+candidate traces.  Metadata nodes are conservatively rejected: the retained
+generation spine never needs an opaque metadata equality to justify source
+identity. -/
+private def candidateExprIdentityExprEq : Lean.Expr → Lean.Expr → Bool
+  | .bvar i, .bvar j => i == j
+  | .fvar i, .fvar j => i == j
+  | .mvar i, .mvar j => i == j
+  | .sort u, .sort v => u == v
+  | .const n us, .const n' us' => n == n' && us == us'
+  | .app f a, .app f' a' =>
+      candidateExprIdentityExprEq f f' &&
+        candidateExprIdentityExprEq a a'
+  | .lam n t b bi, .lam n' t' b' bi' =>
+      n == n' && candidateExprIdentityExprEq t t' &&
+        candidateExprIdentityExprEq b b' &&
+          candidateExprIdentityBinderInfoEq bi bi'
+  | .forallE n t b bi, .forallE n' t' b' bi' =>
+      n == n' && candidateExprIdentityExprEq t t' &&
+        candidateExprIdentityExprEq b b' &&
+          candidateExprIdentityBinderInfoEq bi bi'
+  | .letE n t v b nd, .letE n' t' v' b' nd' =>
+      n == n' && candidateExprIdentityExprEq t t' &&
+        candidateExprIdentityExprEq v v' &&
+          candidateExprIdentityExprEq b b' && nd == nd'
+  | .lit a, .lit b => a == b
+  | .proj n i s, .proj n' i' s' =>
+      n == n' && i == i' && candidateExprIdentityExprEq s s'
+  | _, _ => false
+
+private theorem candidateExprIdentityExprEq_sound :
+    ∀ (left right : Lean.Expr),
+      candidateExprIdentityExprEq left right = true → left = right := by
+  intro left right h
+  induction left generalizing right with
+  | bvar i =>
+      cases right <;>
+        simp_all [candidateExprIdentityExprEq, beq_iff_eq]
+  | fvar i =>
+      cases right <;>
+        simp_all [candidateExprIdentityExprEq, beq_iff_eq]
+  | mvar i =>
+      cases right <;>
+        simp_all [candidateExprIdentityExprEq, beq_iff_eq]
+  | sort u =>
+      cases right <;>
+        simp_all [candidateExprIdentityExprEq, beq_iff_eq]
+  | const n us =>
+      cases right <;>
+        simp_all [candidateExprIdentityExprEq, beq_iff_eq]
+  | app fn arg fnIH argIH =>
+      cases right with
+      | app fn' arg' =>
+          simp only [candidateExprIdentityExprEq,
+            Bool.and_eq_true] at h
+          rw [fnIH fn' h.1, argIH arg' h.2]
+      | _ => simp_all [candidateExprIdentityExprEq]
+  | lam name type body binderInfo typeIH bodyIH =>
+      cases right with
+      | lam name' type' body' binderInfo' =>
+          simp only [candidateExprIdentityExprEq, Bool.and_eq_true,
+            beq_iff_eq] at h
+          rw [h.1.1.1, typeIH type' h.1.1.2,
+            bodyIH body' h.1.2,
+            candidateExprIdentityBinderInfoEq_sound _ _ h.2]
+      | _ => simp_all [candidateExprIdentityExprEq]
+  | forallE name type body binderInfo typeIH bodyIH =>
+      cases right with
+      | forallE name' type' body' binderInfo' =>
+          simp only [candidateExprIdentityExprEq, Bool.and_eq_true,
+            beq_iff_eq] at h
+          rw [h.1.1.1, typeIH type' h.1.1.2,
+            bodyIH body' h.1.2,
+            candidateExprIdentityBinderInfoEq_sound _ _ h.2]
+      | _ => simp_all [candidateExprIdentityExprEq]
+  | letE name type value body nondep typeIH valueIH bodyIH =>
+      cases right with
+      | letE name' type' value' body' nondep' =>
+          simp only [candidateExprIdentityExprEq, Bool.and_eq_true,
+            beq_iff_eq] at h
+          rw [h.1.1.1.1, typeIH type' h.1.1.1.2,
+            valueIH value' h.1.1.2, bodyIH body' h.1.2, h.2]
+      | _ => simp_all [candidateExprIdentityExprEq]
+  | lit literal =>
+      cases right <;>
+        simp_all [candidateExprIdentityExprEq, beq_iff_eq]
+  | mdata data expr exprIH =>
+      cases right <;> simp_all [candidateExprIdentityExprEq]
+  | proj typeName idx struct structIH =>
+      cases right with
+      | proj typeName' idx' struct' =>
+          simp only [candidateExprIdentityExprEq, Bool.and_eq_true,
+            beq_iff_eq] at h
+          rw [h.1.1, h.1.2, structIH struct' h.2]
+      | _ => simp_all [candidateExprIdentityExprEq]
+
+/-- Executable sufficient check for the recursive identity witness consumed
+by generation.  Unlike a root-only equality, it checks every retained domain,
+body, annotation result, and terminal node. -/
+def CandidateExprIdentity.check :
+    {candidateContext : AddInductive.Context} → {source : Lean.Expr} →
+      AddInductive.CandidateExprTrace candidateContext source → Bool
+  | _, _, .terminal _ source _ result _ _ =>
+      candidateExprIdentityExprEq result source
+  | _, _, .forallE _ source _ name domain body binderInfo _ annotations _ _ _
+      domainCandidate bodyCandidate =>
+    candidateExprIdentityExprEq source
+        (.forallE name domain body binderInfo) &&
+      candidateExprIdentityExprEq annotations.consumed domain &&
+        CandidateExprIdentity.check domainCandidate &&
+          CandidateExprIdentity.check bodyCandidate
+
+/-- Executable sufficient equality check for the terminal expression selected
+by a candidate trace.  This is useful when the family validator must name its
+result universe without unfolding the proof-carrying trace. -/
+def CandidateExprIdentity.terminalCheck
+    (trace : AddInductive.CandidateExprTrace candidateContext source)
+    (expected : Lean.Expr) : Bool :=
+  candidateExprIdentityExprEq trace.terminalResult expected
+
+theorem CandidateExprIdentity.terminalResult_eq_of_check
+    {trace : AddInductive.CandidateExprTrace candidateContext source}
+    {expected : Lean.Expr}
+    (h : CandidateExprIdentity.terminalCheck trace expected = true) :
+    trace.terminalResult = expected :=
+  candidateExprIdentityExprEq_sound _ _ h
+
+/-- A successful structural check yields the full recursive identity witness;
+the Boolean contributes no semantic authority beyond these proved equalities. -/
+theorem CandidateExprIdentity.of_check
+    {trace : AddInductive.CandidateExprTrace candidateContext source}
+    (h : CandidateExprIdentity.check trace = true) :
+    CandidateExprIdentity trace := by
+  induction trace with
+  | terminal context source inferred result checked normalized =>
+      simp only [CandidateExprIdentity.check] at h
+      exact .terminal (candidateExprIdentityExprEq_sound result source h)
+  | forallE context source inferred name domain body binderInfo fresh
+      annotations annotationsEq checked normalized domainCandidate
+      bodyCandidate domainIH bodyIH =>
+      simp only [CandidateExprIdentity.check, Bool.and_eq_true] at h
+      exact .forallE domainCandidate bodyCandidate
+        (candidateExprIdentityExprEq_sound _ _ h.1.1.1)
+        (candidateExprIdentityExprEq_sound _ _ h.1.1.2)
+        (domainIH h.1.2) (bodyIH h.2)
+
 /-- An identity-normalizing trace necessarily preserves the stored main Pi
 spine. This turns the recursive identity witness into the Boolean gate used
 by the generation assembler. -/
