@@ -66,12 +66,12 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-04 active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
-| Current formalization source | L4L-03 closure at the current `jcb/formalization` checkpoint, built on semantic checkpoint `04a1a4f29de4`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
+| Ladder position | **L4L-05 active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
+| Current formalization source | L4L-04 closure at the current `jcb/formalization` checkpoint, built on Theory checkpoint `a5a010790b81`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 20 live sorries and 29 custom-axiom declarations, both pinned by exact audits |
-| Gates | the full §6 gate list is green on the current L4L-03 closure source, including the 119-job Theory/Verify build, 156-job default build, Nix build/check suite, trust audits, and formatter |
+| Gates | the full §6 gate list is green on the current L4L-04 closure source, including the 120-job Theory/Verify build, 157-job default build, Nix build/check suite, trust audits, and formatter |
 
 ### 2.1 What is green
 
@@ -98,6 +98,12 @@ definitionally with Lean's actual kernel declarations. `AliasFormer` and
 `AliasRec` prove normalization is necessary, not hypothetical: real metadata
 retains reducible aliases at the family result and around a recursive field;
 their raw declarations fail `checked?` while their certified views succeed.
+`NormalizationMatrix` closes the differential breadth for reducible aliases
+in family, parameter/index, ordinary-field, direct-recursive, and
+Pi-hidden-recursive positions, including retained beta/let bodies. Its exact
+kernel candidate succeeds at fuel 10 and fails at 9, opaque and non-defeq
+variants reject, and the actual family/constructor/recursor/rule metadata
+replays through the final aligned Theory environment.
 
 **Verify.** A checker-run certificate layer (`WhnfRun`, `CheckTypeRun`,
 `IsDefEqRun`, `DefEqEvidence`, `TelDefEqEvidence`, `NormalizedCtorRun`,
@@ -389,18 +395,9 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Singleton kernel parity (L4L-04–L4L-07)
+### Singleton kernel parity (L4L-05–L4L-07)
 
-**L4L-04 — normalization differential matrix (active).** Cover aliases at family
-results, parameter/index domains, ordinary fields, direct recursive targets,
-and recursive targets hidden behind a Pi-producing alias; include beta/let
-reduction where real metadata can retain it, irreducible/opaque or otherwise
-non-defeq counterexamples, and the checker fuel boundary.
-*Exit:* every case compares raw payload, normalized descriptor, recursive
-positions, recursor, and all rules with kernel metadata and replays through
-the environment layer; generic rather than fixture-only axiom guards pass.
-
-**L4L-05 — positivity and constructor-validity parity.** Extend
+**L4L-05 — positivity and constructor-validity parity (active).** Extend
 acceptance/rejection to the kernel matrix for nested-negative occurrences,
 family mentions in nonrecursive/dependent/proof fields, recursive functions,
 dependencies on omitted recursive outer locals after a recursive field, and
