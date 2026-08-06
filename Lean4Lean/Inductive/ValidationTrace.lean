@@ -183,6 +183,47 @@ theorem exists_of_run
                   exact ⟨.target context source _ fuel targetIdx
                     hwhnf hocc rfl hvalid⟩
 
+/-- Execute the positivity traversal while retaining its exact dependent
+trace as data. Unlike `exists_of_run`, this decomposition is transparent and
+therefore remains available to later executable alignment audits; erasing the
+result with `run` recovers the ordinary checker execution. -/
+def buildExecution (stats : InductiveStats) (ctor : Name) (argIdx : Nat)
+    (context : Context) (source : Expr) :
+    (fuel : Nat) → Except Exception
+      (ConstructorPositivityTrace stats ctor argIdx context source fuel)
+  | 0 => .error .deepRecursion
+  | fuel + 1 =>
+      match hwhnf : TypeChecker.M.run context.env context.safety context.lctx
+          context.lparams context.fuel (TypeChecker.whnf source) with
+      | .error error => .error error
+      | .ok result =>
+          match hoccurs : hasIndOcc stats.indConsts result with
+          | false => .ok (.absent context source result fuel hwhnf hoccurs)
+          | true =>
+              match hforall : result.isForall with
+              | true =>
+                  match result with
+                  | .forallE name domain body binderInfo =>
+                      match hdomain : hasIndOcc stats.indConsts domain with
+                      | true => .error <| .other
+                          s!"arg #{argIdx + 1} of '{ctor}' has a non positive occurrence of the datatypes being declared"
+                      | false =>
+                          match buildExecution stats ctor argIdx
+                              (context.pushLocalDecl name binderInfo
+                                (consumeTypeAnnotations domain))
+                              (body.instantiate1 context.freshExpr) fuel with
+                          | .error error => .error error
+                          | .ok tail => .ok (.forallE context source fuel name
+                              domain body binderInfo hwhnf hoccurs hdomain tail)
+                  | _ => .error <| .other
+                      "positivity WHNF shape disagrees with isForall"
+              | false =>
+                  match hvalid : isValidIndApp? stats result with
+                  | none => .error <| .other
+                      s!"arg #{argIdx + 1} of '{ctor}' has a non valid occurrence of the datatypes being declared"
+                  | some targetIdx => .ok (.target context source result fuel
+                      targetIdx hwhnf hoccurs hforall hvalid)
+
 /-- An exact positivity failure, including its diagnostic payload, excludes a
 successful trace at precisely that source/context/fuel position. -/
 theorem not_nonempty_of_error
@@ -268,6 +309,20 @@ theorem exists_of_run
       obtain ⟨trace⟩ := ConstructorPositivityTrace.exists_of_run success
       exact ⟨.safe rfl trace⟩
   | true => exact ⟨.skipped rfl⟩
+
+/-- Transparently retain the exact safe/unsafe positivity branch selected by
+constructor validation. -/
+def buildExecution (stats : InductiveStats) (isUnsafe : Bool)
+    (ctor : Name) (argIdx : Nat) (context : Context) (source : Expr) :
+    Except Exception
+      (ConstructorPositivityModeTrace stats isUnsafe ctor argIdx context source) :=
+  match isUnsafe with
+  | true => .ok (.skipped rfl)
+  | false =>
+      match ConstructorPositivityTrace.buildExecution stats ctor argIdx
+          context source context.fuel.inductiveFuel with
+      | .error error => .error error
+      | .ok trace => .ok (.safe rfl trace)
 
 /-- Failure of the exact safe/unsafe positivity branch excludes its retained
 mode trace without changing the executable diagnostic. -/
@@ -528,6 +583,79 @@ theorem exists_of_run
         | true =>
             exact ⟨.terminal context _ fuel argIdx rfl hvalid⟩
 
+/-- Execute one constructor telescope while retaining the exact parameter,
+universe, positivity, and terminal choices made by the ordinary validator.
+The returned data is transparent, so later executable gates can inspect the
+same trace without selecting it through `Classical.choice`. -/
+def buildExecution (stats : InductiveStats) (isUnsafe : Bool)
+    (familyIdx : Nat) (ctor : Name) (context : Context) (source : Expr)
+    (argIdx : Nat) :
+    (fuel : Nat) → Except Exception
+      (ConstructorTypeValidationTrace stats isUnsafe familyIdx ctor
+        context source argIdx fuel)
+  | 0 => .error .deepRecursion
+  | fuel + 1 =>
+      match hforall : source.isForall with
+      | false =>
+          match hvalid : isValidIndAppIdx stats source familyIdx with
+          | false => .error <| .other s!"invalid return type for '{ctor}'"
+          | true => .ok (.terminal context source fuel argIdx hforall hvalid)
+      | true =>
+          match source with
+          | .forallE name domain body binderInfo =>
+              match hparam : stats.params[argIdx]? with
+              | some param =>
+                  match hget : getType param context with
+                  | .error error => .error error
+                  | .ok parameterType =>
+                      match hdefeq : TypeChecker.M.run context.env
+                          context.safety context.lctx context.lparams
+                          context.fuel
+                          (TypeChecker.isDefEq domain parameterType) with
+                      | .error error => .error error
+                      | .ok false => .error <| .other
+                          s!"arg #{argIdx + 1} of '{ctor}' does not match inductive datatype parameters"
+                      | .ok true =>
+                          match buildExecution stats isUnsafe familyIdx ctor
+                              context (body.instantiate1 param) (argIdx + 1)
+                              fuel with
+                          | .error error => .error error
+                          | .ok tail => .ok (.parameter context fuel argIdx
+                              name domain body binderInfo param parameterType
+                              hparam hget hdefeq tail)
+              | none =>
+                  match hensure : TypeChecker.M.run context.env context.safety
+                      context.lctx context.lparams context.fuel
+                      (TypeChecker.ensureType domain) with
+                  | .error error => .error error
+                  | .ok sortResult =>
+                      let finish (universeTrace : ConstructorUniverseTrace
+                          stats.resultLevel sortResult.sortLevel!) :=
+                        match ConstructorPositivityModeTrace.buildExecution
+                            stats isUnsafe ctor argIdx context domain with
+                        | .error error => .error error
+                        | .ok positivity =>
+                            match buildExecution stats isUnsafe familyIdx ctor
+                                (context.pushLocalDecl name binderInfo
+                                  (consumeTypeAnnotations domain))
+                                (body.instantiate1 context.freshExpr)
+                                (argIdx + 1) fuel with
+                            | .error error => .error error
+                            | .ok tail => .ok (.ordinary context fuel argIdx
+                                name domain body binderInfo sortResult hparam
+                                hensure universeTrace positivity tail)
+                      match hstruct : levelStructGe stats.resultLevel
+                          sortResult.sortLevel! with
+                      | true => finish (.structural hstruct)
+                      | false =>
+                          match hfallback : stats.resultLevel.isZero ||
+                              stats.resultLevel.geq sortResult.sortLevel! with
+                          | false => .error <| .other
+                              s!"universe level of type_of(arg #{argIdx + 1}) of '{ctor}' is too big for the corresponding inductive datatype"
+                          | true => finish (.fallback hstruct hfallback)
+          | _ => .error <| .other
+              "constructor source shape disagrees with isForall"
+
 /-- Erasing the inner trace also replays the public one-constructor checker,
 including its exact context-fuel read. -/
 theorem check_run
@@ -577,6 +705,50 @@ inductive ConstructorListValidationTrace
         context (seen.insert head.name) tail) :
       ConstructorListValidationTrace stats isUnsafe familyIdx context
         seen (head :: tail)
+
+namespace ConstructorListValidationTrace
+
+/-- Execute the source-ordered constructor fold while retaining its exact
+dependent validation trace.  Every stored equation is obtained from the same
+checker call made by `checkConstructorFold`; no semantic premise participates
+in acceptance. -/
+def buildExecution (stats : InductiveStats) (isUnsafe : Bool)
+    (familyIdx : Nat) (context : Context) :
+    (seen : NameSet) → (constructors : List Constructor) →
+      Except Exception
+        (ConstructorListValidationTrace stats isUnsafe familyIdx context
+          seen constructors)
+  | seen, [] => .ok (.nil seen)
+  | seen, head :: tail =>
+      match hfresh : seen.contains head.name with
+      | true => .error <| .other s!"duplicate constructor name '{head.name}'"
+      | false =>
+          match hclosed : context.env.checkNoMVarNoFVar
+              head.name head.type with
+          | .error error => .error error
+          | .ok () =>
+              match hroot : TypeChecker.M.run context.env context.safety {}
+                  context.lparams context.fuel
+                  (TypeChecker.checkType head.type) with
+              | .error error => .error error
+              | .ok inferred =>
+                  let rootCheck : CandidateCheckTypeObservation
+                      context.withEmptyLocalContext head.type :=
+                    ⟨inferred, by
+                      simpa only [CandidateCheckTypeStep.Valid,
+                        Context.withEmptyLocalContext] using hroot⟩
+                  match ConstructorTypeValidationTrace.buildExecution stats
+                      isUnsafe familyIdx head.name context head.type 0
+                      context.fuel.inductiveFuel with
+                  | .error error => .error error
+                  | .ok typeTrace =>
+                      match buildExecution stats isUnsafe familyIdx context
+                          (seen.insert head.name) tail with
+                      | .error error => .error error
+                      | .ok tailTrace => .ok (.cons seen head tail hfresh
+                          hclosed rootCheck typeTrace tailTrace)
+
+end ConstructorListValidationTrace
 
 /-- A transparent presentation of the constructor portion of the executable
 validator, discarding only the final duplicate-name accumulator. -/
@@ -837,6 +1009,19 @@ structure ConstructorValidationRun
     indType.ctors
 
 namespace ConstructorValidationRun
+
+/-- Transparent decomposition of the ordinary singleton constructor
+validator.  Successful output is executable data rather than a
+`Classical.choice`, which lets subsequent D2/D3 audits compute over the exact
+retained branch structure. -/
+def buildExecution (indType : InductiveType) (stats : InductiveStats)
+    (isUnsafe : Bool) (context : Context) :
+    Except Exception
+      (ConstructorValidationRun indType stats isUnsafe context) :=
+  match ConstructorListValidationTrace.buildExecution stats isUnsafe 0
+      context {} indType.ctors with
+  | .error error => .error error
+  | .ok trace => .ok ⟨trace⟩
 
 /-- Recomposition: retained operational evidence replays the real singleton
 `checkConstructors` execution exactly. -/

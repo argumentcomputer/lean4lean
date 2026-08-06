@@ -324,6 +324,44 @@ def declareInductiveTypes (stats : InductiveStats) (numParams : Nat)
     env.checkName info.name c.allowPrimitive
     return env.add (.inductInfo info)
 
+/-- The exact kernel family record assembled for a singleton inductive block.
+Naming it exposes the value installed by `declareInductiveTypes` without
+asking a replay proof to duplicate the producer's record construction. -/
+def singletonDeclaredInfo (stats : InductiveStats) (numParams numIndices : Nat)
+    (indType : InductiveType) (numNested : Nat) (isUnsafe : Bool)
+    (context : Context) : InductiveVal :=
+  { indType with
+    numParams, numIndices, all := [indType.name], numNested, isUnsafe
+    levelParams := context.lparams
+    ctors := indType.ctors.map (·.name)
+    isRec := isRec #[indType] stats.indConsts
+    isReflexive := isReflexive #[indType] stats.indConsts }
+
+/-- A successful singleton family declaration installs exactly the family
+record assembled by the executable producer.  The result equation supplies
+the name-check evidence; replay callers provide only the validator's exact
+singleton index count. -/
+theorem declareInductiveTypes_singleton_constants
+    (stats : InductiveStats) (numParams numIndices : Nat)
+    (indType : InductiveType) (numNested : Nat) (isUnsafe : Bool)
+    (context : Context) (familyEnv : Environment)
+    (hnindices : stats.nindices = #[numIndices])
+    (hdeclare :
+      declareInductiveTypes stats numParams #[indType] numNested isUnsafe context =
+        .ok familyEnv) :
+    familyEnv.constants =
+      context.env.constants.insert indType.name
+        (.inductInfo <| singletonDeclaredInfo stats numParams numIndices
+          indType numNested isUnsafe context) := by
+  unfold declareInductiveTypes at hdeclare
+  rw [hnindices] at hdeclare
+  cases hcheck : context.env.checkName indType.name context.allowPrimitive with
+  | error error =>
+      simp [hcheck, Bind.bind, Except.bind, Pure.pure, Except.pure] at hdeclare
+  | ok _ =>
+      simp [hcheck, Bind.bind, Except.bind, Pure.pure, Except.pure] at hdeclare
+      exact congrArg Kernel.Environment.constants hdeclare.symm
+
 /-- Family declaration observes only the environment, universe parameters,
 and primitive-name policy of its reader context.  In particular, the local
 telescope and fresh-name generator retained by family validation do not alter
@@ -1582,6 +1620,17 @@ def toList (f : (a : α) → F a → β) :
 def singleton : CandidateList F [source] → F source
   | .cons head .nil => head
 
+/-- A source-indexed singleton list is completely determined by its total
+singleton projection.  This eta law lets retained producer witnesses be
+reindexed at staged singleton APIs without inspecting or replacing their
+candidate payload. -/
+theorem singleton_eta (candidates : CandidateList F [source]) :
+    candidates = .cons candidates.singleton .nil := by
+  cases candidates with
+  | cons head tail =>
+      cases tail
+      rfl
+
 end CandidateList
 
 /-- Candidate for one constructor; its header is always taken from `source`. -/
@@ -1846,6 +1895,21 @@ theorem CandidateFamilyListProduced.singleton_constructors
   | cons constructors tail =>
       cases tail
       exact constructors
+
+/-- A successful singleton family assembly can be reindexed directly by the
+family-type payload retained in its assembled result.  This dependent eta law
+avoids rewriting the input list underneath the execution witness. -/
+theorem CandidateFamilyListProduced.singleton_reindex
+    {context : Context} {source : Lean.InductiveType}
+    {familyTypes : CandidateList CandidateFamilyType [source]}
+    {families : CandidateList CandidateFamily [source]}
+    (run : CandidateFamilyListProduced context familyTypes families) :
+    CandidateFamilyListProduced context
+      (.cons families.singleton.familyType .nil) families := by
+  cases run with
+  | cons constructors tail =>
+      cases tail
+      exact .cons constructors .nil
 
 /-- Shape-preserving output of the executable normalization-candidate pass.
 The dependent family/constructor lists prevent positional provenance from

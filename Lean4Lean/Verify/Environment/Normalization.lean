@@ -2010,6 +2010,35 @@ theorem CandidateExprSemanticRootInput.exists
     input.venv_eq input.lparams_eq input.vlctx_eq input.source_tr
     input.whnfFuel input.whnfDepth
 
+/-- Interpret an identity-normalizing staged root at the strict Theory
+translation already owned by its source input.  This keeps the endpoint
+definitionally fixed without caller-supplied WHNF data or a
+`Classical.choice` over the general semantic interpreter. -/
+def CandidateExprSemanticRootInput.semanticOfIdentity
+    {env : VEnv} {Us : List Name} {source : Expr}
+    {candidate : AddInductive.CandidateExpr source} {source' : VExpr}
+    (input : CandidateExprSemanticRootInput env Us candidate source')
+    (identity : CandidateExprIdentity candidate.trace) :
+    CandidateExprSemanticRootRun env Us candidate source' where
+  contextRun := input.contextRun
+  venv_eq := input.venv_eq
+  lparams_eq := input.lparams_eq
+  vlctx_eq := input.vlctx_eq
+  source_tr := input.source_tr
+  whnfFuel := input.whnfFuel
+  whnfDepth := input.whnfDepth
+  view := source'
+  recursive := by
+    have source_tr : input.contextRun.context.TrExprS source source' := by
+      simpa only [VContext.TrExprS, input.venv_eq, input.lparams_eq,
+        input.vlctx_eq] using input.source_tr
+    obtain ⟨inferred, ⟨recursive⟩⟩ :=
+      CandidateExprRun.exists_ofIdentity candidate.trace identity
+        input.contextRun source' source_tr input.whnfFuel input.whnfDepth
+    refine ⟨inferred, ?_⟩
+    simpa only [input.venv_eq, input.lparams_eq, input.vlctx_eq] using
+      recursive
+
 /-- One explicitly verified root stage shared by every candidate expression
 interpreted before or after family insertion.
 
