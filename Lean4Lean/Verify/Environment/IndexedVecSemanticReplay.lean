@@ -2356,6 +2356,8 @@ private theorem indexedVecPreFamilySafetyRun :
     · split
       · rw [alphaChecked.check_eq, alphaEnsure.observe_eq,
           alphaConsumed.check_eq]
+        rw [dif_pos (by
+          simp [AddInductive.constructorIndependentOf])]
         simp only [Bind.bind, Except.bind]
         rw [alphaAnnotations.observe_eq]
         simp only [Bind.bind, Except.bind]
@@ -2443,6 +2445,8 @@ private theorem indexedVecPreFamilySafetyRun :
     · split
       · rw [baseNat.check_eq, baseNatEnsure.observe_eq,
           baseNatConsumed.check_eq]
+        rw [dif_pos (by
+          simp [AddInductive.constructorIndependentOf])]
         simp only [Bind.bind, Except.bind]
         rw [baseNatAnnotations.observe_eq]
         simp only [Bind.bind, Except.bind]

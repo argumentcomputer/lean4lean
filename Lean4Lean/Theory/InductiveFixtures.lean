@@ -764,6 +764,12 @@ theorem annotatedParamRawDomain_defeq :
   exact (VEnv.IsDefEq.appDF hfn harg).trans
     (VEnv.IsDefEq.beta (VEnv.HasType.bvar .zero) harg)
 
+/--
+info: 'Lean4Lean.InductiveFixtures.annotatedParamRawDomain_defeq' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms annotatedParamRawDomain_defeq
+
 /-- The annotation-consumed declaration accepted by the structural analyzer
 has the ordinary direct semantic interpretation. -/
 theorem annotatedParamViewDecl_wf :
@@ -920,6 +926,12 @@ theorem annotatedParamGenerationChecked_wf :
       declaredResult := annotatedParamRawCtorBody_hasType
       emittedTel := ⟨⟨_, VEnv.HasType.sort (by decide)⟩, trivial⟩
       emittedResult := annotatedParamCheckedCtorBody_hasType }
+
+/--
+info: 'Lean4Lean.InductiveFixtures.annotatedParamGenerationChecked_wf' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms annotatedParamGenerationChecked_wf
 
 /-! ## Explicit normalization boundary
 

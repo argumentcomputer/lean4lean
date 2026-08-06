@@ -4,7 +4,7 @@ This file tracks every deliberate semantic, API, build, or verification delta
 from `upstream/master` that must either be upstreamed or explicitly retained.
 It is the tracked counterpart to `plans/roadmap.md`.
 
-Audit baseline after the verified constructor level-comparison checkpoint
+Audit baseline after the environment-sensitive validation-parity checkpoint
 (2026-08-06):
 
 - current upstream reconciliation parent: digama `upstream/master`
@@ -86,17 +86,21 @@ Audit baseline after the verified constructor level-comparison checkpoint
   `de3d98c9fc5fd066b2ab88ec450e01402ed38357`
   (`proof: verify constructor level comparison`). Publication to the fork's
   `jcb/induct` branch is pending.
+- remote development checkpoints for L4L-03 at `jcb/formalization`:
+  `3e6efcce` (`proof: widen D3 constructor replay`), `53d5f923`
+  (`fix: emit recursors over checked parameters`), `bb883178`
+  (`test: cover definitionally equal constructor parameters`), and
+  `04a1a4f29de4` (`proof: certify definitionally equal parameter replay`).
+  Publication to the fork's `jcb/induct` branch is pending.
 - fixed fork master: `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb`
   on local and `origin/master`
-- current audited source checkpoint: `de3d98c9` proves the transparent project
-  level comparison sound, keeps Lean's ordinary constructor validator
-  unchanged, and admits a normalized semantic comparison only through
-  core/project agreement. Exact root guards expose only `propext`,
-  `Classical.choice`, and `Quot.sound`; no oracle, custom axiom, native
-  evaluator, or new sorry is introduced. The exact 20-sorry frontier, 156-job
-  default Lake build, 119-job Theory/Verify and Nix proof builds, default Nix
-  build, all six current-host flake checks, all-system no-build evaluation,
-  formatter, Theory import-boundary, and whitespace checks pass.
+- current audited semantic checkpoint: `04a1a4f2` widens pre-family replay past
+  independent ordinary fields after recursion, emits recursors over checked
+  family parameters, matches the ordinary validator's definitional parameter
+  comparison on positive and negative kernel-metadata cases, and certifies the
+  resulting mixed generation through the Theory transaction and real-metadata
+  replay. Exact closure guards are added in the current trust/documentation
+  checkpoint; the full completion gate is recorded in the roadmap.
 - generation-readiness source checkpoint: `bbb45e0e` builds on the exact
   arbitrary-length
   producer witnesses and source-indexed semantic inputs that return a
@@ -359,15 +363,16 @@ to the replacement.
 
 ## D010 — executable normalization and certified producer boundary
 
-- **Status:** local-committed (the earlier checkpoints are published-fork;
-  the current L4L-01E checkpoint is not yet published)
+- **Status:** remote-development (the earlier checkpoints are published-fork;
+  L4L-03 is pushed at `jcb/formalization`, while publication to `jcb/induct`
+  remains pending)
 - **Commits:** `1fb7d6e`, `9fde4c6`, `b283912`, `a84aa19`, `c2b1c4f`,
   `a1d8943`, `6a77882`, `bc37d43`, `5e5bb76`, `33b99f4`, `a3ff992`,
   `9a865ea`, `a627362`, `6732659`, `c40a471`, `c739d41`, `82f4a54`,
   `d553930`, `cf3d5a4`, `c9e4ae2`, `a7d101b`, `f0caf16`, `e3cf22d`,
   `7e5f4f7`, `2b1d802`, `a64fe98`, `5aa9ab6`, `bbb45e0`, `7c79220`,
-  `da45b53`, `097efb4`, `a246c04`, `37d2dd9`, `9e40cbe`, `98921da`, and
-  `ae6726c`
+  `da45b53`, `097efb4`, `a246c04`, `37d2dd9`, `9e40cbe`, `98921da`,
+  `ae6726c`, `3e6efcc`, `53d5f92`, `bb88317`, and `04a1a4f`
 - **Delta:** retain exact ordinary-checker full-check, WHNF, and `isDefEq`
   executions in source- and context-indexed candidate traces; interpret them
   into Theory normalization and generation certificates; assemble dependent
@@ -495,37 +500,46 @@ to the replacement.
   the analyzer-owned family parameters, retain exact ordinary-field
   `checkType`/`ensureType`/annotation equality observations, omit recursive
   outer-field locals, and replay family-free nested Pi binders and
-  recursive/result index spines in the pre-family context. Recursive fields
-  must form a suffix, and recursive domains/results must be syntactically
-  independent of every omitted FVar. The semantic trace interpretation and
-  proved prefix-weakening projections derive the pre-family field, binder, and
-  spine judgments from those exact executions. The additive
+  recursive/result index spines in the pre-family context. Recursive fields no
+  longer have to form a suffix: an independent ordinary field may follow an
+  omitted recursive local and is reconstructed through the common D3 context.
+  Every later domain/result must still be syntactically independent of each
+  omitted FVar. The semantic trace interpretation and proved prefix-weakening
+  projections derive the pre-family field, binder, and spine judgments from
+  those exact executions. The additive
   `StagedNormalizationCandidatePreFamilyInput` retains the safety trace beside
   D2's owner and reconstructs its semantic result under `Nonempty` from the
   exact family terminal context. AliasFormer, AnnotatedPi, and `IndexedVec`
-  inhabit the new produced owner; executable initial-state fixtures reject an
-  ordinary field after recursion and a later recursive field depending on the
-  omitted local with their dedicated gate errors.
+  inhabit the new produced owner; executable initial-state fixtures accept an
+  independent ordinary field after recursion and reject a later field that
+  actually depends on the omitted local.
 - **Ix impact:** prevents ix from receiving an unrelated hand-selected
   normalization or generation witness while keeping checker state out of the
   Theory API. This is the proof boundary needed before executable metadata can
   be treated as certified inductive generation.
-- **Latest checkpoint:** the L4L-01E source at `ae6726c` closes the singleton
-  package generically from the staged D1--D4 owner. D4 derives every
-  analyzer-owned constructor's `fieldsWF`, terminal `SpineWF`, and exact view
-  declaration WF from the universe, post-family, pre-family, and analysis
-  traces; fixtures no longer supply a view-WF wrapper. E then constructs the
-  exact produced package and public erasure without fixture-selected views or
-  component equations.
-- **Current gap:** L4L-03 must widen the remaining environment-sensitive
-  singleton validation under-approximations while preserving this one
-  analyzer-owned artifact path. Mutual, nested, elimination-mode, and broader
-  positivity behavior remain assigned to their later milestones.
+- **Latest checkpoint:** the L4L-03 semantic source at `04a1a4f2` builds on the
+  generic L4L-01E package closure at `ae6726c`. Pre-declaration full checks,
+  WHNF Pi/result and recursive-target traversal, and the exact AnnotatedPi
+  producer package remain the operational authority. D3 now carries
+  independent ordinary fields past omitted recursive locals. `AnnotatedParam`
+  separately pins the ordinary constructor-parameter `isDefEq` outcome, emits
+  the checked parameter in the recursor, and replays the resulting kernel
+  metadata through the certified Theory transaction and Verify environment.
+  This split is deliberate: no second hand-assembled produced package is
+  claimed for `AnnotatedParam`.
+- **Current gap:** L4L-04 must complete the normalization differential matrix
+  across family results, parameter/index domains, ordinary fields, direct and
+  Pi-hidden recursive targets, beta/let cases, opaque negatives, and the fuel
+  boundary. Dependencies on omitted recursive locals remain assigned to
+  L4L-05; mutual result equality remains assigned to L4L-08B.
 - **Tests:** exact positive AliasFormer, AnnotatedPi, and `IndexedVec`
   whole-call equations; positive semantic/transaction/replay fixtures for the
   first two plus the complete checkpoint semantic/transaction/E1 replay for
   `IndexedVec`; exact `IndexedVec` family/`nil`/`cons` candidate traces;
-  opaque-`outParam` whole-candidate rejection; exact axiom guards for the
+  opaque-`outParam` whole-candidate rejection; exact positive and genuinely
+  non-defeq negative `AnnotatedParam` whole-call guards; checked-parameter
+  recursor/iota parity plus certified transaction, metadata lookup, WF,
+  alignment, uniqueness, and rule replay; exact axiom guards for the
   semantic-input constructors, produced hierarchy, semantic-generation and
   reduced-shape projections, the three operational list theorems, and both
   outer package constructors; singleton and two-constructor list regressions;
@@ -542,8 +556,9 @@ to the replacement.
   AnnotatedPi, and ordered `IndexedVec` fields/results; distinct
   validator/candidate
   `IndexedVec` field-FVar regression; exact successful pre-family replay and
-  produced semantic ownership for all three fixtures; executable
-  recursive-field-order and recursive-local-dependency rejection guards;
+  produced semantic ownership for all three fixtures; executable independent
+  ordinary-after-recursive acceptance and recursive-local-dependency
+  rejection guards;
   exact generic and fixture post-family/pre-family axiom guards; focused direct
   compiles, 156-job default Lake build, and
   119-job Theory/Verify and Nix proof builds; 20-sorry frontier check; default
@@ -609,14 +624,21 @@ to the replacement.
   syntax implementation contracts. The positional alignment and semantic-run
   structures declare no axiom; no `native_decide`, new sorry, or additional
   custom trust contract is reachable from these roots.
-  D3's executable gate and both rejection guards compute without an axiom or
-  proof premise. The trace interpretation, weakening lemmas, staged generic
+  D3's independent-after-recursive acceptance and dependency rejection guards
+  compute without an axiom or proof premise. The trace interpretation,
+  weakening lemmas, staged generic
   owner, and all three fixture roots are compile-time guarded at exactly the
   same established Verify closure as D2: `propext`, `sorryAx`,
   `Classical.choice`, `Quot.sound`, and the existing expression, level,
   pointer-equality, persistent-collection, and syntax implementation
   contracts. No constant-removal axiom/theorem, native evaluator, new sorry,
   or new project-specific trust contract is reachable.
+  `AnnotatedParam`'s Theory definitional equality, complete generation WF,
+  certified transaction, and final iota membership are guarded exactly at
+  `propext`/`Quot.sound`. Its real-metadata replay trace and `TrEnv'` root add
+  only the existing `sorryAx`/`Classical.choice` and persistent-map contracts;
+  they reach no pointer, expression, level, native-evaluation, or new custom
+  axiom.
 - **Upstream issue/PR:** TBD; submit after the singleton producer interface is
   stable enough that the first PR does not freeze fixture-specific APIs.
 - **Removal condition:** upstream executable inductive ingestion returns or

@@ -66,12 +66,12 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-03 active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
-| Current formalization source | local-committed L4L-02C checkpoint `de3d98c9fc5fd066b2ab88ec450e01402ed38357` at `jcb/formalization`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
+| Ladder position | **L4L-04 active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
+| Current formalization source | L4L-03 closure at the current `jcb/formalization` checkpoint, built on semantic checkpoint `04a1a4f29de4`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 20 live sorries and 29 custom-axiom declarations, both pinned by exact audits |
-| Gates | the full §6 gate list is green on the current source |
+| Gates | the full §6 gate list is green on the current L4L-03 closure source, including the 119-job Theory/Verify build, 156-job default build, Nix build/check suite, trust audits, and formatter |
 
 ### 2.1 What is green
 
@@ -149,9 +149,11 @@ The executable pre-family owner instantiates the retained family parameters
 and replays every analyzer-owned constructor in the exact verified pre-family
 context. Ordinary fields are rechecked and retained; recursive outer locals
 are omitted while nested Pi binders and recursive/result index spines receive
-verified semantic interpretations and proved prefix weakening. Its deliberate
-singleton under-approximation enforces a recursive-field suffix and syntactic
-independence from every omitted recursive local.
+verified semantic interpretations and proved prefix weakening. Independent
+ordinary fields may now follow an omitted recursive outer field and continue
+through the generalized semantic replay. A later field that actually depends
+on an omitted recursive local is still rejected; that remaining dependency
+breadth is explicitly assigned to L4L-05.
 
 **Three positive regressions, end to end.** AliasFormer (terminal alias),
 AnnotatedPi (nested recursive-Π with retained `outParam Prop`, generated
@@ -165,23 +167,38 @@ pass the strengthened constructor-universe gate and inhabit both produced
 post-family and pre-family semantic owners. `IndexedVec` additionally proves
 that validator and candidate field FVars differ while their Theory positions
 still align. Negatives stay sharp: opaque-`outParam` whole-candidate rejection,
-truncated and reordered views, missing/extra constructors, recursive-field
-order, recursive-local dependency, and the environment-free
+truncated and reordered views, missing/extra constructors, recursive-local
+dependency, and the environment-free
 closure/universe/name/result/collision matrix.
 
-**Environment replay.** Six actual-metadata transactions (Nat, Eq,
-`IndexedVec`, `Acc`, `AliasFormer`, `AliasRec`) plus the candidate-produced
-AnnotatedPi replay pin translation in exact intermediate environments, final
+**Constructor-parameter parity.** `AnnotatedParam` is built from Lean's actual
+kernel family, constructor, recursor, and rule metadata. Its complete ordinary
+metadata call accepts the stored `outParam Type` constructor prefix against the
+annotation-consumed `Type` family local by definitional equality; a closed,
+well-typed but genuinely non-defeq prefix reaches the same check and is
+rejected with the exact kernel-facing error. Mixed generation retains the raw
+constructor surface while using checked family parameters for emitted recursor
+binders, and the resulting recursor and iota RHS are definitionally equal to
+kernel metadata. The proof-carrying transaction and real-`ConstantInfo` replay
+then establish final lookup, WF, alignment, uniqueness, and rule membership.
+The operational L4L-01E package authority remains the exact AnnotatedPi
+producer case; the parameter fixture deliberately does not claim a second
+independently assembled produced package.
+
+**Environment replay.** Eight actual-metadata transactions (Nat, Eq,
+`IndexedVec`, `Acc`, `AliasFormer`, `AliasRec`, AnnotatedPi, and
+`AnnotatedParam`) pin translation in exact intermediate environments, final
 environment equality, WF, alignment, lookup uniqueness, and every kernel rule
-RHS definitionally; a pre-existing value-bearing definition remains
+RHS definitionally. AnnotatedPi additionally carries exact executable-package
+provenance; a pre-existing value-bearing definition remains
 translatable through the Nat transaction. The `IndexedVec` fixture spells
 indices as `Nat.zero`/`Nat.succ`, deliberately excluding notation's
 `OfNat`/`HAdd` instance closure — a reduced dependency claim, not full prelude
 replay. `AliasRec` remains the compositional constructor-normalization
 specification until its candidate list is migrated.
 
-**Not claimed.** WHNF/defeq validation parity, full positivity, small
-elimination, K behavior, the complete differential matrix, mutual/nested
+**Not claimed.** The complete normalization differential matrix, full
+positivity/constructor breadth, small elimination, K behavior, mutual/nested
 blocks, patterns, projections, and the remaining metatheory/checker roots.
 Bare producer success is never generation-shape authority or Theory semantics.
 
@@ -372,21 +389,9 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Singleton kernel parity (L4L-03–L4L-07)
+### Singleton kernel parity (L4L-04–L4L-07)
 
-**L4L-03 — environment-sensitive validation parity (active).** Match the remaining
-singleton `checkInductiveTypes`/`checkConstructors` acceptance behavior:
-pre-declaration `checkType`, fuel- and transparency-appropriate WHNF-driven
-Pi/result-sort peeling, WHNF-driven recursive-target traversal, definitional
-rather than syntactic constructor-parameter agreement, and removal or proved
-widening of D3's recursive-suffix/dependency under-approximation.
-*Exit:* a syntactically different but definitionally equal positive and a
-genuinely non-defeq negative match kernel outcomes and traverse the L4L-01E
-package and replay path; a valid dependency beyond D3 either passes a proved
-generalized replay or remains explicitly assigned to L4L-05. Result-level
-equality across mutual families stays excluded (L4L-08B).
-
-**L4L-04 — normalization differential matrix.** Cover aliases at family
+**L4L-04 — normalization differential matrix (active).** Cover aliases at family
 results, parameter/index domains, ordinary fields, direct recursive targets,
 and recursive targets hidden behind a Pi-producing alias; include beta/let
 reduction where real metadata can retain it, irreducible/opaque or otherwise
@@ -398,7 +403,8 @@ the environment layer; generic rather than fixture-only axiom guards pass.
 **L4L-05 — positivity and constructor-validity parity.** Extend
 acceptance/rejection to the kernel matrix for nested-negative occurrences,
 family mentions in nonrecursive/dependent/proof fields, recursive functions,
-and remaining constructor dependency/universe-bound breadth. The universe
+dependencies on omitted recursive outer locals after a recursive field, and
+remaining constructor dependency/universe-bound breadth. The universe
 obligation is already represented semantically in `Checked.WF`; this connects
 it to kernel acceptance and differential tests.
 *Exit:* each branch has the nearest-kernel differential; all accepted cases
@@ -777,8 +783,8 @@ Every milestone must pass all applicable gates:
 
 ```text
 perl .github/scripts/check_sorry_frontier.pl
-nix develop --command lake build Lean4Lean.Theory Lean4Lean.Verify
-nix develop --command lake build
+lake build Lean4Lean.Theory Lean4Lean.Verify
+lake build
 nix build
 nix flake check --all-systems --no-build --accept-flake-config
 nix flake check --accept-flake-config --print-build-logs
@@ -787,9 +793,11 @@ git diff --check
 ```
 
 The flake is authoritative: milestone evidence must use the pinned Nix
-toolchain and dependencies. Elan or a host `lake` invocation may be used only
-as a non-authoritative diagnostic and never substitutes for either Nix-wrapped
-Lake build, `nix build`, or the flake checks above.
+toolchain and dependencies. The Lake commands above run directly from the
+already active `nix develop` shell; from outside that shell,
+`nix develop --command lake ...` is equivalent. Elan or another host `lake`
+never substitutes for the pinned-shell Lake builds, `nix build`, or the flake
+checks above.
 
 Additionally:
 

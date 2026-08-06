@@ -12480,4 +12480,45 @@ info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiFinalEnv_iota_mem' depends o
 #guard_msgs in
 #print axioms annotatedPiFinalEnv_iota_mem
 
+/-! The parameter-parity fixture deliberately keeps its operational checker
+outcome guard separate from the Theory certificate. These pins make the exact
+trust split visible: the semantic transaction stays Theory-small, while real
+`ConstantInfo` replay inherits only the already classified Verify frontier. -/
+
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.annotatedParam_addInductCertified' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms annotatedParam_addInductCertified
+
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.annotatedParamAddInductTraceChecked' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ Quot.sound,
+ PersistentHashMap.findAux_isSome,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms annotatedParamAddInductTraceChecked
+
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.annotatedParam_trEnv'_checked' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ Quot.sound,
+ PersistentHashMap.findAux_isSome,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms annotatedParam_trEnv'_checked
+
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.annotatedParamFinalEnv_iota_mem' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms annotatedParamFinalEnv_iota_mem
+
 end Lean4Lean.InductiveReplayFixtures
