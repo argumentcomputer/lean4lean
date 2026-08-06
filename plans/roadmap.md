@@ -66,11 +66,11 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-02B active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
-| Current formalization source | local-committed L4L-02A checkpoint `70c02b0e89d83d3bba317db07740c1f9f9eb623a` at `jcb/formalization`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
+| Ladder position | **L4L-02C active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
+| Current formalization source | local-committed L4L-02B checkpoint `a72979db8cd31bbf62d661f01df15b3cb3f698cc` at `jcb/formalization`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
-| Trust frontier | exactly 21 live sorries and 29 custom-axiom declarations, both pinned by exact audits |
+| Trust frontier | exactly 20 live sorries and 29 custom-axiom declarations, both pinned by exact audits |
 | Gates | the full §6 gate list is green on the current source |
 
 ### 2.1 What is green
@@ -107,7 +107,14 @@ subsumption is evaluation-preserving for every raw `NormLevel`: active-path
 witnesses now guard constant removal, and the proof follows both nested map
 folds. Valid normalizer output remains unchanged under the differential audit;
 the theorem's exact closure is only `propext`, `Classical.choice`, and
-`Quot.sound`, with no project-specific axiom. The
+`Quot.sound`, with no project-specific axiom. Level equivalence soundness now
+closes the typechecker sort and dependent constant-level-list paths through
+the verified project comparator: a transparent structural fast path reflects
+equality, canonical ordered-entry comparison gives `NormLevel` evaluator
+congruence, and `isEquiv_wf` plus its list theorem have the same standard-only
+axiom closure. The executable normalizer is unchanged, and a generated
+differential compares the former map-extensional equality with ordered-entry
+equality across normalized zero, successor, max, imax, and parameter forms. The
 executable candidate producer (`AddInductive.normalizeCandidateExpr`,
 `buildNormalizationCandidate`) retains recursively context- and source-indexed
 traces with exact full-check/WHNF/binder-equality runs at every node,
@@ -175,16 +182,16 @@ Bare producer success is never generation-shape authority or Theory semantics.
 
 ### 2.2 Live debt
 
-The sorry-frontier script currently accepts exactly 21 live sorries:
+The sorry-frontier script currently accepts exactly 20 live sorries:
 
 | Area | Live debt |
 |---|---|
 | Projection specification | `Verify/Typing/Expr.lean:67`, `TrProj` |
 | Projection structural laws | seven sites in `Verify/Typing/Lemmas.lean`: `weak'`, inverse weakening, `defeqDFC`, `wf`, `uniq`, `instN`, `instL` |
 | Core metatheory | `Injectivity.lean` x3, `UniqueTyping.lean` x1, `ChurchRosser.lean` x2 |
-| Checker verification | `Verify/Level.lean` x1; `Verify/Environment.lean` x1; `InferType.lean` x1; `WHNF.lean` x2; `IsDefEq.lean` x2 |
+| Checker verification | `Verify/Environment.lean` x1; `InferType.lean` x1; `WHNF.lean` x2; `IsDefEq.lean` x2 |
 
-The two v4.31 additions are classified: `NormLevel.isEquiv_wf` → L4L-02B and
+The remaining v4.31-added sorry is classified:
 `Lean4Lean.addDecl.WF` → L4L-19B. Non-sorry debt:
 
 - The public inductive spec is a growing subset, not kernel-complete; replay
@@ -360,16 +367,9 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Level-comparison proofs (L4L-02A–L4L-02C)
+### Level-comparison proofs (L4L-02C)
 
-**L4L-02B — level equivalence soundness (active).** Prove the v4.31-added
-`NormLevel.isEquiv_wf` from the evaluator/subsumption library and close the
-dependent list-level soundness path without changing the executable
-normalizer.
-*Exit:* focused Level and full builds pass; no custom axiom; the frontier
-drops from 21 to 20; a separate upstream-ready commit.
-
-**L4L-02C — core constructor-level comparison bridge.** Prove soundness of
+**L4L-02C — core constructor-level comparison bridge (active).** Prove soundness of
 Lean v4.31's mvar-free `Level.geq`/`Level.normalize` path, or prove an
 extensionally equivalent verified project comparison and route constructor
 validation through it without changing kernel outcomes. This removes
