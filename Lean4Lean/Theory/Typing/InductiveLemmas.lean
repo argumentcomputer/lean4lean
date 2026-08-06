@@ -2114,6 +2114,20 @@ theorem TelDefEq.raw_onTel {env : VEnv} {U : Nat} :
   | _, _ :: _, _ :: _, ⟨⟨_, hA⟩, hT⟩ =>
     ⟨⟨_, hA.hasType.1⟩, TelDefEq.raw_onTel hT⟩
 
+/-- Extend a structural telescope equality by an identical, well-formed
+suffix. The suffix is checked in the completed left-hand context, exactly as
+required by `TelDefEq`'s raw-context convention. -/
+theorem TelDefEq.append_refl {env : VEnv} {U : Nat} :
+    ∀ {Γ As As'}, TelDefEq env U Γ As As' →
+      ∀ {Bs}, OnTel env U (As.reverse ++ Γ) Bs →
+        TelDefEq env U Γ (As ++ Bs) (As' ++ Bs)
+  | _, [], [], _, _, hBs => by
+      simpa using hBs.telDefEq_refl
+  | Γ, A :: As, A' :: As', ⟨hA, hT⟩, Bs, hBs => by
+      refine ⟨hA, ?_⟩
+      apply TelDefEq.append_refl hT
+      simpa [List.reverse_cons, List.append_assoc] using hBs
+
 /-- Structural telescope equality is monotone in the environment. -/
 theorem TelDefEq.mono {env env' : VEnv} {U : Nat} (henv : env ≤ env') :
     ∀ {Γ As As'}, TelDefEq env U Γ As As' → TelDefEq env' U Γ As As'
@@ -2287,6 +2301,29 @@ theorem OnTel.defeqDFC {env : VEnv} {U : Nat} (ord : env.Ordered)
     obtain ⟨u, hAt⟩ := hA
     exact ⟨⟨u, hAt.defeqDFC ord hΓ⟩,
       OnTel.defeqDFC ord (.succ hΓ hAt) hT⟩
+
+/-- The view side of a structural telescope equality is itself well formed.
+Each tail is transported from the accumulated raw context to the accumulated
+view context before recursion continues. -/
+theorem TelDefEq.view_onTel {env : VEnv} {U : Nat} (ord : env.Ordered) :
+    ∀ {Γ As As'}, TelDefEq env U Γ As As' → OnTel env U Γ As'
+  | _, [], [], _ => trivial
+  | _, _ :: _, _ :: _, ⟨⟨u, hA⟩, hT⟩ =>
+      ⟨⟨u, hA.hasType.2⟩,
+        (TelDefEq.view_onTel ord hT).defeqDFC ord
+          (.succ .zero hA)⟩
+
+/-- Transport a structural telescope equality across definitionally equal
+base contexts while retaining its raw/view surfaces. -/
+theorem TelDefEq.defeqDFC {env : VEnv} {U : Nat} (ord : env.Ordered)
+    {Γ₀ Γ₁ Γ₂ : List VExpr} (hΓ : IsDefEqCtx env U Γ₀ Γ₁ Γ₂) :
+    ∀ {As As'}, TelDefEq env U Γ₁ As As' → TelDefEq env U Γ₂ As As'
+  | [], [], _ => trivial
+  | A :: As, _ :: As', ⟨⟨u, hA⟩, hT⟩ => by
+      have hA' := hA.defeqDFC ord hΓ
+      refine ⟨⟨u, hA'⟩, ?_⟩
+      exact TelDefEq.defeqDFC ord
+        (.succ hΓ hA.hasType.1) hT
 
 /-- Transport application-spine typing across definitionally equal
 contexts. -/
@@ -2697,6 +2734,57 @@ theorem rawFamily_onTel :
       (gen.block.rawParams ++ gen.block.rawIndices) :=
   S.familyTel.raw_onTel
 
+/-- The family parameter prefix is structurally definitionally equal to the
+checked locals retained by validation. -/
+theorem rawParams_defeq :
+    env.TelDefEq source.uvars [] gen.block.rawParams
+      gen.block.checked.params := by
+  have h := S.familyTel.take source.nparams
+  have hraw :
+      (gen.block.rawParams ++ gen.block.rawIndices).take source.nparams =
+        gen.block.rawParams := by
+    rw [← gen.shape.1, List.take_append, List.take_length]
+    simp
+  have hviewLen : gen.block.checked.params.length = source.nparams :=
+    gen.shape.2.1.symm.trans gen.shape.1
+  have hview :
+      (gen.block.checked.params ++ gen.block.checked.indices).take
+          source.nparams = gen.block.checked.params := by
+    rw [← hviewLen, List.take_append, List.take_length]
+    simp
+  rw [hraw, hview] at h
+  exact h
+
+/-- Raw and checked parameter contexts denote the same local telescope. -/
+theorem rawParams_ctx :
+    env.IsDefEqCtx source.uvars [] gen.block.rawParams.reverse
+      gen.block.checked.params.reverse :=
+  by simpa using S.rawParams_defeq.ctx
+
+/-- The family telescope used by generated artifacts keeps raw index syntax
+but uses the checked parameter prefix consumed by validation. -/
+theorem emittedFamilyTel :
+    env.TelDefEq source.uvars []
+      (gen.block.rawParams ++ gen.block.rawIndices)
+      (gen.block.checked.params ++ gen.block.rawIndices) := by
+  have hindices : env.OnTel source.uvars gen.block.rawParams.reverse
+      gen.block.rawIndices := by
+    simpa using S.rawFamily_onTel.of_append.2
+  exact S.rawParams_defeq.append_refl (by simpa using hindices)
+
+/-- The emitted mixed family telescope is well formed. -/
+theorem emittedFamily_onTel :
+    env.OnTel source.uvars []
+      (gen.block.checked.params ++ gen.block.rawIndices) :=
+  S.emittedFamilyTel.view_onTel S.ord
+
+/-- Completed raw and emitted family contexts are definitionally equal. -/
+theorem emittedFamily_ctx :
+    env.IsDefEqCtx source.uvars []
+      (gen.block.rawParams ++ gen.block.rawIndices).reverse
+      (gen.block.checked.params ++ gen.block.rawIndices).reverse :=
+  by simpa using S.emittedFamilyTel.ctx
+
 theorem rawFamily_isType :
     env.IsType source.uvars [] gen.block.sourceType.type := by
   rw [gen.block.rawType_eq, ← VExpr.forallN_append]
@@ -2744,15 +2832,14 @@ theorem ctorConst_decl {ctor : NormalizedCtor}
   rw [gen.ctor_uvars_eq hctor] at h
   exact h.weak0 S.ord
 
-/-- The stored constructor constant applied to the raw parameter/field
-self-spine emitted by mixed artifacts. The proof passes through the common
-checked view, so the constructor's declared raw parameter prefix need only be
-definitionally equal to the block's emitted raw parameter prefix. -/
+/-- The stored constructor constant applied to the checked-parameter/raw-field
+self-spine emitted by mixed artifacts. The constructor's declared parameter
+prefix need only be definitionally equal to this checked family prefix. -/
 theorem ctorApp_emitted_decl {ctor : NormalizedCtor}
     (hctor : ctor ∈ gen.block.ctorPairs) :
     env.HasType source.uvars
       ((ctor.rawFields source.nparams).reverse ++
-        gen.block.rawParams.reverse)
+        gen.block.checked.params.reverse)
       (VExpr.appN
         (.const ctor.raw.name (VLevel.params source.uvars))
         (VExpr.bvarRevRange
@@ -2803,14 +2890,16 @@ theorem ctorApp_emitted_decl {ctor : NormalizedCtor}
   have hEctx :
       E.reverse =
         (ctor.rawFields source.nparams).reverse ++
-          gen.block.rawParams.reverse := by
+          gen.block.checked.params.reverse := by
     simp [E, NormalizedCtor.emittedBinders,
       List.reverse_append]
   have hElen :
       E.length =
         (ctor.rawFields source.nparams).length +
           source.nparams := by
-    simp [E, NormalizedCtor.emittedBinders, gen.shape.1]
+    have hp : gen.block.checked.params.length = source.nparams :=
+      gen.shape.2.1.symm.trans gen.shape.1
+    simp [E, NormalizedCtor.emittedBinders, hp]
     omega
   rw [hEctx, hElen,
     ← VExpr.bvarRevRange_append source.nparams
@@ -2838,7 +2927,9 @@ theorem familyConst_rec {Γ : List VExpr} :
 /-- The raw family type decomposed in recursor universes. -/
 theorem rawType_rec_eq :
     gen.block.sourceType.type.instL (VLevel.params' source.uvars 1) =
-      VExpr.forallN gen.paramsTel
+      VExpr.forallN
+        (gen.block.rawParams.map
+          (VExpr.instL (VLevel.params' source.uvars 1)))
         (VExpr.forallN gen.idxTel
           (gen.block.rawResult.instL
             (VLevel.params' source.uvars 1))) := by
@@ -2846,8 +2937,27 @@ theorem rawType_rec_eq :
     VExpr.instL_forallN]
   rfl
 
-/-- The raw family applied to its complete raw self-spine has the normalized
-result sort. -/
+/-- The family constant may be viewed through the checked-parameter/raw-index
+telescope emitted by generated artifacts. -/
+theorem familyConst_emitted_decl :
+    env.HasType source.uvars []
+      (.const gen.block.sourceType.name (VLevel.params source.uvars))
+      (VExpr.forallN
+        (gen.block.checked.params ++ gen.block.rawIndices)
+        gen.block.rawResult) := by
+  have hc : env.HasType source.uvars []
+      (.const gen.block.sourceType.name (VLevel.params source.uvars))
+      (VExpr.forallN
+        (gen.block.rawParams ++ gen.block.rawIndices)
+        gen.block.rawResult) := by
+    rw [VExpr.forallN_append, ← gen.block.rawType_eq]
+    exact S.familyConst_decl
+  obtain ⟨_, htel⟩ := S.emittedFamilyTel.forallN_defeq
+    (by simpa [VEnv.HasType] using S.familyResult.hasType.1)
+  exact htel.defeq hc
+
+/-- The family applied to its checked-parameter/raw-index self-spine has the
+normalized result sort. -/
 theorem familyApp_hasType :
     env.HasType (source.uvars + 1)
       (gen.idxTel.reverse ++ gen.paramsTel.reverse)
@@ -2860,21 +2970,25 @@ theorem familyApp_hasType :
         (gen.block.checked.resultLevel.inst
           (VLevel.params' source.uvars 1))) := by
   let ls := VLevel.params' source.uvars 1
-  have hclosed :
-      (gen.block.sourceType.type.instL ls).ClosedN 0 :=
-    (Ordered.closedC S.ord S.familyConst).instL
+  have hconst₀ := S.familyConst_emitted_decl.instL
+    (U' := source.uvars + 1) VLevel.params'_one_wf
+  have hconst₁ : env.HasType (source.uvars + 1) []
+      (.const gen.block.sourceType.name ls)
+      (VExpr.forallN (gen.paramsTel ++ gen.idxTel)
+        (gen.block.rawResult.instL ls)) := by
+    simpa [ls, GenerationChecked.paramsTel,
+      GenerationChecked.idxTel, VExpr.instL_forallN,
+      VExpr.instL, VLevel.params_map_inst_params'] using hconst₀
+  have hcanonicalClosed :
+      (VExpr.forallN (gen.paramsTel ++ gen.idxTel)
+        (gen.block.rawResult.instL ls)).ClosedN 0 := by
+    exact (hconst₁.closedN' S.ord.closed trivial).2.2
   have hconst : env.HasType (source.uvars + 1)
       ((gen.paramsTel ++ gen.idxTel).reverse)
       (.const gen.block.sourceType.name ls)
       (VExpr.forallN (gen.paramsTel ++ gen.idxTel)
-        (gen.block.rawResult.instL ls)) := by
-    rw [VExpr.forallN_append, ← S.rawType_rec_eq]
-    exact S.familyConst_rec
-  have hcanonicalClosed :
-      (VExpr.forallN (gen.paramsTel ++ gen.idxTel)
-        (gen.block.rawResult.instL ls)).ClosedN 0 := by
-    rw [VExpr.forallN_append, ← S.rawType_rec_eq]
-    exact hclosed
+        (gen.block.rawResult.instL ls)) :=
+    hconst₁.weak0 S.ord
   have happ := HasType.appN_selfSpine'
     (Δ := []) (Γ := []) hcanonicalClosed (by
       simpa using hconst)
@@ -2885,27 +2999,33 @@ theorem familyApp_hasType :
         gen.idxTel.length + source.nparams := by
     simp only [List.length_append, GenerationChecked.paramsTel,
       GenerationChecked.idxTel, List.length_map]
-    rw [gen.shape.1]
+    rw [gen.shape.2.1.symm, gen.shape.1]
     omega
   rw [VExpr.bvarRevRange_congr' 0 hlen,
     ← VExpr.bvarRevRange_append] at happ
   have hresult := S.familyResult.instL
     (U' := source.uvars + 1) VLevel.params'_one_wf
+  simp only [List.map_reverse] at hresult
+  have hctx := (S.emittedFamilyTel.instL
+    (U' := source.uvars + 1) VLevel.params'_one_wf).ctx
+  simp only [List.map_nil, List.append_nil, List.map_reverse] at hctx
+  have hresultEmitted := hresult.defeqDFC S.ord hctx
   have hresult' : env.IsDefEq (source.uvars + 1)
       (gen.idxTel.reverse ++ gen.paramsTel.reverse)
       (gen.block.rawResult.instL ls)
       (.sort (gen.block.checked.resultLevel.inst ls))
       (.sort (.succ (gen.block.checked.resultLevel.inst ls))) := by
     simpa [ls, GenerationChecked.paramsTel, GenerationChecked.idxTel,
-      List.map_reverse, VLevel.inst] using hresult
+      List.map_reverse, VLevel.inst] using hresultEmitted
   exact hresult'.defeq (by
     simpa [List.reverse_append] using happ)
 
-/-- The mixed motive is a well-formed type over the raw parameter context. -/
+/-- The mixed motive is a well-formed type over the checked parameter
+context. -/
 theorem motive_isType :
     env.IsType (source.uvars + 1) gen.paramsTel.reverse
       gen.motiveType := by
-  have htel₀ := S.rawFamily_onTel.instL
+  have htel₀ := S.emittedFamily_onTel.instL
     (U' := source.uvars + 1) VLevel.params'_one_wf
   have htel :
       env.OnTel (source.uvars + 1) []
@@ -3058,22 +3178,22 @@ theorem emittedPrefix_ctx {ctor : NormalizedCtor}
     (hctor : ctor ∈ gen.block.ctorPairs) (j : Nat) :
     env.IsDefEqCtx source.uvars []
       ((ctor.rawFields source.nparams |>.take j).reverse ++
-        gen.block.rawParams.reverse)
+        gen.block.checked.params.reverse)
       ((ctor.view.fields.take j).reverse ++
         gen.block.checked.params.reverse) := by
   have h := ((S.ctorWF ctor hctor).emittedTel.take
     (source.nparams + j)).ctx
-  have hraw :
-      (gen.block.rawParams ++ ctor.rawFields source.nparams).take
-          (source.nparams + j) =
-        gen.block.rawParams ++
-          (ctor.rawFields source.nparams).take j := by
-    rw [← gen.shape.1]
-    rw [List.take_append, List.take_of_length_le (by omega)]
-    simp
   have hviewLen :
       gen.block.checked.params.length = source.nparams :=
     gen.shape.2.1.symm.trans gen.shape.1
+  have hraw :
+      (gen.block.checked.params ++ ctor.rawFields source.nparams).take
+          (source.nparams + j) =
+        gen.block.checked.params ++
+          (ctor.rawFields source.nparams).take j := by
+    rw [← hviewLen]
+    rw [List.take_append, List.take_of_length_le (by omega)]
+    simp
   have hview :
       (gen.block.checked.params ++ ctor.view.fields).take
           (source.nparams + j) =
@@ -3094,19 +3214,19 @@ theorem emittedField_defeq {ctor : NormalizedCtor}
     (hB' : ctor.view.fields[j]? = some B') :
     ∃ u, env.IsDefEq source.uvars
       ((ctor.rawFields source.nparams |>.take j).reverse ++
-        gen.block.rawParams.reverse)
+        gen.block.checked.params.reverse)
       B B' (.sort u) := by
-  have hraw :
-      getElem?
-        (gen.block.rawParams ++ ctor.rawFields source.nparams)
-        (source.nparams + j) = some B := by
-    rw [List.getElem?_append_right (by
-      rw [gen.shape.1]
-      omega), gen.shape.1]
-    simpa using hB
   have hviewLen :
       gen.block.checked.params.length = source.nparams :=
     gen.shape.2.1.symm.trans gen.shape.1
+  have hraw :
+      getElem?
+        (gen.block.checked.params ++ ctor.rawFields source.nparams)
+        (source.nparams + j) = some B := by
+    rw [List.getElem?_append_right (by
+      rw [hviewLen]
+      omega), hviewLen]
+    simpa using hB
   have hview :
       getElem?
         (gen.block.checked.params ++ ctor.view.fields)
@@ -3118,11 +3238,11 @@ theorem emittedField_defeq {ctor : NormalizedCtor}
   obtain ⟨u, h⟩ :=
     (S.ctorWF ctor hctor).emittedTel.getElem? hraw hview
   have htake :
-      (gen.block.rawParams ++ ctor.rawFields source.nparams).take
+      (gen.block.checked.params ++ ctor.rawFields source.nparams).take
           (source.nparams + j) =
-        gen.block.rawParams ++
+        gen.block.checked.params ++
           (ctor.rawFields source.nparams).take j := by
-    rw [← gen.shape.1]
+    rw [← hviewLen]
     rw [List.take_append, List.take_of_length_le (by omega)]
     simp
   simp only [NormalizedCtor.emittedBinders] at h
@@ -3137,7 +3257,7 @@ theorem rawRecArg_WF {ctor : NormalizedCtor}
     r.WF source.uvars env gen.block.checked.resultLevel
       gen.block.checked.indices
       ((ctor.rawFields source.nparams |>.take r.fieldIndex).reverse ++
-        gen.block.rawParams.reverse) := by
+        gen.block.checked.params.reverse) := by
   exact (S.viewRecArg_WF hctor hr).defeqDFC S.ord
     ((S.emittedPrefix_ctx hctor r.fieldIndex).symm S.ord)
 
@@ -3168,13 +3288,20 @@ theorem rawIndexTel_defeq :
   rw [hrawTake, hrawDrop, hviewDrop] at h
   simpa using h
 
+/-- The raw/view index relation transported to the checked parameter base
+used by generated artifacts. -/
+theorem emittedIndexTel_defeq :
+    env.TelDefEq source.uvars gen.block.checked.params.reverse
+      gen.block.rawIndices gen.block.checked.indices :=
+  S.rawIndexTel_defeq.defeqDFC S.ord S.rawParams_ctx
+
 /-- The raw/view index telescope relation transported into recursor
 universes. -/
 theorem rawIndexTel_defeq_rec :
     env.TelDefEq (source.uvars + 1) gen.paramsTel.reverse gen.idxTel
       (gen.block.checked.indices.map
         (VExpr.instL (VLevel.params' source.uvars 1))) := by
-  have h := S.rawIndexTel_defeq.instL
+  have h := S.emittedIndexTel_defeq.instL
     (U' := source.uvars + 1) VLevel.params'_one_wf
   simpa [GenerationChecked.paramsTel, GenerationChecked.idxTel,
     List.map_reverse] using h
@@ -3227,7 +3354,7 @@ theorem recArg_transport {ctor : NormalizedCtor}
     (U' := source.uvars + 1) VLevel.params'_one_wf
   have hctx :
       (((ctor.rawFields source.nparams).take r₀.fieldIndex).reverse ++
-        gen.block.rawParams.reverse).map (VExpr.instL ls) =
+        gen.block.checked.params.reverse).map (VExpr.instL ls) =
       ((ctor.fieldsR source.uvars source.nparams).take
           r₀.fieldIndex).reverse ++ gen.paramsTel.reverse := by
     simp [ls, NormalizedCtor.fieldsR, GenerationChecked.paramsTel,
@@ -3558,7 +3685,7 @@ theorem recArgMinor_isType {ctor : NormalizedCtor}
     (U' := source.uvars + 1) VLevel.params'_one_wf
   have hprefix :
       (((ctor.rawFields source.nparams).take r₀.fieldIndex).reverse ++
-        gen.block.rawParams.reverse).map (VExpr.instL ls) =
+        gen.block.checked.params.reverse).map (VExpr.instL ls) =
       (Bs.take r₀.fieldIndex).reverse ++
         gen.paramsTel.reverse := by
     simp [Bs, ls, NormalizedCtor.fieldsR,
@@ -3691,13 +3818,13 @@ theorem viewResultSpine {ctor : NormalizedCtor}
   simpa [CheckedCtor.ofDirect, gen.block.uvars_eq,
     gen.block.nparams_eq] using h
 
-/-- Constructor-result semantics transported to the exact raw emitted
-field/parameter context and raw family-index telescope. -/
+/-- Constructor-result semantics transported to the exact emitted
+checked-parameter/raw-field context and raw family-index telescope. -/
 theorem rawResultSpine {ctor : NormalizedCtor}
     (hctor : ctor ∈ gen.block.ctorPairs) :
     env.SpineWF source.uvars
       ((ctor.rawFields source.nparams).reverse ++
-        gen.block.rawParams.reverse)
+        gen.block.checked.params.reverse)
       (VExpr.forallN
         (VExpr.liftTelN
           (ctor.rawFields source.nparams).length
@@ -3714,8 +3841,8 @@ theorem rawResultSpine {ctor : NormalizedCtor}
   have hfields :=
     (gen.shape.2.2.2.2.2 ctor hctor).2.2.2
   rw [← hfields] at hsp
-  have hidx := S.rawIndexTel_defeq.weakN S.ord
-    (Ctx.LiftN.zero (Γ := gen.block.rawParams.reverse)
+  have hidx := S.emittedIndexTel_defeq.weakN S.ord
+    (Ctx.LiftN.zero (Γ := gen.block.checked.params.reverse)
       (ctor.rawFields source.nparams).reverse)
   rw [List.length_reverse] at hidx
   have hlen :
@@ -3756,7 +3883,7 @@ theorem result_transport {ctor : NormalizedCtor}
   rw [VExpr.instL_forallN, VExpr.liftTelN_instL,
     show
       (((ctor.rawFields source.nparams).reverse ++
-          gen.block.rawParams.reverse).map (VExpr.instL ls)) =
+          gen.block.checked.params.reverse).map (VExpr.instL ls)) =
         (ctor.fieldsR source.uvars source.nparams).reverse ++
           gen.paramsTel.reverse by
       simp [ls, NormalizedCtor.fieldsR,
@@ -3929,12 +4056,12 @@ theorem fields_onTel_minor {ctor : NormalizedCtor}
       (VExpr.liftTelN 1
         (ctor.fieldsR source.uvars source.nparams) 0) := by
   have hemitted : env.OnTel source.uvars []
-      (gen.block.rawParams ++
+      (gen.block.checked.params ++
         ctor.rawFields source.nparams) := by
     simpa [NormalizedCtor.emittedBinders] using
       (S.ctorWF ctor hctor).rawEmitted_onTel
   have hfields₀ := (OnTel.of_append
-    (As := gen.block.rawParams) hemitted).2
+    (As := gen.block.checked.params) hemitted).2
   have hfields₁ := hfields₀.instL
     (U' := source.uvars + 1) VLevel.params'_one_wf
   have hfields₂ : env.OnTel (source.uvars + 1)
@@ -3947,7 +4074,7 @@ theorem fields_onTel_minor {ctor : NormalizedCtor}
       [gen.motiveType])
   simpa using hout
 
-/-- Every mixed constructor minor is a type over the raw parameter telescope
+/-- Every mixed constructor minor is a type over the checked parameter telescope
 and mixed motive. Raw field syntax is preserved; recursive classifications
 and result indices come from the checked view. -/
 theorem minor_isType {ctor : NormalizedCtor}
@@ -4038,10 +4165,10 @@ theorem minor_isType {ctor : NormalizedCtor}
     simpa [Γ, Fs, Bs, m, rs, IHs,
       List.append_assoc] using hbody⟩
 
-/-- The mixed raw parameter telescope is well formed in recursor universes. -/
+/-- The checked parameter telescope is well formed in recursor universes. -/
 theorem paramsTel_onTel :
     env.OnTel (source.uvars + 1) [] gen.paramsTel := by
-  have h := S.rawFamily_onTel.instL
+  have h := S.emittedFamily_onTel.instL
     (U' := source.uvars + 1) VLevel.params'_one_wf
   have h' : env.OnTel (source.uvars + 1) []
       (gen.paramsTel ++ gen.idxTel) := by
@@ -4049,11 +4176,11 @@ theorem paramsTel_onTel :
       GenerationChecked.idxTel] using h
   exact h'.of_append.1
 
-/-- The mixed raw index telescope is well formed over the mixed parameters. -/
+/-- The raw index telescope is well formed over the checked parameters. -/
 theorem idxTel_onTel :
     env.OnTel (source.uvars + 1)
       gen.paramsTel.reverse gen.idxTel := by
-  have h := S.rawFamily_onTel.instL
+  have h := S.emittedFamily_onTel.instL
     (U' := source.uvars + 1) VLevel.params'_one_wf
   have h' : env.OnTel (source.uvars + 1) []
       (gen.paramsTel ++ gen.idxTel) := by
@@ -4788,7 +4915,8 @@ theorem recBase_hasType
     List.length_cons, List.length_reverse,
     gen.minorTypes_length] at hspine
   rw [show gen.paramsTel.length = source.nparams from by
-      simp [GenerationChecked.paramsTel, gen.shape.1],
+      simp [GenerationChecked.paramsTel,
+        gen.shape.2.1.symm.trans gen.shape.1],
     VExpr.bvarRevRange_congr' Δ.length
       (show source.nparams +
           (gen.block.ctorPairs.length + 1) =
@@ -5460,7 +5588,7 @@ theorem ruleCall_hasType {ctor : NormalizedCtor}
   have hprefix :
       (((ctor.rawFields source.nparams).take
           r₀.fieldIndex).reverse ++
-        gen.block.rawParams.reverse).map
+        gen.block.checked.params.reverse).map
           (VExpr.instL ls) =
       (Bs.take r₀.fieldIndex).reverse ++
         gen.paramsTel.reverse := by

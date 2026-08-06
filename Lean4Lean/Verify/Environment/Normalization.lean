@@ -3952,9 +3952,9 @@ theorem CandidateNormalizedCtorRun.rightType_ofChecked
 /-- Produce both constructor paths required by `NormalizedCtorRun`.
 
 The declared path comes directly from the constructor candidate. The emitted
-path replaces the stored constructor parameter prefix by the raw family
-parameter prefix, transporting fields and result through the induced
-definitionally equal context. -/
+path replaces the stored constructor parameter prefix by the checked family
+parameter prefix used by Lean's recursor generator, transporting fields and
+result through the induced definitionally equal context. -/
 def CandidateNormalizedCtorRun.normalizedCtorRun
     {source : VInductDecl} {generation : GenerationChecked source}
     {env : VEnv} {Us : List Name}
@@ -3985,7 +3985,10 @@ def CandidateNormalizedCtorRun.normalizedCtorRun
       (.sort generation.block.checked.resultLevel) := by
     simpa only [NormalizedCtor.declaredBinders,
       NormalizedCtor.viewBinders] using declared
-  have emitted := declaredSplit.replacePrefix henv familyParams prefixLength
+  have checkedParams : TypeChecker.TelDefEqEvidence env Us.length []
+      generation.block.checked.params generation.block.checked.params :=
+    .ofTelDefEq <| (familyParams.telDefEq.view_onTel henv.ordered).telDefEq_refl
+  have emitted := declaredSplit.replacePrefix henv checkedParams prefixLength
   exact {
     declaredTel := by
       simpa only [uvars_eq] using declared.telescope

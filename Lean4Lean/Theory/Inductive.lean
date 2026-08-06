@@ -1023,10 +1023,14 @@ below re-runs `recArg?` on raw metadata.
 
 namespace GenerationChecked
 
-/-- Raw parameter telescope in recursor universes. -/
+/-- Checked family-parameter telescope in recursor universes.
+
+This deliberately does not use `rawParams`: annotations such as `outParam`
+are present in stored metadata but are consumed before Lean emits the common
+recursor parameter telescope. -/
 def paramsTel {source : VInductDecl} (gen : GenerationChecked source) :
     List VExpr :=
-  gen.block.rawParams.map (VExpr.instL (VLevel.params' source.uvars 1))
+  gen.block.checked.params.map (VExpr.instL (VLevel.params' source.uvars 1))
 
 /-- Raw index-binder telescope in recursor universes. -/
 def idxTel {source : VInductDecl} (gen : GenerationChecked source) :
@@ -1136,7 +1140,9 @@ namespace Checked
 private theorem identity_paramsTel {decl : VInductDecl}
     (checked : decl.Checked) :
     checked.identityGeneration.paramsTel =
-      VInductDecl.paramsTel decl.uvars decl.nparams checked.type := rfl
+      VInductDecl.paramsTel decl.uvars decl.nparams checked.type := by
+  simp [GenerationChecked.paramsTel, VInductDecl.paramsTel,
+    Checked.identityGeneration, Checked.identityBlock, checked.params_eq]
 
 private theorem identity_idxTel {decl : VInductDecl}
     (checked : decl.Checked) :
@@ -1380,11 +1386,15 @@ def NormalizedChecked.WF {source : VInductDecl}
     (block : NormalizedChecked source) (env : VEnv) : Prop :=
   block.normalization.WF env ∧ block.checked.WF env
 
-/-- The binders emitted for one mixed minor/rule: the raw family parameter
-surface followed by the stored raw constructor fields. -/
+/-- The binders emitted for one mixed minor/rule: the checked family
+parameters followed by the stored raw constructor fields.
+
+Lean consumes parameter annotations while checking the family and uses those
+checked locals when it builds the recursor. Constructor fields, by contrast,
+retain their stored surface syntax. -/
 def NormalizedCtor.emittedBinders {source : VInductDecl}
     (block : NormalizedChecked source) (ctor : NormalizedCtor) : List VExpr :=
-  block.rawParams ++ ctor.rawFields source.nparams
+  block.checked.params ++ ctor.rawFields source.nparams
 
 /-- The normalized binders whose semantic analysis drives the mixed artifact.
 These expressions are never emitted in place of their raw partners. -/
