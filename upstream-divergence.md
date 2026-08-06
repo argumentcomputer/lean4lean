@@ -4,8 +4,8 @@ This file tracks every deliberate semantic, API, build, or verification delta
 from `upstream/master` that must either be upstreamed or explicitly retained.
 It is the tracked counterpart to `plans/roadmap.md`.
 
-Audit baseline after the pre-family constructor safety checkpoint
-(2026-08-05):
+Audit baseline after the verified constructor level-comparison checkpoint
+(2026-08-06):
 
 - current upstream reconciliation parent: digama `upstream/master`
   `ef849dfbd94a`
@@ -75,26 +75,28 @@ Audit baseline after the pre-family constructor safety checkpoint
   (`proof: establish pre-family constructor safety`; 5 files changed,
   3,482 insertions, and 1 deletion; 67 commits ahead of the reconciled
   upstream). Publication to the fork's `jcb/induct` branch is pending.
+- local-committed analyzer-owned constructor view-WF checkpoint:
+  `98921daf15aa` (`proof: establish analyzer-owned constructor view WF`)
+- local-committed generic singleton package checkpoint:
+  `ae6726cef1e1` (`proof: establish generic singleton package closure`)
+- local-committed project level-normalization checkpoints:
+  `70c02b0e89d8` (`proof: establish level subsumption evaluation`) and
+  `a72979db8cd3` (`proof: establish level equivalence soundness`)
+- local-committed constructor level-comparison checkpoint:
+  `de3d98c9fc5fd066b2ab88ec450e01402ed38357`
+  (`proof: verify constructor level comparison`). Publication to the fork's
+  `jcb/induct` branch is pending.
 - fixed fork master: `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb`
   on local and `origin/master`
-- current audited source checkpoint: `9e40cbe0` adds one executable pre-family
-  constructor trace and staged semantic owner on top of the exact post-family
-  alignment. It retains ordinary-field checks, omits recursive outer locals,
-  and replays nested recursive Pi binders plus recursive/result index spines in
-  the verified pre-family context, with proved prefix weakening for the
-  resulting Theory judgments. The current singleton subset requires recursive
-  fields to form a suffix and every later recursive domain/result to be
-  syntactically independent of omitted recursive locals. AliasFormer,
-  AnnotatedPi, and the ordered two-constructor `IndexedVec` regression all
-  inhabit the produced pre-family owner. Executable negatives reach the exact
-  recursive-field-order and recursive-local-dependency errors. No `fieldsWF`,
-  analyzer-view acceptance, false constant-removal theorem, proof-only semantic
-  premise, native evaluator, custom axiom, or new sorry is claimed or
-  introduced. Exact root guards retain only the already accepted checker and
-  implementation contracts. The exact 22-sorry frontier, 156-job default Lake
-  build, 119-job Theory/Verify and Nix proof builds, default Nix build, all six
-  current-host flake checks, all-system no-build evaluation, formatter, Theory
-  import-boundary, and whitespace checks pass.
+- current audited source checkpoint: `de3d98c9` proves the transparent project
+  level comparison sound, keeps Lean's ordinary constructor validator
+  unchanged, and admits a normalized semantic comparison only through
+  core/project agreement. Exact root guards expose only `propext`,
+  `Classical.choice`, and `Quot.sound`; no oracle, custom axiom, native
+  evaluator, or new sorry is introduced. The exact 20-sorry frontier, 156-job
+  default Lake build, 119-job Theory/Verify and Nix proof builds, default Nix
+  build, all six current-host flake checks, all-system no-build evaluation,
+  formatter, Theory import-boundary, and whitespace checks pass.
 - generation-readiness source checkpoint: `bbb45e0e` builds on the exact
   arbitrary-length
   producer witnesses and source-indexed semantic inputs that return a
@@ -358,13 +360,14 @@ to the replacement.
 ## D010 — executable normalization and certified producer boundary
 
 - **Status:** local-committed (the earlier checkpoints are published-fork;
-  `9e40cbe` is not yet published)
+  the current L4L-01E checkpoint is not yet published)
 - **Commits:** `1fb7d6e`, `9fde4c6`, `b283912`, `a84aa19`, `c2b1c4f`,
   `a1d8943`, `6a77882`, `bc37d43`, `5e5bb76`, `33b99f4`, `a3ff992`,
   `9a865ea`, `a627362`, `6732659`, `c40a471`, `c739d41`, `82f4a54`,
   `d553930`, `cf3d5a4`, `c9e4ae2`, `a7d101b`, `f0caf16`, `e3cf22d`,
   `7e5f4f7`, `2b1d802`, `a64fe98`, `5aa9ab6`, `bbb45e0`, `7c79220`,
-  `da45b53`, `097efb4`, `a246c04`, `37d2dd9`, and `9e40cbe`
+  `da45b53`, `097efb4`, `a246c04`, `37d2dd9`, `9e40cbe`, `98921da`, and
+  `ae6726c`
 - **Delta:** retain exact ordinary-checker full-check, WHNF, and `isDefEq`
   executions in source- and context-indexed candidate traces; interpret them
   into Theory normalization and generation certificates; assemble dependent
@@ -464,15 +467,17 @@ to the replacement.
   longer provide checked WF or per-position generation-shape structures.
   Constructor validation now has a parallel strengthened semantic boundary.
   `checkConstructorUniverseListSemantics` replays every source-ordered
-  constructor telescope and accepts an ordinary field only through structural
-  universe order or the impredicative-Prop result exception. Strict kernel
-  level translation turns that executable decision into exactly the Theory
-  disjunction needed later by `fieldsWF`. The additive
+  constructor telescope and accepts an ordinary field through structural
+  universe order, the impredicative-Prop result exception, or the normalized
+  comparison intersection documented in D012. Strict kernel level translation
+  turns that executable decision into exactly the Theory disjunction needed
+  later by `fieldsWF`. The additive
   `StagedNormalizationCandidateUniverseInput` retains the successful audit
   alongside the established semantic owner without changing
   `buildNormalizationCandidate` or treating its success as semantic evidence.
-  AliasFormer, AnnotatedPi, and `IndexedVec` use that owner; the normalized
-  non-Prop `Level.geq`-only regression remains deliberately rejected.
+  AliasFormer, AnnotatedPi, and `IndexedVec` use that owner. The ordinary
+  validator remains unchanged, while the former normalized max/parameter gap
+  is now accepted only when core and verified project comparison agree.
   `ConstructorViewAlignmentTrace` then aligns each validation-owned telescope
   with its candidate-owned telescope at the corresponding Theory de Bruijn
   positions, rather than equating their fresh-FVar identifiers. The complete
@@ -505,24 +510,17 @@ to the replacement.
   normalization or generation witness while keeping checker state out of the
   Theory API. This is the proof boundary needed before executable metadata can
   be treated as certified inductive generation.
-- **Latest checkpoint:** the L4L-01D3 source at `9e40cbe` constructs and
-  interprets the executable pre-family safety trace selected for the same
-  analyzer-owned family and constructor list as D1/D2. Ordinary fields are
-  rechecked and retained; recursive outer locals are omitted while their
-  nested binders and all recursive/result indices are checked in the exact
-  pre-family context and transported by proved weakening. The three live
-  fixtures inhabit the staged produced owner, and exact-message negatives pin
-  recursive-suffix ordering and omitted-local independence. This remains a
-  deliberate under-approximation and introduces neither a general
-  constant-removal theorem nor a caller-supplied semantic premise.
-- **Current gap:** L4L-01D4 must combine D1's universe semantics, D2's exact
-  positional alignment, D3's pre-family judgments, and the analyzer equations
-  to derive every accepted analyzer-owned constructor's `fieldsWF`, terminal
-  `SpineWF`, and exact view declaration WF. It must then delete all three
-  fixture-supplied `viewDecl_wf` wrappers without renaming or reintroducing a
-  checked-WF/view-WF premise. E remains responsible for generic package
-  closure. The outer boundary remains singleton-family until the later
-  mutual/nested checkpoints.
+- **Latest checkpoint:** the L4L-01E source at `ae6726c` closes the singleton
+  package generically from the staged D1--D4 owner. D4 derives every
+  analyzer-owned constructor's `fieldsWF`, terminal `SpineWF`, and exact view
+  declaration WF from the universe, post-family, pre-family, and analysis
+  traces; fixtures no longer supply a view-WF wrapper. E then constructs the
+  exact produced package and public erasure without fixture-selected views or
+  component equations.
+- **Current gap:** L4L-03 must widen the remaining environment-sensitive
+  singleton validation under-approximations while preserving this one
+  analyzer-owned artifact path. Mutual, nested, elimination-mode, and broader
+  positivity behavior remain assigned to their later milestones.
 - **Tests:** exact positive AliasFormer, AnnotatedPi, and `IndexedVec`
   whole-call equations; positive semantic/transaction/replay fixtures for the
   first two plus the complete checkpoint semantic/transaction/E1 replay for
@@ -538,16 +536,17 @@ to the replacement.
   `rawTel`, `rawResult`, and `viewResult` inputs; exact strengthened-producer
   success for all three fixtures; missing-raw and extra-raw constructor-list
   rejection; exact analyzer-success replay in all three fixtures; structural
-  and impredicative-Prop universe positives; normalized non-Prop
-  `Level.geq`-only rejection; exact universe-bridge and staged-owner axiom
-  guards; exact post-family alignment of all AliasFormer, AnnotatedPi, and
-  ordered `IndexedVec` fields/results; distinct validator/candidate
+  and impredicative-Prop universe positives; normalized max/parameter
+  acceptance through core/project agreement; exact universe-bridge and
+  staged-owner axiom guards; exact post-family alignment of all AliasFormer,
+  AnnotatedPi, and ordered `IndexedVec` fields/results; distinct
+  validator/candidate
   `IndexedVec` field-FVar regression; exact successful pre-family replay and
   produced semantic ownership for all three fixtures; executable
   recursive-field-order and recursive-local-dependency rejection guards;
   exact generic and fixture post-family/pre-family axiom guards; focused direct
   compiles, 156-job default Lake build, and
-  119-job Theory/Verify and Nix proof builds; 22-sorry frontier check; default
+  119-job Theory/Verify and Nix proof builds; 20-sorry frontier check; default
   Nix build; all six current-host flake checks; all-system no-build evaluation;
   formatter; Theory import-boundary; and whitespace checks.
 - **Axiom note:** no normalization oracle, native evaluator, or new axiom was
@@ -597,13 +596,14 @@ to the replacement.
   semantic generation owner, deriving checked WF, and constructing the final
   package inherit exactly the already recorded checked semantic closure. Exact
   fixture guards expose only their pre-existing checker/pointer/cache and
-  projection dependencies. The new kernel-level structural equality/order and
-  Theory universe-disjunction roots depend exactly on
-  `propext`/`Quot.sound`; no level-normalizer theorem, oracle, custom axiom, or
-  new sorry is reachable. The additive staged projections explicitly guard
-  their inherited Verify closure instead of presenting it as a smaller
-  mathematical trust claim. The D2 staged owner and all three fixture roots
-  are each compile-time guarded at the same established post-family checker
+  projection dependencies. The kernel-level structural equality/order roots
+  remain at exactly `propext`/`Quot.sound`; the normalized project comparison
+  and resulting Theory universe-disjunction root use only the standard
+  `propext`/`Classical.choice`/`Quot.sound` basis documented in D012. No oracle,
+  custom axiom, or new sorry is reachable. The additive staged projections
+  explicitly guard their inherited Verify closure instead of presenting it as
+  a smaller mathematical trust claim. The D2 staged owner and all three
+  fixture roots are each compile-time guarded at the same established post-family checker
   closure: `propext`, `sorryAx`, `Classical.choice`, `Quot.sound`, and the
   existing expression, level, pointer-equality, persistent-collection, and
   syntax implementation contracts. The positional alignment and semantic-run
@@ -647,6 +647,45 @@ to the replacement.
 - **Removal condition:** an equivalent verified fast path lands upstream, or
   the fork removes this behavior and all candidate-replay fixtures pass against
   the upstream state transition instead.
+
+## D012 — verified project universe-level comparison
+
+- **Status:** local-committed; publication is pending
+- **Commits:** `70c02b0`, `a72979d`, and `de3d98c`
+- **Delta:** prove evaluation preservation for project level normalization and
+  comparison without assigning a logical contract to Lean's opaque v4.31
+  normalizer. `NormLevel.subsumption_eval` covers every raw normalized map by
+  retaining active-path membership witnesses when constants are removed.
+  Canonical ordered-entry equality gives `NormLevel.eval_congr`,
+  `isEquiv_wf`, and dependent level-list equivalence. `NormLevel.le_eval`
+  proves the transparent project order sound for every raw `NormLevel`, and
+  `geq'_wf` transports that result back through normalization. Constructor
+  semantic validation admits a normalized non-Prop field only when the
+  unchanged ordinary core `Level.geq` decision and verified project `geq'`
+  decision both succeed. The core half preserves the ordinary acceptance
+  boundary; only the proved project half supplies Theory meaning.
+- **Ix impact:** removes the structural/Prop-only universe under-approximation
+  from the certified singleton producer while retaining the same kernel-facing
+  validation result and a consumer-neutral Theory inequality.
+- **Tests:** generated old/new normalization differentials and exact evaluator
+  regressions over zero, successor, max, imax, parameters, and nested forms;
+  an all-pairs mvar-free core/project comparison matrix; the formerly excluded
+  max/parameter constructor comparison as a positive semantic-gate regression;
+  exact axiom guards for `NormLevel.le_eval`, `geq'_wf`, and the constructor
+  bridge; focused builds; 119-job Theory/Verify and 156-job default Lake
+  builds; exact 20-sorry audit; default Nix build; all-system no-build
+  evaluation; all six current-host flake checks; formatter, Theory import
+  boundary, and whitespace checks.
+- **Axiom note:** no oracle, native evaluator, custom axiom, or new sorry was
+  introduced. The new comparison roots close exactly over `propext`,
+  `Classical.choice`, and `Quot.sound`. Lean's core `Level.geq` remains an
+  executable acceptance condition only and is never used as a semantic proof
+  premise.
+- **Upstream issue/PR:** TBD; submit the generic level-normalizer proofs and
+  comparison bridge before the constructor-validation integration.
+- **Removal condition:** upstream provides an equivalent standard-only
+  mvar-free level-order theorem and constructor semantic validation consumes it
+  without a fork-only comparator.
 
 ## Review checklist
 

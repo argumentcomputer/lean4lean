@@ -66,8 +66,8 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-02C active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
-| Current formalization source | local-committed L4L-02B checkpoint `a72979db8cd31bbf62d661f01df15b3cb3f698cc` at `jcb/formalization`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
+| Ladder position | **L4L-03 active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
+| Current formalization source | local-committed L4L-02C checkpoint `de3d98c9fc5fd066b2ab88ec450e01402ed38357` at `jcb/formalization`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 20 live sorries and 29 custom-axiom declarations, both pinned by exact audits |
@@ -130,11 +130,17 @@ produced generation shape into an exact package while deriving its public
 package; no caller supplies a view, view-WF proof, or per-component equation.
 The staged semantic-input owner, family-validation semantics with post-family
 staging, and the complete retained constructor-validation trace (with
-source-list inversion and phase-local failure theorems) are in place. The source-ordered
-constructor-universe audit accepts only proved structural order or the
-impredicative-Prop exception, retains that stronger result in the staged
-semantic owner, and excludes normalized `Level.geq`-only acceptance until its
-core comparison receives a soundness proof. The post-family constructor owner
+source-list inversion and phase-local failure theorems) are in place. The
+source-ordered constructor-universe audit admits structural order and the
+impredicative-Prop exception directly; its normalized non-Prop branch requires
+both Lean's unchanged core `Level.geq` decision and the verified project
+`geq'` decision. `NormLevel.le_eval` and `geq'_wf` prove the project half
+semantically, while the core half keeps every accepted audit node inside the
+ordinary validator's existing acceptance boundary. The exact proof closure is
+only `propext`, `Classical.choice`, and `Quot.sound`; an all-pairs mvar-free
+core/project differential covers zero, successor, max, imax, parameters, and
+nested combinations, and the former max/parameter exclusion is now a positive
+regression. The post-family constructor owner
 aligns the retained validator and candidate telescopes by source position,
 independent of their fresh-FVar identities, and interprets root, parameter,
 field, positivity, and terminal checks in the actual verified post-family
@@ -158,11 +164,10 @@ Theory transaction and the checked replay through that package. All three also
 pass the strengthened constructor-universe gate and inhabit both produced
 post-family and pre-family semantic owners. `IndexedVec` additionally proves
 that validator and candidate field FVars differ while their Theory positions
-still align. Negatives stay sharp:
-opaque-`outParam` whole-candidate rejection, the non-Prop normalized
-`Level.geq`-only exclusion, truncated and reordered views, missing/extra
-constructors, recursive-field order, recursive-local dependency, and the
-environment-free closure/universe/name/result/collision matrix.
+still align. Negatives stay sharp: opaque-`outParam` whole-candidate rejection,
+truncated and reordered views, missing/extra constructors, recursive-field
+order, recursive-local dependency, and the environment-free
+closure/universe/name/result/collision matrix.
 
 **Environment replay.** Six actual-metadata transactions (Nat, Eq,
 `IndexedVec`, `Acc`, `AliasFormer`, `AliasRec`) plus the candidate-produced
@@ -367,20 +372,9 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Level-comparison proofs (L4L-02C)
-
-**L4L-02C — core constructor-level comparison bridge (active).** Prove soundness of
-Lean v4.31's mvar-free `Level.geq`/`Level.normalize` path, or prove an
-extensionally equivalent verified project comparison and route constructor
-validation through it without changing kernel outcomes. This removes
-L4L-01D1's structural/Prop under-approximation.
-*Exit:* the D1 semantic gate accepts a normalized non-Prop comparison only
-through the proved bridge; core/project differential tests cover zero, succ,
-max, imax, and parameters; no oracle or custom axiom.
-
 ### Singleton kernel parity (L4L-03–L4L-07)
 
-**L4L-03 — environment-sensitive validation parity.** Match the remaining
+**L4L-03 — environment-sensitive validation parity (active).** Match the remaining
 singleton `checkInductiveTypes`/`checkConstructors` acceptance behavior:
 pre-declaration `checkType`, fuel- and transparency-appropriate WHNF-driven
 Pi/result-sort peeling, WHNF-driven recursive-target traversal, definitional
