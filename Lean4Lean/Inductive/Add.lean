@@ -362,6 +362,27 @@ theorem declareInductiveTypes_singleton_constants
       simp [hcheck, Bind.bind, Except.bind, Pure.pure, Except.pure] at hdeclare
       exact congrArg Kernel.Environment.constants hdeclare.symm
 
+/-- A successful singleton family declaration changes only the constant map;
+in particular it preserves the kernel's quotient-initialization flag. -/
+theorem declareInductiveTypes_singleton_quotInit
+    (stats : InductiveStats) (numParams numIndices : Nat)
+    (indType : InductiveType) (numNested : Nat) (isUnsafe : Bool)
+    (context : Context) (familyEnv : Environment)
+    (hnindices : stats.nindices = #[numIndices])
+    (hdeclare :
+      declareInductiveTypes stats numParams #[indType] numNested isUnsafe context =
+        .ok familyEnv) :
+    familyEnv.quotInit = context.env.quotInit := by
+  unfold declareInductiveTypes at hdeclare
+  rw [hnindices] at hdeclare
+  cases hcheck : context.env.checkName indType.name context.allowPrimitive with
+  | error error =>
+      simp [hcheck, Bind.bind, Except.bind, Pure.pure, Except.pure] at hdeclare
+  | ok _ =>
+      simp [hcheck, Bind.bind, Except.bind, Pure.pure, Except.pure] at hdeclare
+      subst familyEnv
+      rfl
+
 /-- Family declaration observes only the environment, universe parameters,
 and primitive-name policy of its reader context.  In particular, the local
 telescope and fresh-name generator retained by family validation do not alter

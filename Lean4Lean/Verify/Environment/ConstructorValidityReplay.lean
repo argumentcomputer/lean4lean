@@ -386,12 +386,19 @@ theorem cvmTerminalAllowPrimitive_eq :
 theorem cvmFamilyNameAbsent :
     constructorValidityMatrixContext.env.contains
       constructorValidityMatrixKernelType.name = false := by
-  native_decide
+  change ({} : ConstMap).contains
+    constructorValidityMatrixKernelType.name = false
+  rw [SMap.find?_isSome,
+    SMap.WF.find?_eq SMap.WF.empty]
+  simp [SMap.toList']
 
 theorem cvmFamilyNameNotPrimitive :
     Kernel.Environment.primitives.contains
       constructorValidityMatrixKernelType.name = false := by
-  native_decide
+  simp [constructorValidityMatrixKernelType,
+    constructorValidityMatrixInfo, Kernel.Environment.primitives,
+    NameSet.ofList]
+  simp +decide [NameSet.contains]
 
 def cvmDeclaredInfo : ConstantInfo :=
   .inductInfo <| AddInductive.singletonDeclaredInfo
@@ -431,7 +438,11 @@ theorem cvmDeclaredInfo_tr :
     TrConstVal .safe VEnv.empty cvmDeclaredInfo
       constructorValidityMatrixType.toVConstVal := by
   refine ⟨⟨by decide, ?_, ?_⟩, rfl⟩
-  · native_decide
+  · change
+      cvmCandidate.families.singleton.familyType.type.trace.terminalContext.lparams.length =
+        constructorValidityMatrixType.uvars
+    rw [cvmTerminalLparams_eq]
+    rfl
   · change TrExprS VEnv.empty
       cvmCandidate.families.singleton.familyType.type.trace.terminalContext.lparams
       [] constructorValidityMatrixKernelType.type
@@ -446,7 +457,11 @@ def cvmAddType :
   info := cvmDeclaredInfo
   kind_eq := by simp [cvmDeclaredInfo, InductConstantKind.Matches]
   tr := cvmDeclaredInfo_tr
-  map_fresh := by native_decide
+  map_fresh := by
+    change ({} : ConstMap).find?
+      constructorValidityMatrixType.name = none
+    rw [SMap.WF.find?_eq SMap.WF.empty]
+    simp [SMap.toList']
   env_add := cvmTypeEnv_add
   map_add := by
     simpa [cvmFamilyContext, cvmConstructorContext,
@@ -475,10 +490,20 @@ def cvmFamilyStage :
   addInduct := cvmAddType
   family_lctx_eq := rfl
   constructorContext_eq := rfl
-  quotInit_eq := by native_decide
+  quotInit_eq := by
+    have h := cvmExecution.declareRun
+    rw [cvmExecutionStats_eq, cvmExecutionValidationContext_eq] at h
+    simpa [cvmConstructorContext, cvmFamilyContext,
+      cvmTerminalEnv_eq] using
+      AddInductive.declareInductiveTypes_singleton_quotInit
+        cvmFamilyValidationRun.stats 2 0 constructorValidityMatrixKernelType
+        0 false
+        cvmCandidate.families.singleton.familyType.type.trace.terminalContext
+        cvmExecution.familyEnv cvmStatsNindices_eq h
   name_not_reflected := by decide
   name_not_primitive := by
-    native_decide
+    rw [← cvmFamilyNames_eq]
+    exact cvmFamilyNameNotPrimitive
 
 theorem cvmTypeEnv_ordered : cvmTypeEnv.Ordered :=
   .const (n := constructorValidityMatrixType.name)
@@ -912,6 +937,23 @@ theorem prbFamilyNames_eq :
       propRecursiveBoundaryType.name := by
   decide
 
+theorem prbFamilyNameAbsent :
+    propRecursiveBoundaryContext.env.contains
+      propRecursiveBoundaryKernelType.name = false := by
+  change ({} : ConstMap).contains
+    propRecursiveBoundaryKernelType.name = false
+  rw [SMap.find?_isSome,
+    SMap.WF.find?_eq SMap.WF.empty]
+  simp [SMap.toList']
+
+theorem prbFamilyNameNotPrimitive :
+    Kernel.Environment.primitives.contains
+      propRecursiveBoundaryKernelType.name = false := by
+  simp [propRecursiveBoundaryKernelType,
+    propRecursiveBoundaryInfo, Kernel.Environment.primitives,
+    NameSet.ofList]
+  simp +decide [NameSet.contains]
+
 def prbDeclaredInfo : ConstantInfo :=
   .inductInfo <| AddInductive.singletonDeclaredInfo
     prbFamilyValidationRun.stats 1 1 propRecursiveBoundaryKernelType
@@ -965,7 +1007,11 @@ theorem prbDeclaredInfo_tr :
     TrConstVal .safe VEnv.empty prbDeclaredInfo
       propRecursiveBoundaryType.toVConstVal := by
   refine ⟨⟨by decide, ?_, ?_⟩, rfl⟩
-  · native_decide
+  · change
+      prbCandidate.families.singleton.familyType.type.trace.terminalContext.lparams.length =
+        propRecursiveBoundaryType.uvars
+    rw [prbTerminalLparams_eq]
+    rfl
   · change TrExprS VEnv.empty
       prbCandidate.families.singleton.familyType.type.trace.terminalContext.lparams
       [] propRecursiveBoundaryKernelType.type propRecursiveBoundaryType.type
@@ -979,7 +1025,11 @@ def prbAddType :
   info := prbDeclaredInfo
   kind_eq := by simp [prbDeclaredInfo, InductConstantKind.Matches]
   tr := prbDeclaredInfo_tr
-  map_fresh := by native_decide
+  map_fresh := by
+    change ({} : ConstMap).find?
+      propRecursiveBoundaryType.name = none
+    rw [SMap.WF.find?_eq SMap.WF.empty]
+    simp [SMap.toList']
   env_add := prbTypeEnv_add
   map_add := by
     simpa [prbFamilyContext, prbConstructorContext,
@@ -1008,9 +1058,20 @@ def prbFamilyStage :
   addInduct := prbAddType
   family_lctx_eq := rfl
   constructorContext_eq := rfl
-  quotInit_eq := by native_decide
+  quotInit_eq := by
+    have h := prbExecution.declareRun
+    rw [prbExecutionStats_eq, prbExecutionValidationContext_eq] at h
+    simpa [prbConstructorContext, prbFamilyContext,
+      prbTerminalEnv_eq] using
+      AddInductive.declareInductiveTypes_singleton_quotInit
+        prbFamilyValidationRun.stats 1 1 propRecursiveBoundaryKernelType
+        0 false
+        prbCandidate.families.singleton.familyType.type.trace.terminalContext
+        prbExecution.familyEnv prbStatsNindices_eq h
   name_not_reflected := by decide
-  name_not_primitive := by native_decide
+  name_not_primitive := by
+    rw [← prbFamilyNames_eq]
+    exact prbFamilyNameNotPrimitive
 
 theorem prbTypeEnv_ordered : prbTypeEnv.Ordered :=
   .const (n := propRecursiveBoundaryType.name)
@@ -1348,15 +1409,26 @@ def cvmCertifiedFinalEnv : VEnv :=
   (VEnv.empty.addInductGeneration
     constructorValidityMatrixGenerationChecked).get!
 
-theorem cvm_addInductCertified :
-    VEnv.empty.addInductCertified cvmGenerationCertificate =
+theorem cvm_addInductGeneration :
+    VEnv.empty.addInductGeneration
+        constructorValidityMatrixGenerationChecked =
       some cvmCertifiedFinalEnv := by
   rfl
+
+theorem cvm_addInductCertified :
+    VEnv.empty.addInductCertified cvmGenerationCertificate =
+      some cvmCertifiedFinalEnv :=
+  cvm_addInductGeneration
+
+theorem cvmGeneration_trace :
+    Nonempty (VEnv.AddInductGenerationTrace VEnv.empty cvmCertifiedFinalEnv
+      constructorValidityMatrixGenerationChecked) :=
+  VEnv.addInductGeneration_trace cvm_addInductGeneration
 
 theorem cvmCertified_trace :
     Nonempty (VEnv.AddInductGenerationTrace VEnv.empty cvmCertifiedFinalEnv
       constructorValidityMatrixGenerationChecked) :=
-  VEnv.addInductCertified_trace cvm_addInductCertified
+  cvmGeneration_trace
 
 theorem cvmCertified_ordered : cvmCertifiedFinalEnv.Ordered :=
   VEnv.addInductCertified_WF .empty cvm_addInductCertified
@@ -1518,15 +1590,25 @@ def prbGenerationCertificate :
 def prbCertifiedFinalEnv : VEnv :=
   (VEnv.empty.addInductGeneration propRecursiveBoundaryGenerationChecked).get!
 
-theorem prb_addInductCertified :
-    VEnv.empty.addInductCertified prbGenerationCertificate =
+theorem prb_addInductGeneration :
+    VEnv.empty.addInductGeneration propRecursiveBoundaryGenerationChecked =
       some prbCertifiedFinalEnv := by
   rfl
+
+theorem prb_addInductCertified :
+    VEnv.empty.addInductCertified prbGenerationCertificate =
+      some prbCertifiedFinalEnv :=
+  prb_addInductGeneration
+
+theorem prbGeneration_trace :
+    Nonempty (VEnv.AddInductGenerationTrace VEnv.empty prbCertifiedFinalEnv
+      propRecursiveBoundaryGenerationChecked) :=
+  VEnv.addInductGeneration_trace prb_addInductGeneration
 
 theorem prbCertified_trace :
     Nonempty (VEnv.AddInductGenerationTrace VEnv.empty prbCertifiedFinalEnv
       propRecursiveBoundaryGenerationChecked) :=
-  VEnv.addInductCertified_trace prb_addInductCertified
+  prbGeneration_trace
 
 theorem prbCertified_ordered : prbCertifiedFinalEnv.Ordered :=
   VEnv.addInductCertified_WF .empty prb_addInductCertified
