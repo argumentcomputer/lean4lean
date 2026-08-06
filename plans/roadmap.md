@@ -1,6 +1,6 @@
 # Lean4Lean completion roadmap
 
-**Status:** authoritative local roadmap, audited 2026-08-05 against the
+**Status:** authoritative local roadmap, audited 2026-08-06 against the
 committed fork and the current `jcb/induct` development branch.
 
 **Versioning.** `plans/roadmap.md` is intentionally tracked so the
@@ -66,8 +66,8 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-01D4 active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
-| Current formalization source | local-committed L4L-01D3 checkpoint `9e40cbe00e9c6fe808ebb0720c912bba21aa1b06` at `jcb/formalization`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
+| Ladder position | **L4L-01E active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
+| Current formalization source | local-committed L4L-01D4 checkpoint `98921daf15aaf8ec5d1765b4fc274e21f48382ea` at `jcb/formalization`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 22 live sorries and 29 custom-axiom declarations, both pinned by exact audits |
@@ -159,9 +159,8 @@ indices as `Nat.zero`/`Nat.succ`, deliberately excluding notation's
 replay. `AliasRec` remains the compositional constructor-normalization
 specification until its candidate list is migrated.
 
-**Not claimed.** Analyzer-owned constructor `fieldsWF` and view WF, or generic
-package construction from an arbitrary successful producer call
-(L4L-01D4-L4L-01E); WHNF/defeq validation parity, full positivity, small
+**Not claimed.** Generic package construction from an arbitrary successful
+producer call (L4L-01E); WHNF/defeq validation parity, full positivity, small
 elimination, K behavior, the complete differential matrix, mutual/nested
 blocks, patterns, projections, and the remaining metatheory/checker roots.
 Bare producer success is never generation-shape authority or Theory semantics.
@@ -353,14 +352,14 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Singleton constructor soundness (L4L-01D4–L4L-01E)
+### Singleton constructor soundness (L4L-01E)
 
 Constructor fields are checked after the raw family constant is inserted, but
 `VInductDecl.fieldsWF` is intentionally stated over the pre-family
 environment. A general "remove the fresh constant whenever the conclusion is
 family-free" lemma is false — a beta-redex can use the fresh constant in a
-discarded argument — so the remaining work follows two dependency-ordered
-checkpoints, and no stage may claim the strengthened
+discarded argument — so the remaining work follows one dependency-ordered
+checkpoint, and no stage may claim the strengthened
 theorem from bare `buildNormalizationCandidate` success. Throughout,
 AliasFormer, AnnotatedPi, and `IndexedVec` remain the terminal-alias, nested
 annotated-Π, and parameter/index/multi-constructor regressions; do not weaken
@@ -369,18 +368,8 @@ caller-selected view, or an assumed normalization theorem, and the
 opaque-`outParam` whole-candidate rejection must stay green and fail before
 package construction.
 
-**L4L-01D4 — analyzer-owned view WF (active).** Combine D1's universe facts, D2's
-exact trace alignment, D3's pre-family judgments, and the analyzer equations
-to derive every accepted view constructor's `fieldsWF` and terminal
-`SpineWF`, then WF of the exact analyzer-owned view declaration. Delete
-`aliasFormerCandidate_viewDecl_wf`, `annotatedPiCandidate_viewDecl_wf`, and
-`indexedVecSemanticCandidate_viewDecl_wf`.
-*Exit:* all three fixture `viewDecl_wf` wrappers are deleted; no
-`Checked.WF`, view, or view-WF premise is renamed or reintroduced; exact
-generic and fixture axiom guards and all universal gates pass.
-
-**L4L-01E — generic singleton package closure.** Combine the staged owner,
-exact dependent analysis, and `ProducedGenerationShapeCandidate` into an
+**L4L-01E — generic singleton package closure (active).** Combine the staged
+owner, exact dependent analysis, and `ProducedGenerationShapeCandidate` into an
 exact `Nonempty ProducedGenerationCandidatePackage`. The theorem must retain
 the successful ordinary producer equation but may not infer the strengthened
 gate or Theory meaning from that equation, and must not accept a view or
