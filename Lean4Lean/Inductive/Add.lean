@@ -1663,6 +1663,159 @@ def NormalizationCandidate.view
     (candidate : NormalizationCandidate source) : List InductiveType :=
   candidate.families.toList fun _ family => family.view
 
+/-- One exact family-type traversal result together with the source-indexed
+operational witness that produced it.  The witness is provenance for later
+Verify staging; it carries no Theory semantics. -/
+structure CandidateFamilyTypeListExecution (context : Context)
+    (sources : List InductiveType) where
+  candidates : CandidateList CandidateFamilyType sources
+  produced : CandidateFamilyTypeListProduced context candidates
+
+/-- Run the existing family-type normalizer while retaining its exact
+source-ordered traversal equations.  Errors and candidate data are unchanged. -/
+def executeCandidateFamilyTypeList (context : Context) :
+    (sources : List InductiveType) →
+      Except Exception (CandidateFamilyTypeListExecution context sources)
+  | [] => .ok ⟨.nil, .nil⟩
+  | source :: sources =>
+      match hhead : normalizeCandidateFamilyType source context with
+      | .error error => .error error
+      | .ok head =>
+          match executeCandidateFamilyTypeList context sources with
+          | .error error => .error error
+          | .ok tail => .ok {
+              candidates := .cons head tail.candidates
+              produced := .cons (by simpa using hhead) tail.produced }
+
+/-- One exact constructor traversal result together with its source-indexed
+operational witness. -/
+structure CandidateConstructorListExecution (context : Context)
+    (sources : List Constructor) where
+  candidates : CandidateList CandidateConstructor sources
+  produced : CandidateConstructorListProduced context candidates
+
+/-- Run the existing constructor normalizer while retaining its exact
+source-ordered traversal equations. -/
+def executeCandidateConstructorList (context : Context) :
+    (sources : List Constructor) →
+      Except Exception (CandidateConstructorListExecution context sources)
+  | [] => .ok ⟨.nil, .nil⟩
+  | source :: sources =>
+      match hhead : normalizeCandidateConstructor source context with
+      | .error error => .error error
+      | .ok head =>
+          match executeCandidateConstructorList context sources with
+          | .error error => .error error
+          | .ok tail => .ok {
+              candidates := .cons head tail.candidates
+              produced := .cons (by simpa using hhead) tail.produced }
+
+/-- One exact family/constructor assembly result together with both dependent
+source lists retained by the ordinary traversal. -/
+structure CandidateFamilyListExecution (context : Context)
+    {sources : List InductiveType}
+    (familyTypes : CandidateList CandidateFamilyType sources) where
+  candidates : CandidateList CandidateFamily sources
+  produced : CandidateFamilyListProduced context familyTypes candidates
+
+/-- Run the existing family assembler while retaining each constructor-list
+execution.  This is an operational refinement of
+`normalizeCandidateFamilyList`, not an additional acceptance premise. -/
+def executeCandidateFamilyList (context : Context) :
+    {sources : List InductiveType} →
+    (familyTypes : CandidateList CandidateFamilyType sources) →
+      Except Exception (CandidateFamilyListExecution context familyTypes)
+  | [], .nil => .ok ⟨.nil, .nil⟩
+  | source :: _, .cons familyType familyTypes =>
+      match executeCandidateConstructorList context source.ctors with
+      | .error error => .error error
+      | .ok constructors =>
+          match executeCandidateFamilyList context familyTypes with
+          | .error error => .error error
+          | .ok tail =>
+            let family : CandidateFamily source := {
+              familyType
+              constructors := constructors.candidates }
+            .ok {
+              candidates := .cons family tail.candidates
+              produced := by
+                change CandidateFamilyListProduced context
+                  (.cons family.familyType familyTypes)
+                  (.cons family tail.candidates)
+                exact .cons constructors.produced tail.produced }
+
+/-- Detailed operational result of `buildNormalizationCandidate`.
+
+The ordinary result erases to `candidate`.  The remaining fields retain the
+validator-selected statistics, intermediate environment, and exact list
+traversals already executed by the same call.  Verify uses these equations as
+staging provenance; all semantic authority still comes from the D1--D4
+interpreters. -/
+structure NormalizationCandidateExecution
+    (nparams : Nat) (types : List InductiveType)
+    (numNested : Nat) (isUnsafe : Bool) (candidateContext : Context) where
+  validationContext : Context
+  stats : InductiveStats
+  familyTypes : CandidateFamilyTypeListExecution
+    { candidateContext with lctx := {} } types
+  familyEnv : Environment
+  declareRun : declareInductiveTypes stats nparams types.toArray
+    numNested isUnsafe validationContext = .ok familyEnv
+  constructorRun : checkConstructors types.toArray stats isUnsafe
+    { validationContext with env := familyEnv } = .ok ()
+  families : CandidateFamilyListExecution
+    { candidateContext with env := familyEnv, lctx := {} }
+    familyTypes.candidates
+
+def NormalizationCandidateExecution.candidate
+    (execution : NormalizationCandidateExecution nparams types numNested
+      isUnsafe candidateContext) : NormalizationCandidate types :=
+  ⟨execution.families.candidates⟩
+
+/-- The post-family half of the detailed ordinary execution. -/
+def buildNormalizationCandidateExecutionAfterValidation
+    (nparams : Nat) (types : List InductiveType)
+    (numNested : Nat) (isUnsafe : Bool) (candidateContext : Context)
+    (stats : InductiveStats) :
+    M (NormalizationCandidateExecution nparams types numNested isUnsafe
+      candidateContext) :=
+  fun validationContext =>
+    match executeCandidateFamilyTypeList
+        { candidateContext with lctx := {} } types with
+    | .error error => .error error
+    | .ok familyTypes =>
+      match hdeclare : declareInductiveTypes stats nparams types.toArray
+          numNested isUnsafe validationContext with
+      | .error error => .error error
+      | .ok familyEnv =>
+        match hconstructors : checkConstructors types.toArray stats isUnsafe
+            { validationContext with env := familyEnv } with
+        | .error error => .error error
+        | .ok () =>
+          match executeCandidateFamilyList
+              { candidateContext with env := familyEnv, lctx := {} }
+              familyTypes.candidates with
+          | .error error => .error error
+          | .ok families => .ok {
+              validationContext
+              stats
+              familyTypes
+              familyEnv
+              declareRun := by simpa using hdeclare
+              constructorRun := by simpa using hconstructors
+              families }
+
+/-- Execute the ordinary singleton/mutual candidate pass while retaining the
+exact operational provenance erased by the public candidate result. -/
+def buildNormalizationCandidateExecution
+    (nparams : Nat) (types : List InductiveType)
+    (numNested : Nat) (isUnsafe : Bool) (candidateContext : Context) :
+    Except Exception (NormalizationCandidateExecution nparams types
+      numNested isUnsafe candidateContext) :=
+  checkInductiveTypes nparams types.toArray (fun stats =>
+    buildNormalizationCandidateExecutionAfterValidation nparams types
+      numNested isUnsafe candidateContext stats) candidateContext
+
 /-- Run the generic one-pass candidate producer at the same two environments
 as kernel inductive checking: family types in the input environment, then
 constructor types after insertion of every raw family constant.
@@ -1695,6 +1848,58 @@ def buildNormalizationCandidate
           { candidateContext with env := familyEnv, lctx := {} }) do
           normalizeCandidateFamilyList familyTypes
       return ⟨families⟩) candidateContext
+
+/-- Erase a retained successful execution back to the unchanged public
+candidate producer.  The family-validation equation supplies the continuation
+boundary selected by `checkInductiveTypes`; every later rewrite comes from an
+operation already stored in `execution`. -/
+theorem NormalizationCandidateExecution.produces
+    (execution : NormalizationCandidateExecution nparams types numNested
+      isUnsafe candidateContext)
+    (validationRun : ∀ {α} (k : InductiveStats → M α),
+      checkInductiveTypes nparams types.toArray k candidateContext =
+        k execution.stats execution.validationContext) :
+    buildNormalizationCandidate nparams types numNested isUnsafe
+        candidateContext = .ok execution.candidate := by
+  unfold buildNormalizationCandidate
+  rw [validationRun]
+  simp only [ReaderT.bind, Bind.bind]
+  rw [show
+    (withReader (fun _ : Context =>
+        { candidateContext with lctx := {} })
+      (normalizeCandidateFamilyTypeList types)) execution.validationContext =
+        .ok execution.familyTypes.candidates by
+      change normalizeCandidateFamilyTypeList types
+        { candidateContext with lctx := {} } = _
+      exact execution.familyTypes.produced.normalize]
+  simp only [Except.bind]
+  rw [execution.declareRun]
+  unfold withEnv
+  change (ReaderT.bind
+      (checkConstructors types.toArray execution.stats isUnsafe)
+      (fun _ => ReaderT.bind
+        (withReader (fun _ : Context =>
+          { candidateContext with
+            env := execution.familyEnv, lctx := {} })
+          (normalizeCandidateFamilyList execution.familyTypes.candidates))
+        (fun families => pure
+          (⟨families⟩ : NormalizationCandidate types))))
+      ({ execution.validationContext with
+        env := execution.familyEnv } : Context) = _
+  simp only [ReaderT.bind, Bind.bind]
+  rw [execution.constructorRun]
+  simp only [Except.bind]
+  rw [show
+    (withReader (fun _ : Context =>
+        { candidateContext with
+          env := execution.familyEnv, lctx := {} })
+      (normalizeCandidateFamilyList execution.familyTypes.candidates))
+      { execution.validationContext with env := execution.familyEnv } =
+        .ok execution.families.candidates by
+      change normalizeCandidateFamilyList execution.familyTypes.candidates
+        { candidateContext with env := execution.familyEnv, lctx := {} } = _
+      exact execution.families.produced.normalize]
+  rfl
 
 /--
 info: 'Lean4Lean.AddInductive.buildCandidateExpr' depends on axioms: [propext, Classical.choice, Quot.sound]
