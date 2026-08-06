@@ -2552,6 +2552,182 @@ private theorem outParamVEnvs_wf : outParamVEnvs.WF outParamKernelEnv where
   safePrimitives := outParam_safePrimitives
   mono := fun _ => .rfl
 
+/-! ## Definitionally equal constructor parameters -/
+
+def annotatedParamInfo : ConstantInfo := kernelInductInfo% AnnotatedParam
+def annotatedParamMkInfo : ConstantInfo := kernelCtorInfo% AnnotatedParam.mk
+def annotatedParamRecInfo : ConstantInfo := kernelRecInfo% AnnotatedParam.rec
+def annotatedParamKernelRuleRhs : VExpr :=
+  kernelRecRuleRhs% AnnotatedParam.rec 0
+
+example : annotatedParamKernelRuleRhs =
+    annotatedParamGenerationChecked.generatedRules[0].rhs := rfl
+
+private def annotatedParamKernelCtor : Constructor where
+  name := annotatedParamMkInfo.name
+  type := annotatedParamMkInfo.type
+
+private def annotatedParamKernelType : InductiveType where
+  name := annotatedParamInfo.name
+  type := annotatedParamInfo.type
+  ctors := [annotatedParamKernelCtor]
+
+private def annotatedParamCandidateContext : AddInductive.Context where
+  env := outParamKernelEnv
+  lparams := []
+  safety := .safe
+  allowPrimitive := false
+
+private def annotatedParamExpectedFamilyView : Expr :=
+  .forallE `alpha (.sort (.succ .zero))
+    (.sort (.succ .zero)) .default
+
+private def annotatedParamExpectedCtorView : Expr :=
+  .forallE `alpha (.sort (.succ .zero))
+    (.app (.const ``AnnotatedParam []) (.bvar 0)) .implicit
+
+/- The successful whole metadata pass reaches `checkConstructors`, compares
+the stored `outParam Type` constructor prefix with the checked `Type` family
+local by ordinary definitional equality, and retains the checked surface in
+both candidate views. -/
+#guard match AddInductive.buildNormalizationCandidate 1
+    [annotatedParamKernelType] 0 false annotatedParamCandidateContext with
+  | .ok candidate =>
+    candidate.families.singleton.familyType.type.view.equal
+        annotatedParamExpectedFamilyView &&
+      match candidate.families.singleton.constructors with
+      | .cons constructor .nil =>
+        constructor.type.view.equal annotatedParamExpectedCtorView
+  | .error _ => false
+
+/- Keep the constructor type closed and independently well typed while making
+its declared parameter domain genuinely different. The fixed result avoids a
+premature application-type failure, so rejection is specifically the same
+constructor-parameter check exercised by the positive. -/
+private def annotatedParamNonDefEqCtor : Constructor where
+  name := annotatedParamMkInfo.name
+  type := .forallE `alpha (.sort .zero)
+    (.app (.const ``AnnotatedParam []) (.sort .zero)) .implicit
+
+private def annotatedParamNonDefEqType : InductiveType :=
+  { annotatedParamKernelType with ctors := [annotatedParamNonDefEqCtor] }
+
+#guard match AddInductive.buildNormalizationCandidate 1
+    [annotatedParamNonDefEqType] 0 false annotatedParamCandidateContext with
+  | .error (.other message) =>
+    message ==
+      "arg #1 of 'Lean4Lean.InductiveFixtures.AnnotatedParam.mk' does not match inductive datatype parameters"
+  | _ => false
+
+private theorem annotatedParamRawType_wf :
+    annotatedParamRawType.toVConstant.WF outParamEnv := by
+  refine ⟨.imax (.succ (.succ .zero)) (.succ (.succ .zero)), ?_⟩
+  change outParamEnv.HasType 0 []
+    (.forallE
+      (.app (.const ``outParam [.succ (.succ .zero)])
+        (.sort (.succ .zero)))
+      (.sort (.succ .zero)))
+    (.sort (.imax (.succ (.succ .zero)) (.succ (.succ .zero))))
+  apply VEnv.HasType.forallE
+  · apply VEnv.HasType.app
+      (A := .sort (.succ (.succ .zero)))
+      (B := .sort (.succ (.succ .zero)))
+    · simpa [VExpr.instL, VLevel.inst] using VEnv.HasType.const
+        (env := outParamEnv) (U := 0) (c := ``outParam)
+        (ci := vconst(type_of% @outParam))
+        (ls := [.succ (.succ .zero)]) rfl
+        (by simp; decide) rfl
+    · exact VEnv.HasType.sort (by decide)
+  · exact VEnv.HasType.sort (by decide)
+
+private theorem annotatedParamInfo_tr :
+    TrConstVal .safe outParamEnv annotatedParamInfo
+      annotatedParamRawType.toVConstVal := by
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr outParamEnv annotatedParamInfo.levelParams []
+      annotatedParamInfo.type annotatedParamRawType.type := by
+    tr_type_expr_tac
+  obtain ⟨u, htype⟩ := annotatedParamRawType_wf
+  exact hshape.to_trExprS outParamEnv_ordered trivial ⟨.sort u, htype⟩
+
+private def annotatedParamTypeEnv : VEnv :=
+  (outParamEnv.addConst annotatedParamRawType.name
+    annotatedParamRawType.toVConstant).get!
+
+private def annotatedParamTypeMap : ConstMap :=
+  outParamMap.insert ``AnnotatedParam annotatedParamInfo
+
+private theorem annotatedParamType_fresh :
+    outParamMap.find? ``AnnotatedParam = none := by
+  rw [outParamMap, SMap.WF.find?_insert
+    (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
+
+private theorem annotatedParamTypeMap_wf : annotatedParamTypeMap.WF :=
+  outParamMap_wf.insert _ _ annotatedParamType_fresh
+
+private def annotatedParamAddType :
+    AddInductConstant .induct outParamMap outParamEnv
+      annotatedParamRawType.toVConstVal annotatedParamTypeMap
+      annotatedParamTypeEnv where
+  info := annotatedParamInfo
+  kind_eq := by simp [annotatedParamInfo, InductConstantKind.Matches]
+  tr := annotatedParamInfo_tr
+  map_fresh := by simpa [annotatedParamRawType] using
+    annotatedParamType_fresh
+  env_add := rfl
+  map_add := rfl
+
+private def annotatedParamTypeKernelEnv : Kernel.Environment :=
+  Kernel.Environment.ofConstants `_annotatedParamCandidate
+    annotatedParamTypeMap
+
+private theorem annotatedParamTypeEnv_ordered :
+    annotatedParamTypeEnv.Ordered :=
+  .const (n := annotatedParamRawType.name)
+    (ci := annotatedParamRawType.toVConstant)
+    outParamEnv_ordered annotatedParamRawType_wf rfl
+
+private def annotatedParamCtorCandidateContext : AddInductive.Context where
+  env := annotatedParamTypeKernelEnv
+  lparams := []
+  safety := .safe
+  allowPrimitive := false
+
+private theorem annotatedParamType_lookup_outParam :
+    annotatedParamTypeKernelEnv.find? ``outParam =
+      some annotationOutParamInfo := by
+  change annotatedParamTypeMap.find?' ``outParam =
+    some annotationOutParamInfo
+  rw [annotatedParamTypeMap_wf.find?'_eq_find?, annotatedParamTypeMap,
+    outParamMap_wf.find?_insert]
+  rw [outParamMap, SMap.WF.find?_insert
+    (s := ({} : ConstMap)) SMap.WF.empty]
+  rfl
+
+private theorem annotatedParamType_lookup_family :
+    annotatedParamTypeKernelEnv.find? ``AnnotatedParam =
+      some annotatedParamInfo := by
+  change annotatedParamTypeMap.find?' ``AnnotatedParam =
+    some annotatedParamInfo
+  rw [annotatedParamTypeMap_wf.find?'_eq_find?, annotatedParamTypeMap,
+    outParamMap_wf.find?_insert]
+  rfl
+
+@[simp] private theorem annotatedParamType_get_outParam :
+    annotatedParamTypeKernelEnv.get ``outParam =
+      .ok annotationOutParamInfo := by
+  unfold Kernel.Environment.get
+  rw [annotatedParamType_lookup_outParam]
+  rfl
+
+@[simp] private theorem annotatedParamType_get_family :
+    annotatedParamTypeKernelEnv.get ``AnnotatedParam =
+      .ok annotatedParamInfo := by
+  unfold Kernel.Environment.get
+  rw [annotatedParamType_lookup_family]
+  rfl
+
 def annotatedPiInfo : ConstantInfo := kernelInductInfo% AnnotatedPi
 def annotatedPiMkInfo : ConstantInfo := kernelCtorInfo% AnnotatedPi.mk
 def annotatedPiRecInfo : ConstantInfo := kernelRecInfo% AnnotatedPi.rec

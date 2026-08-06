@@ -728,6 +728,15 @@ def annotatedParamGenerationChecked :
     GenerationChecked annotatedParamRawDecl :=
   annotatedParamBlock.generation?.get (by decide)
 
+example : annotatedParamGenerationChecked.recursor =
+    vconst(type_of% @AnnotatedParam.rec) := rfl
+
+example : annotatedParamGenerationChecked.generatedRules[0]? =
+    some (vdefeq((alpha : Type)
+      (motive : AnnotatedParam alpha → Sort u)
+      (mk : motive (@AnnotatedParam.mk alpha)) =>
+      @AnnotatedParam.rec alpha motive mk (@AnnotatedParam.mk alpha) ≡ mk)) := rfl
+
 /-! ## Explicit normalization boundary
 
 Lean stores reducible aliases in inductive metadata even though
