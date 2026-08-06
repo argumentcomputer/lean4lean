@@ -66,11 +66,11 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-02A active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
-| Current formalization source | local-committed L4L-01E checkpoint `ae6726cef1e1763fc76f03d1fb68fd68267d9b22` at `jcb/formalization`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
+| Ladder position | **L4L-02B active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
+| Current formalization source | local-committed L4L-02A checkpoint `70c02b0e89d83d3bba317db07740c1f9f9eb623a` at `jcb/formalization`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
-| Trust frontier | exactly 22 live sorries and 29 custom-axiom declarations, both pinned by exact audits |
+| Trust frontier | exactly 21 live sorries and 29 custom-axiom declarations, both pinned by exact audits |
 | Gates | the full §6 gate list is green on the current source |
 
 ### 2.1 What is green
@@ -102,7 +102,12 @@ their raw declarations fail `checked?` while their certified views succeed.
 **Verify.** A checker-run certificate layer (`WhnfRun`, `CheckTypeRun`,
 `IsDefEqRun`, `DefEqEvidence`, `TelDefEqEvidence`, `NormalizedCtorRun`,
 `GenerationRun`) turns exact ordinary-checker executions into Theory typing
-and definitional equality through the existing refinement theorems. The
+and definitional equality through the existing refinement theorems. Level
+subsumption is evaluation-preserving for every raw `NormLevel`: active-path
+witnesses now guard constant removal, and the proof follows both nested map
+folds. Valid normalizer output remains unchanged under the differential audit;
+the theorem's exact closure is only `propext`, `Classical.choice`, and
+`Quot.sound`, with no project-specific axiom. The
 executable candidate producer (`AddInductive.normalizeCandidateExpr`,
 `buildNormalizationCandidate`) retains recursively context- and source-indexed
 traces with exact full-check/WHNF/binder-equality runs at every node,
@@ -170,14 +175,14 @@ Bare producer success is never generation-shape authority or Theory semantics.
 
 ### 2.2 Live debt
 
-The sorry-frontier script currently accepts exactly 22 live sorries:
+The sorry-frontier script currently accepts exactly 21 live sorries:
 
 | Area | Live debt |
 |---|---|
 | Projection specification | `Verify/Typing/Expr.lean:67`, `TrProj` |
 | Projection structural laws | seven sites in `Verify/Typing/Lemmas.lean`: `weak'`, inverse weakening, `defeqDFC`, `wf`, `uniq`, `instN`, `instL` |
 | Core metatheory | `Injectivity.lean` x3, `UniqueTyping.lean` x1, `ChurchRosser.lean` x2 |
-| Checker verification | `Verify/Level.lean` x2; `Verify/Environment.lean` x1; `InferType.lean` x1; `WHNF.lean` x2; `IsDefEq.lean` x2 |
+| Checker verification | `Verify/Level.lean` x1; `Verify/Environment.lean` x1; `InferType.lean` x1; `WHNF.lean` x2; `IsDefEq.lean` x2 |
 
 The two v4.31 additions are classified: `NormLevel.isEquiv_wf` → L4L-02B and
 `Lean4Lean.addDecl.WF` → L4L-19B. Non-sorry debt:
@@ -357,14 +362,7 @@ than hiding merge work inside a semantic milestone.
 
 ### Level-comparison proofs (L4L-02A–L4L-02C)
 
-**L4L-02A — level subsumption evaluation (active).** Prove
-`NormLevel.subsumption_eval` with its existing statement and remove exactly
-that sorry-frontier entry. Keep the patch independent of inductive APIs.
-*Exit:* focused Level and full builds pass; the exact axiom closure is
-accepted; the frontier drops from 22 to 21; the change is a small
-upstream-ready commit.
-
-**L4L-02B — level equivalence soundness.** Prove the v4.31-added
+**L4L-02B — level equivalence soundness (active).** Prove the v4.31-added
 `NormLevel.isEquiv_wf` from the evaluator/subsumption library and close the
 dependent list-level soundness path without changing the executable
 normalizer.
