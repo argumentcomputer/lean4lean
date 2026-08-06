@@ -1229,6 +1229,10 @@ theorem eqv_const {e : Expr} : e == .const c ls ↔ e = .const c ls := by
   conv => lhs; simp [(· == ·)]
   cases e <;> simp [eqv']
 
+theorem structuralEq_const {e : Expr} :
+    structuralEq e (.const c ls) = true ↔ e = .const c ls := by
+  cases e <;> simp [structuralEq]
+
 theorem eqv_refl (e : Expr) : e == e := by
   simp [(· == ·)]; induction e <;> simp [eqv', *]
 

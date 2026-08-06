@@ -4337,7 +4337,7 @@ private theorem annotatedPiWhnfCoreDomainInitial (n) :
         .const ``outParam [.succ .zero] by rfl]
   rw [annotatedPiWhnfCoreOutParamConst n ({} : TypeChecker.State)]
   simp [annotatedPiRawDomainKernel, annotatedPiReduceRecursorDomain,
-    Expr.eqv_eq,
+    Expr.structuralEq,
     Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
   rw [show
     .app (.const ``outParam [.succ .zero]) (.sort .zero) =
@@ -4474,7 +4474,7 @@ private theorem annotatedPiWhnfCoreDomainBeta (n) :
         methods annotatedPiCtorCandidateContext.toTypeChecker state =
       .ok (none, state)
   simp [TypeChecker.Inner.reduceNat, Expr.getAppNumArgs_eq,
-    Expr.getAppArgsRevList, Expr.appFn!, Expr.eqv_const]
+    Expr.getAppArgsRevList, Expr.appFn!, Expr.structuralEq]
 
 private theorem annotatedPiWhnfLoopDomain :
     TypeChecker.Inner.whnf'.loop annotatedPiRawDomainKernel 100000
@@ -4690,7 +4690,7 @@ private theorem annotatedPiWhnfCoreDomainCheap
         .const ``outParam [.succ .zero] by rfl]
   rw [annotatedPiWhnfCoreOutParamConstCheap fuel]
   simp [annotatedPiRawDomainKernel, annotatedPiReduceRecursorDomain,
-    annotatedPiWithEqvManager, Expr.eqv_eq,
+    annotatedPiWithEqvManager, Expr.structuralEq,
     Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
   rw [show
     .app (.const ``outParam [.succ .zero]) (.sort .zero) =
