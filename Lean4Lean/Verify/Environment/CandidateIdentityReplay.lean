@@ -1,0 +1,507 @@
+import Lean4Lean.Verify.Environment.Normalization
+import Std.Data.HashMap.Lemmas
+
+/-!
+# Structural identity replay for normalization candidates
+
+This module proves identity normalization from the ordinary producer's exact
+recursive executions.  The replay description is structural: it supplies the
+WHNF behavior of each source node and the transparent annotation build, then
+recovers the producer-owned `CandidateExprTrace`.  It does not evaluate a
+proof-only Boolean with `native_decide`.
+-/
+
+namespace Lean4Lean.TypeChecker
+
+open Lean Meta
+open Lean4Lean
+
+theorem localContextFindNew
+    (lctx : LocalContext) (id : FVarId) (name : Name)
+    (type : Expr) (bi : BinderInfo) (kind : LocalDeclKind)
+    (hwf : lctx.WF) (hfresh : lctx.find? id = none) :
+    (lctx.mkLocalDecl id name type bi kind).find? id =
+      some (.cdecl lctx.decls.size id name type bi kind) := by
+  have hwf' := LocalContext.WF.mkLocalDecl
+    (name := name) (ty := type) (bi := bi) (kind := kind) hwf hfresh
+  rw [hwf'.find?_eq_find?_toList]
+  rw [LocalContext.mkLocalDecl_toList]
+  simp [LocalDecl.fvarId]
+
+theorem emptyLocalContextFindNone (id : FVarId) :
+    (⟨.empty, .empty, .empty⟩ : LocalContext).find? id = none := by
+  have h := LocalContext.WF.find?_eq_find?_toList
+    (fv := id) LocalContext.WF.nil
+  rw [h]
+  simp [LocalContext.toList]
+
+theorem candidateWhnfFVar_refl
+    (context : AddInductive.Context) (id : FVarId)
+    (recursionFuel : Nat)
+    (hdepth : context.fuel.recDepth = recursionFuel + 1)
+    (hnotlet : TypeChecker.Inner.isLetFVar context.lctx id = false) :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨context, .fvar id, .fvar id⟩ := by
+  unfold AddInductive.CandidateWhnfStep.Valid
+  change TypeChecker.M.run context.env context.safety context.lctx
+    context.lparams context.fuel (TypeChecker.whnf (.fvar id)) =
+      .ok (.fvar id)
+  unfold TypeChecker.M.run TypeChecker.whnf TypeChecker.RecM.run
+  simp [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    StateT.pure, Except.pure, Pure.pure,
+    StateT.run', Functor.map, Except.map]
+  rw [hdepth]
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+    (TypeChecker.Inner.whnf' (.fvar id)
+      (TypeChecker.Methods.withFuel recursionFuel)
+      context.toTypeChecker ({} : TypeChecker.State)) =
+        .ok (.fvar id)
+  unfold TypeChecker.Inner.whnf'
+  simp only [ReaderT.bind, StateT.bind, Except.bind, Bind.bind]
+  rw [show (getLCtx : TypeChecker.RecM LocalContext)
+      (TypeChecker.Methods.withFuel recursionFuel)
+      context.toTypeChecker ({} : TypeChecker.State) =
+        .ok (context.lctx, ({} : TypeChecker.State)) by rfl]
+  simp [hnotlet, ReaderT.pure, StateT.pure,
+    Except.pure, Pure.pure, Except.map]
+
+theorem candidateWhnfPushedFVar_refl
+    (context : AddInductive.Context) (name : Name) (type : Expr)
+    (binderInfo : BinderInfo) (recursionFuel : Nat)
+    (hdepth : context.fuel.recDepth = recursionFuel + 1)
+    (hwf : context.lctx.WF)
+    (hfresh : context.lctx.find? context.freshFVarId = none) :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨context.pushLocalDecl name binderInfo type,
+        context.freshExpr, context.freshExpr⟩ := by
+  apply candidateWhnfFVar_refl _ context.freshFVarId recursionFuel
+  · simpa [AddInductive.Context.pushLocalDecl] using hdepth
+  · unfold TypeChecker.Inner.isLetFVar
+    simp only [AddInductive.Context.pushLocalDecl]
+    rw [localContextFindNew context.lctx context.freshFVarId
+      name type binderInfo .default hwf hfresh]
+
+private theorem candidateWhnfCoreFVar_refl
+    (context : AddInductive.Context) (id : FVarId)
+    (state : TypeChecker.State)
+    (hnotlet : TypeChecker.Inner.isLetFVar context.lctx id = false) :
+    TypeChecker.Inner.whnfCore (.fvar id) false false
+        (TypeChecker.Methods.withFuel 9999)
+        context.toTypeChecker state =
+      .ok (.fvar id, state) := by
+  change TypeChecker.Inner.whnfCore' (.fvar id) false false
+      (TypeChecker.Methods.withFuel 9998)
+      context.toTypeChecker state =
+    .ok (.fvar id, state)
+  unfold TypeChecker.Inner.whnfCore'
+  simp only [ReaderT.bind, StateT.bind, Except.bind, Bind.bind]
+  rw [show (getLCtx : TypeChecker.RecM LocalContext)
+      (TypeChecker.Methods.withFuel 9998)
+      context.toTypeChecker state =
+        .ok (context.lctx, state) by rfl]
+  simp [hnotlet, ReaderT.pure, StateT.pure,
+    Except.pure, Pure.pure]
+
+private theorem candidateReduceRecursorFVarApp_none
+    (context : AddInductive.Context) (fnId argId : FVarId)
+    (state : TypeChecker.State)
+    (hquot : context.env.quotInit = false) :
+    TypeChecker.Inner.reduceRecursor
+        (.app (.fvar fnId) (.fvar argId)) false false
+        (TypeChecker.Methods.withFuel 9999)
+        context.toTypeChecker state =
+      .ok (none, state) := by
+  unfold TypeChecker.Inner.reduceRecursor
+  simp only [ReaderT.bind, StateT.bind, Except.bind, Bind.bind]
+  rw [show (liftM TypeChecker.getEnv :
+      TypeChecker.RecM Lean.Kernel.Environment)
+      (TypeChecker.Methods.withFuel 9999)
+      context.toTypeChecker state =
+        .ok (context.env, state) by rfl]
+  simp only [Except.bind]
+  rw [hquot]
+  have hfn : (.app (.fvar fnId) (.fvar argId) : Expr).getAppFn =
+      .fvar fnId := by rfl
+  simp [inductiveReduceRec, hfn, ReaderT.bind, StateT.bind,
+    Except.bind, Bind.bind, ReaderT.pure, StateT.pure,
+    Except.pure, Pure.pure]
+
+private theorem candidateWhnfCoreFVarAppFVar_refl
+    (context : AddInductive.Context) (fnId argId : FVarId)
+    (hquot : context.env.quotInit = false)
+    (hnotlet : TypeChecker.Inner.isLetFVar context.lctx fnId = false) :
+    TypeChecker.Inner.whnfCore'
+        (.app (.fvar fnId) (.fvar argId)) false false
+        (TypeChecker.Methods.withFuel 9999)
+        context.toTypeChecker ({} : TypeChecker.State) =
+      .ok (.app (.fvar fnId) (.fvar argId),
+        ({} : TypeChecker.State)) := by
+  unfold TypeChecker.Inner.whnfCore'
+  simp [ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    ReaderT.pure, StateT.pure, Except.pure, Pure.pure]
+  rw [show (get : TypeChecker.RecM TypeChecker.State)
+      (TypeChecker.Methods.withFuel 9999)
+      context.toTypeChecker ({} : TypeChecker.State) =
+        .ok (({} : TypeChecker.State), ({} : TypeChecker.State)) by rfl]
+  simp only [Except.bind, Std.HashMap.getElem?_empty]
+  simp [ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    ReaderT.pure, StateT.pure, Except.pure, Pure.pure]
+  have hfn : (.app (.fvar fnId) (.fvar argId) : Expr).getAppFn =
+      .fvar fnId := by rfl
+  have hargs : (.app (.fvar fnId) (.fvar argId) : Expr).getAppRevArgs =
+      #[.fvar argId] := by rfl
+  rw [hfn, hargs]
+  rw [candidateWhnfCoreFVar_refl context fnId
+    ({} : TypeChecker.State) hnotlet]
+  simp [candidateReduceRecursorFVarApp_none context fnId argId
+      ({} : TypeChecker.State) hquot,
+    Expr.structuralEq, ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    ReaderT.pure, StateT.pure, Except.pure, Pure.pure]
+
+private theorem candidateReduceNativeFVarAppFVar_none
+    (context : AddInductive.Context) (fnId argId : FVarId)
+    (state : TypeChecker.State) :
+    (liftM (TypeChecker.Inner.reduceNative context.env
+      (.app (.fvar fnId) (.fvar argId))) :
+        TypeChecker.RecM (Option Expr))
+      (TypeChecker.Methods.withFuel 9999)
+      context.toTypeChecker state = .ok (none, state) := by
+  rfl
+
+private theorem candidateReduceNatFVarAppFVar_none
+    (context : AddInductive.Context) (fnId argId : FVarId)
+    (state : TypeChecker.State) :
+    TypeChecker.Inner.reduceNat (.app (.fvar fnId) (.fvar argId))
+        (TypeChecker.Methods.withFuel 9999)
+      context.toTypeChecker state = .ok (none, state) := by
+  unfold TypeChecker.Inner.reduceNat
+  have hnargs : (.app (.fvar fnId) (.fvar argId) : Expr).getAppNumArgs =
+      1 := by rfl
+  have hfn : (.app (.fvar fnId) (.fvar argId) : Expr).appFn! =
+      .fvar fnId := by rfl
+  rw [hnargs, hfn]
+  simp only [show (1 == 1) = true by decide, if_true]
+  rw [show Expr.structuralEq (.fvar fnId) (.const ``Nat.succ []) = false by
+    rfl]
+  rfl
+
+private theorem candidateUnfoldDefinitionFVarAppFVar_none
+    (context : AddInductive.Context) (fnId argId : FVarId)
+    (state : TypeChecker.State) :
+    TypeChecker.Inner.unfoldDefinition
+        (.app (.fvar fnId) (.fvar argId))
+        (TypeChecker.Methods.withFuel 9999)
+      context.toTypeChecker state = .ok (none, state) := by
+  unfold TypeChecker.Inner.unfoldDefinition
+  have hisApp : (.app (.fvar fnId) (.fvar argId) : Expr).isApp = true :=
+    rfl
+  have hfn : (.app (.fvar fnId) (.fvar argId) : Expr).getAppFn =
+      .fvar fnId := by rfl
+  rw [hisApp, hfn]
+  simp [TypeChecker.Inner.unfoldDefinitionCore,
+    ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    ReaderT.pure, StateT.pure, Except.pure, Pure.pure]
+
+private theorem candidateWhnfLoopFVarAppFVar_refl
+    (context : AddInductive.Context) (fnId argId : FVarId)
+    (hquot : context.env.quotInit = false)
+    (hnotlet : TypeChecker.Inner.isLetFVar context.lctx fnId = false) :
+    TypeChecker.Inner.whnf'.loop
+        (.app (.fvar fnId) (.fvar argId)) 100000
+        (TypeChecker.Methods.withFuel 9999)
+        context.toTypeChecker ({} : TypeChecker.State) =
+      .ok (.app (.fvar fnId) (.fvar argId),
+        ({} : TypeChecker.State)) := by
+  rw [show 100000 = 99999 + 1 by rfl]
+  unfold TypeChecker.Inner.whnf'.loop
+  simp only [ReaderT.bind, StateT.bind, Except.bind, Bind.bind]
+  rw [show (liftM TypeChecker.getEnv :
+      TypeChecker.RecM Lean.Kernel.Environment)
+      (TypeChecker.Methods.withFuel 9999)
+      context.toTypeChecker ({} : TypeChecker.State) =
+        .ok (context.env, ({} : TypeChecker.State)) by rfl]
+  simp only [Except.bind]
+  rw [candidateWhnfCoreFVarAppFVar_refl context fnId argId
+    hquot hnotlet]
+  simp only [Except.bind]
+  rw [candidateReduceNativeFVarAppFVar_none context fnId argId
+    ({} : TypeChecker.State)]
+  simp [ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    ReaderT.pure, StateT.pure, Except.pure, Pure.pure]
+  rw [candidateReduceNatFVarAppFVar_none context fnId argId
+    ({} : TypeChecker.State)]
+  simp [ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    ReaderT.pure, StateT.pure, Except.pure, Pure.pure]
+  rw [candidateUnfoldDefinitionFVarAppFVar_none context fnId argId
+    ({} : TypeChecker.State)]
+  rfl
+
+set_option maxRecDepth 10000 in
+theorem candidateWhnfFVarAppFVar_refl
+    (context : AddInductive.Context) (fnId argId : FVarId)
+    (hdepth : context.fuel.recDepth = 10000)
+    (hwhnf : context.fuel.whnf = 100000)
+    (hquot : context.env.quotInit = false)
+    (hnotlet : TypeChecker.Inner.isLetFVar context.lctx fnId = false) :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨context, .app (.fvar fnId) (.fvar argId),
+        .app (.fvar fnId) (.fvar argId)⟩ := by
+  unfold AddInductive.CandidateWhnfStep.Valid
+  unfold TypeChecker.M.run TypeChecker.whnf TypeChecker.RecM.run
+  simp [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    StateT.pure, Except.pure, Pure.pure,
+    StateT.run', Functor.map, Except.map]
+  rw [hdepth]
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+    (TypeChecker.Inner.whnf'
+      (.app (.fvar fnId) (.fvar argId))
+      (TypeChecker.Methods.withFuel 9999)
+      context.toTypeChecker ({} : TypeChecker.State)) =
+        .ok (.app (.fvar fnId) (.fvar argId))
+  unfold TypeChecker.Inner.whnf'
+  simp only [ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    ReaderT.pure, StateT.pure, Except.pure, Pure.pure]
+  rw [show (get : TypeChecker.RecM TypeChecker.State)
+      (TypeChecker.Methods.withFuel 9999)
+      context.toTypeChecker ({} : TypeChecker.State) =
+        .ok (({} : TypeChecker.State), ({} : TypeChecker.State)) by rfl]
+  simp only [Except.bind, Std.HashMap.getElem?_empty]
+  simp only [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    ReaderT.pure, StateT.pure, Except.pure, Pure.pure]
+  rw [show (liftM read : TypeChecker.RecM TypeChecker.Context)
+      (TypeChecker.Methods.withFuel 9999)
+      context.toTypeChecker ({} : TypeChecker.State) =
+        .ok (context.toTypeChecker, ({} : TypeChecker.State)) by rfl]
+  simp only [Except.bind]
+  rw [show context.toTypeChecker.eagerReduce = false by rfl]
+  simp only [Bool.false_eq_true, ↓reduceIte]
+  rw [show context.toTypeChecker.fuel.whnf = 100000 by
+    simpa [AddInductive.Context.toTypeChecker] using hwhnf]
+  rw [candidateWhnfLoopFVarAppFVar_refl context fnId argId
+    hquot hnotlet]
+  rfl
+
+/-- A syntactic identity-WHNF tree for every node inspected by the ordinary
+candidate producer. -/
+inductive CandidateExprIdentityReplay :
+    (context : AddInductive.Context) → (source : Expr) → Type where
+  | terminal (context : AddInductive.Context) (source : Expr)
+      (whnf : AddInductive.CandidateWhnfStep.Valid
+        ⟨context, source, source⟩)
+      (notForall : source.isForall = false) :
+      CandidateExprIdentityReplay context source
+  | forallE (context : AddInductive.Context)
+      (name : Name) (domain body : Expr) (binderInfo : BinderInfo)
+      (whnf : AddInductive.CandidateWhnfStep.Valid
+        ⟨context, .forallE name domain body binderInfo,
+          .forallE name domain body binderInfo⟩)
+      (annotations : AddInductive.CandidateTypeAnnotations domain)
+      (annotationsBuild :
+        AddInductive.buildCandidateTypeAnnotations domain = .ok annotations)
+      (consume : AddInductive.consumeTypeAnnotations domain = domain)
+      (domainReplay : CandidateExprIdentityReplay context domain)
+      (bodyReplay : CandidateExprIdentityReplay
+        (context.pushLocalDecl name binderInfo annotations.consumed)
+        (body.instantiate1 context.freshExpr)) :
+      CandidateExprIdentityReplay context
+        (.forallE name domain body binderInfo)
+
+namespace CandidateExprIdentityReplay
+
+def spineLength : CandidateExprIdentityReplay context source → Nat
+  | .terminal .. => 0
+  | .forallE _ _ _ _ _ _ _ _ _ _ bodyReplay => bodyReplay.spineLength + 1
+
+def terminalSource : CandidateExprIdentityReplay context source → Expr
+  | .terminal _ source _ _ => source
+  | .forallE _ _ _ _ _ _ _ _ _ _ bodyReplay => bodyReplay.terminalSource
+
+/-- A replay tree packaged with the exact main-spine length and terminal
+source. -/
+structure Shaped
+    (context : AddInductive.Context) (source : Expr)
+    (expectedSpineLength : Nat) (expectedTerminalSource : Expr) where
+  replay : CandidateExprIdentityReplay context source
+  spineLength_eq : replay.spineLength = expectedSpineLength
+  terminalSource_eq : replay.terminalSource = expectedTerminalSource
+
+namespace Shaped
+
+def terminal
+    (context : AddInductive.Context) (source : Expr)
+    (whnf : AddInductive.CandidateWhnfStep.Valid
+      ⟨context, source, source⟩)
+    (notForall : source.isForall = false) :
+    Shaped context source 0 source :=
+  ⟨CandidateExprIdentityReplay.terminal context source whnf notForall,
+    rfl, rfl⟩
+
+def forallE
+    (context : AddInductive.Context) (name : Name)
+    (domain body : Expr) (binderInfo : BinderInfo)
+    (whnf : AddInductive.CandidateWhnfStep.Valid
+      ⟨context, .forallE name domain body binderInfo,
+        .forallE name domain body binderInfo⟩)
+    (annotations : AddInductive.CandidateTypeAnnotations domain)
+    (annotationsBuild :
+      AddInductive.buildCandidateTypeAnnotations domain = .ok annotations)
+    (consume : AddInductive.consumeTypeAnnotations domain = domain)
+    (domainReplay : CandidateExprIdentityReplay context domain)
+    (bodyReplay : Shaped
+      (context.pushLocalDecl name binderInfo annotations.consumed)
+      (body.instantiate1 context.freshExpr)
+      expectedSpineLength expectedTerminalSource) :
+    Shaped context (.forallE name domain body binderInfo)
+      (expectedSpineLength + 1) expectedTerminalSource := by
+  refine ⟨CandidateExprIdentityReplay.forallE context name domain body
+    binderInfo whnf annotations annotationsBuild consume domainReplay
+    bodyReplay.replay, ?_, ?_⟩
+  · simpa [CandidateExprIdentityReplay.spineLength] using
+      bodyReplay.spineLength_eq
+  · simpa [CandidateExprIdentityReplay.terminalSource] using
+      bodyReplay.terminalSource_eq
+
+end Shaped
+
+structure Evidence
+    (replay : CandidateExprIdentityReplay context source)
+    (trace : AddInductive.CandidateExprTrace traceContext source) : Prop where
+  identity : CandidateExprIdentity trace
+  spineLength_eq : trace.spineLength = replay.spineLength
+  terminalResult_eq : trace.terminalResult = replay.terminalSource
+
+theorem evidence_of_loop
+    (replay : CandidateExprIdentityReplay context source)
+    (run : AddInductive.buildCandidateExpr.loop context source fuel =
+      .ok candidateTrace) : Evidence replay candidateTrace := by
+  induction replay generalizing fuel with
+  | terminal context source whnf notForall =>
+      cases fuel with
+      | zero =>
+          simp [AddInductive.buildCandidateExpr.loop] at run
+      | succ fuel =>
+          have inspected := run
+          unfold AddInductive.buildCandidateExpr.loop at inspected
+          cases hcheck : AddInductive.observeCandidateCheckType context source with
+          | error error => simp [hcheck] at inspected
+          | ok observation =>
+              rcases observation with ⟨inferred, checked⟩
+              have expected :=
+                AddInductive.buildCandidateExpr_loop_of_whnf_nonForall
+                  context source inferred source fuel checked whnf notForall
+              rw [expected] at run
+              cases run
+              exact ⟨.terminal rfl, rfl, rfl⟩
+  | forallE context name domain body binderInfo whnf annotations
+      annotationsBuild consume domainReplay bodyReplay domainIH bodyIH =>
+      cases fuel with
+      | zero =>
+          simp [AddInductive.buildCandidateExpr.loop] at run
+      | succ fuel =>
+          unfold AddInductive.buildCandidateExpr.loop at run
+          cases hcheck : AddInductive.observeCandidateCheckType context
+              (.forallE name domain body binderInfo) with
+          | error error => simp [hcheck] at run
+          | ok observation =>
+              rcases observation with ⟨inferred, checked⟩
+              simp only [hcheck, Bind.bind, Except.bind] at run
+              simp only [AddInductive.observeCandidateWhnf_of_run context
+                (.forallE name domain body binderInfo)
+                (.forallE name domain body binderInfo) whnf] at run
+              simp only [annotationsBuild] at run
+              repeat' split at run
+              all_goals try simp_all [Pure.pure, Except.pure]
+              rename_i freshEq isDefEqResult isDefEqObservation hisDefEq
+                domainResult domainTrace hdomain bodyResult bodyTrace hbody
+              cases run
+              have domainEvidence := domainIH hdomain
+              have bodyEvidence := bodyIH hbody
+              have annotationsConsumed : annotations.consumed = domain :=
+                (AddInductive.CandidateTypeAnnotations.matches_of_build
+                  annotations annotationsBuild).trans consume
+              refine ⟨.forallE domainTrace bodyTrace rfl annotationsConsumed
+                domainEvidence.identity bodyEvidence.identity, ?_, ?_⟩
+              · simpa [AddInductive.CandidateExprTrace.spineLength,
+                  spineLength] using bodyEvidence.spineLength_eq
+              · simpa [AddInductive.CandidateExprTrace.terminalResult,
+                  terminalSource] using bodyEvidence.terminalResult_eq
+
+theorem evidence_of_build
+    (replay : CandidateExprIdentityReplay context source)
+    (run : AddInductive.buildCandidateExpr source context = .ok candidate) :
+    Evidence replay candidate.trace := by
+  unfold AddInductive.buildCandidateExpr at run
+  simp only [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, Bind.bind, ReaderT.pure, Pure.pure,
+    Except.bind, Except.pure] at run
+  cases hloop : AddInductive.buildCandidateExpr.loop context source
+      context.fuel.inductiveFuel with
+  | error error => simp [hloop] at run
+  | ok trace =>
+      simp [hloop] at run
+      subst candidate
+      exact replay.evidence_of_loop hloop
+
+theorem identity_of_build
+    (replay : CandidateExprIdentityReplay context source)
+    (run : AddInductive.buildCandidateExpr source context = .ok candidate) :
+    CandidateExprIdentity candidate.trace :=
+  (replay.evidence_of_build run).identity
+
+end CandidateExprIdentityReplay
+end Lean4Lean.TypeChecker
+
+namespace Lean4Lean.AddInductive
+
+def builtCandidateTypeAnnotations (source : Lean.Expr) :
+    CandidateTypeAnnotations source :=
+  let ⟨consumed, trace⟩ := CandidateTypeAnnotationTrace.build source
+  ⟨consumed, trace⟩
+
+theorem buildCandidateTypeAnnotations_built (source : Lean.Expr) :
+    buildCandidateTypeAnnotations source =
+      .ok (builtCandidateTypeAnnotations source) := by
+  rfl
+
+theorem CandidateFamilyTypeListProduced.singleton_build
+    {context : Context} {source : Lean.InductiveType}
+    {candidates : CandidateList CandidateFamilyType [source]}
+    (run : CandidateFamilyTypeListProduced context candidates) :
+    buildCandidateExpr source.type context =
+      .ok candidates.singleton.type := by
+  cases run with
+  | cons head tail =>
+      cases tail
+      unfold normalizeCandidateFamilyType at head
+      simp only [ReaderT.bind, Bind.bind] at head
+      cases hbuild : buildCandidateExpr source.type context with
+      | error error => simp [Except.bind, hbuild] at head
+      | ok candidate =>
+          simp [Except.bind, hbuild, ReaderT.pure,
+            Pure.pure, Except.pure] at head
+          cases head
+          rfl
+
+theorem CandidateConstructorListProduced.singleton_build
+    {context : Context} {source : Lean.Constructor}
+    {candidates : CandidateList CandidateConstructor [source]}
+    (run : CandidateConstructorListProduced context candidates) :
+    buildCandidateExpr source.type context =
+      .ok candidates.singleton.type := by
+  cases run with
+  | cons head tail =>
+      cases tail
+      unfold normalizeCandidateConstructor at head
+      simp only [ReaderT.bind, Bind.bind] at head
+      cases hbuild : buildCandidateExpr source.type context with
+      | error error => simp [Except.bind, hbuild] at head
+      | ok candidate =>
+          simp [Except.bind, hbuild, ReaderT.pure,
+            Pure.pure, Except.pure] at head
+          cases head
+          rfl
+
+end Lean4Lean.AddInductive

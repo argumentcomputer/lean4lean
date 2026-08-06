@@ -927,7 +927,7 @@ def storedSpine :
   | _, _, .terminal .. => true
   | _, _, .forallE _ source _ name domain body binderInfo _ _ _ _ _ _
       bodyCandidate =>
-    (source == .forallE name domain body binderInfo) &&
+    Expr.structuralEq source (.forallE name domain body binderInfo) &&
       storedSpine bodyCandidate
 
 /-- Number of stored Pi binders on the main (body) path of a candidate. -/

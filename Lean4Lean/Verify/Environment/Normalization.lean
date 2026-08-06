@@ -1305,7 +1305,7 @@ theorem CandidateExprIdentity.storedSpine
   | terminal => rfl
   | forallE _ _ source_eq _ _ _ _ bodyIH =>
     simp [AddInductive.CandidateExprTrace.storedSpine,
-      source_eq, bodyIH]
+      source_eq, Expr.structuralEq_refl, bodyIH]
 
 /-- Exact component inversion for a strict translation of a kernel Pi. -/
 theorem TrExprS.forallE_components
@@ -2399,7 +2399,7 @@ private theorem CandidateExprRun.spineEvidenceAux
     obtain ⟨sourceEq, bodyAligned⟩ := aligned
     have alignedSource_tr : TrExprS env Us rawΔ
         (.forallE name domain body binderInfo) rawSource' :=
-      rawSource_tr.eqv sourceEq
+      rawSource_tr.eqv (Expr.structuralEq_eqv sourceEq)
     let @TrExprS.forallE _ _ rawDomain rawBody _ _ _ _ _
         rawDomainType rawBodyType rawDomain_tr rawBody_tr := alignedSource_tr
     have henv : VEnv.WF env := by
