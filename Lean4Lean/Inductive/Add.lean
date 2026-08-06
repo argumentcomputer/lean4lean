@@ -914,6 +914,29 @@ theorem terminalContext_lparams
       domain_ih body_ih =>
     simpa [terminalContext, Context.pushLocalDecl] using body_ih
 
+/-- Following the main candidate Π spine preserves the kernel environment. -/
+theorem terminalContext_env
+    (candidate : CandidateExprTrace context source) :
+    candidate.terminalContext.env = context.env := by
+  induction candidate with
+  | terminal => rfl
+  | forallE context source inferred name domain body binderInfo fresh
+      annotations annotationsEq checked valid domainCandidate bodyCandidate
+      domain_ih body_ih =>
+    simpa [terminalContext, Context.pushLocalDecl] using body_ih
+
+/-- Following the main candidate Π spine preserves the primitive-name
+policy used by family declaration. -/
+theorem terminalContext_allowPrimitive
+    (candidate : CandidateExprTrace context source) :
+    candidate.terminalContext.allowPrimitive = context.allowPrimitive := by
+  induction candidate with
+  | terminal => rfl
+  | forallE context source inferred name domain body binderInfo fresh
+      annotations annotationsEq checked valid domainCandidate bodyCandidate
+      domain_ih body_ih =>
+    simpa [terminalContext, Context.pushLocalDecl] using body_ih
+
 /-- Following the main candidate Π spine changes only the local context and
 name generator; it preserves the checker safety mode. -/
 theorem terminalContext_safety
@@ -1424,6 +1447,65 @@ theorem buildCandidateExpr_loop_of_whnf_forall
         annotations.consumed hannotationsEq,
       hdomain, hbody, Pure.pure, Except.pure]
 
+/-- Every annotation choice on a successfully built candidate main spine
+comes from the transparent annotation builder used by the ordinary producer.
+This recovers validator-replay provenance from the executable traversal
+itself; callers do not supply an independent annotation premise. -/
+theorem CandidateExprTrace.validationAnnotations_of_loop
+    {context : Context} {source : Expr} {fuel : Nat}
+    {candidate : CandidateExprTrace context source}
+    (h : buildCandidateExpr.loop context source fuel = .ok candidate) :
+    candidate.validationAnnotations := by
+  fun_induction buildCandidateExpr.loop context source fuel <;>
+    simp_all
+  case case5 =>
+    simp only [Bind.bind, Except.bind] at h
+    repeat' split at h
+    all_goals try simp_all [Functor.map, Except.map]
+    repeat' split at h
+    all_goals try simp_all
+    subst candidate
+    constructor
+    · apply CandidateTypeAnnotations.matches_of_build
+      assumption
+    · apply_assumption
+      assumption
+  case case6 =>
+    simp only [Pure.pure, Except.pure, Except.ok.injEq] at h
+    subst candidate
+    trivial
+
+/-- A successful ordinary candidate-expression call carries the complete
+annotation provenance needed to replay family validation. -/
+theorem CandidateExpr.validationAnnotations_of_build
+    {context : Context} {source : Expr}
+    {candidate : CandidateExpr source}
+    (h : buildCandidateExpr source context = .ok candidate) :
+    candidate.trace.validationAnnotations := by
+  unfold buildCandidateExpr at h
+  simp [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
+  split at h <;> try simp_all
+  simp [ReaderT.pure, Pure.pure, Except.pure] at h
+  subst candidate
+  apply CandidateExprTrace.validationAnnotations_of_loop
+  assumption
+
+/-- The context stored at the root of a successful expression candidate is
+the exact reader context in which the ordinary builder was executed. -/
+theorem CandidateExpr.context_eq_of_build
+    {context : Context} {source : Expr}
+    {candidate : CandidateExpr source}
+    (h : buildCandidateExpr source context = .ok candidate) :
+    candidate.context = context := by
+  unfold buildCandidateExpr at h
+  simp [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
+  split at h <;> try simp_all
+  simp [ReaderT.pure, Pure.pure, Except.pure] at h
+  subst candidate
+  rfl
+
 /-- Erase the operational trace and retain only the analysis expression. -/
 def normalizeCandidateExpr (e : Expr) : M Expr := do
   return (← buildCandidateExpr e).view
@@ -1530,9 +1612,60 @@ def normalizeCandidateConstructor
     (ctor : Constructor) : M (CandidateConstructor ctor) := do
   return ⟨← buildCandidateExpr ctor.type⟩
 
+/-- The root context stored by a successful constructor normalization is the
+exact post-family reader context used for that traversal. -/
+theorem CandidateConstructor.context_eq_of_normalize
+    {context : Context} {source : Constructor}
+    {candidate : CandidateConstructor source}
+    (h : normalizeCandidateConstructor source context = .ok candidate) :
+    candidate.type.context = context := by
+  unfold normalizeCandidateConstructor at h
+  simp only [ReaderT.bind, Bind.bind] at h
+  cases hbuild : buildCandidateExpr source.type context with
+  | error error =>
+      simp [Except.bind, hbuild] at h
+  | ok type =>
+      simp [Except.bind, ReaderT.pure, Pure.pure, Except.pure, hbuild] at h
+      subst candidate
+      exact CandidateExpr.context_eq_of_build hbuild
+
 def normalizeCandidateFamilyType
     (indType : InductiveType) : M (CandidateFamilyType indType) := do
   return ⟨← buildCandidateExpr indType.type⟩
+
+/-- A successful family-type normalization carries the annotation provenance
+of its underlying executable expression traversal. -/
+theorem CandidateFamilyType.validationAnnotations_of_normalize
+    {context : Context} {source : InductiveType}
+    {candidate : CandidateFamilyType source}
+    (h : normalizeCandidateFamilyType source context = .ok candidate) :
+    candidate.type.trace.validationAnnotations := by
+  unfold normalizeCandidateFamilyType at h
+  simp only [ReaderT.bind, Bind.bind] at h
+  cases hbuild : buildCandidateExpr source.type context with
+  | error error =>
+      simp [Except.bind, hbuild] at h
+  | ok type =>
+      simp [Except.bind, ReaderT.pure, Pure.pure, Except.pure, hbuild] at h
+      subst candidate
+      exact type.validationAnnotations_of_build hbuild
+
+/-- The root context stored by a successful family-type normalization is the
+exact pre-family reader context used for that traversal. -/
+theorem CandidateFamilyType.context_eq_of_normalize
+    {context : Context} {source : Lean.InductiveType}
+    {candidate : CandidateFamilyType source}
+    (h : normalizeCandidateFamilyType source context = .ok candidate) :
+    candidate.type.context = context := by
+  unfold normalizeCandidateFamilyType at h
+  simp only [ReaderT.bind, Bind.bind] at h
+  cases hbuild : buildCandidateExpr source.type context with
+  | error error =>
+      simp [Except.bind, hbuild] at h
+  | ok type =>
+      simp [Except.bind, ReaderT.pure, Pure.pure, Except.pure, hbuild] at h
+      subst candidate
+      exact CandidateExpr.context_eq_of_build hbuild
 
 def normalizeCandidateConstructorList :
     (ctors : List Constructor) →
@@ -1589,6 +1722,30 @@ theorem CandidateFamilyTypeListProduced.normalize
     rw [head, ih]
     rfl
 
+/-- A successful singleton family-type traversal retains the annotation
+provenance of the exact candidate selected at its sole source position. -/
+theorem CandidateFamilyTypeListProduced.singleton_validationAnnotations
+    {context : Context} {source : Lean.InductiveType}
+    {candidates : CandidateList CandidateFamilyType [source]}
+    (run : CandidateFamilyTypeListProduced context candidates) :
+    candidates.singleton.type.trace.validationAnnotations := by
+  cases run with
+  | cons head tail =>
+      cases tail
+      exact CandidateFamilyType.validationAnnotations_of_normalize head
+
+/-- A successful singleton family-type traversal stores its exact traversal
+context at the candidate root. -/
+theorem CandidateFamilyTypeListProduced.singleton_context_eq
+    {context : Context} {source : Lean.InductiveType}
+    {candidates : CandidateList CandidateFamilyType [source]}
+    (run : CandidateFamilyTypeListProduced context candidates) :
+    candidates.singleton.type.context = context := by
+  cases run with
+  | cons head tail =>
+      cases tail
+      exact CandidateFamilyType.context_eq_of_normalize head
+
 /-- Exact successful traversal of an arbitrary source-indexed constructor
 list in one post-family context. Every candidate remains indexed by its source
 constructor, so ordering, length, and header provenance are preserved by the
@@ -1617,6 +1774,18 @@ theorem CandidateConstructorListProduced.normalize
     simp only [ReaderT.bind, Bind.bind]
     rw [head, ih]
     rfl
+
+/-- A successful singleton constructor traversal stores its exact traversal
+context at the candidate root. -/
+theorem CandidateConstructorListProduced.singleton_context_eq
+    {context : Context} {source : Constructor}
+    {candidates : CandidateList CandidateConstructor [source]}
+    (run : CandidateConstructorListProduced context candidates) :
+    candidates.singleton.type.context = context := by
+  cases run with
+  | cons head tail =>
+      cases tail
+      exact CandidateConstructor.context_eq_of_normalize head
 
 /-- Exact successful assembly of complete family candidates from an already
 source-indexed family-type list. Each constructor traversal is tied to the
@@ -1650,6 +1819,33 @@ theorem CandidateFamilyListProduced.normalize
     simp only [ReaderT.bind, Bind.bind]
     rw [constructors.normalize, ih]
     rfl
+
+/-- Singleton family assembly reuses, without replacement, the family-type
+candidate produced in the pre-family environment. -/
+theorem CandidateFamilyListProduced.singleton_familyType
+    {context : Context} {source : Lean.InductiveType}
+    {familyTypes : CandidateList CandidateFamilyType [source]}
+    {families : CandidateList CandidateFamily [source]}
+    (run : CandidateFamilyListProduced context familyTypes families) :
+    families.singleton.familyType = familyTypes.singleton := by
+  cases run with
+  | cons constructors tail =>
+      cases tail
+      rfl
+
+/-- Singleton family assembly exposes the exact source-indexed constructor
+traversal retained for its sole family. -/
+theorem CandidateFamilyListProduced.singleton_constructors
+    {context : Context} {source : Lean.InductiveType}
+    {familyTypes : CandidateList CandidateFamilyType [source]}
+    {families : CandidateList CandidateFamily [source]}
+    (run : CandidateFamilyListProduced context familyTypes families) :
+    CandidateConstructorListProduced context
+      families.singleton.constructors := by
+  cases run with
+  | cons constructors tail =>
+      cases tail
+      exact constructors
 
 /-- Shape-preserving output of the executable normalization-candidate pass.
 The dependent family/constructor lists prevent positional provenance from
@@ -1804,6 +2000,23 @@ def buildNormalizationCandidateExecutionAfterValidation
               declareRun := by simpa using hdeclare
               constructorRun := by simpa using hconstructors
               families }
+
+/-- A retained successful post-validation execution exposes exactly the
+statistics and reader context supplied by the family validator. -/
+theorem NormalizationCandidateExecution.fields_of_afterValidation
+    (execution : NormalizationCandidateExecution nparams types numNested
+      isUnsafe candidateContext)
+    (stats : InductiveStats) (validationContext : Context)
+    (h : buildNormalizationCandidateExecutionAfterValidation nparams types
+        numNested isUnsafe candidateContext stats validationContext =
+      .ok execution) :
+    execution.stats = stats ∧
+      execution.validationContext = validationContext := by
+  unfold buildNormalizationCandidateExecutionAfterValidation at h
+  repeat' split at h
+  all_goals try simp_all
+  subst execution
+  exact ⟨rfl, rfl⟩
 
 /-- Execute the ordinary singleton/mutual candidate pass while retaining the
 exact operational provenance erased by the public candidate result. -/
