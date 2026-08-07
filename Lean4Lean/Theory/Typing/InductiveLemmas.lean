@@ -859,6 +859,168 @@ theorem GenerationChecked.viewCtors_eq {source : VInductDecl}
   apply pairNormalizedCtors_map_view
   exact gen.shape.2.2.2.1.symm.trans gen.shape.2.2.2.2.1
 
+/-! ### Block-generation positional facts -/
+
+theorem pairNormalizedFamilies_map_raw :
+    ∀ (raws : List VInductiveType) (views : List CheckedFamilyData),
+      raws.length = views.length →
+      (pairNormalizedFamilies raws views).map (·.raw) = raws
+  | [], [], _ => rfl
+  | raw :: raws, view :: views, h => by
+    simp only [pairNormalizedFamilies, List.map_cons,
+      List.cons.injEq, true_and]
+    apply pairNormalizedFamilies_map_raw
+    simpa using h
+
+theorem pairNormalizedFamilies_map_view :
+    ∀ (raws : List VInductiveType) (views : List CheckedFamilyData),
+      raws.length = views.length →
+      (pairNormalizedFamilies raws views).map (·.view) = views
+  | [], [], _ => rfl
+  | raw :: raws, view :: views, h => by
+    simp only [pairNormalizedFamilies, List.map_cons,
+      List.cons.injEq, true_and]
+    apply pairNormalizedFamilies_map_view
+    simpa using h
+
+/-- Unpack the executable positional gate for mutual generation. -/
+theorem BlockGenerationChecked.shape {source : VInductDecl}
+    (gen : BlockGenerationChecked source) :
+    gen.block.rawParams.length = source.nparams ∧
+      gen.block.rawParams.length = gen.block.checked.params.length ∧
+      gen.families.length = source.types.length ∧
+      gen.families.length = gen.block.checked.families.data.length ∧
+      ∀ family ∈ gen.families,
+        family.raw.name = family.view.value.name ∧
+        family.raw.uvars = family.view.value.uvars ∧
+        (family.rawParams source.nparams).length = source.nparams ∧
+        (family.rawIndices source.nparams).length =
+          family.view.indices.length ∧
+        family.ctorPairs.length = family.raw.ctors.length ∧
+        family.ctorPairs.length = family.view.constructors.length ∧
+        ∀ ctor ∈ family.ctorPairs,
+          ctor.raw.name = ctor.view.value.name ∧
+          ctor.raw.uvars = ctor.view.value.uvars ∧
+          (VExpr.telN source.nparams ctor.raw.type).length =
+            source.nparams ∧
+          (ctor.rawFields source.nparams).length = ctor.view.fields.length := by
+  have h := gen.shape_eq
+  simp only [NormalizedCheckedBlock.blockGenerationShape,
+    NormalizedFamily.generationShape, NormalizedCtor.generationShape,
+    Bool.and_eq_true, beq_iff_eq, List.all_eq_true] at h
+  obtain ⟨h, -⟩ := h
+  obtain ⟨⟨⟨⟨hparams, hparams'⟩, hraws⟩, hviews⟩, hfamilies⟩ := h
+  refine ⟨hparams, hparams', hraws, hviews, ?_⟩
+  intro family hfamily
+  obtain ⟨⟨⟨⟨⟨⟨hname, hU⟩, htel⟩, hindices⟩,
+    hrawCtors⟩, hviewCtors⟩, hctors⟩ := hfamilies family hfamily
+  refine ⟨hname, hU, htel, hindices, hrawCtors, hviewCtors, ?_⟩
+  intro ctor hctor
+  obtain ⟨⟨⟨hctorName, hctorU⟩, hctorTel⟩, hctorFields⟩ :=
+    hctors ctor hctor
+  exact ⟨hctorName, hctorU, hctorTel, hctorFields⟩
+
+theorem BlockGenerationChecked.family_uvars {source : VInductDecl}
+    (gen : BlockGenerationChecked source) {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) :
+    family.raw.uvars = source.uvars := by
+  have h := gen.shape_eq
+  simp only [NormalizedCheckedBlock.blockGenerationShape,
+    Bool.and_eq_true, beq_iff_eq, List.all_eq_true] at h
+  exact (h.2 family hfamily).1
+
+theorem BlockGenerationChecked.ctor_uvars {source : VInductDecl}
+    (gen : BlockGenerationChecked source) {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) {ctor : NormalizedCtor}
+    (hctor : ctor ∈ family.ctorPairs) :
+    ctor.raw.uvars = source.uvars := by
+  have h := gen.shape_eq
+  simp only [NormalizedCheckedBlock.blockGenerationShape,
+    Bool.and_eq_true, beq_iff_eq, List.all_eq_true] at h
+  exact (h.2 family hfamily).2 ctor hctor
+
+theorem BlockGenerationChecked.families_map_raw {source : VInductDecl}
+    (gen : BlockGenerationChecked source) :
+    gen.families.map (·.raw) = source.types := by
+  apply pairNormalizedFamilies_map_raw
+  exact gen.shape.2.2.1.symm.trans gen.shape.2.2.2.1
+
+theorem NormalizedFamily.ctorPairs_map_raw
+    {source : VInductDecl} {gen : BlockGenerationChecked source}
+    {family : NormalizedFamily} (hfamily : family ∈ gen.families) :
+    family.ctorPairs.map (·.raw) = family.raw.ctors := by
+  apply pairNormalizedCtors_map_raw
+  exact (gen.shape.2.2.2.2 family hfamily).2.2.2.2.1.symm.trans
+    (gen.shape.2.2.2.2 family hfamily).2.2.2.2.2.1
+
+@[simp] theorem NormalizedFamily.blockCtors_map_raw
+    (family : NormalizedFamily) :
+    family.blockCtors.map (·.ctor.raw) = family.ctorPairs.map (·.raw) := by
+  unfold NormalizedFamily.blockCtors
+  induction family.ctorPairs with
+  | nil => rfl
+  | cons ctor ctors ih =>
+    simp only [List.map_cons, List.cons.injEq, true_and]
+    exact ih
+
+theorem flatMap_congr_of_mem {α β : Type} (xs : List α)
+    (f g : α → List β) (h : ∀ x ∈ xs, f x = g x) :
+    xs.flatMap f = xs.flatMap g := by
+  induction xs with
+  | nil => rfl
+  | cons x xs ih =>
+    simp only [List.flatMap_cons]
+    rw [h x (.head _), ih (fun y hy => h y (.tail _ hy))]
+
+theorem map_flatMap_eq {α β γ : Type} (xs : List α)
+    (f : α → List β) (g : β → γ) :
+    (xs.flatMap f).map g = xs.flatMap (fun x => (f x).map g) := by
+  induction xs with
+  | nil => rfl
+  | cons x xs ih =>
+    simp only [List.flatMap_cons, List.map_append]
+    rw [ih]
+
+theorem BlockGenerationChecked.flatCtors_map_raw
+    {source : VInductDecl} (gen : BlockGenerationChecked source) :
+    gen.flatCtors.map (·.ctor.raw) = source.blockConstructorConstants := by
+  rw [VInductDecl.blockConstructorConstants, ← gen.families_map_raw]
+  unfold BlockGenerationChecked.flatCtors NormalizedCheckedBlock.flatCtors
+  rw [map_flatMap_eq]
+  simp only [List.flatMap_map]
+  apply flatMap_congr_of_mem
+  intro family hfamily
+  rw [family.blockCtors_map_raw]
+  exact family.ctorPairs_map_raw hfamily
+
+theorem BlockGenerationChecked.flatCtor_uvars
+    {source : VInductDecl} (gen : BlockGenerationChecked source)
+    {constructor : NormalizedBlockCtor}
+    (hconstructor : constructor ∈ gen.flatCtors) :
+    constructor.ctor.raw.uvars = source.uvars := by
+  simp only [BlockGenerationChecked.flatCtors,
+    NormalizedCheckedBlock.flatCtors, List.mem_flatMap] at hconstructor
+  obtain ⟨family, hfamily, hconstructor⟩ := hconstructor
+  simp only [NormalizedFamily.blockCtors, List.mem_map] at hconstructor
+  obtain ⟨ctor, hctor, rfl⟩ := hconstructor
+  exact gen.ctor_uvars hfamily hctor
+
+/-- The validation staging fold is definitionally the family-constant phase
+of block generation, modulo the explicit `toVConstVal` map. -/
+theorem blockTypeConstants_foldlM_eq_stageInductiveTypes
+    (env : VEnv) (source : VInductDecl) :
+    source.blockTypeConstants.foldlM
+      (fun env type => env.addConst type.name type.toVConstant) env =
+      env.stageInductiveTypes source.types := by
+  unfold VInductDecl.blockTypeConstants VEnv.stageInductiveTypes
+  induction source.types generalizing env with
+  | nil => rfl
+  | cons type types ih =>
+    simp only [List.map_cons, List.foldlM_cons]
+    apply Option.bind_congr
+    intro env' _
+    exact ih env'
+
 /-- Identity normalization is computationally the legacy analyzer. -/
 theorem Normalization.identity_checked? (source : VInductDecl) :
     (Normalization.identity source).checked? = source.checked? := rfl
@@ -2477,6 +2639,121 @@ theorem GenerationChecked.WF.rawCtor_isType {source : VInductDecl}
     envT.IsType source.uvars [] ctor.raw.type :=
   (h.ctors envT hadd ctor hctor).rawDeclared_isType
 
+/-! Mutual declaration-stage consequences. -/
+
+theorem NormalizedFamily.WF.rawFamily_onTel {source : VInductDecl}
+    {gen : BlockGenerationChecked source} {family : NormalizedFamily}
+    {env : VEnv} (h : family.WF gen env) :
+    env.OnTel source.uvars []
+      (family.rawParams source.nparams ++
+        family.rawIndices source.nparams) :=
+  h.familyTel.raw_onTel
+
+theorem NormalizedFamily.WF.rawFamily_isType {source : VInductDecl}
+    {gen : BlockGenerationChecked source} {family : NormalizedFamily}
+    {env : VEnv} (h : family.WF gen env) :
+    env.IsType source.uvars [] family.raw.type := by
+  rw [← VExpr.forallN_telN_dropN source.nparams family.raw.type,
+    ← forallN_ctorFields_resultOf
+      (VExpr.dropN source.nparams family.raw.type),
+    ← VExpr.forallN_append]
+  have hresult₀ : env.IsType source.uvars
+      (family.rawParams source.nparams ++
+        family.rawIndices source.nparams).reverse
+      (family.rawResult source.nparams) :=
+    ⟨_, h.familyResult.hasType.1⟩
+  have hresult : env.IsType source.uvars
+      ((family.rawParams source.nparams ++
+        family.rawIndices source.nparams).reverse ++ [])
+      (family.rawResult source.nparams) := by
+    simpa using hresult₀
+  have hout := IsType.forallN h.rawFamily_onTel hresult
+  simpa [NormalizedFamily.rawParams, NormalizedFamily.rawIndices,
+    NormalizedFamily.rawResult] using hout
+
+theorem NormalizedFamily.WF.mono {source : VInductDecl}
+    {gen : BlockGenerationChecked source} {family : NormalizedFamily}
+    {env env' : VEnv} (henv : env ≤ env') (h : family.WF gen env) :
+    family.WF gen env' where
+  familyTel := h.familyTel.mono henv
+  familyResult := h.familyResult.mono henv
+
+theorem NormalizedBlockCtor.WF.rawDeclared_onTel
+    {source : VInductDecl} {gen : BlockGenerationChecked source}
+    {constructor : NormalizedBlockCtor} {env : VEnv}
+    (h : NormalizedBlockCtor.WF gen constructor env) :
+    env.OnTel source.uvars []
+      (NormalizedBlockCtor.declaredBinders
+        (source := source) constructor) :=
+  h.declaredTel.raw_onTel
+
+theorem NormalizedBlockCtor.WF.rawDeclared_isType
+    {source : VInductDecl} {gen : BlockGenerationChecked source}
+    {constructor : NormalizedBlockCtor} {env : VEnv}
+    (h : NormalizedBlockCtor.WF gen constructor env) :
+    env.IsType source.uvars [] constructor.ctor.raw.type := by
+  rw [← VExpr.forallN_telN_dropN source.nparams
+      constructor.ctor.raw.type,
+    ← forallN_ctorFields_resultOf
+      (VExpr.dropN source.nparams constructor.ctor.raw.type),
+    ← VExpr.forallN_append]
+  have hresult₀ : env.IsType source.uvars
+      (NormalizedBlockCtor.declaredBinders
+        (source := source) constructor).reverse
+      (NormalizedBlockCtor.rawResult
+        (source := source) constructor) :=
+    ⟨_, h.declaredResult.hasType.1⟩
+  have hresult : env.IsType source.uvars
+      ((NormalizedBlockCtor.declaredBinders
+        (source := source) constructor).reverse ++ [])
+      (NormalizedBlockCtor.rawResult
+        (source := source) constructor) := by
+    simpa using hresult₀
+  have hout := IsType.forallN h.rawDeclared_onTel hresult
+  simpa [NormalizedBlockCtor.declaredBinders,
+    NormalizedBlockCtor.rawResult, NormalizedCtor.declaredBinders,
+    NormalizedCtor.rawFields, NormalizedCtor.rawResult] using hout
+
+theorem NormalizedBlockCtor.WF.rawEmitted_onTel
+    {source : VInductDecl} {gen : BlockGenerationChecked source}
+    {constructor : NormalizedBlockCtor} {env : VEnv}
+    (h : NormalizedBlockCtor.WF gen constructor env) :
+    env.OnTel source.uvars []
+      (NormalizedBlockCtor.emittedBinders gen constructor) :=
+  h.emittedTel.raw_onTel
+
+theorem NormalizedBlockCtor.WF.mono
+    {source : VInductDecl} {gen : BlockGenerationChecked source}
+    {constructor : NormalizedBlockCtor} {env env' : VEnv}
+    (henv : env ≤ env') (h : NormalizedBlockCtor.WF gen constructor env) :
+    NormalizedBlockCtor.WF gen constructor env' where
+  declaredTel := h.declaredTel.mono henv
+  declaredResult := h.declaredResult.mono henv
+  emittedTel := h.emittedTel.mono henv
+  emittedResult := h.emittedResult.mono henv
+  owner := h.owner
+  recursive := fun recursive hrecursive => by
+    obtain ⟨family, hfamily, hordinal, hwf⟩ :=
+      h.recursive recursive hrecursive
+    exact ⟨family, hfamily, hordinal,
+      ⟨hwf.1.mono henv, hwf.2.mono henv⟩⟩
+  resultSpine := h.resultSpine.mono henv
+
+theorem BlockGenerationChecked.WF.rawFamily_isType
+    {source : VInductDecl} {gen : BlockGenerationChecked source}
+    {env blockEnv : VEnv} (h : gen.WF env blockEnv)
+    {family : NormalizedFamily} (hfamily : family ∈ gen.families) :
+    env.IsType source.uvars [] family.raw.type :=
+  (h.families family hfamily).rawFamily_isType
+
+theorem BlockGenerationChecked.WF.rawCtor_isType
+    {source : VInductDecl} {gen : BlockGenerationChecked source}
+    {env blockEnv : VEnv} (h : gen.WF env blockEnv)
+    {constructor : NormalizedBlockCtor}
+    (hconstructor : constructor ∈ gen.flatCtors) :
+    blockEnv.IsType source.uvars [] constructor.ctor.raw.type :=
+  (h.constructors constructor hconstructor).rawDeclared_isType
+
 /--
 info: 'Lean4Lean.VInductDecl.GenerationChecked.WF.rawFamily_isType' depends on axioms: [propext, Quot.sound]
 -/
@@ -2493,6 +2770,74 @@ theorem RecArg.WF.mono {env env' : VEnv} {U : Nat} {l : VLevel}
     {Is Γ : List VExpr} {r : RecArg} (henv : env ≤ env')
     (h : r.WF U env l Is Γ) : r.WF U env' l Is Γ :=
   ⟨h.1.mono henv, h.2.mono henv⟩
+
+/-- The checked recursive/non-recursive field interpretation is monotone in
+the environment. -/
+theorem checkedBlockFieldsWF_mono {env env' : VEnv} {U : Nat}
+    {resultLevel : VLevel} {familyIndices : List (List VExpr)}
+    (henv : env ≤ env') : ∀ {fields classifications Γ j},
+    checkedBlockFieldsWF env U resultLevel familyIndices
+      fields classifications Γ j →
+    checkedBlockFieldsWF env' U resultLevel familyIndices
+      fields classifications Γ j
+  | [], [], _, _, _ => trivial
+  | [], _ :: _, _, _, h => by
+    simp [checkedBlockFieldsWF] at h
+  | _ :: _, [], _, _, h => by
+    simp [checkedBlockFieldsWF] at h
+  | B :: Bs, none :: classifications, Γ, j,
+      ⟨⟨u, hB, hlevel⟩, htail⟩ =>
+    ⟨⟨u, hB.mono henv, hlevel⟩,
+      checkedBlockFieldsWF_mono henv htail⟩
+  | B :: Bs, some recursive :: classifications, Γ, j, h => by
+    simp only [checkedBlockFieldsWF] at h ⊢
+    obtain ⟨⟨hfield, hrecursive⟩, htail⟩ := h
+    refine ⟨⟨hfield, ?_⟩,
+      checkedBlockFieldsWF_mono henv htail⟩
+    cases htarget : familyIndices[recursive.targetType]? with
+    | none => simp [htarget] at hrecursive
+    | some indices =>
+      rw [htarget] at hrecursive
+      exact hrecursive.mono henv
+
+/-- The erased family-spine semantics is monotone in the environment. -/
+theorem checkedFamilyListsWF_mono {source : VInductDecl}
+    {params : List VExpr} {env env' : VEnv} {resultLevel : VLevel}
+    {familyIndices : List (List VExpr)} (henv : env ≤ env') :
+    ∀ levels indices constructors,
+      checkedFamilyListsWF source params env resultLevel familyIndices
+        levels indices constructors →
+      checkedFamilyListsWF source params env' resultLevel familyIndices
+        levels indices constructors := by
+  intro levels
+  induction levels with
+  | nil =>
+    intro indices constructors h
+    cases indices <;> cases constructors <;>
+      simp_all [checkedFamilyListsWF]
+  | cons level levels ih =>
+    intro indices constructors h
+    cases indices with
+    | nil => simp [checkedFamilyListsWF] at h
+    | cons index indices =>
+      cases constructors with
+      | nil => simp [checkedFamilyListsWF] at h
+      | cons familyConstructors constructors =>
+        simp only [checkedFamilyListsWF] at h ⊢
+        obtain ⟨hlevel, hindices, hconstructors, htail⟩ := h
+        exact ⟨hlevel, hindices.mono henv,
+          fun constructor hconstructor =>
+            ⟨checkedBlockFieldsWF_mono henv
+                (hconstructors constructor hconstructor).1,
+              (hconstructors constructor hconstructor).2.mono henv⟩,
+          ih indices constructors htail⟩
+
+theorem CheckedBlock.WF.mono {source : VInductDecl}
+    {checked : source.CheckedBlock} {env env' : VEnv}
+    {resultLevel : VLevel} (henv : env ≤ env')
+    (h : checked.WF env resultLevel) :
+    checked.WF env' resultLevel :=
+  checkedFamilyListsWF_mono henv _ _ _ h
 
 /-- Transport recursive-argument evidence across definitionally equal base
 contexts. The private binder telescope is transported first, then the
@@ -2747,6 +3092,389 @@ theorem GenerationChecked.WF.toGenerationEnv {source : VInductDecl}
   ctorWF := fun ctor hctor => (h.ctors envT hadd ctor hctor).mono hleT
   familyConst := hfamily
   ctorConst := hctors
+
+theorem BlockGenerationChecked.sourceLevels_wf {source : VInductDecl}
+    (gen : BlockGenerationChecked source) :
+    ∀ l ∈ gen.sourceLevels, l.WF gen.recUvars :=
+  VLevel.params'_wf
+
+@[simp] theorem BlockGenerationChecked.sourceLevels_eq
+    {source : VInductDecl} (gen : BlockGenerationChecked source) :
+    gen.sourceLevels =
+      VLevel.params' source.uvars gen.elimination.offset := rfl
+
+@[simp] theorem BlockGenerationChecked.recUvars_eq
+    {source : VInductDecl} (gen : BlockGenerationChecked source) :
+    gen.recUvars = source.uvars + gen.elimination.offset := rfl
+
+@[simp] theorem BlockGenerationChecked.recLevels_eq
+    {source : VInductDecl} (gen : BlockGenerationChecked source) :
+    gen.recLevels = VLevel.params gen.recUvars := rfl
+
+theorem BlockGenerationChecked.sourceLevels_length
+    {source : VInductDecl} (gen : BlockGenerationChecked source) :
+    gen.sourceLevels.length = source.uvars :=
+  VLevel.params'_length
+
+theorem BlockGenerationChecked.motiveLevel_wf
+    {source : VInductDecl} (gen : BlockGenerationChecked source) :
+    gen.motiveLevel.WF gen.recUvars := by
+  cases h : gen.elimination <;>
+    simp [BlockGenerationChecked.motiveLevel,
+      BlockGenerationChecked.recUvars, ElimMode.recUvars,
+      ElimMode.offset, ElimMode.motiveLevel, VLevel.WF, h]
+
+theorem BlockGenerationChecked.recLevels_wf
+    {source : VInductDecl} (gen : BlockGenerationChecked source) :
+    ∀ l ∈ gen.recLevels, l.WF gen.recUvars :=
+  VLevel.params_wf
+
+theorem BlockGenerationChecked.recLevels_length
+    {source : VInductDecl} (gen : BlockGenerationChecked source) :
+    gen.recLevels.length = gen.recUvars :=
+  VLevel.params_length
+
+/-- Stable final-environment invariant for mutual artifact generation. -/
+structure BlockGenerationEnv {source : VInductDecl}
+    (gen : BlockGenerationChecked source) (env : VEnv) : Prop where
+  ord : env.Ordered
+  resultLevelWF : gen.validated.resultLevel.WF source.uvars
+  checked :
+    gen.block.checked.WF env gen.validated.resultLevel
+  paramsTel :
+    env.TelDefEq source.uvars [] gen.block.rawParams
+      gen.block.checked.params
+  familyWF : ∀ family ∈ gen.families, family.WF gen env
+  ctorWF : ∀ constructor ∈ gen.flatCtors,
+    NormalizedBlockCtor.WF gen constructor env
+  familyConst : ∀ family ∈ gen.families,
+    env.constants family.raw.name = some family.raw.toVConstant
+  ctorConst : ∀ constructor ∈ gen.flatCtors,
+    env.constants constructor.ctor.raw.name =
+      some constructor.ctor.raw.toVConstant
+
+theorem BlockGenerationChecked.WF.toBlockGenerationEnv
+    {source : VInductDecl} {gen : BlockGenerationChecked source}
+    {pre blockEnv env : VEnv} (h : gen.WF pre blockEnv)
+    (hlePre : pre ≤ env) (hleBlock : blockEnv ≤ env)
+    (ord : env.Ordered)
+    (hfamilies : ∀ family ∈ gen.families,
+      env.constants family.raw.name = some family.raw.toVConstant)
+    (hctors : ∀ constructor ∈ gen.flatCtors,
+      env.constants constructor.ctor.raw.name =
+        some constructor.ctor.raw.toVConstant) :
+    BlockGenerationEnv gen env where
+  ord := ord
+  resultLevelWF := h.resultLevelWF
+  checked := h.blockWF.2.mono hlePre
+  paramsTel := h.paramsTel.mono hlePre
+  familyWF := fun family hfamily =>
+    (h.families family hfamily).mono hlePre
+  ctorWF := fun constructor hconstructor =>
+    (h.constructors constructor hconstructor).mono hleBlock
+  familyConst := hfamilies
+  ctorConst := hctors
+
+theorem NormalizedFamily.rawType_eq {source : VInductDecl}
+    (family : NormalizedFamily) :
+    family.raw.type =
+      VExpr.forallN (family.rawParams source.nparams)
+        (VExpr.forallN (family.rawIndices source.nparams)
+          (family.rawResult source.nparams)) := by
+  conv => lhs
+          rw [← VExpr.forallN_telN_dropN source.nparams family.raw.type,
+            ← forallN_ctorFields_resultOf
+              (VExpr.dropN source.nparams family.raw.type)]
+  rfl
+
+namespace BlockGenerationEnv
+
+variable {source : VInductDecl} {gen : BlockGenerationChecked source}
+  {env : VEnv} (S : BlockGenerationEnv gen env)
+include S
+
+theorem mono {env' : VEnv} (henv : env ≤ env') (ord : env'.Ordered) :
+    BlockGenerationEnv gen env' where
+  ord := ord
+  resultLevelWF := S.resultLevelWF
+  checked := S.checked.mono henv
+  paramsTel := S.paramsTel.mono henv
+  familyWF := fun family hfamily => (S.familyWF family hfamily).mono henv
+  ctorWF := fun constructor hconstructor =>
+    (S.ctorWF constructor hconstructor).mono henv
+  familyConst := fun family hfamily =>
+    henv.constants (S.familyConst family hfamily)
+  ctorConst := fun constructor hconstructor =>
+    henv.constants (S.ctorConst constructor hconstructor)
+
+theorem generationParams_defeq :
+    env.TelDefEq source.uvars []
+      (generationParams gen.block.rawParams gen.block.checked.params)
+      gen.block.checked.params :=
+  S.paramsTel.generationParams S.ord
+
+theorem generationParams_length :
+    (generationParams gen.block.rawParams
+      gen.block.checked.params).length = source.nparams := by
+  exact (generationParams_length_of_eq S.paramsTel.length_eq).trans
+    gen.shape.1
+
+theorem generationParams_ctx :
+    env.IsDefEqCtx source.uvars []
+      (generationParams gen.block.rawParams
+        gen.block.checked.params).reverse
+      gen.block.checked.params.reverse := by
+  simpa using S.generationParams_defeq.ctx
+
+theorem generationParams_ctx_rec :
+    env.IsDefEqCtx gen.recUvars [] gen.paramsTel.reverse
+      (gen.block.checked.params.map
+        (VExpr.instL gen.sourceLevels)).reverse := by
+  have h := S.generationParams_defeq.instL
+    (U' := gen.recUvars) gen.sourceLevels_wf
+  simpa [BlockGenerationChecked.paramsTel, List.map_reverse] using h.ctx
+
+theorem rawFamily_onTel {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) :
+    env.OnTel source.uvars []
+      (family.rawParams source.nparams ++
+        family.rawIndices source.nparams) :=
+  (S.familyWF family hfamily).familyTel.raw_onTel
+
+theorem familyConst_decl {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) {Γ : List VExpr} :
+    env.HasType source.uvars Γ
+      (.const family.raw.name (VLevel.params source.uvars))
+      family.raw.type := by
+  have hwf : family.raw.toVConstant.WF env := by
+    show env.IsType family.raw.uvars [] family.raw.type
+    rw [gen.family_uvars hfamily]
+    exact (S.familyWF family hfamily).rawFamily_isType
+  have h := HasType.const0 (S.familyConst family hfamily) hwf
+  rw [gen.family_uvars hfamily] at h
+  exact h.weak0 S.ord
+
+theorem ctorConst_decl {constructor : NormalizedBlockCtor}
+    (hconstructor : constructor ∈ gen.flatCtors) {Γ : List VExpr} :
+    env.HasType source.uvars Γ
+      (.const constructor.ctor.raw.name (VLevel.params source.uvars))
+      constructor.ctor.raw.type := by
+  have hwf : constructor.ctor.raw.toVConstant.WF env := by
+    show env.IsType constructor.ctor.raw.uvars []
+      constructor.ctor.raw.type
+    rw [gen.flatCtor_uvars hconstructor]
+    exact (S.ctorWF constructor hconstructor).rawDeclared_isType
+  have h := HasType.const0 (S.ctorConst constructor hconstructor) hwf
+  rw [gen.flatCtor_uvars hconstructor] at h
+  exact h.weak0 S.ord
+
+theorem rawParams_defeq {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) :
+    env.TelDefEq source.uvars []
+      (family.rawParams source.nparams) gen.block.checked.params := by
+  have h := (S.familyWF family hfamily).familyTel.take source.nparams
+  have hraw :
+      (family.rawParams source.nparams ++
+        family.rawIndices source.nparams).take source.nparams =
+        family.rawParams source.nparams := by
+    let Ps := family.rawParams source.nparams
+    let Is := family.rawIndices source.nparams
+    have hlen : Ps.length = source.nparams :=
+      (gen.shape.2.2.2.2 family hfamily).2.2.1
+    change (Ps ++ Is).take source.nparams = Ps
+    rw [← hlen, List.take_append, List.take_length]
+    simp
+  have hviewLen : gen.block.checked.params.length = source.nparams :=
+    gen.shape.2.1.symm.trans gen.shape.1
+  have hview :
+      (gen.block.checked.params ++ family.view.indices).take
+          source.nparams = gen.block.checked.params := by
+    rw [← hviewLen, List.take_append, List.take_length]
+    simp
+  rw [hraw, hview] at h
+  exact h
+
+theorem emittedFamilyTel {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) :
+    env.TelDefEq source.uvars []
+      (family.rawParams source.nparams ++ family.rawIndices source.nparams)
+      (gen.block.checked.params ++ family.rawIndices source.nparams) := by
+  have hindices : env.OnTel source.uvars
+      (family.rawParams source.nparams).reverse
+      (family.rawIndices source.nparams) := by
+    simpa using (S.rawFamily_onTel hfamily).of_append.2
+  exact (S.rawParams_defeq hfamily).append_refl (by simpa using hindices)
+
+theorem emittedFamily_onTel {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) :
+    env.OnTel source.uvars []
+      (gen.block.checked.params ++ family.rawIndices source.nparams) :=
+  (S.emittedFamilyTel hfamily).view_onTel S.ord
+
+theorem generationFamilyTel {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) :
+    env.TelDefEq source.uvars []
+      (generationParams gen.block.rawParams gen.block.checked.params ++
+        family.rawIndices source.nparams)
+      (gen.block.checked.params ++ family.rawIndices source.nparams) := by
+  have hindicesChecked : env.OnTel source.uvars
+      gen.block.checked.params.reverse (family.rawIndices source.nparams) := by
+    simpa using (S.emittedFamily_onTel hfamily).of_append.2
+  have hindicesGeneration : env.OnTel source.uvars
+      (generationParams gen.block.rawParams
+        gen.block.checked.params).reverse
+      (family.rawIndices source.nparams) :=
+    hindicesChecked.defeqDFC S.ord
+      (S.generationParams_ctx.symm S.ord)
+  exact S.generationParams_defeq.append_refl
+    (by simpa using hindicesGeneration)
+
+theorem generationFamily_onTel {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) :
+    env.OnTel source.uvars []
+      (generationParams gen.block.rawParams gen.block.checked.params ++
+        family.rawIndices source.nparams) :=
+  (S.generationFamilyTel hfamily).raw_onTel
+
+theorem emittedFamily_ctx {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) :
+    env.IsDefEqCtx source.uvars []
+      (family.rawParams source.nparams ++
+        family.rawIndices source.nparams).reverse
+      (gen.block.checked.params ++
+        family.rawIndices source.nparams).reverse := by
+  simpa using (S.emittedFamilyTel hfamily).ctx
+
+theorem generationFamily_ctx {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) :
+    env.IsDefEqCtx source.uvars []
+      (generationParams gen.block.rawParams gen.block.checked.params ++
+        family.rawIndices source.nparams).reverse
+      (gen.block.checked.params ++
+        family.rawIndices source.nparams).reverse := by
+  simpa using (S.generationFamilyTel hfamily).ctx
+
+theorem familyConst_emitted_decl {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) :
+    env.HasType source.uvars []
+      (.const family.raw.name (VLevel.params source.uvars))
+      (VExpr.forallN
+        (gen.block.checked.params ++ family.rawIndices source.nparams)
+        (family.rawResult source.nparams)) := by
+  have hc : env.HasType source.uvars []
+      (.const family.raw.name (VLevel.params source.uvars))
+      (VExpr.forallN
+        (family.rawParams source.nparams ++ family.rawIndices source.nparams)
+        (family.rawResult source.nparams)) := by
+    rw [VExpr.forallN_append, ← family.rawType_eq]
+    exact S.familyConst_decl hfamily
+  obtain ⟨_, htel⟩ := (S.emittedFamilyTel hfamily).forallN_defeq
+    (by simpa [VEnv.HasType] using
+      (S.familyWF family hfamily).familyResult.hasType.1)
+  exact htel.defeq hc
+
+theorem familyConst_generation_decl {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) :
+    env.HasType source.uvars []
+      (.const family.raw.name (VLevel.params source.uvars))
+      (VExpr.forallN
+        (generationParams gen.block.rawParams gen.block.checked.params ++
+          family.rawIndices source.nparams)
+        (family.rawResult source.nparams)) := by
+  have hresultChecked :=
+    (S.familyWF family hfamily).familyResult.defeqDFC S.ord
+      (S.emittedFamily_ctx hfamily)
+  have hresultGeneration := hresultChecked.defeqDFC S.ord
+    ((S.generationFamily_ctx hfamily).symm S.ord)
+  obtain ⟨_, htel⟩ := (S.generationFamilyTel hfamily).forallN_defeq
+    (by simpa [VEnv.HasType] using hresultGeneration.hasType.1)
+  exact htel.defeq' (S.familyConst_emitted_decl hfamily)
+
+theorem familyApp_hasType {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) :
+    env.HasType gen.recUvars
+      ((gen.idxTel family).reverse ++ gen.paramsTel.reverse)
+      (VExpr.appN (.const family.raw.name gen.sourceLevels)
+        (VExpr.bvarRevRange (gen.idxTel family).length source.nparams ++
+          VExpr.bvarRevRange 0 (gen.idxTel family).length))
+      (.sort (gen.validated.resultLevel.inst gen.sourceLevels)) := by
+  let ls := gen.sourceLevels
+  have hconst₀ := (S.familyConst_generation_decl hfamily).instL
+    (U' := gen.recUvars) gen.sourceLevels_wf
+  have hconst₁ : env.HasType gen.recUvars []
+      (.const family.raw.name ls)
+      (VExpr.forallN (gen.paramsTel ++ gen.idxTel family)
+        ((family.rawResult source.nparams).instL ls)) := by
+    simpa [ls, BlockGenerationChecked.paramsTel,
+      BlockGenerationChecked.idxTel, VExpr.instL_forallN,
+      VExpr.instL, VLevel.params_map_inst_params'] using hconst₀
+  have hclosed :
+      (VExpr.forallN (gen.paramsTel ++ gen.idxTel family)
+        ((family.rawResult source.nparams).instL ls)).ClosedN 0 :=
+    (hconst₁.closedN' S.ord.closed trivial).2.2
+  have hconst : env.HasType gen.recUvars
+      ((gen.paramsTel ++ gen.idxTel family).reverse)
+      (.const family.raw.name ls)
+      (VExpr.forallN (gen.paramsTel ++ gen.idxTel family)
+        ((family.rawResult source.nparams).instL ls)) :=
+    hconst₁.weak0 S.ord
+  have happ := HasType.appN_selfSpine'
+    (Δ := []) (Γ := []) hclosed (by simpa using hconst)
+  simp only [List.length_nil, VExpr.liftN_zero, List.nil_append,
+    List.append_nil] at happ
+  have hlen : (gen.paramsTel ++ gen.idxTel family).length =
+      (gen.idxTel family).length + source.nparams := by
+    simp only [List.length_append, BlockGenerationChecked.paramsTel,
+      BlockGenerationChecked.idxTel, List.length_map]
+    rw [S.generationParams_length]
+    omega
+  rw [VExpr.bvarRevRange_congr' 0 hlen,
+    ← VExpr.bvarRevRange_append] at happ
+  have hresult := (S.familyWF family hfamily).familyResult.instL
+    (U' := gen.recUvars) gen.sourceLevels_wf
+  simp only [List.map_reverse] at hresult
+  have hctxChecked := ((S.emittedFamilyTel hfamily).instL
+    (U' := gen.recUvars) gen.sourceLevels_wf).ctx
+  simp only [List.map_nil, List.append_nil,
+    List.map_reverse] at hctxChecked
+  have hresultChecked := hresult.defeqDFC S.ord hctxChecked
+  have hctxGeneration := ((S.generationFamilyTel hfamily).instL
+    (U' := gen.recUvars) gen.sourceLevels_wf).ctx
+  simp only [List.map_nil, List.append_nil,
+    List.map_reverse] at hctxGeneration
+  have hresultGeneration := hresultChecked.defeqDFC S.ord
+    (hctxGeneration.symm S.ord)
+  have hresult' : env.IsDefEq gen.recUvars
+      ((gen.idxTel family).reverse ++ gen.paramsTel.reverse)
+      ((family.rawResult source.nparams).instL ls)
+      (.sort (gen.validated.resultLevel.inst ls))
+      (.sort (.succ (gen.validated.resultLevel.inst ls))) := by
+    simpa [ls, BlockGenerationChecked.paramsTel,
+      BlockGenerationChecked.idxTel, List.map_reverse, VLevel.inst] using
+      hresultGeneration
+  exact hresult'.defeq (by
+    simpa [List.reverse_append] using happ)
+
+theorem motive_isType {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) :
+    env.IsType gen.recUvars gen.paramsTel.reverse
+      (gen.motiveType family) := by
+  have htel₀ := (S.generationFamily_onTel hfamily).instL
+    (U' := gen.recUvars) gen.sourceLevels_wf
+  have htel : env.OnTel gen.recUvars []
+      (gen.paramsTel ++ gen.idxTel family) := by
+    simpa [BlockGenerationChecked.paramsTel,
+      BlockGenerationChecked.idxTel] using htel₀
+  have hidx : env.OnTel gen.recUvars gen.paramsTel.reverse
+      (gen.idxTel family) := by
+    simpa using htel.of_append.2
+  refine IsType.forallN hidx ?_
+  exact ⟨_, by
+    simpa [BlockGenerationChecked.motiveType] using
+      HasType.forallE (S.familyApp_hasType hfamily)
+        (HasType.sort gen.motiveLevel_wf)⟩
+
+end BlockGenerationEnv
 
 /-- Exact decomposition of the stored raw family type. -/
 theorem NormalizedChecked.rawType_eq {source : VInductDecl}
@@ -3240,6 +3968,56 @@ info: 'Lean4Lean.VInductDecl.GenerationEnv.motive_isType' depends on axioms: [pr
 -/
 #guard_msgs in
 #print axioms GenerationEnv.motive_isType
+
+theorem BlockGenerationChecked.motiveTypesAux_length
+    {source : VInductDecl} (gen : BlockGenerationChecked source) :
+    ∀ (families : List NormalizedFamily) (i : Nat),
+      (gen.motiveTypesAux families i).length = families.length
+  | [], _ => rfl
+  | _ :: families, i => by
+    simp only [BlockGenerationChecked.motiveTypesAux, List.length_cons]
+    rw [gen.motiveTypesAux_length families (i + 1)]
+
+theorem BlockGenerationChecked.motiveTypes_length
+    {source : VInductDecl} (gen : BlockGenerationChecked source) :
+    gen.motiveTypes.length = gen.familyCount := by
+  unfold BlockGenerationChecked.motiveTypes
+  exact gen.motiveTypesAux_length gen.families 0
+
+namespace BlockGenerationEnv
+
+variable {source : VInductDecl} {gen : BlockGenerationChecked source}
+  {env : VEnv} (S : BlockGenerationEnv gen env)
+include S
+
+theorem paramsTel_onTel :
+    env.OnTel gen.recUvars [] gen.paramsTel := by
+  have h := S.generationParams_defeq.raw_onTel.instL
+    (U' := gen.recUvars) gen.sourceLevels_wf
+  simpa [BlockGenerationChecked.paramsTel] using h
+
+theorem motiveTypesAux_onTel
+    (families : List NormalizedFamily)
+    (hsub : ∀ family ∈ families, family ∈ gen.families)
+    (Δ : List VExpr) (i : Nat) (hΔ : Δ.length = i) :
+    env.OnTel gen.recUvars (Δ ++ gen.paramsTel.reverse)
+      (gen.motiveTypesAux families i) := by
+  induction families generalizing Δ i with
+  | nil => trivial
+  | cons family families ih =>
+    exact ⟨by
+      rw [← hΔ]
+      exact (S.motive_isType (hsub family (.head _))).weakN S.ord
+        (.zero Δ),
+    ih (fun family hfamily => hsub family (.tail _ hfamily))
+      (_ :: Δ) (i + 1) (by simp [hΔ])⟩
+
+theorem motiveTypes_onTel :
+    env.OnTel gen.recUvars gen.paramsTel.reverse gen.motiveTypes := by
+  simpa [BlockGenerationChecked.motiveTypes] using
+    motiveTypesAux_onTel S gen.families (fun _ h => h) [] 0 rfl
+
+end BlockGenerationEnv
 
 /-- The public inductive-declaration contract is monotone in its prefix
 environment. This lets replay fixtures prepend independently verified
@@ -10364,6 +11142,188 @@ theorem AddInductGenerationTrace.rule_mem {source : VInductDecl}
     env'.defeqs df := by
   simpa only [H.addRules] using
     (rulesFold_spec gen.generatedRules H.recEnv).2 df hdf
+
+/-! ### Block-wide transaction facts -/
+
+/-- Recover every phase boundary from a successful block-wide transaction. -/
+theorem addInductBlockGeneration_trace {source : VInductDecl}
+    {gen : source.BlockGenerationChecked}
+    (hadd : addInductBlockGeneration env gen = some env') :
+    Nonempty (AddInductBlockGenerationTrace env env' gen) := by
+  unfold addInductBlockGeneration at hadd
+  obtain ⟨typeEnv, addTypes, hadd⟩ := Option.bind_eq_some_iff.1 hadd
+  obtain ⟨ctorEnv, addCtors, hadd⟩ := Option.bind_eq_some_iff.1 hadd
+  obtain ⟨recEnv, addRecs, hadd⟩ := Option.bind_eq_some_iff.1 hadd
+  cases hadd
+  exact ⟨⟨typeEnv, ctorEnv, recEnv, addTypes, addCtors, addRecs, rfl⟩⟩
+
+/-- The block-wide transaction is atomic at its public `Option` boundary. -/
+theorem addInductBlockGeneration_atomic {source : VInductDecl}
+    (env : VEnv) (gen : source.BlockGenerationChecked) :
+    addInductBlockGeneration env gen = none ∨
+      ∃ env', addInductBlockGeneration env gen = some env' ∧
+        Nonempty (AddInductBlockGenerationTrace env env' gen) := by
+  cases hadd : addInductBlockGeneration env gen with
+  | none => exact .inl rfl
+  | some env' =>
+    exact .inr ⟨env', rfl, addInductBlockGeneration_trace hadd⟩
+
+/-- Every phase of a successful block transaction only grows the Theory
+environment. -/
+theorem AddInductBlockGenerationTrace.le {source : VInductDecl}
+    {gen : source.BlockGenerationChecked}
+    (H : AddInductBlockGenerationTrace env env' gen) : env ≤ env' := by
+  have htypes :=
+    (ctorFold_spec source.blockTypeConstants H.addTypes).1
+  have hctors :=
+    (ctorFold_spec source.blockConstructorConstants H.addCtors).1
+  have hrecs := (ctorFold_spec gen.recursors H.addRecs).1
+  have hrules : H.recEnv ≤ env' := by
+    simpa only [H.addRules] using
+      (rulesFold_spec gen.generatedRules H.recEnv).1
+  exact htypes.trans (hctors.trans (hrecs.trans hrules))
+
+/-- Every source family name was fresh before a successful block
+transaction. -/
+theorem AddInductBlockGenerationTrace.family_fresh
+    {source : VInductDecl} {gen : source.BlockGenerationChecked}
+    (H : AddInductBlockGenerationTrace env env' gen)
+    {type : VInductiveType} (htype : type ∈ source.types) :
+    env.constants type.name = none := by
+  have hmem : type.toVConstVal ∈ source.blockTypeConstants := by
+    exact List.mem_map.2 ⟨type, htype, rfl⟩
+  simpa [VInductDecl.blockTypeConstants] using
+    (ctorFold_spec source.blockTypeConstants H.addTypes).2.2
+      type.toVConstVal hmem
+
+/-- The final environment contains every exact raw family constant. -/
+theorem AddInductBlockGenerationTrace.family_lookup
+    {source : VInductDecl} {gen : source.BlockGenerationChecked}
+    (H : AddInductBlockGenerationTrace env env' gen)
+    {type : VInductiveType} (htype : type ∈ source.types) :
+    env'.constants type.name = some type.toVConstant := by
+  have hmem : type.toVConstVal ∈ source.blockTypeConstants := by
+    exact List.mem_map.2 ⟨type, htype, rfl⟩
+  have hlookup :=
+    (ctorFold_spec source.blockTypeConstants H.addTypes).2.1
+      type.toVConstVal hmem
+  have hctors :=
+    (ctorFold_spec source.blockConstructorConstants H.addCtors).1
+  have hrecs := (ctorFold_spec gen.recursors H.addRecs).1
+  have hrules : H.recEnv ≤ env' := by
+    simpa only [H.addRules] using
+      (rulesFold_spec gen.generatedRules H.recEnv).1
+  exact (hctors.trans (hrecs.trans hrules)).constants hlookup
+
+/-- Every flattened raw constructor name was fresh in the transaction's
+input environment. -/
+theorem AddInductBlockGenerationTrace.ctor_fresh
+    {source : VInductDecl} {gen : source.BlockGenerationChecked}
+    (H : AddInductBlockGenerationTrace env env' gen)
+    {constructor : VConstVal}
+    (hconstructor : constructor ∈ source.blockConstructorConstants) :
+    env.constants constructor.name = none := by
+  have htypes :=
+    (ctorFold_spec source.blockTypeConstants H.addTypes).1
+  have hfresh :=
+    (ctorFold_spec source.blockConstructorConstants H.addCtors).2.2
+      constructor hconstructor
+  exact htypes.constants_none hfresh
+
+/-- The final environment contains every exact raw constructor constant. -/
+theorem AddInductBlockGenerationTrace.ctor_lookup
+    {source : VInductDecl} {gen : source.BlockGenerationChecked}
+    (H : AddInductBlockGenerationTrace env env' gen)
+    {constructor : VConstVal}
+    (hconstructor : constructor ∈ source.blockConstructorConstants) :
+    env'.constants constructor.name = some constructor.toVConstant := by
+  have hlookup :=
+    (ctorFold_spec source.blockConstructorConstants H.addCtors).2.1
+      constructor hconstructor
+  have hrecs := (ctorFold_spec gen.recursors H.addRecs).1
+  have hrules : H.recEnv ≤ env' := by
+    simpa only [H.addRules] using
+      (rulesFold_spec gen.generatedRules H.recEnv).1
+  exact (hrecs.trans hrules).constants hlookup
+
+/-- Every generated recursor name was fresh before the block transaction. -/
+theorem AddInductBlockGenerationTrace.rec_fresh
+    {source : VInductDecl} {gen : source.BlockGenerationChecked}
+    (H : AddInductBlockGenerationTrace env env' gen)
+    {recursor : VConstVal} (hrecursor : recursor ∈ gen.recursors) :
+    env.constants recursor.name = none := by
+  have htypes :=
+    (ctorFold_spec source.blockTypeConstants H.addTypes).1
+  have hctors :=
+    (ctorFold_spec source.blockConstructorConstants H.addCtors).1
+  have hfresh :=
+    (ctorFold_spec gen.recursors H.addRecs).2.2 recursor hrecursor
+  exact (htypes.trans hctors).constants_none hfresh
+
+/-- The final environment contains every generated recursor. -/
+theorem AddInductBlockGenerationTrace.rec_lookup
+    {source : VInductDecl} {gen : source.BlockGenerationChecked}
+    (H : AddInductBlockGenerationTrace env env' gen)
+    {recursor : VConstVal} (hrecursor : recursor ∈ gen.recursors) :
+    env'.constants recursor.name = some recursor.toVConstant := by
+  have hlookup :=
+    (ctorFold_spec gen.recursors H.addRecs).2.1 recursor hrecursor
+  have hrules : H.recEnv ≤ env' := by
+    simpa only [H.addRules] using
+      (rulesFold_spec gen.generatedRules H.recEnv).1
+  exact hrules.constants hlookup
+
+/-- The final environment registers every block-generated iota rule. -/
+theorem AddInductBlockGenerationTrace.rule_mem
+    {source : VInductDecl} {gen : source.BlockGenerationChecked}
+    (H : AddInductBlockGenerationTrace env env' gen)
+    {df : VDefEq} (hdf : df ∈ gen.generatedRules) :
+    env'.defeqs df := by
+  simpa only [H.addRules] using
+    (rulesFold_spec gen.generatedRules H.recEnv).2 df hdf
+
+/-- Preserve ordering through the all-families phase. -/
+private theorem addInductBlockGeneration_families_ordered
+    {source : VInductDecl} {gen : source.BlockGenerationChecked}
+    {blockEnv : VEnv}
+    (H : AddInductBlockGenerationTrace env env' gen)
+    (henv : env.Ordered) (hgen : gen.WF env blockEnv) :
+    H.typeEnv.Ordered := by
+  apply constFold_ordered source.blockTypeConstants henv ?_ H.addTypes
+  intro type htype
+  simp only [VInductDecl.blockTypeConstants, List.mem_map] at htype
+  obtain ⟨raw, hraw, rfl⟩ := htype
+  have hraw' : raw ∈ gen.families.map (·.raw) := by
+    rw [gen.families_map_raw]
+    exact hraw
+  obtain ⟨family, hfamily, rfl⟩ := List.mem_map.1 hraw'
+  show env.IsType family.raw.uvars [] family.raw.type
+  rw [gen.family_uvars hfamily]
+  exact hgen.rawFamily_isType hfamily
+
+/-- Preserve ordering through the globally flattened constructor phase. -/
+private theorem addInductBlockGeneration_constructors_ordered
+    {source : VInductDecl} {gen : source.BlockGenerationChecked}
+    {blockEnv : VEnv}
+    (H : AddInductBlockGenerationTrace env env' gen)
+    (hgen : gen.WF env blockEnv) (ordT : H.typeEnv.Ordered) :
+    H.ctorEnv.Ordered := by
+  have hstage : env.stageInductiveTypes source.types = some blockEnv :=
+    hgen.blockWF.1.1
+  rw [← blockTypeConstants_foldlM_eq_stageInductiveTypes env source,
+    H.addTypes] at hstage
+  have htypeEnv : H.typeEnv = blockEnv := Option.some.inj hstage
+  subst blockEnv
+  apply constFold_ordered source.blockConstructorConstants ordT ?_ H.addCtors
+  intro ctor hctor
+  have hctor' : ctor ∈ gen.flatCtors.map (·.ctor.raw) := by
+    rw [gen.flatCtors_map_raw]
+    exact hctor
+  obtain ⟨constructor, hconstructor, rfl⟩ := List.mem_map.1 hctor'
+  show H.typeEnv.IsType constructor.ctor.raw.uvars []
+    constructor.ctor.raw.type
+  rw [gen.flatCtor_uvars hconstructor]
+  exact hgen.rawCtor_isType hconstructor
 
 /-- Preserve ordering across the raw family insertion, the first generated
 component of an inductive transaction. -/

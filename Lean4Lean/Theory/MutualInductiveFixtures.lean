@@ -54,6 +54,10 @@ def treeDecl : VInductDecl :=
 def treeChecked : treeDecl.CheckedBlock :=
   treeDecl.checkedBlock?.get (by decide)
 
+/-- Block-wide generation data for the real unindexed mutual declaration. -/
+def treeGeneration : BlockGenerationChecked treeDecl :=
+  treeDecl.identityBlockGeneration?.get (by decide)
+
 example : treeChecked.params = [.sort (.succ (.param 0))] := rfl
 example : treeChecked.families.values = [treeType, treeListType] := rfl
 example : treeChecked.families.ordinals = [0, 1] := rfl
@@ -69,6 +73,14 @@ example : treeChecked.families.recursiveTargets =
 example : treeChecked.names =
     [``Tree, ``TreeList, ``Tree.leaf, ``Tree.node, ``Tree.branch,
       ``TreeList.nil, ``TreeList.cons, ``Tree.rec, ``TreeList.rec] := rfl
+
+example : treeGeneration.families.map (·.raw.name) =
+    [``Tree, ``TreeList] := rfl
+example : treeGeneration.motiveTypes.length = 2 := rfl
+example : treeGeneration.minorTypes.length = 5 := rfl
+example : treeGeneration.recursors.map (·.name) =
+    [``Tree.rec, ``TreeList.rec] := rfl
+example : treeGeneration.generatedRules.length = 5 := rfl
 
 example : treeChecked.families.constructors[0][1].recursive[0].fieldIndex = 0 := rfl
 example : treeChecked.families.constructors[0][1].recursive[0].targetType = 1 := rfl
@@ -113,6 +125,10 @@ def indexedTreeDecl : VInductDecl :=
 def indexedTreeChecked : indexedTreeDecl.CheckedBlock :=
   indexedTreeDecl.checkedBlock?.get (by decide)
 
+/-- Block-wide generation data for the real indexed mutual declaration. -/
+def indexedTreeGeneration : BlockGenerationChecked indexedTreeDecl :=
+  indexedTreeDecl.identityBlockGeneration?.get (by decide)
+
 example : indexedTreeChecked.params = [.sort (.succ (.param 0))] := rfl
 example : indexedTreeChecked.families.values =
     [indexedTreeType, indexedTreeListType] := rfl
@@ -128,6 +144,14 @@ example : indexedTreeChecked.families.constructorNames =
       [``IndexedTreeList.nil, ``IndexedTreeList.cons]] := rfl
 example : indexedTreeChecked.families.recursiveTargets =
     [[[], [1]], [[], [0, 1]]] := rfl
+
+example : indexedTreeGeneration.families.map (·.raw.name) =
+    [``IndexedTree, ``IndexedTreeList] := rfl
+example : indexedTreeGeneration.motiveTypes.length = 2 := rfl
+example : indexedTreeGeneration.minorTypes.length = 4 := rfl
+example : indexedTreeGeneration.recursors.map (·.name) =
+    [``IndexedTree.rec, ``IndexedTreeList.rec] := rfl
+example : indexedTreeGeneration.generatedRules.length = 4 := rfl
 
 example : indexedTreeChecked.families.constructors[0][0].resultIndices =
     [.const ``Nat.zero []] := rfl

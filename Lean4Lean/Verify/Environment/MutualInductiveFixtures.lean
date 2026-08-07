@@ -16,7 +16,7 @@ rule generation, or permanent environment transaction.
 
 namespace Lean4Lean.MutualInductiveReplayFixtures
 
-open Lean Meta
+open Lean Meta Elab Term
 open Kernel
 open AddInductive
 open VInductDecl
@@ -24,6 +24,19 @@ open Lean4Lean.MutualInductiveFixtures
 open Lean4Lean.InductiveReplayFixtures
 
 local instance : Inhabited VEnv := ⟨.empty⟩
+
+/-- Quote a kernel recursor type using the recursor metadata's own universe
+parameter order. -/
+syntax "kernelRecConstant08C%" ident : term
+
+elab_rules : term
+  | `(kernelRecConstant08C% $n:ident) => do
+    let name ← realizeGlobalConstNoOverloadWithInfo n
+    let .recInfo info ← getConstInfo name
+      | throwError "expected recursor metadata for {name}"
+    let type ← Lean4Lean.Meta.expandExpr info.type
+    let type ← Lean4Lean.Meta.ofExpr info.levelParams {} type
+    return toExpr ({ uvars := info.levelParams.length, type } : VConstant)
 
 /-! ## Executable kernel validation -/
 
@@ -34,6 +47,26 @@ def treeNodeKernelInfo : ConstantInfo := kernelCtorInfo% Tree.node
 def treeBranchKernelInfo : ConstantInfo := kernelCtorInfo% Tree.branch
 def treeListNilKernelInfo : ConstantInfo := kernelCtorInfo% TreeList.nil
 def treeListConsKernelInfo : ConstantInfo := kernelCtorInfo% TreeList.cons
+def treeRecKernelInfo : ConstantInfo := kernelRecInfo% Tree.rec
+def treeListRecKernelInfo : ConstantInfo := kernelRecInfo% TreeList.rec
+def treeRecKernelConstant : VConstant := kernelRecConstant08C% Tree.rec
+def treeListRecKernelConstant : VConstant :=
+  kernelRecConstant08C% TreeList.rec
+def treeLeafKernelRuleRhs : VExpr := kernelRecRuleRhs% Tree.rec 0
+def treeNodeKernelRuleRhs : VExpr := kernelRecRuleRhs% Tree.rec 1
+def treeBranchKernelRuleRhs : VExpr := kernelRecRuleRhs% Tree.rec 2
+def treeListNilKernelRuleRhs : VExpr := kernelRecRuleRhs% TreeList.rec 0
+def treeListConsKernelRuleRhs : VExpr := kernelRecRuleRhs% TreeList.rec 1
+
+example : treeRecKernelConstant =
+    treeGeneration.recursors[0].toVConstant := rfl
+example : treeListRecKernelConstant =
+    treeGeneration.recursors[1].toVConstant := rfl
+example : treeLeafKernelRuleRhs = treeGeneration.generatedRules[0].rhs := rfl
+example : treeNodeKernelRuleRhs = treeGeneration.generatedRules[1].rhs := rfl
+example : treeBranchKernelRuleRhs = treeGeneration.generatedRules[2].rhs := rfl
+example : treeListNilKernelRuleRhs = treeGeneration.generatedRules[3].rhs := rfl
+example : treeListConsKernelRuleRhs = treeGeneration.generatedRules[4].rhs := rfl
 
 def treeKernelType : InductiveType where
   name := treeKernelInfo.name
@@ -154,6 +187,35 @@ def indexedTreeListNilKernelInfo : ConstantInfo :=
   kernelCtorInfo% IndexedTreeList.nil
 def indexedTreeListConsKernelInfo : ConstantInfo :=
   kernelCtorInfo% IndexedTreeList.cons
+def indexedTreeRecKernelInfo : ConstantInfo :=
+  kernelRecInfo% IndexedTree.rec
+def indexedTreeListRecKernelInfo : ConstantInfo :=
+  kernelRecInfo% IndexedTreeList.rec
+def indexedTreeRecKernelConstant : VConstant :=
+  kernelRecConstant08C% IndexedTree.rec
+def indexedTreeListRecKernelConstant : VConstant :=
+  kernelRecConstant08C% IndexedTreeList.rec
+def indexedTreeLeafKernelRuleRhs : VExpr :=
+  kernelRecRuleRhs% IndexedTree.rec 0
+def indexedTreeNodeKernelRuleRhs : VExpr :=
+  kernelRecRuleRhs% IndexedTree.rec 1
+def indexedTreeListNilKernelRuleRhs : VExpr :=
+  kernelRecRuleRhs% IndexedTreeList.rec 0
+def indexedTreeListConsKernelRuleRhs : VExpr :=
+  kernelRecRuleRhs% IndexedTreeList.rec 1
+
+example : indexedTreeRecKernelConstant =
+    indexedTreeGeneration.recursors[0].toVConstant := rfl
+example : indexedTreeListRecKernelConstant =
+    indexedTreeGeneration.recursors[1].toVConstant := rfl
+example : indexedTreeLeafKernelRuleRhs =
+    indexedTreeGeneration.generatedRules[0].rhs := rfl
+example : indexedTreeNodeKernelRuleRhs =
+    indexedTreeGeneration.generatedRules[1].rhs := rfl
+example : indexedTreeListNilKernelRuleRhs =
+    indexedTreeGeneration.generatedRules[2].rhs := rfl
+example : indexedTreeListConsKernelRuleRhs =
+    indexedTreeGeneration.generatedRules[3].rhs := rfl
 
 def indexedTreeKernelType : InductiveType where
   name := indexedTreeKernelInfo.name
