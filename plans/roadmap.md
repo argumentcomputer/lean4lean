@@ -1,7 +1,8 @@
 # Lean4Lean completion roadmap
 
 **Status:** authoritative local roadmap, audited 2026-08-07 against the
-committed fork and the current `jcb/induct` development branch.
+committed fork and the current `jcb/formalization` development bookmark;
+publication to `jcb/induct` remains a separate boundary.
 
 **Versioning.** `plans/roadmap.md` is intentionally tracked so the
 status-bearing milestone ladder travels with each checkpoint; other files
@@ -9,7 +10,7 @@ under `/plans` remain ignored. The root-level `upstream-divergence.md` is the
 tracked per-delta ledger and complements this roadmap. This document is
 forward-looking only: completed milestones are deleted from the ladder when
 they close, and their full narratives, hashes, and gate evidence live in this
-file's git history and the `jcb/induct` commit messages.
+file's git history and the checkpoint commit messages.
 
 ## 1. Mission and exact meaning of “complete”
 
@@ -66,12 +67,12 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-07 active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
-| Current formalization source | L4L-06C closure in this checkpoint, built on the elimination/K-metadata checkpoints `37e2ada6` and `41e1126b` and the edge-generation checkpoint `0c6b178c`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
+| Ladder position | **L4L-08A active**; L4L-07 and everything above it are complete and pruned from §5; everything below L4L-08A is queued |
+| Current formalization source | L4L-07 closure in this checkpoint, built on the elimination/K/edge checkpoints through `df58a3a0`, the integrated parity matrices `bb39cb2a`/`cc132cdd`, and the complete fixed-family replay `fefb93fe`; pushed through `fefb93fe` at `jcb/formalization`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 20 live sorries and 29 custom-axiom declarations, both pinned by exact audits |
-| Gates | the full §6 gate is green on the L4L-06C closure source, including the focused and aggregate Lean builds, Nix build, all-system flake evaluation, native flake checks, sorry-frontier audit, formatter check, and whitespace check |
+| Gates | the full §6 gate is green on the L4L-07 closure source, including the focused and aggregate Lean builds, Nix build, all-system flake evaluation, all six native flake checks, sorry-frontier audit, Theory import-boundary audit, formatter check, and whitespace check |
 
 ### 2.1 What is green
 
@@ -96,10 +97,20 @@ K-target metadata, and exact zero-/one-constructor generation. Preservation is
 factored through the common checked family, constructor fold, recursor, and
 rule-fold components, with empty folds using that same path.
 
-**Kernel parity fixtures.** Nat, Bool, List, Prod, Option, Eq, HEq,
-`IndexedVec`, `Acc`, `PUnit`, and `Empty` compare generated recursors and/or
-iota rules definitionally with Lean's actual kernel declarations. `AliasFormer` and
-`AliasRec` prove normalization is necessary, not hypothetical: real metadata
+**Kernel parity fixtures.** One integrated 14-row matrix covers Nat, Bool,
+List, Option, Prod, Unit (honestly represented by the kernel's `PUnit`), Empty,
+Or, And, Eq, HEq, Fin, Vector, and Acc. Every row reruns the ordinary producer
+and definitionally compares the stored family/constructor types in their
+metadata universe order, names, parameter/index/field counts, recursive rule
+metadata, elimination/K behavior, recursor type, rule count, and every iota
+RHS. The consolidated 32-row rejection matrix covers closure, internal and
+pre-existing name collisions, universe and result-shape failures, parameter
+and universe-count mismatches, raw/view incoherence, non-defeq normalization,
+nested negativity and illegal recursive targets, field-universe boundaries,
+and invalid elimination/K expectations. The earlier `IndexedVec` regression
+remains as a supporting indexed two-constructor fixture outside this fixed
+singleton inventory. `AliasFormer` and `AliasRec` prove normalization is
+necessary, not hypothetical: real metadata
 retains reducible aliases at the family result and around a recursive field;
 their raw declarations fail `checked?` while their certified views succeed.
 `NormalizationMatrix` closes the differential breadth for reducible aliases
@@ -232,21 +243,23 @@ The operational L4L-01E package authority remains the exact AnnotatedPi
 producer case; the parameter fixture deliberately does not claim a second
 independently assembled produced package.
 
-**Environment replay.** Eight actual-metadata transactions (Nat, Eq,
-`IndexedVec`, `Acc`, `AliasFormer`, `AliasRec`, AnnotatedPi, and
-`AnnotatedParam`) pin translation in exact intermediate environments, final
-environment equality, WF, alignment, lookup uniqueness, and every kernel rule
-RHS definitionally. AnnotatedPi additionally carries exact executable-package
-provenance; a pre-existing value-bearing definition remains
-translatable through the Nat transaction. The `IndexedVec` fixture spells
-indices as `Nat.zero`/`Nat.succ`, deliberately excluding notation's
-`OfNat`/`HAdd` instance closure — a reduced dependency claim, not full prelude
-replay. `AliasRec` remains the compositional constructor-normalization
-specification until its candidate list is migrated.
+**Environment replay.** The sole public L4L-07 inventory contains 19
+actual-metadata transactions: all 14 fixed rows plus AliasFormer, AliasRec,
+NormalizationMatrix, AnnotatedPi, and AnnotatedParam. Every
+`SingletonReplayArtifact` carries its exact input/output `ConstMap` and `VEnv`,
+input ordering, the proof-carrying `AddInduct` transaction, final alignment,
+and derived output ordering. Fin replays over the real Nat/LT dependency
+slice; Vector replays over Nat/Eq/Array/`Array.size`, including the stored
+metadata annotation on `Array.size`'s borrowed argument. The fixed and
+normalization inventories are definitionally tied to the Theory inventories,
+and their 14/5/19 cardinalities are executable. The older `IndexedVec`
+fixture still spells indices as `Nat.zero`/`Nat.succ`, deliberately excluding
+notation's `OfNat`/`HAdd` instance closure — a reduced dependency claim, not
+full prelude replay.
 
-**Not claimed.** The complete normalization differential matrix, constructor
-parity beyond the singleton-family scope, mutual/nested blocks, patterns,
-projections, and the remaining metatheory/checker roots.
+**Not claimed.** Constructor parity beyond the singleton-family scope,
+mutual/nested blocks, patterns, projections, and the remaining
+metatheory/checker roots.
 Bare producer success is never generation-shape authority or Theory semantics.
 
 ### 2.2 Live debt
@@ -263,8 +276,9 @@ The sorry-frontier script currently accepts exactly 20 live sorries:
 The remaining v4.31-added sorry is classified:
 `Lean4Lean.addDecl.WF` → L4L-19B. Non-sorry debt:
 
-- The public inductive spec is a growing subset, not kernel-complete; replay
-  coverage is not closed until the full fixture matrix is replayed.
+- The public inductive spec is a complete one-family checkpoint but remains a
+  growing subset, not kernel-complete; mutual, nested, generated-pattern, and
+  projection coverage remain queued.
 - Consumer-neutral APIs (`VLocalDecl` core, literal encodings,
   `ContainsLits`, `HasPrimitives`, `TrProj`) still live under `Verify/`,
   forcing downstream checkers to import that layer (L4L-12A/L4L-15C).
@@ -436,39 +450,9 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Singleton kernel parity (L4L-07)
-
-**L4L-07 — complete one-family parity (active).** Integrate the complete
-singleton pipeline (through L4L-06C) into the fixed positive/negative matrix, remove
-obsolete singleton staging seams, and replay every accepted family through
-the environment layer
-immediately — Theory parity without actual `ConstantInfo` translation is
-insufficient for downstream checkers, which need both semantic generation and
-environment alignment.
-
-The fixed positive matrix is Nat, Bool, List, Option, Prod, Unit, Empty, Or,
-And, Eq, HEq, Fin, Vector, and Acc, plus the focused alias-normalization
-cases. For each, compare acceptance, raw stored type, type and constructor
-names, parameter/index counts, field/recursive-argument metadata, universe
-lists, elimination level, K flag where relevant, recursor type, rule count,
-and every iota RHS with the real kernel. The paired negative matrix must
-cover loose variables, duplicate/internal and pre-existing names, bad
-universe levels, malformed result applications, parameter mismatch, non-defeq
-normalization views, negative recursion, illegal recursive targets, and
-invalid elimination. The existing negative matrix already covers the closure,
-generated-name, universe-annotation, self-reference, raw result-shape,
-parameter-count, universe-count, transaction-collision, recursive-Pi domain,
-changed-target parameter, and recursive-index-family branches; remaining
-negative work concentrates on semantically invalid raw/view pairs, nested
-positivity, constructor field universes at the acceptance boundary, and
-elimination/K behavior.
-*Exit:* both matrices, the replay subset, exact axiom guards, sorry audit,
-Theory/Verify build, and full flake gate are green; only one public artifact
-path is live.
-
 ### Mutual blocks (L4L-08A–L4L-08C)
 
-**L4L-08A — mutual checked representation.** Replace singleton destructuring
+**L4L-08A — mutual checked representation (active).** Replace singleton destructuring
 in analysis with dependent lists over `decl.types`; represent shared
 parameters, per-family indices/results, ordered constructors, and
 cross-family recursive targets. Compute checked Tree/TreeList and one mutual

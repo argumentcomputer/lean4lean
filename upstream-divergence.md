@@ -4,7 +4,8 @@ This file tracks every deliberate semantic, API, build, or verification delta
 from `upstream/master` that must either be upstreamed or explicitly retained.
 It is the tracked counterpart to `plans/roadmap.md`.
 
-Audit baseline after the empty/singleton edge-shape checkpoint (2026-08-07):
+Audit baseline after the complete L4L-07 singleton-parity checkpoint
+(2026-08-07):
 
 - current upstream reconciliation parent: digama `upstream/master`
   `ef849dfbd94a`
@@ -94,24 +95,29 @@ Audit baseline after the empty/singleton edge-shape checkpoint (2026-08-07):
 - remote development elimination/K checkpoints at `jcb/formalization`:
   `37e2ada60b04` (`proof: certify elimination mode and recursor levels`) and
   `41e1126bb587` (`proof: certify recursor K-target metadata`), followed by
-  `0c6b178cc1bd` (`proof: cover empty and singleton generation edges`). The
-  current L4L-06C closure adds exact actual-metadata and operational edge
-  differentials; its publication to the fork's `jcb/induct` branch is pending.
+  `0c6b178cc1bd` (`proof: cover empty and singleton generation edges`) and
+  `df58a3a00087` (`proof: close empty and singleton edge parity`).
+- remote development L4L-07 checkpoints at `jcb/formalization`:
+  `bb39cb2ace0c` (`verify: add singleton parity matrix`),
+  `cc132cddb874` (`verify: add singleton rejection and replay inventories`),
+  and `fefb93fe15e9` (`verify: replay all fixed singleton families`), followed
+  by the exact trust manifests and ledger closure in this checkpoint.
+  Publication to the fork's `jcb/induct` branch is pending.
 - fixed fork master: `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb`
   on local and `origin/master`
-- current audited semantic checkpoint: the L4L-06C closure at
-  `jcb/formalization` retains the exact ordinary small/large-elimination and
-  K-target executions independently, aligns both decisions with shared Theory
-  generation, and requires the actual kernel `recInfo.k` value in environment
-  replay. Eq, And, Or, Nat, and a source-universe-bearing small family pin the
-  positive/negative K matrix, exact recursor universe order, rule shapes, and
-  rule RHSs. `Unit` is pinned as Lean's reducible alias metadata; its actual
-  one-constructor target `PUnit` and zero-constructor `Empty` pin every
-  inductive/constructor/recursor field, exact binder and minor order, field and
-  recursive-argument counts, recursor levels, rule counts, and every available
-  RHS. The common checked transaction and preservation path handles both empty
-  folds without synthetic premises. Exact closure guards and the full
-  completion gate are recorded in the roadmap.
+- current audited semantic checkpoint: the L4L-07 closure at
+  `jcb/formalization` integrates Nat, Bool, List, Option, Prod, Unit/`PUnit`,
+  Empty, Or, And, Eq, HEq, Fin, Vector, and Acc into one executable kernel
+  parity matrix, alongside five normalization cases and a consolidated
+  32-case rejection matrix. The fixed rows compare ordinary-producer
+  acceptance and all stored family/constructor/recursor/rule metadata,
+  including exact translated universe order and every iota RHS. All 14 fixed
+  families and the five normalization cases then replay actual `ConstantInfo`
+  through proof-carrying environment transactions to final `Aligned` and
+  `Ordered` outputs. Fin and Vector carry their exact aligned dependency
+  slices. The umbrella exposes `SingletonParityReplay` as the sole L4L-07
+  artifact path; exact closure guards and the full completion gate are
+  recorded in the roadmap.
 - generation-readiness source checkpoint: `bbb45e0e` builds on the exact
   arbitrary-length
   producer witnesses and source-indexed semantic inputs that return a
@@ -245,12 +251,14 @@ to the replacement.
 ## D006 — staged computational inductive semantics
 
 - **Status:** remote-development (the earlier checkpoints are published-fork;
-  the elimination/K and edge extensions are pushed at `jcb/formalization`,
-  while publication to `jcb/induct` remains pending)
+  the elimination/K/edge and complete L4L-07 singleton-parity extensions are
+  pushed at `jcb/formalization`, while publication to `jcb/induct` remains
+  pending)
 - **Commits:** `71f2eae`, `06e904d`, `201c12f`, `efb2a2b`, the generalized
   single-family integration in `472a6f0`, the L4L-06A/B checkpoints
-  `37e2ada6` and `41e1126b`, the L4L-06C edge-generation checkpoint
-  `0c6b178c`, and the current closure
+  `37e2ada6` and `41e1126b`, the L4L-06C edge checkpoints `0c6b178c` and
+  `df58a3a0`, and the L4L-07 checkpoints `bb39cb2a`, `cc132cdd`,
+  `fefb93fe`, and the current closure
 - **Delta:** replace the three placeholder inductive declarations with real
   `VInductDecl.WF`, computational generation, generated recursor/iota rules,
   and sorry-free preservation for the accepted class. The published
@@ -261,18 +269,21 @@ to the replacement.
   transaction. Zero- and one-constructor blocks use the same checked
   family/constructor/recursor/rule component chain, including ordinary empty
   constructor and rule folds. Acceptance is the dependent descriptor from
-  D009. This remains an underapproximation: full positivity, mutual blocks,
-  nested inductives, and the complete differential matrix are not implemented.
+  D009. The complete one-family checkpoint now has a 14-row fixed kernel
+  matrix, five focused normalization rows, and a 32-row rejection matrix. This
+  remains an underapproximation of the full kernel: mutual blocks, nested
+  inductives, and the later generated-pattern/projection corpus are not
+  implemented.
 - **Ix impact:** discharges ix gap A1's three upstream `sorryAx` origins and is
   the semantic basis for constructing `InductiveOracle`; current breadth is
   not yet enough for all ix blocks.
-- **Tests:** exact Nat, Bool, List, Prod, Option, Eq, HEq, index-changing
-  `IndexedVec`, recursive-Pi `Acc`, `PUnit`, and `Empty` recursor/iota fixtures;
-  exact `Unit` alias metadata; Eq/And/Or/Nat, source-universe, and
-  `PUnit`/`Empty` elimination/K differentials; the structured rejection matrix;
-  Theory/Verify build; full flake check; exact axiom guards for
-  `VEnv.addInduct_WF`, the normalized preservation roots, and the operational
-  K trace.
+- **Tests:** the integrated Nat, Bool, List, Option, Prod, Unit/`PUnit`, Empty,
+  Or, And, Eq, HEq, Fin, Vector, and Acc matrix; five normalization rows;
+  all 32 named rejection branches; exact acceptance, translated stored types
+  and universe order, names/counts/flags, recursor types, rule metadata, and
+  every iota RHS; supporting `IndexedVec`, elimination/K, and edge
+  differentials; Theory/Verify and default Lake builds; full Nix/flake gate;
+  exact axiom guards for both matrix roots and the Theory inventories.
 - **Upstream issue/PR:** TBD; submit in the staged PR sequence described in the
   roadmap rather than as one proof mega-diff.
 - **Removal condition:** upstream exposes kernel-complete checked inductive
@@ -304,42 +315,47 @@ to the replacement.
 ## D008 — Verify inductive-environment alignment
 
 - **Status:** remote-development (the earlier checkpoints are published-fork;
-  current K-metadata and empty/singleton execution alignment is pushed at
+  complete L4L-07 actual-metadata execution alignment is pushed at
   `jcb/formalization`)
 - **Commits:** initial alignment in `472a6f0`, extended through `a1d8943`,
-  `6a77882`, `bc37d43`, `37e2ada6`, `41e1126b`, `0c6b178c`, and the current
-  L4L-06C closure
+  `6a77882`, `bc37d43`, `37e2ada6`, `41e1126b`, `0c6b178c`, `df58a3a0`,
+  `bb39cb2a`, `cc132cdd`, `fefb93fe`, and the current L4L-07 closure
 - **Delta:** replace the empty `AddInduct` relation with a data-bearing trace
   for `inductInfo`, ordered `ctorInfo` insertion, `recInfo`, and the generated
   defeq fold. Fold realization, lookup, freshness, monotonicity,
   map-WF/value-preservation, `Aligned.addInduct`, and the formerly impossible
   `TrEnv'.of_value` inductive case are live. `RecursorKMatches` additionally
   requires `recInfo.k` to equal the shared Theory generation decision, so a
-  type-correct recursor carrying the wrong reduction flag cannot align. Actual
-  Lean metadata for Nat, Eq,
-  index-changing `IndexedVec`, recursive-Pi `Acc`, AliasFormer, and AliasRec is
-  replayed through final equality, WF, alignment, and lookup uniqueness.
-  AnnotatedPi adds a seventh focused replay whose raw constructor retains
-  `outParam Prop` beneath a recursive Pi and whose generated recursor/iota rule
-  is pinned. The normalized trace owns the exact generation and its semantic
-  certificate instead of restating artifacts. Focused `PUnit` and `Empty`
-  executions now align actual kernel metadata with the same checked generation
-  artifact across the one-/zero-constructor elimination boundary; full
-  environment replay for the complete positive matrix remains L4L-07 work.
+  type-correct recursor carrying the wrong reduction flag cannot align. The
+  sole L4L-07 replay inventory now carries actual Lean metadata transactions
+  for all 14 fixed families and five normalization cases through final WF,
+  alignment, ordering, and every rule insertion. Fin and Vector use exact
+  aligned dependency slices, rather than pretending to start from the empty
+  environment. Translation now handles stored `.mdata` type annotations by
+  the same semantic erasure already used by `TrExprS`, which is required by
+  the real `Array.size` metadata in Vector's dependency slice. The normalized
+  trace owns the exact generation and its semantic certificate instead of
+  restating artifacts; the legacy phase fixtures remain implementation inputs,
+  not competing public inventories.
 - **Ix impact:** establishes the implementation-to-Theory environment bridge
   needed to translate checked inductive blocks and eventually construct
   `InductiveOracle`; later I2-I4 replay fixtures plus the I5 pattern package
   are still required before that oracle is constructible.
-- **Tests:** `lake build Lean4Lean.Verify.Environment.InductiveFixtures`;
-  all actual-metadata replay roots and rule-RHS equalities; the pre-Nat value
-  preservation regression; full Theory/Verify and flake gates; compile-time
-  axiom guards for generic alignment and every concrete checked replay.
+- **Tests:** `lake build Lean4Lean.Verify.Environment.SingletonParityReplay`;
+  executable 14/5/19 inventory equalities; every actual-metadata transaction,
+  final alignment, and derived output ordering; exact Fin/Vector dependency
+  maps; the pre-Nat value-preservation regression; full Theory/Verify, default
+  Lake, Nix, and flake gates; compile-time trust manifests for the fixed,
+  normalization, combined replay, and output-ordering roots.
 - **Axiom note:** the guarded roots currently inherit `sorryAx` through
   `TrConstVal → TrExprS → TrProj`, plus the standard logical baseline. E1
-  declares no new axiom. The concrete fixture additionally reaches the three
-  existing persistent-map contracts while proving its `SMap` insertion
-  freshness; Track P/T2 must remove or narrowly justify these inherited
-  dependencies before release.
+  declares no new axiom. The fixed replay inventory additionally reaches the
+  three existing persistent-map contracts while proving its `SMap` insertion
+  freshness. The normalization and combined inventories expose the already
+  classified pointer, expression/level, persistent-array/map, and syntax
+  contracts inherited from their ordinary producer evidence. All four public
+  roots have exact compile-time manifests; Track P/T2 must remove or narrowly
+  justify these inherited dependencies before release.
 - **Upstream issue/PR:** TBD; submit with or immediately after the staged
   inductive-semantics series.
 - **Removal condition:** upstream has a non-vacuous inductive alignment with
@@ -352,7 +368,7 @@ to the replacement.
   K-target and empty/singleton extensions are pushed at `jcb/formalization`)
 - **Commit:** introduced and integrated in `472a6f0`; K-target retention is
   extended through `41e1126b`, with zero-/one-constructor coverage through
-  `0c6b178c` and the current L4L-06C closure
+  `0c6b178c`, `df58a3a0`, and the current L4L-07 closure
 - **Delta:** add dependent `VInductDecl.Checked`, normalized constructor and
   recursive-argument records, and the computational `checked?` analyzer.
   Define public Stage-3 acceptance as descriptor existence. Route recursor/rule

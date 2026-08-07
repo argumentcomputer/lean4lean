@@ -449,4 +449,23 @@ example : singletonNegativeRows.length = 32 := rfl
 
 #guard singletonNegativeRows.all (·.rejected)
 
+/-! ## Exact trust manifests for the public matrix roots -/
+
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.singletonKernelRows' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms singletonKernelRows
+
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.singletonNegativeRows' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Level.hasMVar_eq]
+-/
+#guard_msgs in
+#print axioms singletonNegativeRows
+
 end Lean4Lean.InductiveReplayFixtures

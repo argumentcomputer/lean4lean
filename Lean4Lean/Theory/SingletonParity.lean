@@ -165,4 +165,21 @@ example : singletonPositiveArtifacts.map (·.typeName) =
       ``Eq, ``HEq, ``Fin, ``Vector, ``Acc] := rfl
 example : singletonNormalizationArtifacts.length = 5 := rfl
 
+/-!
+The inventory roots are trust-sensitive: pin their exact logical closure so
+later fixture refactors cannot silently import a broader proof surface.
+-/
+
+/--
+info: 'Lean4Lean.InductiveFixtures.singletonPositiveArtifacts' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms singletonPositiveArtifacts
+
+/--
+info: 'Lean4Lean.InductiveFixtures.singletonNormalizationArtifacts' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms singletonNormalizationArtifacts
+
 end Lean4Lean.InductiveFixtures

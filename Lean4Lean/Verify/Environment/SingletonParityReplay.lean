@@ -2704,8 +2704,104 @@ example : singletonFixedReplays.map (·.source) =
 example : singletonNormalizationReplays.map (·.label) =
     singletonNormalizationArtifacts.map (·.label) := rfl
 
+example : singletonNormalizationReplays.map (·.source) =
+    singletonNormalizationArtifacts.map (·.source) := rfl
+
+example : singletonReplayMatrix.map (·.source) =
+    (singletonPositiveArtifacts ++ singletonNormalizationArtifacts).map
+      (·.source) := rfl
+
 example : singletonFixedReplays.length = 14 := rfl
 example : singletonNormalizationReplays.length = 5 := rfl
 example : singletonReplayMatrix.length = 19 := rfl
+
+/-! ## Exact trust manifests for the public replay seam -/
+
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.SingletonReplayArtifact.outputOrdered' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms SingletonReplayArtifact.outputOrdered
+
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.singletonFixedReplays' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ Quot.sound,
+ PersistentHashMap.findAux_isSome,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms singletonFixedReplays
+
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.singletonNormalizationReplays' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms singletonNormalizationReplays
+
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.singletonReplayMatrix' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms singletonReplayMatrix
 
 end Lean4Lean.InductiveReplayFixtures
