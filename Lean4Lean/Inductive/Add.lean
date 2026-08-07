@@ -1673,6 +1673,16 @@ structure CandidateFamily (source : InductiveType) where
   constructors :
     CandidateList CandidateConstructor source.ctors
 
+/-- Project the pre-family candidate spine from a complete dependent family
+candidate list without erasing source indices or using a parallel list. -/
+def CandidateList.familyTypes :
+    {sources : List InductiveType} →
+      CandidateList CandidateFamily sources →
+      CandidateList CandidateFamilyType sources
+  | [], .nil => .nil
+  | _ :: _, .cons family families =>
+    .cons family.familyType families.familyTypes
+
 def CandidateFamily.view (candidate : CandidateFamily source) : InductiveType :=
   { source with
     type := candidate.familyType.type.view

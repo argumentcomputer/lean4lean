@@ -241,6 +241,17 @@ def blockRecArgs (U np : Nat) (headers : List FamilyHeader)
     | some r => r :: blockRecArgs U np headers names Bs (j+1)
     | none => blockRecArgs U np headers names Bs (j+1)
 
+/-- Positional mutual recursive classification for every constructor field.
+Unlike `blockRecArgs`, this list retains `none` entries, giving semantic
+consumers an exact field-by-field alignment without rerunning the analyzer. -/
+def blockRecArgsAt (U np : Nat) (headers : List FamilyHeader)
+    (names : List Name) : List VExpr → (j : Nat := 0) →
+      List (Option RecArg)
+  | [], _ => []
+  | B :: Bs, j =>
+    blockRecArg? U np headers names j B ::
+      blockRecArgsAt U np headers names Bs (j + 1)
+
 /-- A mutual constructor field is either a positive recursive target of some
 family in the block or is free of every block family. -/
 def blockStage3Field (U np : Nat) (headers : List FamilyHeader)
@@ -290,6 +301,13 @@ def recArgs (ni : Nat) : List VExpr → (j : Nat := 0) → List RecArg
     match recArg? U T np ni j B with
     | some r => r :: recArgs ni Bs (j+1)
     | none => recArgs ni Bs (j+1)
+
+/-- Positional one-family recursive classification retained for compatibility
+with the block-wide checked-constructor representation. -/
+def recArgsAt (ni : Nat) : List VExpr → (j : Nat := 0) →
+    List (Option RecArg)
+  | [], _ => []
+  | B :: Bs, j => recArg? U T np ni j B :: recArgsAt ni Bs (j + 1)
 
 /-- Positions of the directly recursive fields, with their index
 arguments (`j` counts binders past the parameters). -/
@@ -472,9 +490,10 @@ def blockTypeFormerOK (np : Nat) (names : List Name)
     (ctorFields (VExpr.dropN np ty.type)).all
       (fun e => !e.hasAnyConst names)
 
-/-- Names reserved by a future mutual transaction: all families, then all
-constructors in family/source order, then one recursor per family.  L4L-08A
-only retains this order as checked data; it does not perform the transaction. -/
+/-- Names reserved by the mutual pipeline: all families, then all constructors
+in family/source order, then one recursor per family.  Validation retains this
+order as checked data; the generation transaction remains assigned to
+L4L-08C. -/
 def blockGeneratedNames (types : List VInductiveType) : List Name :=
   types.map (·.name) ++
     types.flatMap (fun ty => ty.ctors.map (·.name)) ++
@@ -485,10 +504,10 @@ def blockNamesOK (types : List VInductiveType) : Bool :=
   decide (blockGeneratedNames types).Nodup
 
 /-- Environment-free structural representation check for one family in a
-mutual block.  It checks raw metadata anatomy and cross-family positivity,
-but deliberately does not claim the environment-sensitive validation,
-normalization, shared-result-universe semantics, or staging assigned to
-L4L-08B. -/
+mutual block.  It checks raw metadata anatomy and cross-family positivity.
+Environment-sensitive normalization, shared-result-universe semantics, and
+staging are supplied separately by `ValidatedBlock.WF` and
+`ValidationCertificate`. -/
 def blockFamilyCore (source : VInductDecl) (params : List VExpr)
     (owner : Nat) (ty : VInductiveType) : Bool :=
   let names := familyNames source.types
@@ -582,8 +601,8 @@ def Normalization.identity (source : VInductDecl) : Normalization source where
 /-- Semantic validity of a one-family normalization view. The family type is
 definitionally equal in the input environment; constructor types are
 definitionally equal after the raw family constant has been introduced, which
-matches the staging of the kernel's inductive check. I3 will generalize the
-single family insertion to a block insertion. -/
+matches the staging of the kernel's inductive check. `Normalization.BlockWF`
+is the arbitrary-block counterpart. -/
 def Normalization.WF {source : VInductDecl} (norm : Normalization source)
     (env : VEnv) : Prop :=
   ∃ raw view,
@@ -594,6 +613,35 @@ def Normalization.WF {source : VInductDecl} (norm : Normalization source)
         (fun rawCtor viewCtor =>
           envT.IsDefEqU source.uvars [] rawCtor.type viewCtor.type)
         raw.ctors view.ctors
+
+/-- Stage every raw family constant, in source order, without adding any
+constructors, recursors, or reduction rules.  This is the Theory image of the
+environment used by Lean between `declareInductiveTypes` and
+`checkConstructors`; it is deliberately validation-only. -/
+def _root_.Lean4Lean.VEnv.stageInductiveTypes (env : VEnv)
+    (types : List VInductiveType) : Option VEnv :=
+  types.foldlM (fun env type =>
+    env.addConst type.name type.toVConstant) env
+
+/-- Semantic validity of a normalization view for an arbitrary mutual block.
+
+Every family type is compared in the common input environment.  The exact raw
+family list is then staged as one source-ordered fold, and every constructor
+comparison is performed in the resulting shared environment.  The nested
+`Forall₂` relations retain family and constructor order and cannot truncate a
+reordered or shorter view. -/
+def Normalization.BlockWF {source : VInductDecl}
+    (norm : Normalization source) (env blockEnv : VEnv) : Prop :=
+  env.stageInductiveTypes source.types = some blockEnv ∧
+    List.Forall₂
+      (fun raw view =>
+        env.IsDefEqU source.uvars [] raw.type view.type ∧
+          List.Forall₂
+            (fun rawCtor viewCtor =>
+              blockEnv.IsDefEqU source.uvars []
+                rawCtor.type viewCtor.type)
+            raw.ctors view.ctors)
+      source.types norm.view.types
 
 /-- Whether the recursor may eliminate into a fresh universe or is confined
 to `Prop`. -/
@@ -661,6 +709,7 @@ structure CheckedCtor where
   value : VConstVal
   fields : List VExpr
   recursive : List RecArg
+  recursiveAt : List (Option RecArg)
   resultIndices : List VExpr
 
 def CheckedCtor.ofDirect (U : Nat) (T : Name) (np ni : Nat)
@@ -668,6 +717,7 @@ def CheckedCtor.ofDirect (U : Nat) (T : Name) (np ni : Nat)
   value := c
   fields := ctorFields (VExpr.dropN np c.type)
   recursive := recArgs U T np ni (ctorFields (VExpr.dropN np c.type))
+  recursiveAt := recArgsAt U T np ni (ctorFields (VExpr.dropN np c.type))
   resultIndices := recFieldIdxs np (VExpr.resultOf (VExpr.dropN np c.type))
 
 /-- Analyze one constructor against the complete source-ordered family block.
@@ -678,6 +728,9 @@ def CheckedCtor.ofBlock (source : VInductDecl)
   value := c
   fields := ctorFields (VExpr.dropN source.nparams c.type)
   recursive := blockRecArgs source.uvars source.nparams
+    (familyHeaders source.nparams source.types) (familyNames source.types)
+    (ctorFields (VExpr.dropN source.nparams c.type))
+  recursiveAt := blockRecArgsAt source.uvars source.nparams
     (familyHeaders source.nparams source.types) (familyNames source.types)
     (ctorFields (VExpr.dropN source.nparams c.type))
   resultIndices := recFieldIdxs source.nparams
@@ -870,11 +923,54 @@ def checkedBlock? (source : VInductDecl) : Option source.CheckedBlock :=
     else none
   else none
 
+/-- Analyze the normalized view of an arbitrary source block.  The
+`Normalization` index fixes every family and constructor header while the
+dependent `CheckedBlock` fixes the complete normalized family order. -/
+def Normalization.checkedBlock? {source : VInductDecl}
+    (norm : Normalization source) : Option norm.view.CheckedBlock :=
+  norm.view.checkedBlock?
+
+/-- One accepted raw/view mutual block.  Unlike the legacy
+`NormalizedChecked`, this type performs no singleton projection and exposes no
+generation operation. -/
+structure NormalizedCheckedBlock (source : VInductDecl) where
+  normalization : Normalization source
+  checked : normalization.view.CheckedBlock
+  checked_eq : normalization.checkedBlock? = some checked
+
+/-- Analyze one normalization boundary and retain the exact dependent block
+descriptor that accepted its view. -/
+def Normalization.checkBlock? {source : VInductDecl}
+    (norm : Normalization source) : Option (NormalizedCheckedBlock source) :=
+  match hchecked : norm.checkedBlock? with
+  | some checked => some ⟨norm, checked, hchecked⟩
+  | none => none
+
+/-- Construct and analyze a raw/view mutual normalization in one
+computational transaction. -/
+def normalizedCheckedBlock? (source view : VInductDecl) :
+    Option (NormalizedCheckedBlock source) := do
+  let norm ← normalization? source view
+  norm.checkBlock?
+
+/-- Compatibility analyzer for a block already in analyzer normal form. -/
+def identityCheckedBlock? (source : VInductDecl) :
+    Option (NormalizedCheckedBlock source) :=
+  (Normalization.identity source).checkBlock?
+
+/-- The validator-owned shared result universe paired with one exact checked
+normalization view.  Universe equality is semantic (`VLevel.Equiv`) and is
+therefore certified by `ValidatedBlock.WF`, not guessed by the structural
+analyzer. -/
+structure ValidatedBlock (source : VInductDecl) where
+  block : NormalizedCheckedBlock source
+  resultLevel : VLevel
+
 /-- Data-bearing compatibility result for the existing one-family generation
-path.  `CheckedBlock` is the block-wide representation analysis; this legacy
-singleton projection remains live until mutual validation and generation are
-added in L4L-08B/C.  The descriptor is dependent on its source declaration,
-so it cannot silently describe a different block. -/
+path.  `CheckedBlock` and `ValidatedBlock` provide block-wide analysis and
+validation; this legacy singleton projection remains live until mutual
+generation is added in L4L-08C.  The descriptor is dependent on its source
+declaration, so it cannot silently describe a different block. -/
 structure Checked (source : VInductDecl) where
   type : VInductiveType
   types_eq : source.types = [type]
@@ -1931,6 +2027,132 @@ def RecArg.WF (r : RecArg) (env : VEnv) (l : VLevel) (Is : List VExpr)
     (VExpr.forallN (VExpr.liftTelN (r.fieldIndex + r.binders.length) Is 0)
       (.sort l))
     r.indices (.sort l)
+
+/-- Semantic well-formedness of every constructor field in a mutual block.
+
+Recursive fields may end in any source-indexed family and may sit below a Pi
+telescope.  Their target ordinal selects the corresponding index telescope
+from `familyIndices`.  A non-recursive field must be a block-free type in the
+pre-family environment and obey the common result-universe bound. -/
+def blockFieldsWF (source : VInductDecl) (env : VEnv)
+    (resultLevel : VLevel) (familyIndices : List (List VExpr)) :
+    List VExpr → Nat → List VExpr → Prop
+  | _, _, [] => True
+  | Γ, j, B :: Bs =>
+    (match blockRecArg? source.uvars source.nparams
+        (familyHeaders source.nparams source.types)
+        (familyNames source.types) j B with
+      | some recursive =>
+        match familyIndices[recursive.targetType]? with
+        | some indices =>
+          recursive.WF source.uvars env resultLevel indices Γ
+        | none => False
+      | none =>
+        ∃ u, env.HasType source.uvars Γ B (.sort u) ∧
+          (resultLevel = .zero ∨ u ≤ resultLevel)) ∧
+      blockFieldsWF source env resultLevel familyIndices
+        (B :: Γ) (j + 1) Bs
+
+/-- Interpret the analyzer-retained positional classifications rather than
+recomputing recursive recognition from field syntax.  The list lengths and
+field indices are checked in the proposition, while each recursive target
+selects its exact source-ordered family index telescope. -/
+def checkedBlockFieldsWF (env : VEnv) (U : Nat)
+    (resultLevel : VLevel) (familyIndices : List (List VExpr)) :
+    List VExpr → List (Option RecArg) → List VExpr → Nat → Prop
+  | [], [], _, _ => True
+  | B :: Bs, classification :: classifications, Γ, j =>
+    (match classification with
+      | some recursive =>
+        recursive.fieldIndex = j ∧
+          match familyIndices[recursive.targetType]? with
+          | some indices => recursive.WF U env resultLevel indices Γ
+          | none => False
+      | none =>
+        ∃ u, env.HasType U Γ B (.sort u) ∧
+          (resultLevel = .zero ∨ u ≤ resultLevel)) ∧
+      checkedBlockFieldsWF env U resultLevel familyIndices
+        Bs classifications (B :: Γ) (j + 1)
+  | _, _, _, _ => False
+
+/-- Interpret a dependent source-ordered family spine at one shared result
+universe.  Family formers and the block-free portions of constructor fields
+are interpreted in the common pre-family environment.  Recursive targets are
+reduced to their selected family index telescopes, so this layer does not
+pretend that generated constants or recursors already exist. -/
+def CheckedFamilies.WF {source : VInductDecl} {params : List VExpr}
+    {ordinal : Nat} {types : List VInductiveType}
+    (families : CheckedFamilies source params ordinal types)
+    (env : VEnv) (resultLevel : VLevel)
+    (familyIndices : List (List VExpr)) : Prop :=
+  match families with
+  | .nil => True
+  | .cons head tail =>
+    head.resultLevel ≈ resultLevel ∧
+      VEnv.OnTel env source.uvars [] (params ++ head.indices) ∧
+      (∀ constructor ∈ head.constructors,
+        blockFieldsWF source env resultLevel familyIndices
+            params.reverse 0 constructor.fields ∧
+          env.SpineWF source.uvars
+            (constructor.fields.reverse ++ params.reverse)
+            (VExpr.forallN
+              (VExpr.liftTelN constructor.fields.length head.indices 0)
+              (.sort resultLevel))
+            constructor.resultIndices (.sort resultLevel)) ∧
+      tail.WF env resultLevel familyIndices
+
+/-- Erased semantic fold over the exact projections of a dependent checked
+family spine.  `CheckedBlock.WF` uses this presentation so concrete checked
+descriptors obtained by computation reduce through their public projections
+without exposing proof fields stored inside `Option.get`. -/
+def checkedFamilyListsWF (source : VInductDecl) (params : List VExpr)
+    (env : VEnv) (resultLevel : VLevel)
+    (familyIndices : List (List VExpr)) :
+    List VLevel → List (List VExpr) → List (List CheckedCtor) → Prop
+  | [], [], [] => True
+  | level :: levels, indices :: indicesTail,
+      constructors :: constructorsTail =>
+    level ≈ resultLevel ∧
+      VEnv.OnTel env source.uvars [] (params ++ indices) ∧
+      (∀ constructor ∈ constructors,
+        checkedBlockFieldsWF env source.uvars resultLevel familyIndices
+            constructor.fields constructor.recursiveAt params.reverse 0 ∧
+          env.SpineWF source.uvars
+            (constructor.fields.reverse ++ params.reverse)
+            (VExpr.forallN
+              (VExpr.liftTelN constructor.fields.length indices 0)
+              (.sort resultLevel))
+            constructor.resultIndices (.sort resultLevel)) ∧
+      checkedFamilyListsWF source params env resultLevel familyIndices
+        levels indicesTail constructorsTail
+  | _, _, _ => False
+
+/-- Environment-indexed semantics of a structurally checked mutual block.
+The common `resultLevel` is explicit and every family result is required to be
+semantically equivalent to it. -/
+def CheckedBlock.WF {source : VInductDecl}
+    (checked : source.CheckedBlock) (env : VEnv)
+    (resultLevel : VLevel) : Prop :=
+  checkedFamilyListsWF source checked.params env resultLevel
+    checked.families.indices checked.families.resultLevels
+    checked.families.indices checked.families.constructors
+
+/-- Complete Theory semantics of one validator-owned mutual normalization.
+Normalization compares raw family types before staging and raw constructor
+types after all-family staging; the checked view supplies the block-wide
+strict-positivity and result-spine interpretation. -/
+def ValidatedBlock.WF {source : VInductDecl}
+    (validated : ValidatedBlock source) (env blockEnv : VEnv) : Prop :=
+  validated.block.normalization.BlockWF env blockEnv ∧
+    validated.block.checked.WF env validated.resultLevel
+
+/-- Consumer-facing validation-only package.  It deliberately contains no
+generated motive, recursor, rule, or environment insertion beyond the
+temporary all-family validation stage. -/
+structure ValidationCertificate (source : VInductDecl) (env : VEnv) where
+  validated : ValidatedBlock source
+  blockEnv : VEnv
+  wf : validated.WF env blockEnv
 
 /-- Semantic well-formedness of constructor fields over the pre-environment.
 Direct recursive fields retain the Stage-3 spine contract. A recursive Pi

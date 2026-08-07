@@ -92,6 +92,26 @@ inductive ConstructorPositivityTrace
 
 namespace ConstructorPositivityTrace
 
+/-- Observable recursive-target data retained by the positivity traversal.
+`binderDepth` counts positive Pi domains traversed before the terminal family
+application. -/
+structure Target where
+  familyIdx : Nat
+  binderDepth : Nat
+  deriving DecidableEq, Repr
+
+/-- Erase proof fields while retaining the exact sibling-family ordinal and
+positive-Pi depth selected by the executable positivity run. -/
+def target? :
+    ConstructorPositivityTrace stats ctor argIdx context source fuel →
+      Option Target
+  | .absent _ _ _ _ _ _ => none
+  | .forallE _ _ _ _ _ _ _ _ _ _ tail =>
+      tail.target?.map fun target =>
+        { target with binderDepth := target.binderDepth + 1 }
+  | .target _ _ _ _ familyIdx _ _ _ _ =>
+      some { familyIdx, binderDepth := 0 }
+
 /-- Erasing a positivity trace replays the exact executable traversal. -/
 theorem run
     (trace : ConstructorPositivityTrace stats ctor argIdx context source fuel) :
@@ -254,6 +274,15 @@ inductive ConstructorPositivityModeTrace
 
 namespace ConstructorPositivityModeTrace
 
+/-- Observable recursive target for the exact safe/unsafe positivity branch.
+Unsafe validation deliberately exposes no positivity claim. -/
+def target? :
+    ConstructorPositivityModeTrace
+      stats isUnsafe ctor argIdx context source →
+      Option ConstructorPositivityTrace.Target
+  | .skipped _ => none
+  | .safe _ trace => trace.target?
+
 theorem run
     (trace : ConstructorPositivityModeTrace
       stats isUnsafe ctor argIdx context source) :
@@ -384,6 +413,17 @@ inductive ConstructorTypeValidationTrace
         context source argIdx (fuel + 1)
 
 namespace ConstructorTypeValidationTrace
+
+/-- Field-ordered recursive-target observations for one constructor. Parameter
+binders are omitted; every ordinary constructor field contributes one slot. -/
+def targets :
+    ConstructorTypeValidationTrace stats isUnsafe familyIdx ctor
+      context source argIdx fuel →
+      List (Option ConstructorPositivityTrace.Target)
+  | .parameter _ _ _ _ _ _ _ _ _ _ _ _ tail => tail.targets
+  | .ordinary _ _ _ _ _ _ _ _ _ _ _ positivity tail =>
+      positivity.target? :: tail.targets
+  | .terminal _ _ _ _ _ _ => []
 
 /-- Erasing one constructor-type trace replays the exact inner
 `checkConstructorType.loop` execution. -/
@@ -708,6 +748,15 @@ inductive ConstructorListValidationTrace
 
 namespace ConstructorListValidationTrace
 
+/-- Constructor-ordered positivity observations for one family. -/
+def targets :
+    ConstructorListValidationTrace stats isUnsafe familyIdx
+      context seen constructors →
+      List (List (Option ConstructorPositivityTrace.Target))
+  | .nil _ => []
+  | .cons _ _ _ _ _ _ typeTrace tailTrace =>
+      typeTrace.targets :: tailTrace.targets
+
 /-- Execute the source-ordered constructor fold while retaining its exact
 dependent validation trace.  Every stored equation is obtained from the same
 checker call made by `checkConstructorFold`; no semantic premise participates
@@ -1000,6 +1049,153 @@ theorem run
 
 end ConstructorListValidationTrace
 
+/-! ## Arbitrary mutual-block validation owners -/
+
+/-- The exact result selected when the ordinary family validator reaches its
+continuation.  Retaining the reader context matters: later constructor
+validation uses the shared parameters and local declarations installed by
+that very run. -/
+structure FamilyValidationBlockResult where
+  stats : InductiveStats
+  validationContext : Context
+
+/-- Observe the successful continuation of `checkInductiveTypes` without
+changing any validation branch or error. -/
+def observeFamilyValidationBlock (nparams : Nat)
+    (indTypes : List InductiveType) (context : Context) :
+    Except Exception FamilyValidationBlockResult :=
+  checkInductiveTypes nparams indTypes.toArray
+    (fun stats => fun validationContext =>
+      .ok ⟨stats, validationContext⟩) context
+
+/-- Complete retained family-validation run for an arbitrary source-ordered
+block.
+
+`run` is the real validator execution, so every later family has already
+passed the kernel's definitional parameter comparison and result-level
+equivalence phase.  The remaining equations expose the terminal invariants
+which Lean asserts before invoking the continuation. -/
+structure FamilyValidationBlockRun (nparams : Nat)
+    (indTypes : List InductiveType) (context : Context) where
+  result : FamilyValidationBlockResult
+  run : observeFamilyValidationBlock nparams indTypes context = .ok result
+  params_size : result.stats.params.size = nparams
+  nindices_size : result.stats.nindices.size = indTypes.length
+  indConsts_size : result.stats.indConsts.size = indTypes.length
+
+namespace FamilyValidationBlockRun
+
+/-- Execute and retain the ordinary family validator.  The explicit terminal
+checks mirror its internal assertions and make malformed instrumentation fail
+instead of yielding a weaker certificate. -/
+def buildExecution (nparams : Nat) (indTypes : List InductiveType)
+    (context : Context) :
+    Except Exception (FamilyValidationBlockRun nparams indTypes context) :=
+  match hrun : observeFamilyValidationBlock nparams indTypes context with
+  | .error error => .error error
+  | .ok result =>
+    if hparams : result.stats.params.size = nparams then
+      if hnindices : result.stats.nindices.size = indTypes.length then
+        if hconsts : result.stats.indConsts.size = indTypes.length then
+          .ok {
+            result
+            run := hrun
+            params_size := hparams
+            nindices_size := hnindices
+            indConsts_size := hconsts }
+        else .error (.other "family-validation constant-count invariant failed")
+      else .error (.other "family-validation index-count invariant failed")
+    else .error (.other "family-validation parameter-count invariant failed")
+
+/-- Shared parameters selected by the first family and definitionally checked
+against every later family. -/
+def parameters (run : FamilyValidationBlockRun nparams indTypes context) :
+    Array Expr :=
+  run.result.stats.params
+
+/-- Common result universe selected by the first family and equivalence-
+checked against every later family. -/
+def resultLevel (run : FamilyValidationBlockRun nparams indTypes context) :
+    Level :=
+  run.result.stats.resultLevel
+
+end FamilyValidationBlockRun
+
+/-- Source-indexed constructor traces for every family in a block.  The
+natural index advances with the source list, so a trace for one family cannot
+be reused at another family ordinal. -/
+inductive ConstructorBlockValidationTraces
+    (stats : InductiveStats) (isUnsafe : Bool) (context : Context) :
+    Nat → List InductiveType → Type where
+  | nil {familyIdx : Nat} :
+      ConstructorBlockValidationTraces stats isUnsafe context familyIdx []
+  | cons {familyIdx : Nat} {type : InductiveType}
+      {types : List InductiveType}
+      (head : ConstructorListValidationTrace stats isUnsafe familyIdx
+        context {} type.ctors)
+      (tail : ConstructorBlockValidationTraces stats isUnsafe context
+        (familyIdx + 1) types) :
+      ConstructorBlockValidationTraces stats isUnsafe context familyIdx
+        (type :: types)
+
+namespace ConstructorBlockValidationTraces
+
+/-- Family-, constructor-, and field-ordered recursive-target matrix selected
+by the executable arbitrary-block validator. -/
+def targets :
+    ConstructorBlockValidationTraces stats isUnsafe context familyIdx types →
+      List (List (List (Option ConstructorPositivityTrace.Target)))
+  | .nil => []
+  | .cons head tail => head.targets :: tail.targets
+
+/-- Execute each source-indexed list trace in the one shared post-family
+context. -/
+def buildExecution (stats : InductiveStats) (isUnsafe : Bool)
+    (context : Context) :
+    (familyIdx : Nat) → (types : List InductiveType) →
+      Except Exception
+        (ConstructorBlockValidationTraces stats isUnsafe context
+          familyIdx types)
+  | _, [] => .ok .nil
+  | familyIdx, type :: types =>
+    match ConstructorListValidationTrace.buildExecution stats isUnsafe
+        familyIdx context {} type.ctors with
+    | .error error => .error error
+    | .ok head =>
+      match buildExecution stats isUnsafe context (familyIdx + 1) types with
+      | .error error => .error error
+      | .ok tail => .ok (.cons head tail)
+
+end ConstructorBlockValidationTraces
+
+/-- Complete operational constructor-validation owner for an arbitrary
+mutual block.  `run` is the actual block call; `traces` retains every
+family/constructor/field branch, including cross-family target ordinals and
+recursive-Pi paths. -/
+structure ConstructorBlockValidationRun
+    (indTypes : List InductiveType) (stats : InductiveStats)
+    (isUnsafe : Bool) (context : Context) where
+  traces : ConstructorBlockValidationTraces stats isUnsafe context 0 indTypes
+  run : checkConstructors indTypes.toArray stats isUnsafe context = .ok ()
+
+namespace ConstructorBlockValidationRun
+
+/-- Execute the real block validator and retain the exact dependent trace
+hierarchy for that same source list. -/
+def buildExecution (indTypes : List InductiveType)
+    (stats : InductiveStats) (isUnsafe : Bool) (context : Context) :
+    Except Exception
+      (ConstructorBlockValidationRun indTypes stats isUnsafe context) :=
+  match hrun : checkConstructors indTypes.toArray stats isUnsafe context with
+  | .error error => .error error
+  | .ok () =>
+    match ConstructorBlockValidationTraces.buildExecution stats isUnsafe
+        context 0 indTypes with
+    | .error error => .error error
+    | .ok traces => .ok ⟨traces, hrun⟩
+
+end ConstructorBlockValidationRun
+
 /-- The complete retained operational constructor-validation run for one
 singleton family. -/
 structure ConstructorValidationRun
@@ -1075,6 +1271,22 @@ theorem not_nonempty_of_error
   contradiction
 
 end ConstructorValidationRun
+
+/--
+info: 'Lean4Lean.AddInductive.FamilyValidationBlockRun.buildExecution' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms FamilyValidationBlockRun.buildExecution
+
+/--
+info: 'Lean4Lean.AddInductive.ConstructorBlockValidationRun.buildExecution' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms ConstructorBlockValidationRun.buildExecution
 
 /--
 info: 'Lean4Lean.AddInductive.ConstructorListValidationTrace.nonempty_cons_iff_exact_source' depends on axioms: [propext,

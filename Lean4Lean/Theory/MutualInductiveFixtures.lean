@@ -4,12 +4,12 @@ import Lean4Lean.Theory.Meta
 /-!
 # Mutual checked-representation fixtures
 
-L4L-08A stops at the pure `VInductDecl.CheckedBlock` boundary.  These real
-kernel declarations pin shared parameters, per-family indices/results,
-constructor order, and cross-family recursive target ordinals.  The existing
-singleton generation transaction intentionally continues to reject both
-blocks; validation, normalization, recursor generation, and environment
-insertion belong to L4L-08B/C.
+These real kernel declarations pin shared parameters, per-family
+indices/results, constructor order, and cross-family recursive target
+ordinals at the pure `VInductDecl.CheckedBlock` boundary.  The Verify mutual
+fixture supplies their L4L-08B validation and normalization semantics.  The
+existing singleton generation transaction intentionally continues to reject
+both blocks until mutual generation and insertion arrive in L4L-08C.
 -/
 
 namespace Lean4Lean.MutualInductiveFixtures
@@ -25,6 +25,7 @@ mutual
 inductive Tree (α : Type u) : Type u where
   | leaf : α → Tree α
   | node : TreeList α → Tree α
+  | branch : (α → TreeList α) → Tree α
 
 inductive TreeList (α : Type u) : Type u where
   | nil : TreeList α
@@ -37,7 +38,8 @@ def treeType : VInductiveType where
   uvars := 1
   type := vconst(type_of% @Tree).type
   ctors := [⟨vconst(type_of% @Tree.leaf), ``Tree.leaf⟩,
-    ⟨vconst(type_of% @Tree.node), ``Tree.node⟩]
+    ⟨vconst(type_of% @Tree.node), ``Tree.node⟩,
+    ⟨vconst(type_of% @Tree.branch), ``Tree.branch⟩]
 
 def treeListType : VInductiveType where
   name := ``TreeList
@@ -60,15 +62,19 @@ example : treeChecked.families.indices = [[], []] := rfl
 example : treeChecked.families.resultLevels =
     [.succ (.param 0), .succ (.param 0)] := rfl
 example : treeChecked.families.constructorNames =
-    [[``Tree.leaf, ``Tree.node], [``TreeList.nil, ``TreeList.cons]] := rfl
+    [[``Tree.leaf, ``Tree.node, ``Tree.branch],
+      [``TreeList.nil, ``TreeList.cons]] := rfl
 example : treeChecked.families.recursiveTargets =
-    [[[], [1]], [[], [0, 1]]] := rfl
+    [[[], [1], [1]], [[], [0, 1]]] := rfl
 example : treeChecked.names =
-    [``Tree, ``TreeList, ``Tree.leaf, ``Tree.node, ``TreeList.nil,
-      ``TreeList.cons, ``Tree.rec, ``TreeList.rec] := rfl
+    [``Tree, ``TreeList, ``Tree.leaf, ``Tree.node, ``Tree.branch,
+      ``TreeList.nil, ``TreeList.cons, ``Tree.rec, ``TreeList.rec] := rfl
 
 example : treeChecked.families.constructors[0][1].recursive[0].fieldIndex = 0 := rfl
 example : treeChecked.families.constructors[0][1].recursive[0].targetType = 1 := rfl
+example : treeChecked.families.constructors[0][2].recursive[0].fieldIndex = 0 := rfl
+example : treeChecked.families.constructors[0][2].recursive[0].binders.length = 1 := rfl
+example : treeChecked.families.constructors[0][2].recursive[0].targetType = 1 := rfl
 example : treeChecked.families.constructors[1][1].recursive[0].targetType = 0 := rfl
 example : treeChecked.families.constructors[1][1].recursive[1].targetType = 1 := rfl
 

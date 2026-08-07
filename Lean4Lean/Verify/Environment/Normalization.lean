@@ -3002,6 +3002,37 @@ theorem NormalizationRun.wf
       obtain ⟨_, hctor⟩ := h
       exact hctor.isDefEq.toU
 
+/-- Checker-validated normalization for an arbitrary mutual block.
+
+Family equalities are interpreted in the common pre-family environment.  The
+raw family constants are then staged as one exact source-ordered fold, and
+all constructor equalities are interpreted in the resulting shared block
+environment. -/
+structure NormalizationBlockRun {source : VInductDecl}
+    (norm : Normalization source) (env blockEnv : VEnv) where
+  stage : env.stageInductiveTypes source.types = some blockEnv
+  families : List.Forall₂
+    (fun raw view =>
+      (∃ A, TypeChecker.DefEqEvidence env source.uvars []
+        raw.type view.type A) ∧
+      List.Forall₂
+        (fun rawCtor viewCtor =>
+          ∃ A, TypeChecker.DefEqEvidence blockEnv source.uvars []
+            rawCtor.type viewCtor.type A)
+        raw.ctors view.ctors)
+    source.types norm.view.types
+
+/-- The verified checker interpretation discharges the complete Theory
+mutual-normalization contract without a singleton projection. -/
+theorem NormalizationBlockRun.wf
+    (run : NormalizationBlockRun norm env blockEnv) :
+    norm.BlockWF env blockEnv := by
+  refine ⟨run.stage, ?_⟩
+  exact Lean4Lean.List.Forall₂.imp (h := run.families) fun _ _ h => by
+    refine ⟨h.1.choose_spec.isDefEq.toU, ?_⟩
+    exact Lean4Lean.List.Forall₂.imp (h := h.2) fun _ _ hctor =>
+      hctor.choose_spec.isDefEq.toU
+
 /-- One constructor candidate tied to the corresponding raw Theory constant.
 Its expression payload may normalize, but its name, universe arity, and exact
 source position remain fixed. -/
@@ -3187,6 +3218,131 @@ def CandidateConstructorSemanticListRun.roots :
   | .nil => .nil
   | .cons head tail => .cons head.root tail.roots
 
+/-- One family in a mutual normalization candidate.  Its type is interpreted
+in the common pre-family environment, while every constructor is interpreted
+in the single environment obtained after staging the complete raw family
+block. -/
+structure CandidateBlockFamilySemanticRun
+    (env blockEnv : VEnv) (Us : List Name)
+    {source : InductiveType}
+    (candidate : AddInductive.CandidateFamily source)
+    (raw : VInductiveType) where
+  name_eq : source.name = raw.name
+  uvars_eq : raw.uvars = Us.length
+  type : TypeChecker.CandidateExprSemanticRootRun env Us
+    candidate.familyType.type raw.type
+  constructors : CandidateConstructorSemanticListRun blockEnv Us
+    candidate.constructors raw.ctors
+
+/-- Replace only the expression payloads selected by the retained checker
+runs; all family and constructor headers remain raw and source-indexed. -/
+def CandidateBlockFamilySemanticRun.view
+    (run : CandidateBlockFamilySemanticRun env blockEnv Us candidate raw) :
+    VInductiveType :=
+  { raw with
+    type := run.type.view
+    ctors := run.constructors.roots.views }
+
+/-- Exact source-order semantic ownership for every family in an arbitrary
+block.  Both the kernel candidate list and raw Theory list are indices, so
+family reordering and truncation are unrepresentable. -/
+inductive CandidateBlockFamilySemanticListRun
+    (env blockEnv : VEnv) (Us : List Name) :
+    {sources : List InductiveType} →
+      AddInductive.CandidateList AddInductive.CandidateFamily sources →
+      List VInductiveType → Type where
+  | nil : CandidateBlockFamilySemanticListRun env blockEnv Us .nil []
+  | cons
+      (head : CandidateBlockFamilySemanticRun env blockEnv Us candidate raw)
+      (tail : CandidateBlockFamilySemanticListRun env blockEnv Us
+        candidates raws) :
+      CandidateBlockFamilySemanticListRun env blockEnv Us
+        (.cons candidate candidates) (raw :: raws)
+
+/-- Exact normalized family views in source order. -/
+def CandidateBlockFamilySemanticListRun.views :
+    CandidateBlockFamilySemanticListRun env blockEnv Us candidates raws →
+      List VInductiveType
+  | .nil => []
+  | .cons head tail => head.view :: tail.views
+
+/-- Block semantic runs preserve every family and constructor header. -/
+theorem CandidateBlockFamilySemanticListRun.sameHeaders
+    (run : CandidateBlockFamilySemanticListRun env blockEnv Us
+      candidates raws) :
+    sameTypeHeaders raws run.views = true := by
+  induction run with
+  | nil => rfl
+  | cons head tail ih =>
+    simp [CandidateBlockFamilySemanticListRun.views,
+      CandidateBlockFamilySemanticRun.view, sameTypeHeaders,
+      head.constructors.roots.sameHeaders, ih]
+
+/-- Collect the exact family/constructor definitional equalities selected by
+the retained semantic checker hierarchy. -/
+theorem CandidateBlockFamilySemanticListRun.evidence
+    (run : CandidateBlockFamilySemanticListRun env blockEnv Us
+      candidates raws) :
+    List.Forall₂
+      (fun raw view =>
+        (∃ A, TypeChecker.DefEqEvidence env Us.length []
+          raw.type view.type A) ∧
+        List.Forall₂
+          (fun rawCtor viewCtor =>
+            ∃ A, TypeChecker.DefEqEvidence blockEnv Us.length []
+              rawCtor.type viewCtor.type A)
+          raw.ctors view.ctors)
+      raws run.views := by
+  induction run with
+  | nil => exact .nil
+  | cons head tail ih =>
+    exact .cons
+      ⟨head.type.root.evidence, head.constructors.roots.evidence⟩ ih
+
+/-- Complete semantic ownership for an arbitrary normalization candidate.
+The raw staging equation and dependent family list share the same exact raw
+declaration; no independently supplied normalized declaration is accepted. -/
+structure NormalizationCandidateBlockSemanticRun
+    (env blockEnv : VEnv) (Us : List Name)
+    {sources : List InductiveType}
+    (candidate : AddInductive.NormalizationCandidate sources)
+    (rawDecl : VInductDecl) where
+  uvars_eq : rawDecl.uvars = Us.length
+  stage : env.stageInductiveTypes rawDecl.types = some blockEnv
+  families : CandidateBlockFamilySemanticListRun env blockEnv Us
+    candidate.families rawDecl.types
+
+/-- Theory declaration selected by the exact block semantic hierarchy. -/
+def NormalizationCandidateBlockSemanticRun.viewDecl
+    (run : NormalizationCandidateBlockSemanticRun env blockEnv Us
+      candidate rawDecl) : VInductDecl :=
+  { rawDecl with types := run.families.views }
+
+/-- Construct the header-preserving Theory normalization boundary selected by
+the candidate semantic hierarchy. -/
+def NormalizationCandidateBlockSemanticRun.normalization
+    (run : NormalizationCandidateBlockSemanticRun env blockEnv Us
+      candidate rawDecl) : Normalization rawDecl where
+  view := run.viewDecl
+  shape_eq := by
+    simp only [normalizationShape,
+      NormalizationCandidateBlockSemanticRun.viewDecl,
+      beq_self_eq_true, Bool.true_and]
+    exact run.families.sameHeaders
+
+/-- Project the generic verified normalization run for the same raw block and
+shared staged environment. -/
+def NormalizationCandidateBlockSemanticRun.normalizationRun
+    (run : NormalizationCandidateBlockSemanticRun env blockEnv Us
+      candidate rawDecl) :
+    NormalizationBlockRun run.normalization env blockEnv where
+  stage := run.stage
+  families := by
+    simpa only [run.uvars_eq,
+      NormalizationCandidateBlockSemanticRun.normalization,
+      NormalizationCandidateBlockSemanticRun.viewDecl] using
+      run.families.evidence
+
 /-- A singleton-family semantic hierarchy spanning the pre-family candidate,
 the exact raw-family insertion, and every post-family constructor candidate.
 The normalized expression payloads are selected by retained recursive checker
@@ -3290,6 +3446,120 @@ theorem CandidateConstructorSemanticListInput.exists
     obtain ⟨headRun⟩ := head.exists
     obtain ⟨tailRun⟩ := ih
     exact ⟨.cons headRun tailRun⟩
+
+/-- Pre-run semantic evidence for one family in a shared mutual stage.
+Family types use `env`; all constructor types use the same `blockEnv` after
+every raw family has been staged. -/
+structure CandidateBlockFamilySemanticInput
+    (env blockEnv : VEnv) (Us : List Name)
+    {source : InductiveType}
+    (candidate : AddInductive.CandidateFamily source)
+    (raw : VInductiveType) where
+  name_eq : source.name = raw.name
+  uvars_eq : raw.uvars = Us.length
+  type : TypeChecker.CandidateExprSemanticRootInput env Us
+    candidate.familyType.type raw.type
+  constructors : CandidateConstructorSemanticListInput blockEnv Us
+    candidate.constructors raw.ctors
+
+/-- Interpret one family and its complete constructor list without selecting
+a normalized expression at the call site. -/
+theorem CandidateBlockFamilySemanticInput.exists
+    (input : CandidateBlockFamilySemanticInput env blockEnv Us
+      candidate raw) :
+    Nonempty (CandidateBlockFamilySemanticRun env blockEnv Us
+      candidate raw) := by
+  obtain ⟨type⟩ := input.type.exists
+  obtain ⟨constructors⟩ := input.constructors.exists
+  exact ⟨{
+    name_eq := input.name_eq
+    uvars_eq := input.uvars_eq
+    type
+    constructors }⟩
+
+/-- Exact source-order semantic inputs for every family in a mutual block. -/
+inductive CandidateBlockFamilySemanticListInput
+    (env blockEnv : VEnv) (Us : List Name) :
+    {sources : List InductiveType} →
+      AddInductive.CandidateList AddInductive.CandidateFamily sources →
+      List VInductiveType → Type where
+  | nil : CandidateBlockFamilySemanticListInput env blockEnv Us .nil []
+  | cons
+      (head : CandidateBlockFamilySemanticInput env blockEnv Us candidate raw)
+      (tail : CandidateBlockFamilySemanticListInput env blockEnv Us
+        candidates raws) :
+      CandidateBlockFamilySemanticListInput env blockEnv Us
+        (.cons candidate candidates) (raw :: raws)
+
+/-- Interpret every family and constructor input in lockstep. -/
+theorem CandidateBlockFamilySemanticListInput.exists
+    (input : CandidateBlockFamilySemanticListInput env blockEnv Us
+      candidates raws) :
+    Nonempty (CandidateBlockFamilySemanticListRun env blockEnv Us
+      candidates raws) := by
+  induction input with
+  | nil => exact ⟨.nil⟩
+  | cons head tail ih =>
+    obtain ⟨headRun⟩ := head.exists
+    obtain ⟨tailRun⟩ := ih
+    exact ⟨.cons headRun tailRun⟩
+
+/-- Complete verified semantic input for an arbitrary normalization
+candidate.  The exact raw family list owns both the all-family staging fold and
+the dependent family interpretation, ruling out a reordered staging witness. -/
+structure NormalizationCandidateBlockSemanticInput
+    (env blockEnv : VEnv) (Us : List Name)
+    {sources : List InductiveType}
+    (candidate : AddInductive.NormalizationCandidate sources)
+    (rawDecl : VInductDecl) where
+  uvars_eq : rawDecl.uvars = Us.length
+  stage : env.stageInductiveTypes rawDecl.types = some blockEnv
+  families : CandidateBlockFamilySemanticListInput env blockEnv Us
+    candidate.families rawDecl.types
+
+/-- Automatically interpret the complete mutual semantic hierarchy. -/
+theorem NormalizationCandidateBlockSemanticInput.exists
+    (input : NormalizationCandidateBlockSemanticInput env blockEnv Us
+      candidate rawDecl) :
+    Nonempty (NormalizationCandidateBlockSemanticRun env blockEnv Us
+      candidate rawDecl) := by
+  obtain ⟨families⟩ := input.families.exists
+  exact ⟨{
+    uvars_eq := input.uvars_eq
+    stage := input.stage
+    families }⟩
+
+/-- A mutual semantic hierarchy paired with the exact arbitrary-length
+producer traversals that selected the same dependent candidate. -/
+structure ProducedNormalizationCandidateBlockSemanticRun
+    (familyContext constructorContext : AddInductive.Context)
+    (env blockEnv : VEnv) (Us : List Name)
+    {sources : List InductiveType}
+    (candidate : AddInductive.NormalizationCandidate sources)
+    (rawDecl : VInductDecl) where
+  semantic : NormalizationCandidateBlockSemanticRun env blockEnv Us
+    candidate rawDecl
+  familyTypesProduced : AddInductive.CandidateFamilyTypeListProduced
+    familyContext candidate.families.familyTypes
+  familiesProduced : AddInductive.CandidateFamilyListProduced
+    constructorContext candidate.families.familyTypes candidate.families
+
+/-- Combine verified semantic inputs with exact producer provenance for the
+same source-indexed mutual candidate. -/
+theorem NormalizationCandidateBlockSemanticInput.exists_ofProduced
+    (input : NormalizationCandidateBlockSemanticInput env blockEnv Us
+      candidate rawDecl)
+    (familyTypesProduced : AddInductive.CandidateFamilyTypeListProduced
+      familyContext candidate.families.familyTypes)
+    (familiesProduced : AddInductive.CandidateFamilyListProduced
+      constructorContext candidate.families.familyTypes candidate.families) :
+    Nonempty (ProducedNormalizationCandidateBlockSemanticRun
+      familyContext constructorContext env blockEnv Us candidate rawDecl) := by
+  obtain ⟨semantic⟩ := input.exists
+  exact ⟨{
+    semantic
+    familyTypesProduced
+    familiesProduced }⟩
 
 /-- One validated singleton family stage derived from a verified entry
 candidate context and the exact kernel/Theory family insertion.
@@ -6807,6 +7077,238 @@ info: 'Lean4Lean.VInductDecl.StagedNormalizationCandidateSemanticInput.construct
 -/
 #guard_msgs in
 #print axioms StagedNormalizationCandidateSemanticInput.constructorValidation_run
+
+/--
+info: 'Lean4Lean.VInductDecl.NormalizationBlockRun.wf' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms NormalizationBlockRun.wf
+
+/--
+info: 'Lean4Lean.VInductDecl.CandidateBlockFamilySemanticListRun.sameHeaders' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms CandidateBlockFamilySemanticListRun.sameHeaders
+
+/--
+info: 'Lean4Lean.VInductDecl.CandidateBlockFamilySemanticListRun.evidence' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms CandidateBlockFamilySemanticListRun.evidence
+
+/--
+info: 'Lean4Lean.VInductDecl.CandidateBlockFamilySemanticInput.exists' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms CandidateBlockFamilySemanticInput.exists
+
+/--
+info: 'Lean4Lean.VInductDecl.CandidateBlockFamilySemanticListInput.exists' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms CandidateBlockFamilySemanticListInput.exists
+
+/--
+info: 'Lean4Lean.VInductDecl.NormalizationCandidateBlockSemanticInput.exists' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms NormalizationCandidateBlockSemanticInput.exists
+
+/--
+info: 'Lean4Lean.VInductDecl.NormalizationCandidateBlockSemanticInput.exists_ofProduced' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms NormalizationCandidateBlockSemanticInput.exists_ofProduced
+
 
 end VInductDecl
 
