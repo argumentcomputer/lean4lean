@@ -156,14 +156,109 @@ def recFieldIdxs (B : VExpr) : List VExpr := (VExpr.appArgs B []).drop np
 /-- One recursive constructor argument after normalization. `binders` is the
 possibly empty Pi telescope leading to the recursive target. `fieldIndex`
 addresses the constructor field itself, while target indices live under both
-the preceding constructor fields and these binders. `targetType` is reserved
-for the mutual-block index introduced by I3; it is zero in the current
-one-family analyzer. -/
+the preceding constructor fields and these binders. `targetType` is the
+source-ordered family ordinal retained by block analysis; it remains zero in
+the one-family compatibility analyzer. -/
 structure RecArg where
   fieldIndex : Nat
   binders : List VExpr
   targetType : Nat
   indices : List VExpr
+
+/-- Whether an expression mentions any family in a block.  Mutual analysis
+uses one block-wide name set in family formers, recursive-Pi domains, and
+recursive indices; checking only the current family would miss negative
+occurrences of its siblings. -/
+def _root_.Lean4Lean.VExpr.hasAnyConst (names : List Name) (e : VExpr) : Bool :=
+  names.any e.hasConst
+
+/-- The part of a family declaration needed to recognize a recursive target.
+The position of a header in `familyHeaders` is the `RecArg.targetType` stored
+by the block analyzer. -/
+structure FamilyHeader where
+  name : Name
+  indices : Nat
+
+/-- Family headers in declaration order. -/
+def familyHeaders (np : Nat) (types : List VInductiveType) :
+    List FamilyHeader :=
+  types.map fun ty =>
+    ⟨ty.name, (ctorFields (VExpr.dropN np ty.type)).length⟩
+
+/-- Recognize an application of any family in a mutual block.  The returned
+ordinal is its exact position in `headers`; parameter arguments must be the
+shared parameter variables and every index must be free of all block
+families. -/
+def blockTarget? (U np j : Nat) (headers : List FamilyHeader)
+    (names : List Name) (B : VExpr) : Option (Nat × List VExpr) :=
+  let head := B.appHead
+  let args := B.appArgs []
+  let rec loop (target : Nat) : List FamilyHeader →
+      Option (Nat × List VExpr)
+    | [] => none
+    | header :: headers =>
+      if head == .const header.name (VLevel.params U) &&
+          args.length == np + header.indices &&
+          args.take np == VExpr.bvarRevRange j np &&
+          (args.drop np).all fun e => !e.hasAnyConst names then
+        some (target, args.drop np)
+      else
+        loop (target + 1) headers
+  loop 0 headers
+
+/-- Recognize a recursive mutual target below a possibly empty positive Pi
+telescope.  No block family may occur in a Pi domain. -/
+def blockRecTarget? (U np : Nat) (headers : List FamilyHeader)
+    (names : List Name) : Nat → VExpr →
+      Option (List VExpr × Nat × List VExpr)
+  | j, .forallE A rest =>
+    if A.hasAnyConst names then none
+    else
+      match blockRecTarget? U np headers names (j+1) rest with
+      | some (binders, target, indices) =>
+        some (A :: binders, target, indices)
+      | none => none
+  | j, B =>
+    match blockTarget? U np j headers names B with
+    | some (target, indices) => some ([], target, indices)
+    | none => none
+
+/-- Analyze one constructor field against every family in a block. -/
+def blockRecArg? (U np : Nat) (headers : List FamilyHeader)
+    (names : List Name) (j : Nat) (B : VExpr) : Option RecArg :=
+  match blockRecTarget? U np headers names j B with
+  | some (binders, targetType, indices) =>
+    some { fieldIndex := j, binders, targetType, indices }
+  | none => none
+
+/-- Recursive arguments in source field order, with block-relative target
+ordinals. -/
+def blockRecArgs (U np : Nat) (headers : List FamilyHeader)
+    (names : List Name) : List VExpr → (j : Nat := 0) → List RecArg
+  | [], _ => []
+  | B :: Bs, j =>
+    match blockRecArg? U np headers names j B with
+    | some r => r :: blockRecArgs U np headers names Bs (j+1)
+    | none => blockRecArgs U np headers names Bs (j+1)
+
+/-- A mutual constructor field is either a positive recursive target of some
+family in the block or is free of every block family. -/
+def blockStage3Field (U np : Nat) (headers : List FamilyHeader)
+    (names : List Name) (j : Nat) (B : VExpr) : Bool :=
+  (blockRecArg? U np headers names j B).isSome ||
+    !B.hasAnyConst names
+
+/-- Structural mutual constructor shape.  Fields may target any family, but
+the constructor result must target its owning family ordinal. -/
+def blockStage3Ctor (U np : Nat) (headers : List FamilyHeader)
+    (names : List Name) (owner : Nat) : Nat → VExpr → Bool
+  | j, .forallE B rest =>
+    blockStage3Field U np headers names j B &&
+      blockStage3Ctor U np headers names owner (j+1) rest
+  | j, result =>
+    match blockTarget? U np j headers names result with
+    | some (target, _) => target == owner
+    | none => false
 
 /-- Recognize the kernel's one-family `isRecArg` shape in raw VExpr normal
 form. Pi domains must be free of the family (the local strict-positivity
@@ -357,6 +452,61 @@ def stage3Core : VInductDecl → Bool
     stage3DirectCore U np ty && (namesOK ty && (closedOK ty && levelsOK U ty))
   | _ => false
 
+/-- Family names in exact declaration order. -/
+def familyNames (types : List VInductiveType) : List Name :=
+  types.map (·.name)
+
+/-- The shared parameter telescope selected by the first family.  Empty
+blocks are rejected by `checkedBlock?`; defining this total function keeps the
+dependent traversal itself free of a singleton/nonempty witness. -/
+def blockParams (np : Nat) : List VInductiveType → List VExpr
+  | [] => []
+  | ty :: _ => VExpr.telN np ty.type
+
+/-- A family former in a mutual block is checked before any family constant
+is staged, so every parameter and index domain must be free of every family
+in the block. -/
+def blockTypeFormerOK (np : Nat) (names : List Name)
+    (ty : VInductiveType) : Bool :=
+  (VExpr.telN np ty.type).all (fun e => !e.hasAnyConst names) &&
+    (ctorFields (VExpr.dropN np ty.type)).all
+      (fun e => !e.hasAnyConst names)
+
+/-- Names reserved by a future mutual transaction: all families, then all
+constructors in family/source order, then one recursor per family.  L4L-08A
+only retains this order as checked data; it does not perform the transaction. -/
+def blockGeneratedNames (types : List VInductiveType) : List Name :=
+  types.map (·.name) ++
+    types.flatMap (fun ty => ty.ctors.map (·.name)) ++
+    types.map (fun ty => .str ty.name "rec")
+
+/-- Block-wide duplicate/collision check for all future generated names. -/
+def blockNamesOK (types : List VInductiveType) : Bool :=
+  decide (blockGeneratedNames types).Nodup
+
+/-- Environment-free structural representation check for one family in a
+mutual block.  It checks raw metadata anatomy and cross-family positivity,
+but deliberately does not claim the environment-sensitive validation,
+normalization, shared-result-universe semantics, or staging assigned to
+L4L-08B. -/
+def blockFamilyCore (source : VInductDecl) (params : List VExpr)
+    (owner : Nat) (ty : VInductiveType) : Bool :=
+  let names := familyNames source.types
+  let headers := familyHeaders source.nparams source.types
+  ty.uvars == source.uvars &&
+    params.length == source.nparams &&
+    VExpr.telN source.nparams ty.type == params &&
+    (match VExpr.resultOf (VExpr.dropN source.nparams ty.type) with
+      | .sort l => decide (l.WF source.uvars)
+      | _ => false) &&
+    blockTypeFormerOK source.nparams names ty &&
+    closedOK ty && levelsOK source.uvars ty &&
+    ty.ctors.all fun c =>
+      c.uvars == source.uvars &&
+        VExpr.telN source.nparams c.type == params &&
+        blockStage3Ctor source.uvars source.nparams headers names owner 0
+          (VExpr.dropN source.nparams c.type)
+
 /-- Constructor identities retained across normalization. Types may change by
 WHNF/definitional equality, but names, universe arities, order, and count may
 not. -/
@@ -520,11 +670,211 @@ def CheckedCtor.ofDirect (U : Nat) (T : Name) (np ni : Nat)
   recursive := recArgs U T np ni (ctorFields (VExpr.dropN np c.type))
   resultIndices := recFieldIdxs np (VExpr.resultOf (VExpr.dropN np c.type))
 
-/-- Data-bearing result of the shared one-family analysis. The descriptor is
-dependent on its source declaration, so it cannot silently describe a
-different block. Its normalized fields are consumed by generation, proofs,
-fixtures, and Verify alignment as I2 replaces the remaining duplicated
-analysis. -/
+/-- Analyze one constructor against the complete source-ordered family block.
+Unlike `ofDirect`, recursive descriptors retain the ordinal of a sibling
+target instead of forcing `targetType := 0`. -/
+def CheckedCtor.ofBlock (source : VInductDecl)
+    (c : VConstVal) : CheckedCtor where
+  value := c
+  fields := ctorFields (VExpr.dropN source.nparams c.type)
+  recursive := blockRecArgs source.uvars source.nparams
+    (familyHeaders source.nparams source.types) (familyNames source.types)
+    (ctorFields (VExpr.dropN source.nparams c.type))
+  resultIndices := recFieldIdxs source.nparams
+    (VExpr.resultOf (VExpr.dropN source.nparams c.type))
+
+/-- Checked representation of one family at its exact block ordinal.  The
+family itself is a type index rather than a replaceable field; this prevents a
+descriptor from being reused for another position or declaration. -/
+structure CheckedFamily (source : VInductDecl) (params : List VExpr)
+    (ordinal : Nat) (type : VInductiveType) where
+  params_eq : VExpr.telN source.nparams type.type = params
+  indices : List VExpr
+  indices_eq : indices = ctorFields (VExpr.dropN source.nparams type.type)
+  resultLevel : VLevel
+  result_eq : VExpr.resultOf (VExpr.dropN source.nparams type.type) =
+    .sort resultLevel
+  constructors : List CheckedCtor
+  constructors_eq : constructors = type.ctors.map (CheckedCtor.ofBlock source)
+  accepted : blockFamilyCore source params ordinal type = true
+
+/-- Recover the source family indexing a checked family. -/
+def CheckedFamily.value {source : VInductDecl} {params : List VExpr}
+    {ordinal : Nat} {type : VInductiveType}
+    (_ : CheckedFamily source params ordinal type) : VInductiveType :=
+  type
+
+/-- Recover the block-relative ordinal indexing a checked family. -/
+def CheckedFamily.ordinal {source : VInductDecl} {params : List VExpr}
+    {ordinal : Nat} {type : VInductiveType}
+    (_ : CheckedFamily source params ordinal type) : Nat :=
+  ordinal
+
+/-- A genuinely dependent family spine.  Its list index is the exact suffix
+of `source.types`, and its natural-number index is the ordinal of that
+suffix's head.  Consequently neither family order nor recursive-target
+numbering is represented by an unchecked parallel list. -/
+inductive CheckedFamilies (source : VInductDecl) (params : List VExpr) :
+    Nat → List VInductiveType → Type where
+  | nil {ordinal : Nat} : CheckedFamilies source params ordinal []
+  | cons {ordinal : Nat} {type : VInductiveType}
+      {types : List VInductiveType}
+      (head : CheckedFamily source params ordinal type)
+      (tail : CheckedFamilies source params (ordinal + 1) types) :
+      CheckedFamilies source params ordinal (type :: types)
+
+namespace CheckedFamilies
+
+/-- Erase only the dependent evidence, retaining exact family source order. -/
+def values {source : VInductDecl} {params : List VExpr} :
+    {ordinal : Nat} → {types : List VInductiveType} →
+      CheckedFamilies source params ordinal types → List VInductiveType
+  | _, _, .nil => []
+  | _, _, .cons head tail => head.value :: values tail
+
+/-- Erasing a dependent family spine recovers its exact source-list index. -/
+@[simp] theorem values_eq {source : VInductDecl} {params : List VExpr}
+    {ordinal : Nat} {types : List VInductiveType}
+    (families : CheckedFamilies source params ordinal types) :
+    families.values = types := by
+  induction families with
+  | nil => rfl
+  | cons head tail ih =>
+    simp only [values, CheckedFamily.value]
+    rw [ih]
+
+/-- Family ordinals in the same order as `values`. -/
+def ordinals {source : VInductDecl} {params : List VExpr} :
+    {ordinal : Nat} → {types : List VInductiveType} →
+      CheckedFamilies source params ordinal types → List Nat
+  | _, _, .nil => []
+  | _, _, .cons head tail => head.ordinal :: ordinals tail
+
+/-- Per-family index telescopes in declaration order. -/
+def indices {source : VInductDecl} {params : List VExpr} :
+    {ordinal : Nat} → {types : List VInductiveType} →
+      CheckedFamilies source params ordinal types → List (List VExpr)
+  | _, _, .nil => []
+  | _, _, .cons head tail => head.indices :: indices tail
+
+/-- Per-family result levels in declaration order. -/
+def resultLevels {source : VInductDecl} {params : List VExpr} :
+    {ordinal : Nat} → {types : List VInductiveType} →
+      CheckedFamilies source params ordinal types → List VLevel
+  | _, _, .nil => []
+  | _, _, .cons head tail => head.resultLevel :: resultLevels tail
+
+/-- Ordered constructor descriptors, grouped by source family. -/
+def constructors {source : VInductDecl} {params : List VExpr} :
+    {ordinal : Nat} → {types : List VInductiveType} →
+      CheckedFamilies source params ordinal types → List (List CheckedCtor)
+  | _, _, .nil => []
+  | _, _, .cons head tail => head.constructors :: constructors tail
+
+/-- Family names projected from the dependent source spine. -/
+def names {source : VInductDecl} {params : List VExpr}
+    {ordinal : Nat} {types : List VInductiveType}
+    (families : CheckedFamilies source params ordinal types) : List Name :=
+  families.values.map (·.name)
+
+/-- Constructor names retain both family order and within-family order. -/
+def constructorNames {source : VInductDecl} {params : List VExpr}
+    {ordinal : Nat} {types : List VInductiveType}
+    (families : CheckedFamilies source params ordinal types) :
+    List (List Name) :=
+  families.constructors.map fun constructors =>
+    constructors.map (·.value.name)
+
+/-- Recursive target ordinals retain family, constructor, and field order. -/
+def recursiveTargets {source : VInductDecl} {params : List VExpr}
+    {ordinal : Nat} {types : List VInductiveType}
+    (families : CheckedFamilies source params ordinal types) :
+    List (List (List Nat)) :=
+  families.constructors.map fun constructors =>
+    constructors.map fun constructor =>
+      constructor.recursive.map (·.targetType)
+
+end CheckedFamilies
+
+/-- Check one family while retaining every computed representation component.
+This is a pure structural pass; no environment or generated constant is an
+input. -/
+def checkedFamily? (source : VInductDecl) (params : List VExpr)
+    (ordinal : Nat) (type : VInductiveType) :
+    Option (CheckedFamily source params ordinal type) :=
+  let indices := ctorFields (VExpr.dropN source.nparams type.type)
+  match hresult : VExpr.resultOf (VExpr.dropN source.nparams type.type) with
+  | .sort resultLevel =>
+    if hparams : VExpr.telN source.nparams type.type = params then
+      if haccepted : blockFamilyCore source params ordinal type then
+        some {
+          params_eq := hparams
+          indices
+          indices_eq := rfl
+          resultLevel
+          result_eq := hresult
+          constructors := type.ctors.map (CheckedCtor.ofBlock source)
+          constructors_eq := rfl
+          accepted := haccepted }
+      else none
+    else none
+  | _ => none
+
+/-- Analyze an arbitrary source-ordered family list into the dependent spine.
+The ordinal advances together with the list index. -/
+def checkedFamilies? (source : VInductDecl) (params : List VExpr) :
+    (ordinal : Nat) → (types : List VInductiveType) →
+      Option (CheckedFamilies source params ordinal types)
+  | _, [] => some .nil
+  | ordinal, type :: types => do
+    let head ← checkedFamily? source params ordinal type
+    let tail ← checkedFamilies? source params (ordinal + 1) types
+    return .cons head tail
+
+/-- Source-indexed checked representation of a complete inductive block.
+Shared parameters are stored once; every per-family component lives in the
+dependent `families` spine indexed by `source.types` itself.  This is the
+L4L-08A analysis boundary and intentionally has no generation or insertion
+projection. -/
+structure CheckedBlock (source : VInductDecl) where
+  params : List VExpr
+  params_eq : params = blockParams source.nparams source.types
+  params_length : params.length = source.nparams
+  families : CheckedFamilies source params 0 source.types
+  nonempty : source.types.isEmpty = false
+  names : List Name
+  names_eq : names = blockGeneratedNames source.types
+  names_nodup : names.Nodup
+
+/-- Analyze a complete block without singleton destructuring.  Empty blocks,
+inconsistent raw parameter surfaces, malformed families/constructors, and
+block-wide generated-name collisions are rejected before a descriptor is
+returned. -/
+def checkedBlock? (source : VInductDecl) : Option source.CheckedBlock :=
+  let params := blockParams source.nparams source.types
+  if hnonempty : source.types.isEmpty = false then
+    if hparams : params.length = source.nparams then
+      if hnames : (blockGeneratedNames source.types).Nodup then
+        match checkedFamilies? source params 0 source.types with
+        | some families => some {
+            params
+            params_eq := rfl
+            params_length := hparams
+            families
+            nonempty := hnonempty
+            names := blockGeneratedNames source.types
+            names_eq := rfl
+            names_nodup := hnames }
+        | none => none
+      else none
+    else none
+  else none
+
+/-- Data-bearing compatibility result for the existing one-family generation
+path.  `CheckedBlock` is the block-wide representation analysis; this legacy
+singleton projection remains live until mutual validation and generation are
+added in L4L-08B/C.  The descriptor is dependent on its source declaration,
+so it cannot silently describe a different block. -/
 structure Checked (source : VInductDecl) where
   type : VInductiveType
   types_eq : source.types = [type]

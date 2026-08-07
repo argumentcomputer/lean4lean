@@ -67,12 +67,12 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-08A active**; L4L-07 and everything above it are complete and pruned from §5; everything below L4L-08A is queued |
-| Current formalization source | L4L-07 closure in this checkpoint, built on the elimination/K/edge checkpoints through `df58a3a0`, the integrated parity matrices `bb39cb2a`/`cc132cdd`, and the complete fixed-family replay `fefb93fe`; pushed through `fefb93fe` at `jcb/formalization`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
+| Ladder position | **L4L-08B active**; L4L-08A and everything above it are complete and pruned from §5; everything below L4L-08B is queued |
+| Current formalization source | L4L-08A mutual checked-representation closure in this checkpoint, built on the complete L4L-07 singleton checkpoint `9910e14e`; pushed through `9910e14e` at `jcb/formalization`, with this checkpoint and publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 20 live sorries and 29 custom-axiom declarations, both pinned by exact audits |
-| Gates | the full §6 gate is green on the L4L-07 closure source, including the focused and aggregate Lean builds, Nix build, all-system flake evaluation, all six native flake checks, sorry-frontier audit, Theory import-boundary audit, formatter check, and whitespace check |
+| Gates | the full §6 gate is green on the L4L-08A closure source, including the focused and aggregate Lean builds, Nix build, all-system flake evaluation, all six native flake checks, sorry-frontier audit, Theory import-boundary audit, formatter check, and whitespace check |
 
 ### 2.1 What is green
 
@@ -96,6 +96,22 @@ targets below Pi telescopes, small elimination, subsingleton large elimination,
 K-target metadata, and exact zero-/one-constructor generation. Preservation is
 factored through the common checked family, constructor fold, recursor, and
 rule-fold components, with empty folds using that same path.
+
+**Mutual checked representation.** `VInductDecl.CheckedBlock` and
+`checkedBlock?` analyze an arbitrary nonempty `decl.types` list without
+singleton destructuring. Shared parameters are retained once, while
+`CheckedFamilies source params ordinal types` is indexed simultaneously by
+the exact remaining source-family list and its starting ordinal. Each
+`CheckedFamily` retains its per-family indices, result level, and ordered
+constructors; every `RecArg.targetType` is computed from the block-wide family
+header order, including targets beneath positive Pi telescopes. Block-family
+mentions are excluded from family formers, recursive domains, and recursive
+indices, and generated-name uniqueness is checked across all families,
+constructors, and future recursor names. The real Tree/TreeList and indexed
+IndexedTree/IndexedTreeList fixtures compute exact family, constructor,
+recursive-target, field, and index/result order. Both deliberately remain
+rejected by the singleton `stage3`/`addInduct` path: L4L-08A exposes no mutual
+normalization, semantic WF, generation, or environment insertion claim.
 
 **Kernel parity fixtures.** One integrated 14-row matrix covers Nat, Bool,
 List, Option, Prod, Unit (honestly represented by the kernel's `PUnit`), Empty,
@@ -257,9 +273,10 @@ fixture still spells indices as `Nat.zero`/`Nat.succ`, deliberately excluding
 notation's `OfNat`/`HAdd` instance closure — a reduced dependency claim, not
 full prelude replay.
 
-**Not claimed.** Constructor parity beyond the singleton-family scope,
-mutual/nested blocks, patterns, projections, and the remaining
-metatheory/checker roots.
+**Not claimed.** Mutual validation, normalization, semantic WF, generation,
+environment insertion, or kernel metadata parity; constructor parity beyond
+the singleton-family scope; nested blocks, patterns, projections, and the
+remaining metatheory/checker roots.
 Bare producer success is never generation-shape authority or Theory semantics.
 
 ### 2.2 Live debt
@@ -276,9 +293,10 @@ The sorry-frontier script currently accepts exactly 20 live sorries:
 The remaining v4.31-added sorry is classified:
 `Lean4Lean.addDecl.WF` → L4L-19B. Non-sorry debt:
 
-- The public inductive spec is a complete one-family checkpoint but remains a
-  growing subset, not kernel-complete; mutual, nested, generated-pattern, and
-  projection coverage remain queued.
+- The public inductive spec has complete one-family execution plus a checked
+  mutual representation, but remains a growing subset rather than
+  kernel-complete; mutual validation/generation, nested, generated-pattern,
+  and projection coverage remain queued.
 - Consumer-neutral APIs (`VLocalDecl` core, literal encodings,
   `ContainsLits`, `HasPrimitives`, `TrProj`) still live under `Verify/`,
   forcing downstream checkers to import that layer (L4L-12A/L4L-15C).
@@ -450,17 +468,9 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Mutual blocks (L4L-08A–L4L-08C)
+### Mutual blocks (L4L-08B–L4L-08C)
 
-**L4L-08A — mutual checked representation (active).** Replace singleton destructuring
-in analysis with dependent lists over `decl.types`; represent shared
-parameters, per-family indices/results, ordered constructors, and
-cross-family recursive targets. Compute checked Tree/TreeList and one mutual
-indexed descriptor, but do not generate or insert constants yet.
-*Exit:* both fixtures compute with exact source order; no generation or
-environment insertion is claimed.
-
-**L4L-08B — mutual validation and normalization.** Generalize the validator
+**L4L-08B — mutual validation and normalization (active).** Generalize the validator
 traces and semantic interpretations to shared parameter agreement, equal
 result universes, all-family staging before constructor validation,
 cross-type recursive occurrences, and recursive Pi arguments.

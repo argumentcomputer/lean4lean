@@ -4,7 +4,7 @@ This file tracks every deliberate semantic, API, build, or verification delta
 from `upstream/master` that must either be upstreamed or explicitly retained.
 It is the tracked counterpart to `plans/roadmap.md`.
 
-Audit baseline after the complete L4L-07 singleton-parity checkpoint
+Audit baseline after the complete L4L-08A mutual checked-representation checkpoint
 (2026-08-07):
 
 - current upstream reconciliation parent: digama `upstream/master`
@@ -101,12 +101,20 @@ Audit baseline after the complete L4L-07 singleton-parity checkpoint
   `bb39cb2ace0c` (`verify: add singleton parity matrix`),
   `cc132cddb874` (`verify: add singleton rejection and replay inventories`),
   and `fefb93fe15e9` (`verify: replay all fixed singleton families`), followed
-  by the exact trust manifests and ledger closure in this checkpoint.
+  by `9910e14e8cdf` (`verify: close L4L-07 singleton parity`) with the exact
+  trust manifests and ledger closure.
   Publication to the fork's `jcb/induct` branch is pending.
+- current L4L-08A mutual checked-representation checkpoint: this checkpoint
+  adds a source-indexed dependent family spine, shared block parameters,
+  per-family indices/results/constructors, block-wide recursive-target
+  ordinals, and exact Tree/TreeList plus indexed-mutual computation fixtures.
+  It intentionally adds no semantic-WF, normalization, generation, or
+  environment transaction for mutual blocks.
 - fixed fork master: `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb`
   on local and `origin/master`
-- current audited semantic checkpoint: the L4L-07 closure at
-  `jcb/formalization` integrates Nat, Bool, List, Option, Prod, Unit/`PUnit`,
+- current audited semantic checkpoint: the L4L-08A closure extends the
+  `jcb/formalization` L4L-07 base, which integrates Nat, Bool, List, Option,
+  Prod, Unit/`PUnit`,
   Empty, Or, And, Eq, HEq, Fin, Vector, and Acc into one executable kernel
   parity matrix, alongside five normalization cases and a consolidated
   32-case rejection matrix. The fixed rows compare ordinary-producer
@@ -116,8 +124,13 @@ Audit baseline after the complete L4L-07 singleton-parity checkpoint
   through proof-carrying environment transactions to final `Aligned` and
   `Ordered` outputs. Fin and Vector carry their exact aligned dependency
   slices. The umbrella exposes `SingletonParityReplay` as the sole L4L-07
-  artifact path; exact closure guards and the full completion gate are
-  recorded in the roadmap.
+  artifact path. On top, `CheckedBlock` analyzes arbitrary nonempty family
+  lists through `CheckedFamilies source params ordinal types`, so exact source
+  order and target-family numbering are indices of the representation rather
+  than unchecked parallel data. Tree/TreeList and
+  IndexedTree/IndexedTreeList compute all L4L-08A fields and explicitly remain
+  outside the singleton generation/insertion path. Exact closure guards and
+  the full completion gate are recorded in the roadmap.
 - generation-readiness source checkpoint: `bbb45e0e` builds on the exact
   arbitrary-length
   producer witnesses and source-indexed semantic inputs that return a
@@ -252,13 +265,13 @@ to the replacement.
 
 - **Status:** remote-development (the earlier checkpoints are published-fork;
   the elimination/K/edge and complete L4L-07 singleton-parity extensions are
-  pushed at `jcb/formalization`, while publication to `jcb/induct` remains
-  pending)
+  pushed at `jcb/formalization`; the L4L-08A representation extension is in
+  the current checkpoint, while publication to `jcb/induct` remains pending)
 - **Commits:** `71f2eae`, `06e904d`, `201c12f`, `efb2a2b`, the generalized
   single-family integration in `472a6f0`, the L4L-06A/B checkpoints
   `37e2ada6` and `41e1126b`, the L4L-06C edge checkpoints `0c6b178c` and
   `df58a3a0`, and the L4L-07 checkpoints `bb39cb2a`, `cc132cdd`,
-  `fefb93fe`, and the current closure
+  `fefb93fe`, `9910e14e`, and the current L4L-08A closure
 - **Delta:** replace the three placeholder inductive declarations with real
   `VInductDecl.WF`, computational generation, generated recursor/iota rules,
   and sorry-free preservation for the accepted class. The published
@@ -270,10 +283,13 @@ to the replacement.
   family/constructor/recursor/rule component chain, including ordinary empty
   constructor and rule folds. Acceptance is the dependent descriptor from
   D009. The complete one-family checkpoint now has a 14-row fixed kernel
-  matrix, five focused normalization rows, and a 32-row rejection matrix. This
-  remains an underapproximation of the full kernel: mutual blocks, nested
-  inductives, and the later generated-pattern/projection corpus are not
-  implemented.
+  matrix, five focused normalization rows, and a 32-row rejection matrix.
+  L4L-08A additionally computes a pure checked representation for arbitrary
+  nonempty mutual family lists, including shared parameters, per-family
+  index/result/constructor data, and cross-family target ordinals. This
+  remains an underapproximation of the full kernel: mutual validation,
+  normalization, generation, and insertion are not implemented, nor are
+  nested inductives and the later generated-pattern/projection corpus.
 - **Ix impact:** discharges ix gap A1's three upstream `sorryAx` origins and is
   the semantic basis for constructing `InductiveOracle`; current breadth is
   not yet enough for all ix blocks.
@@ -282,8 +298,10 @@ to the replacement.
   all 32 named rejection branches; exact acceptance, translated stored types
   and universe order, names/counts/flags, recursor types, rule metadata, and
   every iota RHS; supporting `IndexedVec`, elimination/K, and edge
-  differentials; Theory/Verify and default Lake builds; full Nix/flake gate;
-  exact axiom guards for both matrix roots and the Theory inventories.
+  differentials; exact Tree/TreeList and indexed-mutual representation
+  computations with singleton transaction rejection; Theory/Verify and
+  default Lake builds; full Nix/flake gate; exact axiom guards for the matrix,
+  singleton inventories, and mutual representation roots.
 - **Upstream issue/PR:** TBD; submit in the staged PR sequence described in the
   roadmap rather than as one proof mega-diff.
 - **Removal condition:** upstream exposes kernel-complete checked inductive
@@ -365,10 +383,13 @@ to the replacement.
 ## D009 — shared checked inductive descriptor
 
 - **Status:** remote-development (the base descriptor is published-fork; its
-  K-target and empty/singleton extensions are pushed at `jcb/formalization`)
+  K-target, empty/singleton, and complete singleton-parity extensions are
+  pushed at `jcb/formalization`; the mutual checked-representation extension
+  is in the current checkpoint)
 - **Commit:** introduced and integrated in `472a6f0`; K-target retention is
   extended through `41e1126b`, with zero-/one-constructor coverage through
-  `0c6b178c`, `df58a3a0`, and the current L4L-07 closure
+  `0c6b178c`, `df58a3a0`, singleton closure through `9910e14e`, and the
+  current L4L-08A closure
 - **Delta:** add dependent `VInductDecl.Checked`, normalized constructor and
   recursive-argument records, and the computational `checked?` analyzer.
   Define public Stage-3 acceptance as descriptor existence. Route recursor/rule
@@ -386,7 +407,13 @@ to the replacement.
   one zero-field, nonrecursive constructor and one minor/rule, while the latter
   retains empty constructor/minor/rule lists without a proof-only premise.
   Stable constructor/recursor collision rejection and identity compatibility
-  remain part of the public proof API.
+  remain part of the public proof API. L4L-08A adds `CheckedFamily`, the
+  ordinal- and source-list-indexed `CheckedFamilies`, `CheckedBlock`, and
+  `checkedBlock?`. Shared parameters occur once at block scope; each family
+  retains exact indices, result level, and constructor order; block-wide
+  recursive analysis records sibling targets in `RecArg.targetType`. The old
+  `Checked`/`checked?` generation descriptor remains the explicit singleton
+  compatibility path until L4L-08B/C supply mutual semantics and generation.
 - **Ix impact:** creates the stable, consumer-neutral analysis object that E2
   can use to assemble `InductiveOracle` without duplicating raw declaration or
   de Bruijn analysis. The semantic certificate gives ix an environment-indexed
@@ -396,7 +423,11 @@ to the replacement.
   recursion.
 - **Tests:** computed descriptor-shape checks for Nat, Eq, `IndexedVec`,
   `PUnit`, and `Empty`, plus exact K-target shapes for Eq, And, Or, Nat,
-  `PUnit`, and `Empty`; semantic bridge fixtures for `IndexedVec`; negative
+  `PUnit`, and `Empty`; exact Tree/TreeList and indexed-mutual source order,
+  shared parameters, per-family indices/results, constructor order,
+  recursive field positions/indices, and target ordinals; explicit rejection
+  by the singleton `stage3`/`addInduct` path; semantic bridge fixtures for
+  `IndexedVec`; negative
   fixtures for loose data,
   internal/pre-existing name collisions, self-referential parameters, invalid
   levels, malformed results/spines, parameter counts, and universe-count
@@ -404,13 +435,15 @@ to the replacement.
   formatter; all six current-host flake checks; and all-system no-build
   evaluation.
 - **Axiom note:** the analyzer and descriptor are computational and declare no
-  axiom. Compile-time guards pin every exported structural fact, the three
+  axiom. The new block analyzer, dependent source-order theorem, and both
+  mutual fixture roots have exact `propext`/`Quot.sound` manifests.
+  Compile-time guards pin every exported singleton structural fact, the three
   `Checked.WF` compatibility roots, transaction success/exact-analysis facts,
   and collision theorems to exactly `propext` and `Quot.sound`, a subset of the
   accepted Theory baseline. `addInduct_WF` retains the accepted
   `propext`/`Classical.choice`/`Quot.sound` closure.
-- **Upstream issue/PR:** TBD; include as the architecture-first patch in the I2
-  one-family-parity series.
+- **Upstream issue/PR:** TBD; include as the architecture-first mutual-block
+  patch after the I2 one-family-parity series.
 - **Removal condition:** upstream generation, preservation, Verify alignment,
   and downstream consumers share an equivalent checked block result, and ix
   no longer imports the fork-only descriptor API.
