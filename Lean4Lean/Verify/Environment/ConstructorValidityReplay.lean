@@ -2399,28 +2399,1329 @@ theorem prbUniverseRun :
   apply validation.trace.universeSemantics_of_resultLevel_isZero
   rfl
 
-def prbConstructorValidationResult :=
-  AddInductive.ConstructorValidationRun.buildExecution
-    propRecursiveBoundaryKernelType prbFamilyValidationRun.stats false
-    { prbCandidate.families.singleton.familyType.type.trace.terminalContext with
-      env := prbConstructorContext.env }
+def prbValidationAlphaContext : AddInductive.Context :=
+  prbFamilyContext.pushLocalDecl `α .default (.sort (.succ (.param `u)))
 
-theorem prbConstructorValidationResult_isOk :
-    prbConstructorValidationResult.isOk = true := by
-  native_decide
+def prbValidationAName : Name :=
+  propRecursiveBoundaryKernelType.type.bindingBody!.bindingName!
 
-def prbProducedConstructorValidation :
-    { validation // prbConstructorValidationResult = .ok validation } :=
-  match h : prbConstructorValidationResult with
-  | .ok validation => ⟨validation, rfl⟩
-  | .error _ => by
-      have hOk := prbConstructorValidationResult_isOk
-      rw [h] at hOk
-      contradiction
+def prbValidationFamilyContext : AddInductive.Context :=
+  prbValidationAlphaContext.pushLocalDecl prbValidationAName .default
+    prbFamilyContext.freshExpr
 
-def prbConstructorValidation := prbProducedConstructorValidation.val
+theorem prbFamilyTerminalContext_eq :
+    prbCandidate.families.singleton.familyType.type.trace.terminalContext =
+      prbValidationFamilyContext := by
+  have identity := prbFamilyIdentityEvidence.identity
+  have spineLength := prbFamilyIdentityEvidence.spineLength_eq
+  generalize htrace :
+    prbCandidate.families.singleton.familyType.type.trace = trace at identity spineLength ⊢
+  cases identity with
+  | terminal result_eq =>
+      simp only [AddInductive.CandidateExprTrace.spineLength] at spineLength
+      rw [prbFamilyIdentityReplay_shape.1] at spineLength
+      omega
+  | forallE domainCandidate bodyCandidate source_eq consumed_eq
+      domainIdentity bodyIdentity =>
+      simp only [AddInductive.CandidateExprTrace.spineLength,
+        AddInductive.CandidateExprTrace.terminalContext]
+      cases bodyIdentity with
+      | terminal result_eq =>
+          simp only [AddInductive.CandidateExprTrace.spineLength] at spineLength
+          rw [prbFamilyIdentityReplay_shape.1] at spineLength
+          omega
+      | forallE domainCandidate' bodyCandidate' source_eq' consumed_eq'
+          domainIdentity' bodyIdentity' =>
+          cases bodyIdentity' with
+          | terminal result_eq =>
+              simp only [AddInductive.CandidateExprTrace.terminalContext]
+              simp [propRecursiveBoundaryKernelType,
+                propRecursiveBoundaryInfo, ConstantInfo.type,
+                ConstantInfo.toConstantVal] at source_eq
+              rcases source_eq with ⟨rfl, rfl, rfl, rfl⟩
+              simp [Expr.instantiate1_eq, Expr.instantiate1'] at source_eq'
+              rcases source_eq' with ⟨rfl, rfl, rfl, rfl⟩
+              rw [consumed_eq, consumed_eq', prbFamilyCandidateContext_eq]
+              rfl
+          | forallE domainCandidate'' bodyCandidate'' source_eq'' consumed_eq''
+              domainIdentity'' bodyIdentity'' =>
+              simp only [AddInductive.CandidateExprTrace.spineLength] at spineLength
+              rw [prbFamilyIdentityReplay_shape.1] at spineLength
+              omega
 
-def prbStagedUniverseInput :
+def prbConstructorValidationContext : AddInductive.Context :=
+  { prbCandidate.families.singleton.familyType.type.trace.terminalContext with
+    env := prbConstructorContext.env }
+
+theorem prbConstructorValidationContext_eq :
+    prbConstructorValidationContext =
+      { prbValidationFamilyContext with env := prbConstructorContext.env } := by
+  rw [prbConstructorValidationContext, prbFamilyTerminalContext_eq]
+
+def prbValidationAlphaLocalRun :
+    TypeChecker.CandidateLocalContextRun prbValidationAlphaContext :=
+  (TypeChecker.CandidateLocalContextRun.empty prbFamilyContext rfl).push
+    `α .default (.sort (.succ (.param `u)))
+
+def prbValidationFamilyLocalRun :
+    TypeChecker.CandidateLocalContextRun prbValidationFamilyContext :=
+  prbValidationAlphaLocalRun.push prbValidationAName .default
+    prbFamilyContext.freshExpr
+
+def prbValidationRootContext : AddInductive.Context :=
+  { prbValidationFamilyContext with env := prbConstructorContext.env }
+
+def prbValidationRootLocalRun :
+    TypeChecker.CandidateLocalContextRun prbValidationRootContext where
+  wf := prbValidationFamilyLocalRun.wf
+  reserves := prbValidationFamilyLocalRun.reserves
+
+def prbValidationAlphaId : FVarId := prbFamilyContext.freshFVarId
+def prbValidationAlpha : Expr := prbFamilyContext.freshExpr
+def prbValidationIndexId : FVarId := prbValidationAlphaContext.freshFVarId
+
+theorem prbValidationAlphaFind :
+    prbValidationRootContext.lctx.find? prbValidationAlphaId =
+      some (.cdecl 0 prbValidationAlphaId `α
+        (.sort (.succ (.param `u))) .default .default) := by
+  have first :=
+    (TypeChecker.CandidateLocalContextRun.empty prbFamilyContext rfl).push_findNew
+      `α .default (.sort (.succ (.param `u)))
+  have old := prbValidationAlphaLocalRun.push_findOld
+    prbValidationAName .default prbFamilyContext.freshExpr first
+  simpa [prbValidationRootContext, prbValidationFamilyContext,
+    prbValidationAlphaContext, prbValidationAlphaId, prbFamilyContext,
+    propRecursiveBoundaryContext, AddInductive.Context.pushLocalDecl] using old
+
+theorem prbValidationIndexFind :
+    prbValidationRootContext.lctx.find? prbValidationIndexId =
+      some (.cdecl prbValidationAlphaContext.lctx.decls.size
+        prbValidationIndexId prbValidationAName
+        prbValidationAlpha .default .default) := by
+  have found := prbValidationAlphaLocalRun.push_findNew
+    prbValidationAName .default prbFamilyContext.freshExpr
+  simpa [prbValidationRootContext, prbValidationFamilyContext,
+    prbValidationAlphaContext, prbValidationIndexId, prbValidationAlpha,
+    prbValidationAlphaId, prbFamilyContext, propRecursiveBoundaryContext,
+    AddInductive.Context.pushLocalDecl, AddInductive.Context.freshExpr] using found
+
+theorem prbCandidateCheckTypeFVar
+    (context : AddInductive.Context) (id : FVarId) (type : Expr)
+    (hdepth : context.fuel.recDepth = 10000)
+    (hfind : context.lctx.find? id =
+      some (.cdecl index id name type bi kind)) :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨context, .fvar id, type⟩ := by
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  change TypeChecker.M.run context.env context.safety context.lctx
+    context.lparams context.fuel (TypeChecker.checkType (.fvar id)) =
+      .ok type
+  unfold TypeChecker.M.run TypeChecker.checkType TypeChecker.RecM.run
+  simp [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    StateT.pure, Except.pure, Pure.pure,
+    StateT.run', Functor.map, Except.map]
+  rw [hdepth]
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+    (TypeChecker.Inner.inferType' (.fvar id) false
+      (TypeChecker.Methods.withFuel 9999) context.toTypeChecker
+      ({} : TypeChecker.State)) = .ok type
+  unfold TypeChecker.Inner.inferType'
+  simp [Expr.hasLooseBVars, Expr.looseBVarRange',
+    TypeChecker.Inner.inferFVar, AddInductive.Context.toTypeChecker, hfind,
+    LocalDecl.type, Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+  rfl
+
+@[simp] theorem prbValidationAlpha_shape :
+    prbValidationAlpha = .fvar prbValidationAlphaId := by
+  rfl
+
+theorem prbValidationGetTypeAlpha :
+    AddInductive.getType prbValidationAlpha prbValidationRootContext =
+      .ok (.sort (.succ (.param `u))) := by
+  unfold AddInductive.getType
+  simp only [getLCtx, ReaderT.bind, Bind.bind, ReaderT.pure, Pure.pure,
+    Except.bind, Except.pure]
+  change Except.ok ((prbValidationRootContext.lctx.get!
+    prbValidationAlpha.fvarId!).type) = _
+  rw [show prbValidationAlpha.fvarId! = prbValidationAlphaId by
+    rw [prbValidationAlpha_shape]
+    rfl]
+  simp [LocalContext.get!, prbValidationAlphaFind, LocalDecl.type]
+
+@[simp] theorem prbValidationCheckLevelSuccParam :
+    TypeChecker.Inner.checkLevel prbValidationRootContext.toTypeChecker
+      (.succ (.param `u)) = .ok () := by
+  simp [TypeChecker.Inner.checkLevel, prbValidationRootContext,
+    prbValidationFamilyContext, prbValidationAlphaContext,
+    prbFamilyContext, propRecursiveBoundaryContext,
+    AddInductive.Context.toTypeChecker, Level.getUndefParam,
+    Level.forEach, Level.hasParam_eq, Level.hasParam']
+  rfl
+
+theorem prbValidationSortCheckValid :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨prbValidationRootContext, .sort (.succ (.param `u)),
+        .sort (.succ (.succ (.param `u)))⟩ := by
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  change TypeChecker.M.run prbValidationRootContext.env
+    prbValidationRootContext.safety prbValidationRootContext.lctx
+    prbValidationRootContext.lparams prbValidationRootContext.fuel
+    (TypeChecker.checkType (.sort (.succ (.param `u)))) = _
+  unfold TypeChecker.M.run TypeChecker.checkType TypeChecker.RecM.run
+  simp [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    StateT.pure, Except.pure, Pure.pure,
+    StateT.run', Functor.map, Except.map]
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+    (TypeChecker.Inner.inferType'
+      (.sort (.succ (.param `u))) false
+      (TypeChecker.Methods.withFuel 9999)
+      prbValidationRootContext.toTypeChecker
+      ({} : TypeChecker.State)) = _
+  unfold TypeChecker.Inner.inferType'
+  simp [Expr.hasLooseBVars, Expr.looseBVarRange',
+    prbValidationCheckLevelSuccParam, Bind.bind, ReaderT.bind,
+    StateT.bind, Except.bind]
+  rfl
+
+def prbValidationSortChecked : AddInductive.ConstructorCheckedExpr
+    prbValidationRootContext (.sort (.succ (.param `u))) :=
+  .ofRun (by simp [FVarsIn, Level.hasMVar']) prbValidationSortCheckValid
+
+def prbValidationFamilyApp (arg : Expr) : Expr :=
+  .app
+    (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+      prbValidationAlpha)
+    arg
+
+def prbValidationNextDomain : Expr :=
+  .forallE `b prbValidationAlpha
+    (prbValidationFamilyApp (.bvar 0)) .default
+
+def prbValidationAfterParam : Expr :=
+  .forallE `a prbValidationAlpha
+    (.forallE `next prbValidationNextDomain
+      (prbValidationFamilyApp (.bvar 1)) .default) .default
+
+def prbValidationAId : FVarId := prbValidationRootContext.freshFVarId
+def prbValidationAExpr : Expr := prbValidationRootContext.freshExpr
+def prbValidationAContext : AddInductive.Context :=
+  prbValidationRootContext.pushLocalDecl `a .default prbValidationAlpha
+
+def prbValidationAfterA : Expr :=
+  .forallE `next prbValidationNextDomain
+    (prbValidationFamilyApp prbValidationAExpr) .default
+
+def prbValidationNextContext : AddInductive.Context :=
+  prbValidationAContext.pushLocalDecl `next .default prbValidationNextDomain
+
+def prbValidationBId : FVarId := prbValidationAContext.freshFVarId
+def prbValidationBExpr : Expr := prbValidationAContext.freshExpr
+def prbValidationBContext : AddInductive.Context :=
+  prbValidationAContext.pushLocalDecl `b .default prbValidationAlpha
+
+@[simp] theorem prbValidationAExpr_shape :
+    prbValidationAExpr = .fvar prbValidationAId := by
+  rfl
+
+@[simp] theorem prbValidationBExpr_shape :
+    prbValidationBExpr = .fvar prbValidationBId := by
+  rfl
+
+def prbValidationTerminal : Expr :=
+  prbValidationFamilyApp prbValidationAExpr
+
+def prbValidationTarget : Expr :=
+  prbValidationFamilyApp prbValidationBExpr
+
+theorem prbValidationAfterParam_shape :
+    (propRecursiveBoundaryKernelCtor.type.bindingBody!.instantiate1
+      prbValidationAlpha) = prbValidationAfterParam := by
+  simp [propRecursiveBoundaryKernelCtor, propRecursiveBoundaryMkInfo,
+    ConstantInfo.type, ConstantInfo.toConstantVal,
+    prbValidationAfterParam, prbValidationNextDomain,
+    prbValidationFamilyApp, prbValidationAlpha,
+    prbFamilyContext, propRecursiveBoundaryContext,
+    AddInductive.Context.freshExpr,
+    propRecursiveBoundaryKernelType, propRecursiveBoundaryInfo,
+    ConstantInfo.name,
+    TypeChecker.candidateLiftLooseBVarsFVar,
+    Expr.bindingBody!, Expr.instantiate1_eq, Expr.instantiate1',
+    Expr.liftLooseBVars_zero]
+
+theorem prbValidationAfterA_shape :
+    prbValidationAfterParam.bindingBody!.instantiate1
+      prbValidationAExpr = prbValidationAfterA := by
+  simp [prbValidationAfterParam, prbValidationAfterA,
+    prbValidationNextDomain, prbValidationTerminal,
+    prbValidationFamilyApp, prbValidationAExpr,
+    prbValidationRootContext, prbValidationFamilyContext,
+    prbValidationAlphaContext, prbFamilyContext,
+    propRecursiveBoundaryContext, AddInductive.Context.freshExpr,
+    TypeChecker.candidateLiftLooseBVarsFVar,
+    Expr.bindingBody!,
+    Expr.instantiate1_eq, Expr.instantiate1']
+
+theorem prbValidationTerminal_shape :
+    prbValidationAfterA.bindingBody!.instantiate1
+      prbValidationAContext.freshExpr = prbValidationTerminal := by
+  simp [prbValidationAfterA, prbValidationTerminal,
+    prbValidationFamilyApp, prbValidationAExpr,
+    prbValidationRootContext, prbValidationAContext,
+    prbValidationFamilyContext, prbValidationAlphaContext,
+    prbFamilyContext, propRecursiveBoundaryContext,
+    AddInductive.Context.freshExpr,
+    TypeChecker.candidateInstantiateFVar,
+    Expr.bindingBody!, Expr.instantiate1_eq, Expr.instantiate1']
+
+theorem prbValidationTarget_shape :
+    prbValidationNextDomain.bindingBody!.instantiate1
+      prbValidationBExpr = prbValidationTarget := by
+  simp [prbValidationNextDomain, prbValidationTarget,
+    prbValidationFamilyApp, Expr.bindingBody!,
+    Expr.instantiate1_eq, Expr.instantiate1']
+
+def prbValidationALocalRun :
+    TypeChecker.CandidateLocalContextRun prbValidationAContext :=
+  prbValidationRootLocalRun.push `a .default prbValidationAlpha
+
+def prbValidationNextLocalRun :
+    TypeChecker.CandidateLocalContextRun prbValidationNextContext :=
+  prbValidationALocalRun.push `next .default prbValidationNextDomain
+
+def prbValidationBLocalRun :
+    TypeChecker.CandidateLocalContextRun prbValidationBContext :=
+  prbValidationALocalRun.push `b .default prbValidationAlpha
+
+theorem prbValidationAlphaFindInA :
+    prbValidationAContext.lctx.find? prbValidationAlphaId =
+      some (.cdecl 0 prbValidationAlphaId `α
+        (.sort (.succ (.param `u))) .default .default) :=
+  prbValidationRootLocalRun.push_findOld `a .default prbValidationAlpha
+    prbValidationAlphaFind
+
+theorem prbValidationAlphaFindInNext :
+    prbValidationNextContext.lctx.find? prbValidationAlphaId =
+      some (.cdecl 0 prbValidationAlphaId `α
+        (.sort (.succ (.param `u))) .default .default) :=
+  prbValidationALocalRun.push_findOld `next .default
+    prbValidationNextDomain prbValidationAlphaFindInA
+
+theorem prbValidationAlphaFindInB :
+    prbValidationBContext.lctx.find? prbValidationAlphaId =
+      some (.cdecl 0 prbValidationAlphaId `α
+        (.sort (.succ (.param `u))) .default .default) :=
+  prbValidationALocalRun.push_findOld `b .default prbValidationAlpha
+    prbValidationAlphaFindInA
+
+theorem prbValidationAFind :
+    prbValidationAContext.lctx.find? prbValidationAId =
+      some (.cdecl prbValidationRootContext.lctx.decls.size
+        prbValidationAId `a prbValidationAlpha .default .default) := by
+  simpa [prbValidationAContext, prbValidationAId, prbValidationAExpr] using
+    prbValidationRootLocalRun.push_findNew `a .default prbValidationAlpha
+
+theorem prbValidationAFindInNext :
+    prbValidationNextContext.lctx.find? prbValidationAId =
+      some (.cdecl prbValidationRootContext.lctx.decls.size
+        prbValidationAId `a prbValidationAlpha .default .default) :=
+  prbValidationALocalRun.push_findOld `next .default
+    prbValidationNextDomain prbValidationAFind
+
+theorem prbValidationAFindInB :
+    prbValidationBContext.lctx.find? prbValidationAId =
+      some (.cdecl prbValidationRootContext.lctx.decls.size
+        prbValidationAId `a prbValidationAlpha .default .default) :=
+  prbValidationALocalRun.push_findOld `b .default prbValidationAlpha
+    prbValidationAFind
+
+theorem prbValidationBFind :
+    prbValidationBContext.lctx.find? prbValidationBId =
+      some (.cdecl prbValidationAContext.lctx.decls.size
+        prbValidationBId `b prbValidationAlpha .default .default) := by
+  simpa [prbValidationBContext, prbValidationBId, prbValidationBExpr] using
+    prbValidationALocalRun.push_findNew `b .default prbValidationAlpha
+
+theorem prbValidationRootFresh :
+    prbValidationRootContext.lctx.find?
+      prbValidationRootContext.freshFVarId = none :=
+  prbValidationRootLocalRun.fresh
+
+theorem prbValidationAFresh :
+    prbValidationAContext.lctx.find?
+      prbValidationAContext.freshFVarId = none :=
+  prbValidationALocalRun.fresh
+
+theorem prbValidationNextFresh :
+    prbValidationNextContext.lctx.find?
+      prbValidationNextContext.freshFVarId = none :=
+  prbValidationNextLocalRun.fresh
+
+theorem prbValidationBFresh :
+    prbValidationBContext.lctx.find?
+      prbValidationBContext.freshFVarId = none :=
+  prbValidationBLocalRun.fresh
+
+theorem prbValidationFamilyGet :
+    prbConstructorContext.env.get propRecursiveBoundaryKernelType.name =
+      .ok prbDeclaredInfo := by
+  unfold Kernel.Environment.get
+  rw [prbCtorFamilyLookup]
+  rfl
+
+@[simp] theorem prbValidationCheckLevelParam
+    (context : AddInductive.Context)
+    (hlparams : context.lparams = [`u]) :
+    TypeChecker.Inner.checkLevel context.toTypeChecker (.param `u) =
+      .ok () := by
+  simp [TypeChecker.Inner.checkLevel, AddInductive.Context.toTypeChecker,
+    hlparams, Level.getUndefParam, Level.forEach,
+    Level.hasParam_eq, Level.hasParam']
+  rfl
+
+@[simp] theorem prbValidationInferConstantFamily
+    (context : AddInductive.Context)
+    (henv : context.env = prbConstructorContext.env)
+    (hlparams : context.lparams = [`u])
+    (hsafety : context.safety = .safe) :
+    TypeChecker.Inner.inferConstant context.toTypeChecker
+        propRecursiveBoundaryKernelType.name [.param `u] false =
+      .ok propRecursiveBoundaryKernelType.type := by
+  unfold TypeChecker.Inner.inferConstant
+  simp only [AddInductive.Context.toTypeChecker]
+  rw [henv, prbValidationFamilyGet]
+  have terminalLparams :
+      prbCandidate.families.singleton.familyType.type.trace.terminalContext.lparams =
+        [`u] := by
+    rw [prbTerminalLparams_eq]
+    rfl
+  unfold prbDeclaredInfo AddInductive.singletonDeclaredInfo
+  rw [terminalLparams]
+  have hlevel : TypeChecker.Inner.checkLevel
+      ({ env := prbConstructorContext.env
+         lctx := context.lctx
+         safety := .safe
+         lparams := [`u]
+         fuel := context.fuel } : TypeChecker.Context)
+      (.param `u) = .ok () := by
+    simp [TypeChecker.Inner.checkLevel,
+      Level.getUndefParam, Level.forEach,
+      Level.hasParam_eq, Level.hasParam']
+    rfl
+  simp [
+    propRecursiveBoundaryKernelType, propRecursiveBoundaryInfo,
+    ConstantInfo.levelParams, ConstantInfo.isUnsafe,
+    ConstantInfo.instantiateTypeLevelParams, ConstantInfo.toConstantVal,
+    ConstantVal.instantiateTypeLevelParams,
+    Expr.instantiateLevelParams_eq, Expr.instantiateLevelParamsCore',
+    Syntax.structEq_eq,
+    Level.substParams', hsafety, hlparams,
+    hlevel, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  simp [Expr.instantiateLevelParamsCore', Level.substParams',
+    propRecursiveBoundaryKernelType, propRecursiveBoundaryInfo,
+    ConstantInfo.type, ConstantInfo.toConstantVal]
+
+def prbValidationFamilyTail (alpha : Expr) : Expr :=
+  .forallE prbValidationAName alpha (.sort .zero) .default
+
+def prbValidationFirstApp (alpha : Expr) : Expr :=
+  .app (.const propRecursiveBoundaryKernelType.name [.param `u]) alpha
+
+def prbReplayInsert (state : TypeChecker.State) (source type : Expr) :
+    TypeChecker.State :=
+  { state with inferTypeC := state.inferTypeC.insert source type }
+
+@[simp] theorem prbEnsureForallExact
+    (name : Name) (domain body : Expr) (bi : BinderInfo)
+    (source : Expr) (fuel : Nat) (context : TypeChecker.Context)
+    (state : TypeChecker.State) :
+    TypeChecker.Inner.ensureForallCore (.forallE name domain body bi)
+      source (TypeChecker.Methods.withFuel fuel) context state =
+        .ok (.forallE name domain body bi, state) := by
+  rfl
+
+theorem prbSelfDefEq (source : Expr) fuel context state :
+    TypeChecker.Inner.isDefEq source source
+      (TypeChecker.Methods.withFuel fuel) context state = .ok (true, state) := by
+  unfold TypeChecker.Inner.isDefEq
+  rw [if_pos (Expr.eqv_refl _)]
+  rfl
+
+@[simp] theorem prbConstBeqFVar (name : Name) (levels : List Level)
+    (id : FVarId) :
+    ((.const name levels : Expr) == .fvar id) = false := by
+  change Expr.eqv (.const name levels) (.fvar id) = false
+  rw [Expr.eqv_eq]
+  rfl
+
+@[simp] theorem prbAppBeqFVar (fn arg : Expr) (id : FVarId) :
+    ((.app fn arg : Expr) == .fvar id) = false := by
+  change Expr.eqv (.app fn arg) (.fvar id) = false
+  rw [Expr.eqv_eq]
+  rfl
+
+@[simp] theorem prbFVarBeqConst (id : FVarId) (name : Name)
+    (levels : List Level) :
+    ((.fvar id : Expr) == .const name levels) = false := by
+  change Expr.eqv (.fvar id) (.const name levels) = false
+  rw [Expr.eqv_eq]
+  rfl
+
+@[simp] theorem prbFVarBeqApp (id : FVarId) (fn arg : Expr) :
+    ((.fvar id : Expr) == .app fn arg) = false := by
+  change Expr.eqv (.fvar id) (.app fn arg) = false
+  rw [Expr.eqv_eq]
+  rfl
+
+@[simp] theorem prbConstBeqApp (name : Name) (levels : List Level)
+    (fn arg : Expr) :
+    ((.const name levels : Expr) == .app fn arg) = false := by
+  change Expr.eqv (.const name levels) (.app fn arg) = false
+  rw [Expr.eqv_eq]
+  rfl
+
+@[simp] theorem prbAppBeqConst (fn arg : Expr) (name : Name)
+    (levels : List Level) :
+    ((.app fn arg : Expr) == .const name levels) = false := by
+  change Expr.eqv (.app fn arg) (.const name levels) = false
+  rw [Expr.eqv_eq]
+  rfl
+
+theorem prbInferAppCoreOf
+    (fuel : Nat) (context : TypeChecker.Context)
+    (state stateFn stateArg : TypeChecker.State)
+    (fn arg domain body : Expr) (name : Name) (bi : BinderInfo)
+    (hclosed : (.app fn arg : Expr).hasLooseBVars = false)
+    (hcache : state.inferTypeC[(.app fn arg : Expr)]? = none)
+    (hfn : TypeChecker.Inner.inferType' fn false
+      (TypeChecker.Methods.withFuel fuel) context state =
+        .ok (.forallE name domain body bi, stateFn))
+    (harg : TypeChecker.Inner.inferType' arg false
+      (TypeChecker.Methods.withFuel fuel) context stateFn =
+        .ok (domain, stateArg))
+    (heager : arg.isAppOfArity ``eagerReduce 2 = false) :
+    TypeChecker.Inner.inferType' (.app fn arg) false
+      (TypeChecker.Methods.withFuel fuel) context state =
+        .ok (body.instantiate1 arg,
+          { stateArg with inferTypeC :=
+              (stateArg.inferTypeC.insert
+                (.app fn arg) (body.instantiate1 arg)) }) := by
+  unfold TypeChecker.Inner.inferType'
+  simp [hclosed, hcache, hfn, harg, heager,
+    prbEnsureForallExact, prbSelfDefEq,
+    Expr.instantiate1_eq, Bind.bind, ReaderT.bind,
+    StateT.bind, Except.bind]
+
+theorem prbInferTypeForallCore
+    (fuel : Nat) (context : TypeChecker.Context)
+    (state finalState : TypeChecker.State)
+    (name : Name) (domain body result : Expr) (bi : BinderInfo)
+    (hclosed : (.forallE name domain body bi : Expr).hasLooseBVars = false)
+    (hcache : state.inferTypeC[
+      (.forallE name domain body bi : Expr)]? = none)
+    (hforall : TypeChecker.Inner.inferForall
+      (.forallE name domain body bi) false
+      (TypeChecker.Methods.withFuel fuel) context state =
+        .ok (result, finalState)) :
+    TypeChecker.Inner.inferType'
+      (.forallE name domain body bi) false
+      (TypeChecker.Methods.withFuel fuel) context state =
+        .ok (result, { finalState with inferTypeC :=
+          (finalState.inferTypeC.insert
+            (.forallE name domain body bi) result) }) := by
+  unfold TypeChecker.Inner.inferType'
+  simp [hclosed, hcache, hforall, Bind.bind, ReaderT.bind,
+    StateT.bind, Except.bind]
+
+open private mkLevelIMaxCore mkLevelMaxCore from Lean.Level in
+@[simp] theorem prbMkLevelIMaxSuccParamZero :
+    mkLevelIMax' (.succ (.param `u)) .zero = .zero := by
+  simp [mkLevelIMax', mkLevelIMaxCore, mkLevelMax', mkLevelMaxCore,
+    Level.isNeverZero, Level.isZero]
+
+def prbValidationConstState (state : TypeChecker.State) : TypeChecker.State :=
+  prbReplayInsert state
+    (.const propRecursiveBoundaryKernelType.name [.param `u])
+    propRecursiveBoundaryKernelType.type
+
+def prbValidationAlphaState (state : TypeChecker.State)
+    (alphaId : FVarId) : TypeChecker.State :=
+  prbReplayInsert (prbValidationConstState state)
+    (.fvar alphaId) (.sort (.succ (.param `u)))
+
+def prbValidationFirstAppState (state : TypeChecker.State)
+    (alphaId : FVarId) : TypeChecker.State :=
+  prbReplayInsert
+    (prbValidationAlphaState state alphaId)
+    (prbValidationFirstApp (.fvar alphaId))
+    (prbValidationFamilyTail (.fvar alphaId))
+
+def prbValidationArgumentState (state : TypeChecker.State)
+    (alphaId argId : FVarId) : TypeChecker.State :=
+  prbReplayInsert
+    (prbValidationFirstAppState state alphaId)
+    (.fvar argId) (.fvar alphaId)
+
+def prbValidationFamilyAppState (state : TypeChecker.State)
+    (alphaId argId : FVarId) : TypeChecker.State :=
+  prbReplayInsert
+    (prbValidationArgumentState state alphaId argId)
+    (prbValidationFamilyApp (.fvar argId)) (.sort .zero)
+
+def prbValidationCachedFirstAppState (state : TypeChecker.State)
+    (alphaId : FVarId) : TypeChecker.State :=
+  prbReplayInsert (prbValidationConstState state)
+    (prbValidationFirstApp (.fvar alphaId))
+    (prbValidationFamilyTail (.fvar alphaId))
+
+def prbValidationCachedArgumentState (state : TypeChecker.State)
+    (alphaId argId : FVarId) : TypeChecker.State :=
+  prbReplayInsert (prbValidationCachedFirstAppState state alphaId)
+    (.fvar argId) (.fvar alphaId)
+
+def prbValidationCachedFamilyAppState (state : TypeChecker.State)
+    (alphaId argId : FVarId) : TypeChecker.State :=
+  prbReplayInsert (prbValidationCachedArgumentState state alphaId argId)
+    (prbValidationFamilyApp (.fvar argId)) (.sort .zero)
+
+theorem prbWithLocalDeclEq
+    {α} (name : Name) (bi : BinderInfo) (type : Expr)
+    (k : Expr → TypeChecker.RecM α)
+    (methods : TypeChecker.Methods)
+    (context : TypeChecker.Context)
+    (state : TypeChecker.State) :
+    (withLocalDecl (m := TypeChecker.RecM) name bi type k)
+        methods context state =
+      k (.fvar ⟨state.ngen.curr⟩) methods
+        { context with lctx :=
+            context.lctx.mkLocalDecl ⟨state.ngen.curr⟩ name type bi }
+        { state with ngen := state.ngen.next } := by
+  rfl
+
+@[simp] theorem prbEnsureSortExact
+    (level : Level) (source : Expr) (fuel : Nat)
+    (context : TypeChecker.Context) (state : TypeChecker.State) :
+    TypeChecker.Inner.ensureSortCore (.sort level) source
+      (TypeChecker.Methods.withFuel fuel) context state =
+        .ok (.sort level, state) := by
+  rfl
+
+def prbValidationNextAlphaState : TypeChecker.State :=
+  prbReplayInsert ({} : TypeChecker.State) prbValidationAlpha
+    (.sort (.succ (.param `u)))
+
+def prbValidationNextInternalBId : FVarId :=
+  ⟨prbValidationNextAlphaState.ngen.curr⟩
+
+def prbValidationNextInternalLctx : LocalContext :=
+  prbValidationAContext.lctx.mkLocalDecl prbValidationNextInternalBId `b
+    prbValidationAlpha .default
+
+def prbValidationNextInternalContext : AddInductive.Context :=
+  { prbValidationAContext with lctx := prbValidationNextInternalLctx }
+
+def prbValidationNextBodyState : TypeChecker.State :=
+  { prbValidationNextAlphaState with
+    ngen := prbValidationNextAlphaState.ngen.next }
+
+theorem prbValidationNextInternalFresh :
+    prbValidationAContext.lctx.find? prbValidationNextInternalBId = none := by
+  rw [prbValidationALocalRun.wf.find?_eq_find?_toList,
+    List.find?_eq_none]
+  intro decl membership equal
+  simp only [prbValidationAContext, prbValidationRootContext,
+    prbValidationFamilyContext, prbValidationAlphaContext,
+    AddInductive.Context.pushLocalDecl,
+    LocalContext.mkLocalDecl_toList, List.mem_cons] at membership
+  rw [show prbFamilyContext.lctx.toList = [] by rfl] at membership
+  simp only [List.not_mem_nil, or_false] at membership
+  rcases membership with rfl | rfl | rfl
+  all_goals
+    simp [LocalDecl.fvarId, prbValidationNextInternalBId,
+      prbValidationNextAlphaState, prbReplayInsert,
+      prbValidationAlpha, prbValidationAId, prbValidationIndexId,
+      prbValidationAlphaId, prbValidationRootContext,
+      prbValidationFamilyContext, prbValidationAlphaContext,
+      prbFamilyContext, propRecursiveBoundaryContext,
+      AddInductive.Context.freshExpr, AddInductive.Context.freshFVarId] at equal
+  all_goals injection equal
+  all_goals simp [NameGenerator.next] at *
+
+theorem prbValidationAlphaFindInternal :
+    prbValidationNextInternalContext.lctx.find? prbValidationAlphaId =
+      some (.cdecl 0 prbValidationAlphaId `α
+        (.sort (.succ (.param `u))) .default .default) := by
+  exact TypeChecker.localContextFindOld prbValidationAContext.lctx
+    prbValidationAlphaId prbValidationNextInternalBId `b
+    prbValidationAlpha .default .default _ prbValidationALocalRun.wf
+    prbValidationNextInternalFresh prbValidationAlphaFindInA
+
+theorem prbValidationNextInternalBFind :
+    prbValidationNextInternalContext.lctx.find?
+        prbValidationNextInternalBId =
+      some (.cdecl prbValidationAContext.lctx.decls.size
+        prbValidationNextInternalBId `b prbValidationAlpha
+        .default .default) := by
+  exact TypeChecker.localContextFindNew prbValidationAContext.lctx
+    prbValidationNextInternalBId `b prbValidationAlpha .default .default
+    prbValidationALocalRun.wf prbValidationNextInternalFresh
+
+theorem prbValidationAlphaNeNextInternalB :
+    prbValidationAlphaId ≠ prbValidationNextInternalBId := by
+  intro equal
+  have fresh := prbValidationNextInternalFresh
+  rw [← equal, prbValidationAlphaFindInA] at fresh
+  contradiction
+
+theorem prbValidationAlphaNeA :
+    prbValidationAlphaId ≠ prbValidationAId := by
+  intro equal
+  have fresh : prbValidationRootContext.lctx.find?
+      prbValidationAId = none := by
+    simpa [prbValidationAId] using prbValidationRootFresh
+  rw [← equal, prbValidationAlphaFind] at fresh
+  contradiction
+
+theorem prbValidationAlphaNeB :
+    prbValidationAlphaId ≠ prbValidationBId := by
+  intro equal
+  have fresh : prbValidationAContext.lctx.find?
+      prbValidationBId = none := by
+    simpa [prbValidationBId] using prbValidationAFresh
+  rw [← equal, prbValidationAlphaFindInA] at fresh
+  contradiction
+
+@[simp] theorem prbValidationConsumeAlpha :
+    AddInductive.consumeTypeAnnotations prbValidationAlpha =
+      prbValidationAlpha := by
+  rw [prbValidationAlpha_shape]
+  simp [AddInductive.consumeTypeAnnotations]
+
+@[simp] theorem prbValidationConsumeNextDomain :
+    AddInductive.consumeTypeAnnotations prbValidationNextDomain =
+      prbValidationNextDomain := by
+  simp [prbValidationNextDomain,
+    AddInductive.consumeTypeAnnotations]
+
+theorem prbValidationInferTypeFamilyCore
+    (fuel : Nat) (context : AddInductive.Context)
+    (state : TypeChecker.State)
+    (hcache : state.inferTypeC[
+      (.const propRecursiveBoundaryKernelType.name [.param `u] : Expr)]? =
+        none)
+    (henv : context.env = prbConstructorContext.env)
+    (hlparams : context.lparams = [`u])
+    (hsafety : context.safety = .safe) :
+    TypeChecker.Inner.inferType'
+        (.const propRecursiveBoundaryKernelType.name [.param `u]) false
+        (TypeChecker.Methods.withFuel fuel) context.toTypeChecker state =
+      .ok (propRecursiveBoundaryKernelType.type,
+        prbValidationConstState state) := by
+  unfold TypeChecker.Inner.inferType'
+  simp [Expr.hasLooseBVars, Expr.looseBVarRange', hcache,
+    prbValidationConstState, prbReplayInsert,
+    prbValidationInferConstantFamily context henv hlparams hsafety,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+
+theorem prbValidationInferTypeFVarCore
+    (fuel : Nat) (context : AddInductive.Context)
+    (state : TypeChecker.State) (id : FVarId) (type : Expr)
+    (hcache : state.inferTypeC[(.fvar id : Expr)]? = none)
+    (hfind : context.lctx.find? id =
+      some (.cdecl index id name type bi kind)) :
+    TypeChecker.Inner.inferType' (.fvar id) false
+        (TypeChecker.Methods.withFuel fuel) context.toTypeChecker state =
+      .ok (type, prbReplayInsert state (.fvar id) type) := by
+  unfold TypeChecker.Inner.inferType'
+  simp [Expr.hasLooseBVars, Expr.looseBVarRange', hcache,
+    TypeChecker.Inner.inferFVar, AddInductive.Context.toTypeChecker,
+    hfind, LocalDecl.type, prbReplayInsert,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+
+theorem prbValidationInferTypeCachedCore
+    (fuel : Nat) (context : AddInductive.Context)
+    (state : TypeChecker.State) (source type : Expr)
+    (hclosed : source.hasLooseBVars = false)
+    (hcache : state.inferTypeC[source]? = some type) :
+    TypeChecker.Inner.inferType' source false
+        (TypeChecker.Methods.withFuel fuel) context.toTypeChecker state =
+      .ok (type, state) := by
+  unfold TypeChecker.Inner.inferType'
+  simp [hclosed, hcache]
+
+theorem prbValidationInferFirstAppAlphaCachedCore
+    (fuel : Nat) (context : AddInductive.Context)
+    (state : TypeChecker.State) (alphaId : FVarId)
+    (halpha : state.inferTypeC[(.fvar alphaId : Expr)]? =
+      some (.sort (.succ (.param `u))))
+    (hconst : state.inferTypeC[
+      (.const propRecursiveBoundaryKernelType.name [.param `u] : Expr)]? =
+        none)
+    (happ : state.inferTypeC[
+      prbValidationFirstApp (.fvar alphaId)]? = none)
+    (henv : context.env = prbConstructorContext.env)
+    (hlparams : context.lparams = [`u])
+    (hsafety : context.safety = .safe) :
+    TypeChecker.Inner.inferType'
+        (prbValidationFirstApp (.fvar alphaId)) false
+        (TypeChecker.Methods.withFuel fuel) context.toTypeChecker state =
+      .ok (prbValidationFamilyTail (.fvar alphaId),
+        prbValidationCachedFirstAppState state alphaId) := by
+  have constRun := prbValidationInferTypeFamilyCore fuel context state hconst
+    henv hlparams hsafety
+  have alphaCache : (prbValidationConstState state).inferTypeC[
+      (.fvar alphaId : Expr)]? =
+        some (.sort (.succ (.param `u))) := by
+    simp only [prbValidationConstState, prbReplayInsert,
+      Std.HashMap.getElem?_insert]
+    rw [prbConstBeqFVar]
+    exact halpha
+  have alphaRun := prbValidationInferTypeCachedCore fuel context
+    (prbValidationConstState state) (.fvar alphaId)
+    (.sort (.succ (.param `u)))
+    (by simp [Expr.hasLooseBVars, Expr.looseBVarRange']) alphaCache
+  have appRun := prbInferAppCoreOf fuel context.toTypeChecker state
+    (prbValidationConstState state) (prbValidationConstState state)
+    (.const propRecursiveBoundaryKernelType.name [.param `u])
+    (.fvar alphaId) (.sort (.succ (.param `u)))
+    (.forallE prbValidationAName (.bvar 0) (.sort .zero) .default)
+    `α .default
+    (by simp [Expr.hasLooseBVars, Expr.looseBVarRange']) happ
+    (by simpa [prbValidationAName, propRecursiveBoundaryKernelType,
+      propRecursiveBoundaryInfo, ConstantInfo.type,
+      ConstantInfo.toConstantVal, Expr.bindingBody!,
+      Expr.bindingName!] using constRun)
+    alphaRun (by rfl)
+  simpa [prbValidationCachedFirstAppState,
+    prbValidationFirstApp, prbValidationFamilyTail, prbReplayInsert,
+    Expr.instantiate1_eq, Expr.instantiate1'] using appRun
+
+theorem prbValidationNextBodyInferExists :
+    ∃ finalState : TypeChecker.State,
+      TypeChecker.Inner.inferType'
+          (prbValidationFamilyApp
+            (.fvar prbValidationNextInternalBId)) false
+          (TypeChecker.Methods.withFuel 9998)
+          prbValidationNextInternalContext.toTypeChecker
+          prbValidationNextBodyState =
+        .ok (.sort .zero, finalState) := by
+  have alphaCache : prbValidationNextBodyState.inferTypeC[
+      (.fvar prbValidationAlphaId : Expr)]? =
+        some (.sort (.succ (.param `u))) := by
+    simp [prbValidationNextBodyState, prbValidationNextAlphaState,
+      prbReplayInsert]
+  have constMiss : prbValidationNextBodyState.inferTypeC[
+      (.const propRecursiveBoundaryKernelType.name [.param `u] : Expr)]? =
+        none := by
+    simp only [prbValidationNextBodyState, prbValidationNextAlphaState,
+      prbReplayInsert, Std.HashMap.getElem?_insert]
+    rw [prbValidationAlpha_shape, prbFVarBeqConst]
+    exact Std.HashMap.getElem?_empty
+  have firstMiss : prbValidationNextBodyState.inferTypeC[
+      prbValidationFirstApp (.fvar prbValidationAlphaId)]? = none := by
+    simp only [prbValidationNextBodyState, prbValidationNextAlphaState,
+      prbReplayInsert, Std.HashMap.getElem?_insert]
+    rw [prbValidationAlpha_shape, prbValidationFirstApp,
+      prbFVarBeqApp]
+    exact Std.HashMap.getElem?_empty
+  have firstRun : TypeChecker.Inner.inferType'
+      (prbValidationFirstApp (.fvar prbValidationAlphaId)) false
+      (TypeChecker.Methods.withFuel 9998)
+      prbValidationNextInternalContext.toTypeChecker
+      prbValidationNextBodyState =
+        .ok (prbValidationFamilyTail (.fvar prbValidationAlphaId),
+          prbValidationCachedFirstAppState
+            prbValidationNextBodyState prbValidationAlphaId) := by
+    apply prbValidationInferFirstAppAlphaCachedCore
+    · exact alphaCache
+    · exact constMiss
+    · exact firstMiss
+    · rfl
+    · rfl
+    · rfl
+  have idBeq : ((.fvar prbValidationAlphaId : Expr) ==
+      .fvar prbValidationNextInternalBId) = false := by
+    change Expr.eqv (.fvar prbValidationAlphaId)
+      (.fvar prbValidationNextInternalBId) = false
+    rw [Expr.eqv_eq]
+    simp [Expr.eqv', prbValidationAlphaNeNextInternalB]
+  have argMiss : (prbValidationCachedFirstAppState
+      prbValidationNextBodyState prbValidationAlphaId).inferTypeC[
+        (.fvar prbValidationNextInternalBId : Expr)]? = none := by
+    simp only [prbValidationCachedFirstAppState,
+      prbValidationConstState, prbValidationNextBodyState,
+      prbValidationNextAlphaState, prbReplayInsert,
+      Std.HashMap.getElem?_insert]
+    rw [prbValidationFirstApp, prbAppBeqFVar, prbConstBeqFVar,
+      prbValidationAlpha_shape, idBeq]
+    exact Std.HashMap.getElem?_empty
+  have argRun : TypeChecker.Inner.inferType'
+      (.fvar prbValidationNextInternalBId) false
+      (TypeChecker.Methods.withFuel 9998)
+      prbValidationNextInternalContext.toTypeChecker
+      (prbValidationCachedFirstAppState
+        prbValidationNextBodyState prbValidationAlphaId) =
+        .ok (.fvar prbValidationAlphaId,
+          prbValidationCachedArgumentState prbValidationNextBodyState
+            prbValidationAlphaId prbValidationNextInternalBId) := by
+    simpa [prbValidationCachedArgumentState,
+      prbValidationAlpha_shape] using
+      prbValidationInferTypeFVarCore 9998
+        prbValidationNextInternalContext
+        (prbValidationCachedFirstAppState
+          prbValidationNextBodyState prbValidationAlphaId)
+        prbValidationNextInternalBId (.fvar prbValidationAlphaId)
+        argMiss prbValidationNextInternalBFind
+  have appMiss : prbValidationNextBodyState.inferTypeC[
+      prbValidationFamilyApp
+        (.fvar prbValidationNextInternalBId)]? = none := by
+    simp only [prbValidationNextBodyState, prbValidationNextAlphaState,
+      prbReplayInsert, Std.HashMap.getElem?_insert]
+    rw [prbValidationAlpha_shape, prbValidationFamilyApp,
+      prbFVarBeqApp]
+    exact Std.HashMap.getElem?_empty
+  have appRun := prbInferAppCoreOf 9998
+    prbValidationNextInternalContext.toTypeChecker
+    prbValidationNextBodyState
+    (prbValidationCachedFirstAppState
+      prbValidationNextBodyState prbValidationAlphaId)
+    (prbValidationCachedArgumentState prbValidationNextBodyState
+      prbValidationAlphaId prbValidationNextInternalBId)
+    (prbValidationFirstApp (.fvar prbValidationAlphaId))
+    (.fvar prbValidationNextInternalBId)
+    (.fvar prbValidationAlphaId) (.sort .zero)
+    prbValidationAName .default
+    (by simp [prbValidationFamilyApp, prbValidationFirstApp,
+      Expr.hasLooseBVars, Expr.looseBVarRange'])
+    appMiss firstRun argRun (by rfl)
+  refine ⟨prbValidationCachedFamilyAppState prbValidationNextBodyState
+    prbValidationAlphaId prbValidationNextInternalBId, ?_⟩
+  simpa [prbValidationFamilyApp, prbValidationFirstApp,
+    prbValidationFamilyTail, prbValidationCachedFamilyAppState,
+    prbReplayInsert, Expr.instantiate1_eq, Expr.instantiate1'] using appRun
+
+theorem prbValidationNextDomainCheckValid :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨prbValidationAContext, prbValidationNextDomain,
+        .sort .zero⟩ := by
+  obtain ⟨bodyFinalState, bodyRun⟩ :=
+    prbValidationNextBodyInferExists
+  have domainRun : TypeChecker.Inner.inferType'
+      prbValidationAlpha false (TypeChecker.Methods.withFuel 9998)
+      prbValidationAContext.toTypeChecker ({} : TypeChecker.State) =
+        .ok (.sort (.succ (.param `u)),
+          prbValidationNextAlphaState) := by
+    simpa [prbValidationNextAlphaState, prbValidationAlpha_shape] using
+      prbValidationInferTypeFVarCore 9998 prbValidationAContext
+        ({} : TypeChecker.State) prbValidationAlphaId
+        (.sort (.succ (.param `u))) Std.HashMap.getElem?_empty
+        prbValidationAlphaFindInA
+  have forallRun : TypeChecker.Inner.inferForall
+      prbValidationNextDomain false
+      (TypeChecker.Methods.withFuel 9999)
+      prbValidationAContext.toTypeChecker ({} : TypeChecker.State) =
+        .ok (.sort .zero, bodyFinalState) := by
+    unfold prbValidationNextDomain TypeChecker.Inner.inferForall
+    simp only [TypeChecker.Inner.inferForall.loop]
+    rw [show prbValidationAlpha.instantiateRev #[] =
+        prbValidationAlpha by
+      simp [Expr.instantiateRev_eq, Expr.instantiate_eq]]
+    simp only [Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+    rw [show TypeChecker.Inner.inferType prbValidationAlpha false
+        (TypeChecker.Methods.withFuel 9999)
+        prbValidationAContext.toTypeChecker ({} : TypeChecker.State) =
+          TypeChecker.Inner.inferType' prbValidationAlpha false
+            (TypeChecker.Methods.withFuel 9998)
+            prbValidationAContext.toTypeChecker
+            ({} : TypeChecker.State) by rfl]
+    rw [domainRun]
+    simp only [prbEnsureSortExact]
+    rw [prbWithLocalDeclEq]
+    change TypeChecker.Inner.inferForall.loop
+      false
+      #[Expr.fvar prbValidationNextInternalBId]
+      #[Level.succ (.param `u)]
+      (prbValidationFamilyApp (.bvar 0))
+      (TypeChecker.Methods.withFuel 9999)
+      prbValidationNextInternalContext.toTypeChecker
+      prbValidationNextBodyState =
+        .ok (Expr.sort .zero, bodyFinalState)
+    simp only [prbValidationFamilyApp,
+      TypeChecker.Inner.inferForall.loop]
+    rw [show (((.const propRecursiveBoundaryKernelType.name
+          [.param `u] : Expr).app prbValidationAlpha).app (.bvar 0)
+          ).instantiateRev #[Expr.fvar prbValidationNextInternalBId] =
+          prbValidationFamilyApp
+            (.fvar prbValidationNextInternalBId) by
+      simp [prbValidationFamilyApp, Expr.instantiateRev_eq,
+        Expr.instantiate_eq, Expr.instantiate1_eq, Expr.instantiate1']]
+    simp only [Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+    rw [show TypeChecker.Inner.inferType
+        (prbValidationFamilyApp
+          (.fvar prbValidationNextInternalBId)) false
+        (TypeChecker.Methods.withFuel 9999)
+        prbValidationNextInternalContext.toTypeChecker
+        prbValidationNextBodyState =
+          TypeChecker.Inner.inferType'
+            (prbValidationFamilyApp
+              (.fvar prbValidationNextInternalBId)) false
+            (TypeChecker.Methods.withFuel 9998)
+            prbValidationNextInternalContext.toTypeChecker
+            prbValidationNextBodyState by rfl]
+    rw [bodyRun]
+    simp [Expr.sortLevel!, Pure.pure, ReaderT.pure,
+      StateT.pure, Except.pure]
+  have outerRun := prbInferTypeForallCore 9999
+    prbValidationAContext.toTypeChecker ({} : TypeChecker.State)
+    bodyFinalState `b prbValidationAlpha
+    (prbValidationFamilyApp (.bvar 0)) (.sort .zero) .default
+    (by simp [prbValidationNextDomain, prbValidationFamilyApp,
+      Expr.hasLooseBVars, Expr.looseBVarRange'])
+    Std.HashMap.getElem?_empty
+    (by simpa [prbValidationNextDomain] using forallRun)
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  change TypeChecker.M.run prbValidationAContext.env
+    prbValidationAContext.safety prbValidationAContext.lctx
+    prbValidationAContext.lparams prbValidationAContext.fuel
+      (TypeChecker.checkType prbValidationNextDomain) = .ok (.sort .zero)
+  unfold TypeChecker.M.run TypeChecker.checkType TypeChecker.RecM.run
+  simp [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    StateT.pure, Except.pure, Pure.pure,
+    StateT.run', Functor.map, Except.map]
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+    (TypeChecker.Inner.inferType' prbValidationNextDomain false
+      (TypeChecker.Methods.withFuel 9999)
+      prbValidationAContext.toTypeChecker ({} : TypeChecker.State)) =
+        .ok (.sort .zero)
+  simpa [prbValidationNextDomain, Functor.map, Except.map] using
+    congrArg (Except.map (fun x : Expr × TypeChecker.State => x.1)) outerRun
+
+theorem prbValidationInferFirstAppCore
+    (fuel : Nat) (context : AddInductive.Context)
+    (state : TypeChecker.State) (alphaId : FVarId)
+    (hconst : state.inferTypeC[
+      (.const propRecursiveBoundaryKernelType.name [.param `u] : Expr)]? =
+        none)
+    (halpha : (prbValidationConstState state).inferTypeC[
+      (.fvar alphaId : Expr)]? = none)
+    (happ : state.inferTypeC[
+      prbValidationFirstApp (.fvar alphaId)]? = none)
+    (hfind : context.lctx.find? alphaId =
+      some (.cdecl index alphaId name
+        (.sort (.succ (.param `u))) bi kind))
+    (henv : context.env = prbConstructorContext.env)
+    (hlparams : context.lparams = [`u])
+    (hsafety : context.safety = .safe) :
+    TypeChecker.Inner.inferType'
+        (prbValidationFirstApp (.fvar alphaId)) false
+        (TypeChecker.Methods.withFuel fuel) context.toTypeChecker state =
+      .ok (prbValidationFamilyTail (.fvar alphaId),
+        prbValidationFirstAppState state alphaId) := by
+  have constRun := prbValidationInferTypeFamilyCore fuel context state hconst
+    henv hlparams hsafety
+  have alphaRun := prbValidationInferTypeFVarCore fuel context
+    (prbValidationConstState state) alphaId
+    (.sort (.succ (.param `u))) halpha hfind
+  have appRun := prbInferAppCoreOf fuel context.toTypeChecker state
+    (prbValidationConstState state) (prbValidationAlphaState state alphaId)
+    (.const propRecursiveBoundaryKernelType.name [.param `u])
+    (.fvar alphaId) (.sort (.succ (.param `u)))
+    (.forallE prbValidationAName (.bvar 0) (.sort .zero) .default)
+    `α .default
+    (by simp [prbValidationFirstApp, Expr.hasLooseBVars,
+      Expr.looseBVarRange']) happ
+    (by simpa [prbValidationAName, propRecursiveBoundaryKernelType,
+      propRecursiveBoundaryInfo, ConstantInfo.type,
+      ConstantInfo.toConstantVal, Expr.bindingBody!,
+      Expr.bindingName!] using constRun)
+    (by simpa [prbValidationAlphaState] using alphaRun) (by rfl)
+  simpa [prbValidationFirstAppState, prbValidationFirstApp,
+    prbValidationFamilyTail, prbReplayInsert,
+    Expr.instantiate1_eq, Expr.instantiate1'] using appRun
+
+theorem prbValidationFamilyAppCheckValid
+    (context : AddInductive.Context) (alphaId argId : FVarId)
+    (hne : alphaId ≠ argId)
+    (halphaExpr : (.fvar alphaId : Expr) = prbValidationAlpha)
+    (halpha : context.lctx.find? alphaId =
+      some (.cdecl alphaIndex alphaId alphaName
+        (.sort (.succ (.param `u))) alphaBi alphaKind))
+    (harg : context.lctx.find? argId =
+      some (.cdecl argIndex argId argName (.fvar alphaId) argBi argKind))
+    (henv : context.env = prbConstructorContext.env)
+    (hlparams : context.lparams = [`u])
+    (hsafety : context.safety = .safe)
+    (hdepth : context.fuel.recDepth = 10000) :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨context, prbValidationFamilyApp (.fvar argId), .sort .zero⟩ := by
+  let initial := ({} : TypeChecker.State)
+  have firstRun : TypeChecker.Inner.inferType'
+      (prbValidationFirstApp (.fvar alphaId)) false
+      (TypeChecker.Methods.withFuel 9999) context.toTypeChecker initial =
+      .ok (prbValidationFamilyTail (.fvar alphaId),
+        prbValidationFirstAppState initial alphaId) := by
+    apply prbValidationInferFirstAppCore
+    · simp [initial]
+    · simp [initial, prbValidationConstState,
+        prbReplayInsert]
+    · simp [initial, prbValidationFirstApp]
+    · exact halpha
+    · exact henv
+    · exact hlparams
+    · exact hsafety
+  have argMiss : (prbValidationFirstAppState initial alphaId).inferTypeC[
+      (.fvar argId : Expr)]? = none := by
+    have initialMiss : initial.inferTypeC[(.fvar argId : Expr)]? = none := by
+      simpa [initial] using
+        (Std.HashMap.getElem?_empty (k := (.fvar argId : Expr))
+          (v := Expr))
+    have idBeq : ((.fvar alphaId : Expr) == .fvar argId) = false := by
+      change Expr.eqv (.fvar alphaId) (.fvar argId) = false
+      rw [Expr.eqv_eq]
+      simp [Expr.eqv', hne]
+    simp [prbValidationFirstAppState, prbValidationAlphaState,
+      prbValidationConstState, prbReplayInsert,
+      prbValidationFirstApp, idBeq, initialMiss]
+    intro hmem
+    have hsome := Std.HashMap.mem_iff_isSome_getElem?.mp hmem
+    simp [initialMiss] at hsome
+  have argRun : TypeChecker.Inner.inferType' (.fvar argId) false
+      (TypeChecker.Methods.withFuel 9999) context.toTypeChecker
+      (prbValidationFirstAppState initial alphaId) =
+      .ok (.fvar alphaId,
+        prbValidationArgumentState initial alphaId argId) := by
+    simpa [prbValidationArgumentState] using
+      prbValidationInferTypeFVarCore 9999 context
+        (prbValidationFirstAppState initial alphaId) argId
+        (.fvar alphaId) argMiss harg
+  have appRun := prbInferAppCoreOf 9999 context.toTypeChecker initial
+    (prbValidationFirstAppState initial alphaId)
+    (prbValidationArgumentState initial alphaId argId)
+    (prbValidationFirstApp (.fvar alphaId)) (.fvar argId)
+    (.fvar alphaId) (.sort .zero) prbValidationAName .default
+    (by simp [prbValidationFamilyApp, prbValidationFirstApp,
+      Expr.hasLooseBVars, Expr.looseBVarRange'])
+    (by simp [initial, prbValidationFamilyApp]) firstRun argRun (by rfl)
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  change TypeChecker.M.run context.env context.safety context.lctx
+    context.lparams context.fuel
+      (TypeChecker.checkType (prbValidationFamilyApp (.fvar argId))) =
+        .ok (.sort .zero)
+  unfold TypeChecker.M.run TypeChecker.checkType TypeChecker.RecM.run
+  simp [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    StateT.pure, Except.pure, Pure.pure,
+    StateT.run', Functor.map, Except.map]
+  rw [hdepth]
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+    (TypeChecker.Inner.inferType' (prbValidationFamilyApp (.fvar argId))
+      false (TypeChecker.Methods.withFuel 9999)
+      context.toTypeChecker ({} : TypeChecker.State)) = .ok (.sort .zero)
+  simpa [prbValidationFamilyApp, prbValidationFirstApp, halphaExpr, initial,
+    Expr.instantiate1_eq, Expr.instantiate1', Functor.map, Except.map] using
+    congrArg (Except.map (fun x : Expr × TypeChecker.State => x.1)) appRun
+
+theorem prbValidationAlphaRootCheckValid :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨prbValidationRootContext, prbValidationAlpha,
+        .sort (.succ (.param `u))⟩ := by
+  simpa [prbValidationAlpha_shape] using
+    prbCandidateCheckTypeFVar prbValidationRootContext
+      prbValidationAlphaId (.sort (.succ (.param `u)))
+      (by rfl) prbValidationAlphaFind
+
+theorem prbValidationAlphaACheckValid :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨prbValidationAContext, prbValidationAlpha,
+        .sort (.succ (.param `u))⟩ := by
+  simpa [prbValidationAlpha_shape] using
+    prbCandidateCheckTypeFVar prbValidationAContext
+      prbValidationAlphaId (.sort (.succ (.param `u)))
+      (by rfl) prbValidationAlphaFindInA
+
+theorem prbValidationTerminalCheckValid :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨prbValidationNextContext, prbValidationTerminal,
+        .sort .zero⟩ := by
+  simpa [prbValidationTerminal,
+    prbValidationAExpr_shape, prbValidationAlpha_shape] using
+    prbValidationFamilyAppCheckValid prbValidationNextContext
+      prbValidationAlphaId prbValidationAId
+      prbValidationAlphaNeA rfl prbValidationAlphaFindInNext
+      prbValidationAFindInNext rfl rfl rfl rfl
+
+theorem prbValidationTargetCheckValid :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨prbValidationBContext, prbValidationTarget,
+        .sort .zero⟩ := by
+  simpa [prbValidationTarget,
+    prbValidationBExpr_shape, prbValidationAlpha_shape] using
+    prbValidationFamilyAppCheckValid prbValidationBContext
+      prbValidationAlphaId prbValidationBId
+      prbValidationAlphaNeB rfl prbValidationAlphaFindInB
+      prbValidationBFind rfl rfl rfl rfl
+
+private def prbCheckedOfValid
+    (context : AddInductive.Context) (source inferred : Expr)
+    (fvars : source.FVarsIn
+      (fun fv => (context.lctx.find? fv).isSome = true))
+    (valid : AddInductive.CandidateCheckTypeStep.Valid
+      ⟨context, source, inferred⟩) :
+    AddInductive.ConstructorCheckedExpr context source :=
+  .ofRun fvars valid
+
+private def prbValidationAlphaRootChecked :
+    AddInductive.ConstructorCheckedExpr prbValidationRootContext
+      prbValidationAlpha :=
+  prbCheckedOfValid _ _ _ (by
+    rw [prbValidationAlpha_shape]
+    change (prbValidationRootContext.lctx.find?
+      prbValidationAlphaId).isSome = true
+    rw [prbValidationAlphaFind]
+    rfl)
+    prbValidationAlphaRootCheckValid
+
+private def prbValidationAlphaAChecked :
+    AddInductive.ConstructorCheckedExpr prbValidationAContext
+      prbValidationAlpha :=
+  prbCheckedOfValid _ _ _ (by
+    rw [prbValidationAlpha_shape]
+    change (prbValidationAContext.lctx.find?
+      prbValidationAlphaId).isSome = true
+    rw [prbValidationAlphaFindInA]
+    rfl)
+    prbValidationAlphaACheckValid
+
+private def prbValidationAlphaAConsumedChecked :
+    AddInductive.ConstructorCheckedExpr prbValidationAContext
+      (AddInductive.consumeTypeAnnotations prbValidationAlpha) :=
+  prbCheckedOfValid _ _ (.sort (.succ (.param `u))) (by
+    rw [prbValidationConsumeAlpha]
+    exact prbValidationAlphaAChecked.fvars)
+    (by simpa only [prbValidationConsumeAlpha] using
+      prbValidationAlphaACheckValid)
+
+private def prbValidationNextDomainChecked :
+    AddInductive.ConstructorCheckedExpr prbValidationAContext
+      prbValidationNextDomain :=
+  prbCheckedOfValid _ _ _ (by
+    simp [prbValidationNextDomain, prbValidationFamilyApp,
+      prbValidationAlpha, FVarsIn, Level.hasMVar']
+    change (prbValidationAContext.lctx.find?
+      prbValidationAlphaId).isSome = true
+    rw [prbValidationAlphaFindInA]
+    rfl)
+    prbValidationNextDomainCheckValid
+
+private def prbValidationTerminalChecked :
+    AddInductive.ConstructorCheckedExpr prbValidationNextContext
+      prbValidationTerminal :=
+  prbCheckedOfValid _ _ _ (by
+    simp [prbValidationTerminal, prbValidationFamilyApp,
+      prbValidationAlpha, prbValidationAExpr,
+      FVarsIn, Level.hasMVar']
+    constructor
+    · change (prbValidationNextContext.lctx.find?
+        prbValidationAlphaId).isSome = true
+      rw [prbValidationAlphaFindInNext]
+      rfl
+    · change (prbValidationNextContext.lctx.find?
+        prbValidationAId).isSome = true
+      rw [prbValidationAFindInNext]
+      rfl)
+    prbValidationTerminalCheckValid
+
+private def prbValidationTargetChecked :
+    AddInductive.ConstructorCheckedExpr prbValidationBContext
+      prbValidationTarget :=
+  prbCheckedOfValid _ _ _ (by
+    simp [prbValidationTarget, prbValidationFamilyApp,
+      prbValidationAlpha, prbValidationBExpr,
+      FVarsIn, Level.hasMVar']
+    constructor
+    · change (prbValidationBContext.lctx.find?
+        prbValidationAlphaId).isSome = true
+      rw [prbValidationAlphaFindInB]
+      rfl
+    · change (prbValidationBContext.lctx.find?
+        prbValidationBId).isSome = true
+      rw [prbValidationBFind]
+      rfl)
+    prbValidationTargetCheckValid
+
+private theorem prbValidationAlphaRootWhnfSelf :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨prbValidationRootContext, prbValidationAlpha,
+        prbValidationAlpha⟩ := by
+  rw [prbValidationAlpha_shape]
+  apply TypeChecker.candidateWhnfFVar_refl _ _ 9999
+  · rfl
+  · unfold TypeChecker.Inner.isLetFVar
+    rw [prbValidationAlphaFind]
+
+private theorem prbValidationAlphaAWhnfSelf :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨prbValidationAContext, prbValidationAlpha,
+        prbValidationAlpha⟩ := by
+  rw [prbValidationAlpha_shape]
+  apply TypeChecker.candidateWhnfFVar_refl _ _ 9999
+  · rfl
+  · unfold TypeChecker.Inner.isLetFVar
+    rw [prbValidationAlphaFindInA]
+
+private theorem prbValidationNextDomainWhnfSelf :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨prbValidationAContext, prbValidationNextDomain,
+        prbValidationNextDomain⟩ := by
+  apply TypeChecker.CandidateExprIdentityReplay.Shaped.candidateWhnfForallSource_refl
+    _ _ 9999
+  · rfl
+  · rfl
+
+private theorem prbValidationTargetWhnfSelf :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨prbValidationBContext, prbValidationTarget,
+        prbValidationTarget⟩ := by
+  rw [prbValidationTarget, prbValidationFamilyApp,
+    prbValidationAlpha_shape, prbValidationBExpr_shape]
+  apply prbCtorFamilyWhnf prbValidationBContext prbValidationAlphaId
+    prbValidationBId rfl rfl rfl
+  rw [show prbValidationBContext.env = prbConstructorContext.env by rfl]
+  rw [prbFamilyStage.quotInit_eq]
+  rfl
+
+private theorem prbValidationTerminalWhnfSelf :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨prbValidationNextContext, prbValidationTerminal,
+        prbValidationTerminal⟩ := by
+  rw [prbValidationTerminal, prbValidationFamilyApp,
+    prbValidationAlpha_shape, prbValidationAExpr_shape]
+  apply prbCtorFamilyWhnf prbValidationNextContext prbValidationAlphaId
+    prbValidationAId rfl rfl rfl
+  rw [show prbValidationNextContext.env = prbConstructorContext.env by rfl]
+  rw [prbFamilyStage.quotInit_eq]
+  rfl
+
+private theorem prbCandidateWhnfResult_eq
+    (self : AddInductive.CandidateWhnfStep.Valid
+      ⟨context, source, source⟩)
+    (other : AddInductive.CandidateWhnfStep.Valid
+      ⟨context, source, result⟩) :
+    result = source := by
+  unfold AddInductive.CandidateWhnfStep.Valid at self other
+  rw [self] at other
+  exact (Except.ok.inj other).symm
+
+noncomputable def prbConstructorValidation :
+    AddInductive.ConstructorValidationRun propRecursiveBoundaryKernelType
+      prbFamilyValidationRun.stats false
+      prbConstructorValidationContext :=
+  AddInductive.ConstructorValidationRun.of_run (by
+    simpa [prbConstructorValidationContext] using prbCheckConstructorsRun)
+
+noncomputable def prbStagedUniverseInput :
     VInductDecl.StagedNormalizationCandidateUniverseInput
       prbFamilyContext prbConstructorContext VEnv.empty [`u]
       prbCandidate propRecursiveBoundaryDecl where
@@ -2435,22 +3736,530 @@ def prbStagedUniverseInput :
     constructors := prbConstructorsStage
     familyTypesProduced := prbFamilyTypesProduced
     familiesProduced := prbFamiliesProduced }
-  universeRun := prbUniverseRun
+  universeRun := by
+    simpa [prbFamilyStage, prbConstructorValidationContext] using
+      prbUniverseRun
 
-theorem prbAlignmentRun :
-    prbStagedUniverseInput.staged.constructorValidation.trace.checkCandidateAlignment
-        prbCandidate.families.singleton.constructors
-        { prbCandidate.families.singleton.familyType.type.trace.terminalContext with
-          env := prbConstructorContext.env } = .ok () := by
-  apply exceptUnit_eq_ok_of_isOk
-  native_decide
+theorem prbStagedStats_eq :
+    prbStagedUniverseInput.staged.family.validation.stats =
+      prbFamilyValidationRun.stats := by
+  rfl
 
+private theorem prbStagedIndConsts_eq :
+    prbStagedUniverseInput.staged.family.validation.stats.indConsts =
+      #[.const propRecursiveBoundaryKernelType.name [.param `u]] := by
+  rw [prbStagedStats_eq, prbFamilyValidationRun.stats_eq]
+  simp only [prbFamilyValidationRun,
+    AddInductive.CandidateExprTrace.singletonCandidateInductiveStats]
+  rw [show
+    prbCandidate.families.singleton.familyType.type.context.lparams = [`u] by
+      rw [prbFamilyCandidateContext_eq]
+      rfl]
+  rfl
+
+private theorem prbValidationAlphaHasNoIndOcc :
+    AddInductive.hasIndOcc
+      prbStagedUniverseInput.staged.family.validation.stats.indConsts
+      prbValidationAlpha = false := by
+  rw [prbStagedIndConsts_eq]
+  simp [AddInductive.hasIndOcc, prbValidationAlpha_shape]
+
+private theorem prbValidationNextDomainHasIndOcc :
+    AddInductive.hasIndOcc
+      prbStagedUniverseInput.staged.family.validation.stats.indConsts
+      prbValidationNextDomain = true := by
+  rw [prbStagedIndConsts_eq]
+  simp [AddInductive.hasIndOcc, prbValidationNextDomain,
+    prbValidationFamilyApp, Expr.constName!]
+
+private theorem prbValidationTargetHasIndOcc :
+    AddInductive.hasIndOcc
+      prbStagedUniverseInput.staged.family.validation.stats.indConsts
+      prbValidationTarget = true := by
+  rw [prbStagedIndConsts_eq]
+  simp [AddInductive.hasIndOcc, prbValidationTarget,
+    prbValidationFamilyApp, Expr.constName!]
+
+private def prbValidationAlphaRootAnnotations :
+    AddInductive.CandidateIsDefEqObservation prbValidationRootContext
+      prbValidationAlpha prbValidationAlpha :=
+  ⟨AddInductive.candidateIsDefEqRefl prbValidationRootContext
+    prbValidationAlpha⟩
+
+private def prbValidationAlphaAAnnotations :
+    AddInductive.CandidateIsDefEqObservation prbValidationAContext
+      prbValidationAlpha prbValidationAlpha :=
+  ⟨AddInductive.candidateIsDefEqRefl prbValidationAContext
+    prbValidationAlpha⟩
+
+private def prbValidationNextDomainAnnotations :
+    AddInductive.CandidateIsDefEqObservation prbValidationAContext
+      prbValidationNextDomain prbValidationNextDomain :=
+  ⟨AddInductive.candidateIsDefEqRefl prbValidationAContext
+    prbValidationNextDomain⟩
+
+private noncomputable def prbValidationAlphaPositivityAlignment
+    (trace : AddInductive.ConstructorPositivityModeTrace
+      prbStagedUniverseInput.staged.family.validation.stats false
+      propRecursiveBoundaryKernelCtor.name 1 prbValidationRootContext
+      prbValidationAlpha) :
+    AddInductive.ConstructorPositivityModeAlignmentTrace trace := by
+  cases trace with
+  | skipped unsafeEq => contradiction
+  | safe unsafeEq positivityTrace =>
+      apply AddInductive.ConstructorPositivityModeAlignmentTrace.safe
+      cases positivityTrace with
+      | absent context source result fuel whnf occurs =>
+          have result_eq := prbCandidateWhnfResult_eq
+            prbValidationAlphaRootWhnfSelf whnf
+          subst result
+          exact .absent prbValidationAlphaRootChecked
+      | forallE context source fuel name domain body binderInfo whnf occurs
+          domainFree tail =>
+          have result_eq := prbCandidateWhnfResult_eq
+            prbValidationAlphaRootWhnfSelf whnf
+          have impossible := congrArg Expr.isForall result_eq
+          simp [prbValidationAlpha_shape, Expr.isForall] at impossible
+      | target context source result fuel targetIdx whnf occurs terminal valid =>
+          have result_eq := prbCandidateWhnfResult_eq
+            prbValidationAlphaRootWhnfSelf whnf
+          subst result
+          rw [prbValidationAlphaHasNoIndOcc] at occurs
+          contradiction
+
+private def prbTransportPositivityTrace
+    {context context' : AddInductive.Context}
+    (context_eq : context = context')
+    {source source' : Expr} (source_eq : source = source')
+    (trace : AddInductive.ConstructorPositivityTrace stats ctor argIdx
+      context source fuel) :
+    AddInductive.ConstructorPositivityTrace stats ctor argIdx
+      context' source' fuel := by
+  subst context'
+  subst source'
+  exact trace
+
+private def prbTransportPositivityAlignment
+    {context context' : AddInductive.Context}
+    (context_eq : context = context')
+    {source source' : Expr} (source_eq : source = source')
+    (trace : AddInductive.ConstructorPositivityTrace stats ctor argIdx
+      context source fuel)
+    (alignment : AddInductive.ConstructorPositivityAlignmentTrace
+      (prbTransportPositivityTrace context_eq source_eq trace)) :
+    AddInductive.ConstructorPositivityAlignmentTrace trace := by
+  subst context'
+  subst source'
+  exact alignment
+
+private noncomputable def prbValidationNextPositivityAlignment
+    (trace : AddInductive.ConstructorPositivityModeTrace
+      prbStagedUniverseInput.staged.family.validation.stats false
+      propRecursiveBoundaryKernelCtor.name 2 prbValidationAContext
+      prbValidationNextDomain) :
+    AddInductive.ConstructorPositivityModeAlignmentTrace trace := by
+  cases trace with
+  | skipped unsafeEq => contradiction
+  | safe unsafeEq positivityTrace =>
+      apply AddInductive.ConstructorPositivityModeAlignmentTrace.safe
+      cases positivityTrace with
+      | absent context source result fuel whnf occurs =>
+          have result_eq := prbCandidateWhnfResult_eq
+            prbValidationNextDomainWhnfSelf whnf
+          subst result
+          rw [prbValidationNextDomainHasIndOcc] at occurs
+          contradiction
+      | forallE context source fuel name domain body binderInfo whnf occurs
+          domainFree tail =>
+          have result_eq := prbCandidateWhnfResult_eq
+            prbValidationNextDomainWhnfSelf whnf
+          change (Expr.forallE name domain body binderInfo) =
+            (Expr.forallE `b prbValidationAlpha
+              (prbValidationFamilyApp (.bvar 0)) .default) at result_eq
+          injection result_eq with name_eq domain_eq body_eq binderInfo_eq
+          subst name
+          subst domain
+          subst body
+          subst binderInfo
+          have tailContext_eq :
+              prbValidationAContext.pushLocalDecl `b .default
+                  (AddInductive.consumeTypeAnnotations prbValidationAlpha) =
+                prbValidationBContext := by
+            rw [prbValidationConsumeAlpha]
+            rfl
+          have tailSource_eq :
+              (prbValidationFamilyApp (.bvar 0)).instantiate1
+                  prbValidationAContext.freshExpr =
+                prbValidationTarget := by
+            simpa [prbValidationNextDomain, Expr.bindingBody!,
+              prbValidationBExpr] using prbValidationTarget_shape
+          let tailNormalized := prbTransportPositivityTrace
+            tailContext_eq tailSource_eq tail
+          have tailNormalizedAlignment :
+              AddInductive.ConstructorPositivityAlignmentTrace
+                tailNormalized := by
+            cases htail : tailNormalized with
+            | absent context source result fuel whnf occurs =>
+                have result_eq := prbCandidateWhnfResult_eq
+                  prbValidationTargetWhnfSelf whnf
+                subst result
+                rw [prbValidationTargetHasIndOcc] at occurs
+                contradiction
+            | forallE context source fuel name domain body binderInfo whnf
+                occurs domainFree tail =>
+                have result_eq := prbCandidateWhnfResult_eq
+                  prbValidationTargetWhnfSelf whnf
+                have impossible := congrArg Expr.isForall result_eq
+                simp [prbValidationTarget, prbValidationFamilyApp,
+                  Expr.isForall] at impossible
+            | target context source result fuel targetIdx whnf occurs
+                terminal valid =>
+                have result_eq := prbCandidateWhnfResult_eq
+                  prbValidationTargetWhnfSelf whnf
+                subst result
+                exact .target prbValidationTargetChecked
+          have tailAlignment := prbTransportPositivityAlignment
+            tailContext_eq tailSource_eq tail tailNormalizedAlignment
+          exact .forallE prbValidationNextDomainChecked
+            prbValidationAlphaAChecked
+            prbValidationAlphaAConsumedChecked
+            (.succ (.param `u)) rfl prbValidationAFresh
+            (by simpa only [prbValidationConsumeAlpha] using
+              prbValidationAlphaAAnnotations)
+            tail tailAlignment
+      | target context source result fuel targetIdx whnf occurs terminal valid =>
+          have result_eq := prbCandidateWhnfResult_eq
+            prbValidationNextDomainWhnfSelf whnf
+          subst result
+          simp [prbValidationNextDomain, Expr.isForall] at terminal
+
+private def prbTransportValidationTrace
+    {context context' : AddInductive.Context}
+    (context_eq : context = context')
+    {source source' : Expr} (source_eq : source = source')
+    (trace : AddInductive.ConstructorTypeValidationTrace stats isUnsafe
+      familyIdx ctor context source argIdx fuel) :
+    AddInductive.ConstructorTypeValidationTrace stats isUnsafe familyIdx ctor
+      context' source' argIdx fuel := by
+  subst context'
+  subst source'
+  exact trace
+
+private def prbTransportViewAlignment
+    {context context' : AddInductive.Context}
+    (context_eq : context = context')
+    {source source' view view' : Expr}
+    (source_eq : source = source') (view_eq : view = view')
+    (trace : AddInductive.ConstructorTypeValidationTrace stats isUnsafe
+      familyIdx ctor context source argIdx fuel)
+    (alignment : AddInductive.ConstructorViewAlignmentTrace
+      (prbTransportValidationTrace context_eq source_eq trace) view') :
+    AddInductive.ConstructorViewAlignmentTrace trace view := by
+  subst context'
+  subst source'
+  subst view'
+  exact alignment
+
+@[simp] private theorem prbTransportValidationTrace_spineLength
+    {context context' : AddInductive.Context}
+    (context_eq : context = context')
+    {source source' : Expr} (source_eq : source = source')
+    (trace : AddInductive.ConstructorTypeValidationTrace stats isUnsafe
+      familyIdx ctor context source argIdx fuel) :
+    (prbTransportValidationTrace context_eq source_eq trace).spineLength =
+      trace.spineLength := by
+  subst context'
+  subst source'
+  rfl
+
+private def prbTransportValidationTraceIndexed
+    {context context' : AddInductive.Context}
+    (context_eq : context = context')
+    {source source' : Expr} (source_eq : source = source')
+    {argIdx argIdx' : Nat} (argIdx_eq : argIdx = argIdx')
+    {fuel fuel' : Nat} (fuel_eq : fuel = fuel')
+    (trace : AddInductive.ConstructorTypeValidationTrace stats isUnsafe
+      familyIdx ctor context source argIdx fuel) :
+    AddInductive.ConstructorTypeValidationTrace stats isUnsafe familyIdx ctor
+      context' source' argIdx' fuel' := by
+  subst context'
+  subst source'
+  subst argIdx'
+  subst fuel'
+  exact trace
+
+private def prbTransportViewAlignmentIndexed
+    {context context' : AddInductive.Context}
+    (context_eq : context = context')
+    {source source' view view' : Expr}
+    (source_eq : source = source') (view_eq : view = view')
+    {argIdx argIdx' : Nat} (argIdx_eq : argIdx = argIdx')
+    {fuel fuel' : Nat} (fuel_eq : fuel = fuel')
+    (trace : AddInductive.ConstructorTypeValidationTrace stats isUnsafe
+      familyIdx ctor context source argIdx fuel)
+    (alignment : AddInductive.ConstructorViewAlignmentTrace
+      (prbTransportValidationTraceIndexed context_eq source_eq argIdx_eq
+        fuel_eq trace) view') :
+    AddInductive.ConstructorViewAlignmentTrace trace view := by
+  subst context'
+  subst source'
+  subst view'
+  subst argIdx'
+  subst fuel'
+  exact alignment
+
+@[simp] private theorem prbTransportValidationTraceIndexed_spineLength
+    {context context' : AddInductive.Context}
+    (context_eq : context = context')
+    {source source' : Expr} (source_eq : source = source')
+    {argIdx argIdx' : Nat} (argIdx_eq : argIdx = argIdx')
+    {fuel fuel' : Nat} (fuel_eq : fuel = fuel')
+    (trace : AddInductive.ConstructorTypeValidationTrace stats isUnsafe
+      familyIdx ctor context source argIdx fuel) :
+    (prbTransportValidationTraceIndexed context_eq source_eq argIdx_eq
+      fuel_eq trace).spineLength = trace.spineLength := by
+  subst context'
+  subst source'
+  subst argIdx'
+  subst fuel'
+  rfl
+
+set_option pp.universes false in
+set_option pp.all false in
 noncomputable def prbStagedPostFamilyInput :
     VInductDecl.StagedNormalizationCandidatePostFamilyInput
       prbFamilyContext prbConstructorContext VEnv.empty [`u]
-      prbCandidate propRecursiveBoundaryDecl :=
-  VInductDecl.StagedNormalizationCandidatePostFamilyInput.ofRun
-    prbStagedUniverseInput prbAlignmentRun
+      prbCandidate propRecursiveBoundaryDecl where
+  universeInput := prbStagedUniverseInput
+  alignment := by
+    rw [AddInductive.CandidateList.singleton_eta
+      prbCandidate.families.singleton.constructors]
+    change AddInductive.ConstructorCandidateAlignmentTrace
+      prbStagedUniverseInput.staged.family.validation.stats false 0
+      { prbCandidate.families.singleton.familyType.type.trace.terminalContext with
+        env := prbConstructorContext.env }
+      prbStagedUniverseInput.staged.constructorValidation.trace
+      (.cons prbCandidate.families.singleton.constructors.singleton .nil)
+    generalize htrace :
+      prbStagedUniverseInput.staged.constructorValidation.trace = trace
+    cases trace with
+    | cons seen head constructors fresh closed rootCheck typeTrace tailTrace =>
+      clear htrace
+      have rootContext_eq :
+          { prbCandidate.families.singleton.familyType.type.trace.terminalContext with
+              env := prbConstructorContext.env } =
+            prbValidationRootContext := by
+        rw [prbFamilyTerminalContext_eq]
+        rfl
+      have rootFuel_eq :
+          { prbCandidate.families.singleton.familyType.type.trace.terminalContext with
+              env := prbConstructorContext.env }.fuel.inductiveFuel = 1000 := by
+        rw [prbFamilyTerminalContext_eq]
+        rfl
+      let rootNormalized :
+          AddInductive.ConstructorTypeValidationTrace
+            prbStagedUniverseInput.staged.family.validation.stats false 0
+            propRecursiveBoundaryKernelCtor.name prbValidationRootContext
+            propRecursiveBoundaryKernelCtor.type 0 1000 :=
+        prbTransportValidationTraceIndexed rootContext_eq (by rfl)
+          (by rfl) rootFuel_eq typeTrace
+      let rootNormalizedTrace := rootNormalized
+      have rootSpine : typeTrace.spineLength =
+          rootNormalizedTrace.spineLength := by
+        exact (prbTransportValidationTraceIndexed_spineLength rootContext_eq
+          (by rfl) (by rfl) rootFuel_eq typeTrace).symm
+      cases hroot : rootNormalizedTrace with
+      | parameter context fuel argIdx name domain body binderInfo param
+          parameterType parameterAt parameterTypeRun defeq tail =>
+        simp [hroot,
+          AddInductive.ConstructorTypeValidationTrace.spineLength] at rootSpine
+        rw [prbStagedStats_eq, prbStatsParams_eq] at parameterAt
+        simp at parameterAt
+        subst param
+        change AddInductive.getType prbValidationAlpha
+          prbValidationRootContext = .ok parameterType at parameterTypeRun
+        rw [prbValidationGetTypeAlpha] at parameterTypeRun
+        injection parameterTypeRun with parameterType_eq
+        subst parameterType
+        let afterParamNormalized := prbTransportValidationTrace (by rfl)
+          prbValidationAfterParam_shape tail
+        let afterParamNormalizedTrace := afterParamNormalized
+        have afterParamSpine : tail.spineLength =
+            afterParamNormalizedTrace.spineLength := by
+          exact (prbTransportValidationTrace_spineLength (by rfl)
+            prbValidationAfterParam_shape tail).symm
+        cases hafterParam : afterParamNormalizedTrace with
+        | parameter context fuel argIdx name domain body binderInfo param
+            parameterType parameterAt parameterTypeRun defeq tail =>
+            rw [prbStagedStats_eq, prbStatsParams_eq] at parameterAt
+            simp at parameterAt
+        | ordinary context fuel argIdx name domain body binderInfo sortResult
+            noParameter ensureType universeTrace positivity afterATrace =>
+            simp [hafterParam,
+              AddInductive.ConstructorTypeValidationTrace.spineLength]
+              at afterParamSpine
+            have aContext_eq :
+                prbValidationRootContext.pushLocalDecl `a .default
+                    (AddInductive.consumeTypeAnnotations
+                      prbValidationAlpha) =
+                  prbValidationAContext := by
+              rw [prbValidationConsumeAlpha]
+              rfl
+            let afterANormalized :
+                AddInductive.ConstructorTypeValidationTrace
+                  prbStagedUniverseInput.staged.family.validation.stats
+                  false 0 propRecursiveBoundaryKernelCtor.name
+                  prbValidationAContext prbValidationAfterA 2 998 :=
+              prbTransportValidationTrace aContext_eq
+                prbValidationAfterA_shape afterATrace
+            let afterANormalizedTrace := afterANormalized
+            have afterASpine : afterATrace.spineLength =
+                afterANormalizedTrace.spineLength := by
+              exact (prbTransportValidationTrace_spineLength aContext_eq
+                prbValidationAfterA_shape afterATrace).symm
+            cases hafterA : afterANormalizedTrace with
+            | parameter context fuel argIdx name domain body binderInfo param
+                parameterType parameterAt parameterTypeRun defeq tail =>
+                rw [prbStagedStats_eq, prbStatsParams_eq] at parameterAt
+                simp at parameterAt
+            | ordinary context fuel argIdx name domain body binderInfo
+                sortResult noParameter ensureType universeTrace
+                nextPositivity terminalTrace =>
+                simp [hafterA,
+                  AddInductive.ConstructorTypeValidationTrace.spineLength]
+                  at afterASpine
+                have nextPositivityAlignment :=
+                  prbValidationNextPositivityAlignment nextPositivity
+                have terminalContext_eq :
+                    prbValidationAContext.pushLocalDecl `next .default
+                        (AddInductive.consumeTypeAnnotations
+                          prbValidationNextDomain) =
+                      prbValidationNextContext := by
+                  rw [prbValidationConsumeNextDomain]
+                  rfl
+                let terminalNormalized :
+                    AddInductive.ConstructorTypeValidationTrace
+                      prbStagedUniverseInput.staged.family.validation.stats
+                      false 0 propRecursiveBoundaryKernelCtor.name
+                      prbValidationNextContext prbValidationTerminal 3 997 :=
+                  prbTransportValidationTrace terminalContext_eq
+                    prbValidationTerminal_shape terminalTrace
+                let terminalNormalizedTrace := terminalNormalized
+                have terminalSpine : terminalTrace.spineLength =
+                    terminalNormalizedTrace.spineLength := by
+                  exact (prbTransportValidationTrace_spineLength
+                    terminalContext_eq prbValidationTerminal_shape
+                    terminalTrace).symm
+                cases hterminal : terminalNormalizedTrace with
+                | terminal context source fuel argIdx terminal valid =>
+                    simp [hterminal,
+                      AddInductive.ConstructorTypeValidationTrace.spineLength]
+                      at terminalSpine
+                    have terminalNormalizedAlignment :
+                        AddInductive.ConstructorViewAlignmentTrace
+                          terminalNormalizedTrace prbValidationTerminal := by
+                      rw [hterminal]
+                      exact .terminal prbValidationTerminalChecked
+                        prbValidationTerminalChecked terminal valid
+                    have terminalAlignment := prbTransportViewAlignment
+                      terminalContext_eq prbValidationTerminal_shape
+                      prbValidationTerminal_shape terminalTrace
+                      terminalNormalizedAlignment
+                    have afterANormalizedAlignment :
+                        AddInductive.ConstructorViewAlignmentTrace
+                          afterANormalizedTrace prbValidationAfterA := by
+                      rw [hafterA]
+                      exact .ordinary prbValidationNextDomainChecked
+                        prbValidationNextDomainChecked
+                        prbValidationNextDomainAnnotations
+                        (by simpa only [prbValidationConsumeNextDomain] using
+                          prbValidationNextDomainChecked)
+                        nextPositivity nextPositivityAlignment
+                        prbValidationAFresh
+                        (by simpa only [prbValidationConsumeNextDomain] using
+                          prbValidationNextDomainAnnotations)
+                        terminalTrace terminalAlignment
+                    have afterAAlignment := prbTransportViewAlignment
+                      aContext_eq prbValidationAfterA_shape
+                      prbValidationAfterA_shape afterATrace
+                      afterANormalizedAlignment
+                    have afterParamNormalizedAlignment :
+                        AddInductive.ConstructorViewAlignmentTrace
+                          afterParamNormalizedTrace
+                          prbValidationAfterParam := by
+                      rw [hafterParam]
+                      exact .ordinary prbValidationAlphaRootChecked
+                        prbValidationAlphaRootChecked
+                        prbValidationAlphaRootAnnotations
+                        (by simpa only [prbValidationConsumeAlpha] using
+                          prbValidationAlphaRootChecked)
+                        positivity
+                        (prbValidationAlphaPositivityAlignment positivity)
+                        prbValidationRootFresh
+                        (by simpa only [prbValidationConsumeAlpha] using
+                          prbValidationAlphaRootAnnotations)
+                        afterATrace afterAAlignment
+                    have afterParamAlignment := prbTransportViewAlignment
+                      (by rfl) prbValidationAfterParam_shape
+                      prbValidationAfterParam_shape tail
+                      afterParamNormalizedAlignment
+                    have rootNormalizedAlignment :
+                        AddInductive.ConstructorViewAlignmentTrace
+                          rootNormalizedTrace
+                          propRecursiveBoundaryKernelCtor.type := by
+                      rw [hroot]
+                      exact .parameter prbValidationSortChecked
+                        prbValidationSortChecked prbValidationSortChecked
+                        prbValidationAlpha_shape
+                        (by rw [prbValidationAlphaFind]; rfl)
+                        tail afterParamAlignment
+                    have headAlignment := prbTransportViewAlignmentIndexed
+                      rootContext_eq (by rfl) prbCtorView_eq (by rfl)
+                      rootFuel_eq typeTrace rootNormalizedAlignment
+                    let rootScope :
+                        AddInductive.ConstructorCheckedExpr
+                          ({ prbCandidate.families.singleton.familyType.type.trace.terminalContext with
+                            env := prbConstructorContext.env }).withEmptyLocalContext
+                          propRecursiveBoundaryKernelCtor.type :=
+                      AddInductive.ConstructorCheckedExpr.ofClosedRoot
+                        closed rootCheck
+                    cases tailTrace with
+                    | nil finalSeen =>
+                        exact
+                          AddInductive.ConstructorCandidateAlignmentTrace.cons
+                            rootScope
+                            (by
+                              change
+                                prbCandidate.families.singleton.constructors.singleton.type.trace.storedSpine =
+                                  true
+                              exact prbCtorIdentityEvidence.identity.storedSpine)
+                            (by
+                              change
+                                prbCandidate.families.singleton.constructors.singleton.type.trace.spineLength =
+                                  typeTrace.spineLength
+                              have candidateSpine :=
+                                prbCtorIdentityEvidence.spineLength_eq.trans
+                                  prbCtorIdentityReplay_shape.1
+                              omega)
+                            (by
+                              rw [prbCtorWhnfDepth, rootContext_eq]
+                              rfl)
+                            headAlignment
+                            (AddInductive.ConstructorCandidateAlignmentTrace.nil
+                              ((∅ : NameSet).insert
+                                propRecursiveBoundaryKernelCtor.name))
+            | terminal context source fuel argIdx terminal valid =>
+                simp [prbValidationAfterA, Expr.isForall] at terminal
+        | terminal context source fuel argIdx terminal valid =>
+            simp [prbValidationAfterParam, Expr.isForall] at terminal
+      | ordinary context fuel argIdx name domain body binderInfo sortResult
+          noParameter ensureType universeTrace positivity tail =>
+        rw [prbStagedStats_eq, prbStatsParams_eq] at noParameter
+        simp at noParameter
+      | terminal context source fuel argIdx terminal valid =>
+        simp [propRecursiveBoundaryKernelType, propRecursiveBoundaryKernelCtor,
+          propRecursiveBoundaryMkInfo, ConstantInfo.type,
+          ConstantInfo.toConstantVal, Expr.isForall] at terminal
 
 theorem prbSafetyRunDirect :
     AddInductive.checkConstructorPreFamilySafety
@@ -2459,6 +4268,7 @@ theorem prbSafetyRunDirect :
         prbCandidate.families.singleton.constructors
         prbCandidate.families.singleton.familyType.type.trace.terminalContext =
       .ok () := by
+  rw [prbStagedStats_eq]
   apply exceptUnit_eq_ok_of_isOk
   native_decide
 
