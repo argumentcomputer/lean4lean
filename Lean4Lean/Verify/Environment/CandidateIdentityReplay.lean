@@ -35,6 +35,105 @@ theorem emptyLocalContextFindNone (id : FVarId) :
   rw [h]
   simp [LocalContext.toList]
 
+theorem localContextFindOld
+    (lctx : LocalContext) (oldId newId : FVarId)
+    (name : Name) (type : Expr) (bi : BinderInfo)
+    (kind : LocalDeclKind) (decl : LocalDecl)
+    (hwf : lctx.WF) (hfresh : lctx.find? newId = none)
+    (hfind : lctx.find? oldId = some decl) :
+    (lctx.mkLocalDecl newId name type bi kind).find? oldId = some decl := by
+  have hwf' := LocalContext.WF.mkLocalDecl
+    (name := name) (ty := type) (bi := bi) (kind := kind) hwf hfresh
+  rw [hwf'.find?_eq_find?_toList]
+  rw [LocalContext.mkLocalDecl_toList]
+  have hne : oldId ≠ newId := by
+    intro heq
+    rw [heq, hfresh] at hfind
+    contradiction
+  simp only [List.find?_cons, LocalDecl.fvarId]
+  rw [show (oldId == newId) = false by simp [hne]]
+  simpa only [hwf.find?_eq_find?_toList, LocalDecl.fvarId] using hfind
+
+/-- A candidate local context built entirely from fresh ordinary
+declarations, with the name-generator invariant needed by structural replay. -/
+structure CandidateLocalContextRun
+    (context : AddInductive.Context) : Prop where
+  wf : context.lctx.WF
+  reserves : ∀ decl ∈ context.lctx.toList,
+    context.ngen.Reserves decl.fvarId
+
+namespace CandidateLocalContextRun
+
+def empty (context : AddInductive.Context)
+    (h : context.lctx = ({} : LocalContext)) :
+    CandidateLocalContextRun context where
+  wf := by rw [h]; exact LocalContext.WF.nil
+  reserves := by
+    intro decl membership
+    rw [h] at membership
+    rw [show ({} : LocalContext).toList = [] by rfl] at membership
+    contradiction
+
+theorem fresh (run : CandidateLocalContextRun context) :
+    context.lctx.find? context.freshFVarId = none := by
+  rw [run.wf.find?_eq_find?_toList, List.find?_eq_none]
+  intro decl membership equal
+  have reserved := run.reserves decl membership
+  have idEq : context.freshFVarId = decl.fvarId :=
+    beq_iff_eq.mp equal
+  rw [← idEq] at reserved
+  exact NameGenerator.not_reserves_self (by
+    simpa [AddInductive.Context.freshFVarId] using reserved)
+
+def push (run : CandidateLocalContextRun context)
+    (name : Name) (binderInfo : BinderInfo) (type : Expr) :
+    CandidateLocalContextRun
+      (context.pushLocalDecl name binderInfo type) where
+  wf := by
+    simpa [AddInductive.Context.pushLocalDecl] using
+      LocalContext.WF.mkLocalDecl run.wf run.fresh
+  reserves := by
+    intro decl membership
+    simp only [AddInductive.Context.pushLocalDecl,
+      LocalContext.mkLocalDecl_toList, List.mem_cons] at membership ⊢
+    rcases membership with rfl | membership
+    · simpa [LocalDecl.fvarId, AddInductive.Context.freshFVarId] using
+        (NameGenerator.next_reserves_self (ngen := context.ngen))
+    · exact NameGenerator.Reserves.mono NameGenerator.LE.next
+        (run.reserves decl membership)
+
+theorem push_findNew (run : CandidateLocalContextRun context)
+    (name : Name) (binderInfo : BinderInfo) (type : Expr) :
+    (context.pushLocalDecl name binderInfo type).lctx.find?
+        context.freshFVarId =
+      some (.cdecl context.lctx.decls.size context.freshFVarId
+        name type binderInfo .default) := by
+  simpa [AddInductive.Context.pushLocalDecl] using
+    localContextFindNew context.lctx context.freshFVarId name type
+      binderInfo .default run.wf run.fresh
+
+theorem push_findOld (run : CandidateLocalContextRun context)
+    (name : Name) (binderInfo : BinderInfo) (type : Expr)
+    {id : FVarId} {decl : LocalDecl}
+    (hfind : context.lctx.find? id = some decl) :
+    (context.pushLocalDecl name binderInfo type).lctx.find? id =
+      some decl := by
+  simpa [AddInductive.Context.pushLocalDecl] using
+    localContextFindOld context.lctx id context.freshFVarId
+      name type binderInfo .default decl run.wf run.fresh hfind
+
+end CandidateLocalContextRun
+
+@[simp] theorem candidateLiftLooseBVarsFVar
+    (id : FVarId) (s d : Nat) :
+    (Expr.fvar id).liftLooseBVars' s d = .fvar id := by
+  rfl
+
+@[simp] theorem candidateInstantiateFVar
+    (id : FVarId) (a : Expr) (k : Nat) :
+    (Expr.fvar id).instantiate1' a k = .fvar id := by
+  rfl
+
 theorem candidateWhnfFVar_refl
     (context : AddInductive.Context) (id : FVarId)
     (recursionFuel : Nat)
@@ -593,6 +692,90 @@ def forallE
       bodyReplay.spineLength_eq
   · simpa [CandidateExprIdentityReplay.terminalSource] using
       bodyReplay.terminalSource_eq
+
+def forallEBuilt
+    (context : AddInductive.Context) (name : Name)
+    (domain body : Expr) (binderInfo : BinderInfo)
+    (whnf : AddInductive.CandidateWhnfStep.Valid
+      ⟨context, .forallE name domain body binderInfo,
+        .forallE name domain body binderInfo⟩)
+    (consume : AddInductive.consumeTypeAnnotations domain = domain)
+    (domainReplay : CandidateExprIdentityReplay context domain)
+    (bodyReplay : Shaped
+      (context.pushLocalDecl name binderInfo domain)
+      (body.instantiate1 context.freshExpr)
+      expectedSpineLength expectedTerminalSource) :
+    Shaped context (.forallE name domain body binderInfo)
+      (expectedSpineLength + 1) expectedTerminalSource := by
+  let annotations : AddInductive.CandidateTypeAnnotations domain :=
+    let ⟨consumed, trace⟩ :=
+      AddInductive.CandidateTypeAnnotationTrace.build domain
+    ⟨consumed, trace⟩
+  have annotationsBuild :
+      AddInductive.buildCandidateTypeAnnotations domain =
+        .ok annotations := by
+    rfl
+  have annotationsConsumed : annotations.consumed = domain :=
+    (AddInductive.CandidateTypeAnnotations.matches_of_build annotations
+      annotationsBuild).trans consume
+  have bodyReplay' : Shaped
+      (context.pushLocalDecl name binderInfo annotations.consumed)
+      (body.instantiate1 context.freshExpr)
+      expectedSpineLength expectedTerminalSource := by
+    rw [annotationsConsumed]
+    exact bodyReplay
+  exact Shaped.forallE context name domain body binderInfo whnf annotations
+    annotationsBuild consume domainReplay bodyReplay'
+
+theorem expr_eq_forallE_of_isForall
+    (source : Expr) (h : source.isForall = true) :
+    source = .forallE source.bindingName! source.bindingDomain!
+      source.bindingBody! source.bindingInfo! := by
+  cases source <;> simp_all [Expr.isForall, Expr.bindingName!,
+    Expr.bindingDomain!, Expr.bindingBody!, Expr.bindingInfo!]
+
+theorem candidateWhnfForallSource_refl
+    (context : AddInductive.Context) (source : Expr)
+    (recursionFuel : Nat)
+    (hdepth : context.fuel.recDepth = recursionFuel + 1)
+    (h : source.isForall = true) :
+    AddInductive.CandidateWhnfStep.Valid ⟨context, source, source⟩ := by
+  rw [expr_eq_forallE_of_isForall source h]
+  unfold AddInductive.CandidateWhnfStep.Valid
+  change TypeChecker.M.run context.env context.safety context.lctx
+    context.lparams context.fuel
+      (TypeChecker.whnf (.forallE source.bindingName!
+        source.bindingDomain! source.bindingBody! source.bindingInfo!)) =
+    .ok (.forallE source.bindingName! source.bindingDomain!
+      source.bindingBody! source.bindingInfo!)
+  unfold TypeChecker.M.run TypeChecker.whnf TypeChecker.RecM.run
+  simp [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    StateT.pure, Except.pure, Pure.pure,
+    StateT.run', Functor.map, Except.map]
+  rw [hdepth]
+  rfl
+
+def forallEBuiltOfSource
+    (context : AddInductive.Context) (source : Expr)
+    (isForall : source.isForall = true)
+    (whnf : AddInductive.CandidateWhnfStep.Valid
+      ⟨context, source, source⟩)
+    (consume : AddInductive.consumeTypeAnnotations
+      source.bindingDomain! = source.bindingDomain!)
+    (domainReplay : CandidateExprIdentityReplay context
+      source.bindingDomain!)
+    (bodyReplay : Shaped
+      (context.pushLocalDecl source.bindingName! source.bindingInfo!
+        source.bindingDomain!)
+      (source.bindingBody!.instantiate1 context.freshExpr)
+      expectedSpineLength expectedTerminalSource) :
+    Shaped context source (expectedSpineLength + 1)
+      expectedTerminalSource := by
+  rw [expr_eq_forallE_of_isForall source isForall] at whnf ⊢
+  exact forallEBuilt context source.bindingName! source.bindingDomain!
+    source.bindingBody! source.bindingInfo! whnf consume domainReplay
+    bodyReplay
 
 end Shaped
 

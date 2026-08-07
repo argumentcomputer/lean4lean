@@ -248,12 +248,6 @@ theorem cvmFamilyIdentityReplay_shape :
   ⟨cvmFamilyIdentityShape.spineLength_eq,
     cvmFamilyIdentityShape.terminalSource_eq⟩
 
-theorem cvmCtorIdentityCheck :
-    TypeChecker.CandidateExprIdentity.check
-      cvmCandidate.families.singleton.constructors.singleton.type.trace =
-        true := by
-  native_decide
-
 theorem cvmFamilyValidationAnnotations :
     cvmCandidate.families.singleton.familyType.type.trace
       |>.validationAnnotations := by
@@ -632,6 +626,603 @@ def cvmFamilyStage :
     rw [← cvmFamilyNames_eq]
     exact cvmFamilyNameNotPrimitive
 
+def cvmCtorAlphaDomain : Expr :=
+  constructorValidityMatrixKernelCtor.type.bindingDomain!
+
+def cvmCtorAlphaContext : AddInductive.Context :=
+  cvmConstructorContext.pushLocalDecl `α .implicit cvmCtorAlphaDomain
+
+def cvmCtorAfterAlpha : Expr :=
+  constructorValidityMatrixKernelCtor.type.bindingBody!.instantiate1
+    cvmConstructorContext.freshExpr
+
+def cvmCtorPDomain : Expr := cvmCtorAfterAlpha.bindingDomain!
+
+def cvmCtorPContext : AddInductive.Context :=
+  cvmCtorAlphaContext.pushLocalDecl `P .implicit cvmCtorPDomain
+
+def cvmCtorAfterP : Expr :=
+  cvmCtorAfterAlpha.bindingBody!.instantiate1
+    cvmCtorAlphaContext.freshExpr
+
+def cvmCtorXDomain : Expr := cvmCtorAfterP.bindingDomain!
+
+def cvmCtorXContext : AddInductive.Context :=
+  cvmCtorPContext.pushLocalDecl `x .default cvmCtorXDomain
+
+def cvmCtorAfterX : Expr :=
+  cvmCtorAfterP.bindingBody!.instantiate1 cvmCtorPContext.freshExpr
+
+def cvmCtorProofDomain : Expr := cvmCtorAfterX.bindingDomain!
+
+def cvmCtorProofContext : AddInductive.Context :=
+  cvmCtorXContext.pushLocalDecl `proof .default cvmCtorProofDomain
+
+def cvmCtorAfterProof : Expr :=
+  cvmCtorAfterX.bindingBody!.instantiate1 cvmCtorXContext.freshExpr
+
+def cvmCtorDirectDomain : Expr := cvmCtorAfterProof.bindingDomain!
+
+def cvmCtorDirectContext : AddInductive.Context :=
+  cvmCtorProofContext.pushLocalDecl `direct .default cvmCtorDirectDomain
+
+def cvmCtorAfterDirect : Expr :=
+  cvmCtorAfterProof.bindingBody!.instantiate1 cvmCtorProofContext.freshExpr
+
+def cvmCtorFunctionDomain : Expr := cvmCtorAfterDirect.bindingDomain!
+
+def cvmCtorFunctionContext : AddInductive.Context :=
+  cvmCtorDirectContext.pushLocalDecl `function .default cvmCtorFunctionDomain
+
+def cvmCtorAfterFunction : Expr :=
+  cvmCtorAfterDirect.bindingBody!.instantiate1
+    cvmCtorDirectContext.freshExpr
+
+def cvmCtorLaterDomain : Expr := cvmCtorAfterFunction.bindingDomain!
+
+def cvmCtorLaterContext : AddInductive.Context :=
+  cvmCtorFunctionContext.pushLocalDecl `later .default cvmCtorLaterDomain
+
+def cvmCtorAfterLater : Expr :=
+  cvmCtorAfterFunction.bindingBody!.instantiate1
+    cvmCtorFunctionContext.freshExpr
+
+def cvmCtorLaterProofDomain : Expr := cvmCtorAfterLater.bindingDomain!
+
+def cvmCtorLaterProofContext : AddInductive.Context :=
+  cvmCtorLaterContext.pushLocalDecl `laterProof .default
+    cvmCtorLaterProofDomain
+
+def cvmCtorTerminal : Expr :=
+  cvmCtorAfterLater.bindingBody!.instantiate1
+    cvmCtorLaterContext.freshExpr
+
+def cvmCtorPArgContext : AddInductive.Context :=
+  cvmCtorAlphaContext.pushLocalDecl cvmCtorPDomain.bindingName!
+    .default cvmCtorPDomain.bindingDomain!
+
+def cvmCtorFunctionArgContext : AddInductive.Context :=
+  cvmCtorDirectContext.pushLocalDecl `y .default
+    cvmCtorFunctionDomain.bindingDomain!
+
+def cvmCtorRootLocalRun :
+    TypeChecker.CandidateLocalContextRun cvmConstructorContext :=
+  .empty _ rfl
+
+def cvmCtorAlphaLocalRun :
+    TypeChecker.CandidateLocalContextRun cvmCtorAlphaContext :=
+  cvmCtorRootLocalRun.push `α .implicit cvmCtorAlphaDomain
+
+def cvmCtorPLocalRun :
+    TypeChecker.CandidateLocalContextRun cvmCtorPContext :=
+  cvmCtorAlphaLocalRun.push `P .implicit cvmCtorPDomain
+
+def cvmCtorXLocalRun :
+    TypeChecker.CandidateLocalContextRun cvmCtorXContext :=
+  cvmCtorPLocalRun.push `x .default cvmCtorXDomain
+
+def cvmCtorProofLocalRun :
+    TypeChecker.CandidateLocalContextRun cvmCtorProofContext :=
+  cvmCtorXLocalRun.push `proof .default cvmCtorProofDomain
+
+def cvmCtorDirectLocalRun :
+    TypeChecker.CandidateLocalContextRun cvmCtorDirectContext :=
+  cvmCtorProofLocalRun.push `direct .default cvmCtorDirectDomain
+
+def cvmCtorFunctionLocalRun :
+    TypeChecker.CandidateLocalContextRun cvmCtorFunctionContext :=
+  cvmCtorDirectLocalRun.push `function .default cvmCtorFunctionDomain
+
+def cvmCtorLaterLocalRun :
+    TypeChecker.CandidateLocalContextRun cvmCtorLaterContext :=
+  cvmCtorFunctionLocalRun.push `later .default cvmCtorLaterDomain
+
+def cvmCtorLaterProofLocalRun :
+    TypeChecker.CandidateLocalContextRun cvmCtorLaterProofContext :=
+  cvmCtorLaterLocalRun.push `laterProof .default cvmCtorLaterProofDomain
+
+theorem cvmCtorAlphaFindInAlpha :
+    cvmCtorAlphaContext.lctx.find? cvmConstructorContext.freshFVarId =
+      some (.cdecl cvmConstructorContext.lctx.decls.size
+        cvmConstructorContext.freshFVarId `α cvmCtorAlphaDomain
+        .implicit .default) :=
+  cvmCtorRootLocalRun.push_findNew `α .implicit cvmCtorAlphaDomain
+
+theorem cvmCtorAlphaFindInP :
+    cvmCtorPContext.lctx.find? cvmConstructorContext.freshFVarId =
+      some (.cdecl cvmConstructorContext.lctx.decls.size
+        cvmConstructorContext.freshFVarId `α cvmCtorAlphaDomain
+        .implicit .default) :=
+  cvmCtorAlphaLocalRun.push_findOld `P .implicit cvmCtorPDomain
+    cvmCtorAlphaFindInAlpha
+
+theorem cvmCtorAlphaFindInX :
+    cvmCtorXContext.lctx.find? cvmConstructorContext.freshFVarId =
+      some (.cdecl cvmConstructorContext.lctx.decls.size
+        cvmConstructorContext.freshFVarId `α cvmCtorAlphaDomain
+        .implicit .default) :=
+  cvmCtorPLocalRun.push_findOld `x .default cvmCtorXDomain
+    cvmCtorAlphaFindInP
+
+theorem cvmCtorAlphaFindInProof :
+    cvmCtorProofContext.lctx.find? cvmConstructorContext.freshFVarId =
+      some (.cdecl cvmConstructorContext.lctx.decls.size
+        cvmConstructorContext.freshFVarId `α cvmCtorAlphaDomain
+        .implicit .default) :=
+  cvmCtorXLocalRun.push_findOld `proof .default cvmCtorProofDomain
+    cvmCtorAlphaFindInX
+
+theorem cvmCtorAlphaFindInDirect :
+    cvmCtorDirectContext.lctx.find? cvmConstructorContext.freshFVarId =
+      some (.cdecl cvmConstructorContext.lctx.decls.size
+        cvmConstructorContext.freshFVarId `α cvmCtorAlphaDomain
+        .implicit .default) :=
+  cvmCtorProofLocalRun.push_findOld `direct .default cvmCtorDirectDomain
+    cvmCtorAlphaFindInProof
+
+theorem cvmCtorAlphaFindInFunction :
+    cvmCtorFunctionContext.lctx.find? cvmConstructorContext.freshFVarId =
+      some (.cdecl cvmConstructorContext.lctx.decls.size
+        cvmConstructorContext.freshFVarId `α cvmCtorAlphaDomain
+        .implicit .default) :=
+  cvmCtorDirectLocalRun.push_findOld `function .default
+    cvmCtorFunctionDomain cvmCtorAlphaFindInDirect
+
+theorem cvmCtorPFindInP :
+    cvmCtorPContext.lctx.find? cvmCtorAlphaContext.freshFVarId =
+      some (.cdecl cvmCtorAlphaContext.lctx.decls.size
+        cvmCtorAlphaContext.freshFVarId `P cvmCtorPDomain
+        .implicit .default) :=
+  cvmCtorAlphaLocalRun.push_findNew `P .implicit cvmCtorPDomain
+
+theorem cvmCtorPFindInX :
+    cvmCtorXContext.lctx.find? cvmCtorAlphaContext.freshFVarId =
+      some (.cdecl cvmCtorAlphaContext.lctx.decls.size
+        cvmCtorAlphaContext.freshFVarId `P cvmCtorPDomain
+        .implicit .default) :=
+  cvmCtorPLocalRun.push_findOld `x .default cvmCtorXDomain
+    cvmCtorPFindInP
+
+theorem cvmCtorPFindInProof :
+    cvmCtorProofContext.lctx.find? cvmCtorAlphaContext.freshFVarId =
+      some (.cdecl cvmCtorAlphaContext.lctx.decls.size
+        cvmCtorAlphaContext.freshFVarId `P cvmCtorPDomain
+        .implicit .default) :=
+  cvmCtorXLocalRun.push_findOld `proof .default cvmCtorProofDomain
+    cvmCtorPFindInX
+
+theorem cvmCtorPFindInDirect :
+    cvmCtorDirectContext.lctx.find? cvmCtorAlphaContext.freshFVarId =
+      some (.cdecl cvmCtorAlphaContext.lctx.decls.size
+        cvmCtorAlphaContext.freshFVarId `P cvmCtorPDomain
+        .implicit .default) :=
+  cvmCtorProofLocalRun.push_findOld `direct .default cvmCtorDirectDomain
+    cvmCtorPFindInProof
+
+theorem cvmCtorPFindInFunction :
+    cvmCtorFunctionContext.lctx.find? cvmCtorAlphaContext.freshFVarId =
+      some (.cdecl cvmCtorAlphaContext.lctx.decls.size
+        cvmCtorAlphaContext.freshFVarId `P cvmCtorPDomain
+        .implicit .default) :=
+  cvmCtorDirectLocalRun.push_findOld `function .default
+    cvmCtorFunctionDomain cvmCtorPFindInDirect
+
+theorem cvmCtorPFindInLater :
+    cvmCtorLaterContext.lctx.find? cvmCtorAlphaContext.freshFVarId =
+      some (.cdecl cvmCtorAlphaContext.lctx.decls.size
+        cvmCtorAlphaContext.freshFVarId `P cvmCtorPDomain
+        .implicit .default) :=
+  cvmCtorFunctionLocalRun.push_findOld `later .default cvmCtorLaterDomain
+    cvmCtorPFindInFunction
+
+theorem cvmCtorFamilyLookup :
+    cvmConstructorContext.env.find?
+        constructorValidityMatrixKernelType.name =
+      some cvmDeclaredInfo := by
+  change cvmExecution.familyEnv.constants.find?'
+      constructorValidityMatrixKernelType.name = some cvmDeclaredInfo
+  rw [show cvmExecution.familyEnv.constants =
+      cvmCandidate.families.singleton.familyType.type.trace.terminalContext.env.constants.insert
+        constructorValidityMatrixType.name cvmDeclaredInfo from cvmFamilyMap_add]
+  have hbase :
+      cvmCandidate.families.singleton.familyType.type.trace.terminalContext.env.constants.WF := by
+    rw [cvmTerminalEnv_eq]
+    exact SMap.WF.empty
+  have hfresh :
+      cvmCandidate.families.singleton.familyType.type.trace.terminalContext.env.constants.find?
+        constructorValidityMatrixType.name = none := by
+    rw [cvmTerminalEnv_eq]
+    change ({} : ConstMap).find? constructorValidityMatrixType.name = none
+    rw [SMap.WF.find?_eq SMap.WF.empty]
+    simp [SMap.toList']
+  have hinsert := hbase.insert constructorValidityMatrixType.name
+    cvmDeclaredInfo hfresh
+  rw [SMap.WF.find?'_eq_find? hinsert]
+  rw [hbase.find?_insert]
+  simp [cvmFamilyNames_eq]
+
+theorem cvmCtorFamilyWhnf
+    (context : AddInductive.Context)
+    (arg1 arg2 : FVarId)
+    (henv : context.env = cvmConstructorContext.env)
+    (hdepth : context.fuel.recDepth = 10000)
+    (hwhnf : context.fuel.whnf = 100000)
+    (hquot : context.env.quotInit = false) :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨context,
+        .app
+          (.app (.const ``ConstructorValidityMatrix [.param `u])
+            (.fvar arg1))
+          (.fvar arg2),
+        .app
+          (.app (.const ``ConstructorValidityMatrix [.param `u])
+            (.fvar arg1))
+          (.fvar arg2)⟩ := by
+  apply TypeChecker.candidateWhnfConstFVarFVar_refl context
+    ``ConstructorValidityMatrix [.param `u] arg1 arg2
+    (AddInductive.singletonDeclaredInfo
+      cvmFamilyValidationRun.stats 2 0 constructorValidityMatrixKernelType
+      0 false
+      cvmCandidate.families.singleton.familyType.type.trace.terminalContext)
+  · exact hdepth
+  · exact hwhnf
+  · exact hquot
+  · rw [henv]
+    simpa [cvmDeclaredInfo, constructorValidityMatrixKernelType,
+      constructorValidityMatrixInfo, ConstantInfo.name,
+      ConstantInfo.toConstantVal] using cvmCtorFamilyLookup
+  · rfl
+
+def cvmCtorFamilyApp : Expr :=
+  .app
+    (.app (.const ``ConstructorValidityMatrix [.param `u])
+      cvmConstructorContext.freshExpr)
+    cvmCtorAlphaContext.freshExpr
+
+macro "simp_cvm_ctor_expr" : tactic =>
+  `(tactic| simp [cvmCtorTerminal, cvmCtorLaterProofContext,
+    cvmCtorPArgContext, cvmCtorFunctionArgContext,
+    cvmCtorLaterProofDomain, cvmCtorAfterLater, cvmCtorLaterContext,
+    cvmCtorLaterDomain, cvmCtorAfterFunction, cvmCtorFunctionContext,
+    cvmCtorFunctionDomain, cvmCtorAfterDirect, cvmCtorDirectContext,
+    cvmCtorDirectDomain, cvmCtorAfterProof, cvmCtorProofContext,
+    cvmCtorProofDomain, cvmCtorAfterX, cvmCtorXContext,
+    cvmCtorXDomain, cvmCtorAfterP, cvmCtorPContext, cvmCtorPDomain,
+    cvmCtorAfterAlpha, cvmCtorAlphaContext, cvmCtorAlphaDomain,
+    cvmCtorFamilyApp, cvmConstructorContext,
+    constructorValidityMatrixKernelCtor,
+    constructorValidityMatrixKernelType,
+    constructorValidityMatrixMkInfo, constructorValidityMatrixInfo,
+    ConstantInfo.type, ConstantInfo.toConstantVal,
+    AddInductive.Context.pushLocalDecl,
+    AddInductive.Context.freshExpr, AddInductive.Context.freshFVarId,
+    Expr.bindingDomain!, Expr.bindingBody!, Expr.bindingName!,
+    Expr.bindingInfo!, Expr.isForall,
+    Expr.instantiate1_eq, Expr.instantiate1',
+    Expr.liftLooseBVars_zero,
+    AddInductive.CandidateTypeAnnotationTrace.build])
+
+macro "simpa_cvm_ctor_expr" " using " t:term : tactic =>
+  `(tactic| simpa [cvmCtorTerminal, cvmCtorLaterProofContext,
+      cvmCtorPArgContext, cvmCtorFunctionArgContext,
+      cvmCtorLaterProofDomain, cvmCtorAfterLater, cvmCtorLaterContext,
+      cvmCtorLaterDomain, cvmCtorAfterFunction, cvmCtorFunctionContext,
+      cvmCtorFunctionDomain, cvmCtorAfterDirect, cvmCtorDirectContext,
+      cvmCtorDirectDomain, cvmCtorAfterProof, cvmCtorProofContext,
+      cvmCtorProofDomain, cvmCtorAfterX, cvmCtorXContext,
+      cvmCtorXDomain, cvmCtorAfterP, cvmCtorPContext, cvmCtorPDomain,
+      cvmCtorAfterAlpha, cvmCtorAlphaContext, cvmCtorAlphaDomain,
+      cvmCtorFamilyApp, cvmConstructorContext,
+      constructorValidityMatrixKernelCtor,
+      constructorValidityMatrixKernelType,
+      constructorValidityMatrixMkInfo, constructorValidityMatrixInfo,
+      ConstantInfo.type, ConstantInfo.toConstantVal,
+      AddInductive.Context.pushLocalDecl,
+      AddInductive.Context.freshExpr, AddInductive.Context.freshFVarId,
+      Expr.bindingDomain!, Expr.bindingBody!, Expr.bindingName!,
+      Expr.bindingInfo!, Expr.isForall,
+      Expr.instantiate1_eq, Expr.instantiate1',
+      Expr.liftLooseBVars_zero,
+      AddInductive.CandidateTypeAnnotationTrace.build] using $t)
+
+
+theorem cvmCtorQuotInit :
+    cvmConstructorContext.env.quotInit = false := by
+  rw [cvmFamilyStage.quotInit_eq]
+  rfl
+
+theorem cvmCtorFamilyAppWhnf
+    (context : AddInductive.Context)
+    (henv : context.env = cvmConstructorContext.env)
+    (hdepth : context.fuel.recDepth = 10000)
+    (hwhnf : context.fuel.whnf = 100000) :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨context, cvmCtorFamilyApp, cvmCtorFamilyApp⟩ := by
+  have hquot : context.env.quotInit = false := by
+    rw [henv]
+    exact cvmCtorQuotInit
+  simpa [cvmCtorFamilyApp, AddInductive.Context.freshExpr,
+      constructorValidityMatrixKernelType,
+      constructorValidityMatrixInfo, ConstantInfo.name] using
+    cvmCtorFamilyWhnf context cvmConstructorContext.freshFVarId
+      cvmCtorAlphaContext.freshFVarId henv hdepth hwhnf hquot
+
+open TypeChecker in
+def cvmCtorIdentityShape :
+    CandidateExprIdentityReplay.Shaped cvmConstructorContext
+      constructorValidityMatrixKernelCtor.type 8 cvmCtorFamilyApp := by
+  have alphaInAlpha : AddInductive.CandidateWhnfStep.Valid
+      ⟨cvmCtorAlphaContext, cvmConstructorContext.freshExpr,
+        cvmConstructorContext.freshExpr⟩ := by
+    simpa [cvmCtorAlphaContext, cvmCtorAlphaDomain] using
+      TypeChecker.candidateWhnfPushedFVar_refl
+        cvmConstructorContext `α cvmCtorAlphaDomain .implicit 9999
+        (by rfl) cvmCtorRootLocalRun.wf cvmCtorRootLocalRun.fresh
+  have alphaInP : AddInductive.CandidateWhnfStep.Valid
+      ⟨cvmCtorPContext, cvmConstructorContext.freshExpr,
+        cvmConstructorContext.freshExpr⟩ := by
+    apply TypeChecker.candidateWhnfFVar_refl _ _ 9999
+    · rfl
+    · unfold TypeChecker.Inner.isLetFVar
+      rw [cvmCtorAlphaFindInP]
+  have alphaInDirect : AddInductive.CandidateWhnfStep.Valid
+      ⟨cvmCtorDirectContext, cvmConstructorContext.freshExpr,
+        cvmConstructorContext.freshExpr⟩ := by
+    apply TypeChecker.candidateWhnfFVar_refl _ _ 9999
+    · rfl
+    · unfold TypeChecker.Inner.isLetFVar
+      rw [cvmCtorAlphaFindInDirect]
+  have alphaInFunction : AddInductive.CandidateWhnfStep.Valid
+      ⟨cvmCtorFunctionContext, cvmConstructorContext.freshExpr,
+        cvmConstructorContext.freshExpr⟩ := by
+    apply TypeChecker.candidateWhnfFVar_refl _ _ 9999
+    · rfl
+    · unfold TypeChecker.Inner.isLetFVar
+      rw [cvmCtorAlphaFindInFunction]
+  have proofDomainWhnf : AddInductive.CandidateWhnfStep.Valid
+      ⟨cvmCtorXContext, cvmCtorProofDomain,
+        cvmCtorProofDomain⟩ := by
+    have run := TypeChecker.candidateWhnfFVarAppFVar_refl
+      cvmCtorXContext cvmCtorAlphaContext.freshFVarId
+      cvmCtorPContext.freshFVarId (by rfl) (by rfl)
+      (by
+        change cvmConstructorContext.env.quotInit = false
+        exact cvmCtorQuotInit) (by
+        unfold TypeChecker.Inner.isLetFVar
+        rw [cvmCtorPFindInX])
+    rw [show cvmCtorProofDomain =
+      .app cvmCtorAlphaContext.freshExpr cvmCtorPContext.freshExpr by
+        simp_cvm_ctor_expr]
+    exact run
+  have laterProofDomainWhnf : AddInductive.CandidateWhnfStep.Valid
+      ⟨cvmCtorLaterContext, cvmCtorLaterProofDomain,
+        cvmCtorLaterProofDomain⟩ := by
+    have run := TypeChecker.candidateWhnfFVarAppFVar_refl
+      cvmCtorLaterContext cvmCtorAlphaContext.freshFVarId
+      cvmCtorFunctionContext.freshFVarId (by rfl) (by rfl)
+      (by
+        change cvmConstructorContext.env.quotInit = false
+        exact cvmCtorQuotInit) (by
+        unfold TypeChecker.Inner.isLetFVar
+        rw [cvmCtorPFindInLater])
+    rw [show cvmCtorLaterProofDomain =
+      .app cvmCtorAlphaContext.freshExpr
+        cvmCtorFunctionContext.freshExpr by simp_cvm_ctor_expr]
+    exact run
+  have terminalShape : CandidateExprIdentityReplay.Shaped
+      cvmCtorLaterProofContext cvmCtorTerminal 0
+      cvmCtorFamilyApp := by
+    rw [show cvmCtorTerminal = cvmCtorFamilyApp by simp_cvm_ctor_expr]
+    exact .terminal _ _
+      (cvmCtorFamilyAppWhnf _ rfl rfl rfl) rfl
+  have laterProofShape : CandidateExprIdentityReplay.Shaped
+      cvmCtorLaterContext cvmCtorAfterLater 1
+      cvmCtorFamilyApp := by
+    apply CandidateExprIdentityReplay.Shaped.forallEBuiltOfSource
+      cvmCtorLaterContext cvmCtorAfterLater
+    · simp_cvm_ctor_expr
+    · apply CandidateExprIdentityReplay.Shaped.candidateWhnfForallSource_refl
+        _ _ 9999 (by rfl)
+      simp_cvm_ctor_expr
+    · rw [← AddInductive.CandidateTypeAnnotationTrace.build_consumed]
+      simp_cvm_ctor_expr
+    · simpa_cvm_ctor_expr using
+        ((CandidateExprIdentityReplay.Shaped.terminal _ _
+          laterProofDomainWhnf (by simp_cvm_ctor_expr)).replay)
+    · simpa_cvm_ctor_expr using terminalShape
+  have laterShape : CandidateExprIdentityReplay.Shaped
+      cvmCtorFunctionContext cvmCtorAfterFunction 2
+      cvmCtorFamilyApp := by
+    apply CandidateExprIdentityReplay.Shaped.forallEBuiltOfSource
+      cvmCtorFunctionContext cvmCtorAfterFunction
+    · simp_cvm_ctor_expr
+    · apply CandidateExprIdentityReplay.Shaped.candidateWhnfForallSource_refl
+        _ _ 9999 (by rfl)
+      simp_cvm_ctor_expr
+    · rw [← AddInductive.CandidateTypeAnnotationTrace.build_consumed]
+      simp_cvm_ctor_expr
+    · simpa_cvm_ctor_expr using
+        ((CandidateExprIdentityReplay.Shaped.terminal _ _
+          alphaInFunction rfl).replay)
+    · simpa_cvm_ctor_expr using laterProofShape
+  have functionArgTerminal : CandidateExprIdentityReplay.Shaped
+      cvmCtorFunctionArgContext cvmCtorFamilyApp 0
+      cvmCtorFamilyApp :=
+    .terminal _ _ (cvmCtorFamilyAppWhnf _ rfl rfl rfl) rfl
+  have functionDomainShape : CandidateExprIdentityReplay.Shaped
+      cvmCtorDirectContext cvmCtorFunctionDomain 1
+      cvmCtorFamilyApp := by
+    apply CandidateExprIdentityReplay.Shaped.forallEBuiltOfSource
+      cvmCtorDirectContext cvmCtorFunctionDomain
+    · simp_cvm_ctor_expr
+    · apply CandidateExprIdentityReplay.Shaped.candidateWhnfForallSource_refl
+        _ _ 9999 (by rfl)
+      simp_cvm_ctor_expr
+    · rw [← AddInductive.CandidateTypeAnnotationTrace.build_consumed]
+      simp_cvm_ctor_expr
+    · simpa_cvm_ctor_expr using
+        ((CandidateExprIdentityReplay.Shaped.terminal _ _
+          alphaInDirect rfl).replay)
+    · simpa_cvm_ctor_expr using functionArgTerminal
+  have functionShape : CandidateExprIdentityReplay.Shaped
+      cvmCtorDirectContext cvmCtorAfterDirect 3
+      cvmCtorFamilyApp := by
+    apply CandidateExprIdentityReplay.Shaped.forallEBuiltOfSource
+      cvmCtorDirectContext cvmCtorAfterDirect
+    · simp_cvm_ctor_expr
+    · apply CandidateExprIdentityReplay.Shaped.candidateWhnfForallSource_refl
+        _ _ 9999 (by rfl)
+      simp_cvm_ctor_expr
+    · rw [← AddInductive.CandidateTypeAnnotationTrace.build_consumed]
+      simp_cvm_ctor_expr
+    · simpa_cvm_ctor_expr using functionDomainShape.replay
+    · simpa_cvm_ctor_expr using laterShape
+  have directDomainShape : CandidateExprIdentityReplay.Shaped
+      cvmCtorProofContext cvmCtorDirectDomain 0
+      cvmCtorFamilyApp := by
+    rw [show cvmCtorDirectDomain = cvmCtorFamilyApp by simp_cvm_ctor_expr]
+    exact .terminal _ _ (cvmCtorFamilyAppWhnf _ rfl rfl rfl) rfl
+  have directShape : CandidateExprIdentityReplay.Shaped
+      cvmCtorProofContext cvmCtorAfterProof 4
+      cvmCtorFamilyApp := by
+    apply CandidateExprIdentityReplay.Shaped.forallEBuiltOfSource
+      cvmCtorProofContext cvmCtorAfterProof
+    · simp_cvm_ctor_expr
+    · apply CandidateExprIdentityReplay.Shaped.candidateWhnfForallSource_refl
+        _ _ 9999 (by rfl)
+      simp_cvm_ctor_expr
+    · have consumeDirect : AddInductive.consumeTypeAnnotations
+          cvmCtorDirectDomain = cvmCtorDirectDomain := by
+        rw [show cvmCtorDirectDomain = cvmCtorFamilyApp by simp_cvm_ctor_expr]
+        simpa [cvmCtorFamilyApp,
+            AddInductive.CandidateTypeAnnotationTrace.build] using
+          (AddInductive.CandidateTypeAnnotationTrace.build_consumed
+            cvmCtorFamilyApp).symm
+      simpa only [cvmCtorDirectDomain] using consumeDirect
+    · simpa_cvm_ctor_expr using directDomainShape.replay
+    · simpa_cvm_ctor_expr using functionShape
+  have proofShape : CandidateExprIdentityReplay.Shaped
+      cvmCtorXContext cvmCtorAfterX 5 cvmCtorFamilyApp := by
+    apply CandidateExprIdentityReplay.Shaped.forallEBuiltOfSource
+      cvmCtorXContext cvmCtorAfterX
+    · simp_cvm_ctor_expr
+    · apply CandidateExprIdentityReplay.Shaped.candidateWhnfForallSource_refl
+        _ _ 9999 (by rfl)
+      simp_cvm_ctor_expr
+    · rw [← AddInductive.CandidateTypeAnnotationTrace.build_consumed]
+      simp_cvm_ctor_expr
+    · simpa_cvm_ctor_expr using
+        ((CandidateExprIdentityReplay.Shaped.terminal _ _
+          proofDomainWhnf (by simp_cvm_ctor_expr)).replay)
+    · simpa_cvm_ctor_expr using directShape
+  have xShape : CandidateExprIdentityReplay.Shaped
+      cvmCtorPContext cvmCtorAfterP 6 cvmCtorFamilyApp := by
+    apply CandidateExprIdentityReplay.Shaped.forallEBuiltOfSource
+      cvmCtorPContext cvmCtorAfterP
+    · simp_cvm_ctor_expr
+    · apply CandidateExprIdentityReplay.Shaped.candidateWhnfForallSource_refl
+        _ _ 9999 (by rfl)
+      simp_cvm_ctor_expr
+    · rw [← AddInductive.CandidateTypeAnnotationTrace.build_consumed]
+      simp_cvm_ctor_expr
+    · simpa_cvm_ctor_expr using
+        ((CandidateExprIdentityReplay.Shaped.terminal _ _ alphaInP rfl).replay)
+    · simpa_cvm_ctor_expr using proofShape
+  have pArgTerminal : CandidateExprIdentityReplay.Shaped
+      cvmCtorPArgContext (.sort .zero) 0 (.sort .zero) :=
+    .terminal _ _ (by rfl) rfl
+  have pDomainShape : CandidateExprIdentityReplay.Shaped
+      cvmCtorAlphaContext cvmCtorPDomain 1 (.sort .zero) := by
+    apply CandidateExprIdentityReplay.Shaped.forallEBuiltOfSource
+      cvmCtorAlphaContext cvmCtorPDomain
+    · simp_cvm_ctor_expr
+    · apply CandidateExprIdentityReplay.Shaped.candidateWhnfForallSource_refl
+        _ _ 9999 (by rfl)
+      simp_cvm_ctor_expr
+    · rw [← AddInductive.CandidateTypeAnnotationTrace.build_consumed]
+      simp_cvm_ctor_expr
+    · simpa_cvm_ctor_expr using
+        ((CandidateExprIdentityReplay.Shaped.terminal _ _
+          alphaInAlpha rfl).replay)
+    · simpa_cvm_ctor_expr using pArgTerminal
+  have pShape : CandidateExprIdentityReplay.Shaped
+      cvmCtorAlphaContext cvmCtorAfterAlpha 7
+      cvmCtorFamilyApp := by
+    apply CandidateExprIdentityReplay.Shaped.forallEBuiltOfSource
+      cvmCtorAlphaContext cvmCtorAfterAlpha
+    · simp_cvm_ctor_expr
+    · apply CandidateExprIdentityReplay.Shaped.candidateWhnfForallSource_refl
+        _ _ 9999 (by rfl)
+      simp_cvm_ctor_expr
+    · rw [← AddInductive.CandidateTypeAnnotationTrace.build_consumed]
+      simp_cvm_ctor_expr
+    · simpa_cvm_ctor_expr using pDomainShape.replay
+    · simpa_cvm_ctor_expr using xShape
+  apply CandidateExprIdentityReplay.Shaped.forallEBuiltOfSource
+    cvmConstructorContext constructorValidityMatrixKernelCtor.type
+  · simp_cvm_ctor_expr
+  · apply CandidateExprIdentityReplay.Shaped.candidateWhnfForallSource_refl
+      _ _ 9999 (by rfl)
+    simp_cvm_ctor_expr
+  · rw [← AddInductive.CandidateTypeAnnotationTrace.build_consumed]
+    simp_cvm_ctor_expr
+  · have alphaDomainWhnf : AddInductive.CandidateWhnfStep.Valid
+        ⟨cvmConstructorContext, cvmCtorAlphaDomain,
+          cvmCtorAlphaDomain⟩ := by
+      change AddInductive.CandidateWhnfStep.Valid
+        ⟨cvmConstructorContext, .sort (.succ (.param `u)),
+          .sort (.succ (.param `u))⟩
+      rfl
+    exact (CandidateExprIdentityReplay.Shaped.terminal _ _
+      alphaDomainWhnf rfl).replay
+  · simpa_cvm_ctor_expr using pShape
+
+theorem cvmCtorCandidateBuild :
+    AddInductive.buildCandidateExpr constructorValidityMatrixKernelCtor.type
+        cvmConstructorContext =
+      .ok cvmCandidate.families.singleton.constructors.singleton.type := by
+  have produced := cvmExecution.families.produced.singleton_constructors
+  rw [AddInductive.CandidateList.singleton_eta
+    cvmExecution.families.candidates.singleton.constructors] at produced
+  have exactProduced : AddInductive.CandidateConstructorListProduced
+      cvmConstructorContext
+      (.cons cvmCandidate.families.singleton.constructors.singleton .nil) := by
+    simpa [cvmCandidate,
+      AddInductive.NormalizationCandidateExecution.candidate,
+      cvmConstructorContext, constructorValidityMatrixKernelType] using produced
+  exact exactProduced.singleton_build
+
+def cvmCtorIdentityReplay :
+    TypeChecker.CandidateExprIdentityReplay cvmConstructorContext
+      constructorValidityMatrixKernelCtor.type :=
+  cvmCtorIdentityShape.replay
+
+def cvmCtorIdentityEvidence :
+    TypeChecker.CandidateExprIdentityReplay.Evidence
+      cvmCtorIdentityReplay
+      cvmCandidate.families.singleton.constructors.singleton.type.trace :=
+  cvmCtorIdentityReplay.evidence_of_build cvmCtorCandidateBuild
+
 theorem cvmTypeEnv_ordered : cvmTypeEnv.Ordered :=
   .const (n := constructorValidityMatrixType.name)
     (ci := constructorValidityMatrixType.toVConstant)
@@ -926,12 +1517,6 @@ theorem prbFamilyIdentityReplay_shape :
       prbFamilyIdentityReplay.terminalSource = .sort .zero :=
   ⟨prbFamilyIdentityShape.spineLength_eq,
     prbFamilyIdentityShape.terminalSource_eq⟩
-
-theorem prbCtorIdentityCheck :
-    TypeChecker.CandidateExprIdentity.check
-      prbCandidate.families.singleton.constructors.singleton.type.trace =
-        true := by
-  native_decide
 
 theorem prbFamilyValidationAnnotations :
     prbCandidate.families.singleton.familyType.type.trace
@@ -1296,6 +1881,334 @@ def prbFamilyStage :
     rw [← prbFamilyNames_eq]
     exact prbFamilyNameNotPrimitive
 
+def prbCtorAlphaContext := prbConstructorContext.pushLocalDecl `α .implicit
+  (.sort (.succ (.param `u)))
+
+def prbCtorAContext := prbCtorAlphaContext.pushLocalDecl `a .default
+  prbConstructorContext.freshExpr
+
+def prbCtorNextDomain : Expr :=
+  .forallE `b prbConstructorContext.freshExpr
+    (.app
+      (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+        (.fvar prbConstructorContext.freshFVarId))
+      (.bvar 0)) .default
+
+def prbCtorNextContext := prbCtorAContext.pushLocalDecl `next .default
+  prbCtorNextDomain
+
+def prbCtorBContext := prbCtorAContext.pushLocalDecl `b .default
+  prbConstructorContext.freshExpr
+
+theorem prbCtorFamilyLookup :
+    prbConstructorContext.env.find?
+        propRecursiveBoundaryKernelType.name =
+      some prbDeclaredInfo := by
+  change prbExecution.familyEnv.constants.find?'
+      propRecursiveBoundaryKernelType.name = some prbDeclaredInfo
+  rw [show prbExecution.familyEnv.constants =
+      prbCandidate.families.singleton.familyType.type.trace.terminalContext.env.constants.insert
+        propRecursiveBoundaryType.name prbDeclaredInfo from prbFamilyMap_add]
+  have hbase :
+      prbCandidate.families.singleton.familyType.type.trace.terminalContext.env.constants.WF := by
+    rw [prbTerminalEnv_eq]
+    exact SMap.WF.empty
+  have hfresh :
+      prbCandidate.families.singleton.familyType.type.trace.terminalContext.env.constants.find?
+        propRecursiveBoundaryType.name = none := by
+    rw [prbTerminalEnv_eq]
+    change ({} : ConstMap).find? propRecursiveBoundaryType.name = none
+    rw [SMap.WF.find?_eq SMap.WF.empty]
+    simp [SMap.toList']
+  have hinsert := hbase.insert propRecursiveBoundaryType.name
+    prbDeclaredInfo hfresh
+  rw [SMap.WF.find?'_eq_find? hinsert]
+  rw [hbase.find?_insert]
+  simp [prbFamilyNames_eq]
+
+theorem prbCtorFamilyWhnf
+    (context : AddInductive.Context)
+    (arg1 arg2 : FVarId)
+    (henv : context.env = prbConstructorContext.env)
+    (hdepth : context.fuel.recDepth = 10000)
+    (hwhnf : context.fuel.whnf = 100000)
+    (hquot : context.env.quotInit = false) :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨context,
+        .app
+          (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+            (.fvar arg1))
+          (.fvar arg2),
+        .app
+          (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+            (.fvar arg1))
+          (.fvar arg2)⟩ := by
+  apply TypeChecker.candidateWhnfConstFVarFVar_refl context
+    propRecursiveBoundaryKernelType.name [.param `u] arg1 arg2
+    (AddInductive.singletonDeclaredInfo
+      prbFamilyValidationRun.stats 1 1 propRecursiveBoundaryKernelType
+      0 false
+      prbCandidate.families.singleton.familyType.type.trace.terminalContext)
+  · exact hdepth
+  · exact hwhnf
+  · exact hquot
+  · rw [henv]
+    simpa [prbDeclaredInfo] using prbCtorFamilyLookup
+  · rfl
+
+theorem prbCtorRootWF : prbConstructorContext.lctx.WF := by
+  change LocalContext.WF ⟨.empty, .empty, .empty⟩
+  exact LocalContext.WF.nil
+
+theorem prbCtorRootFresh :
+    prbConstructorContext.lctx.find?
+      prbConstructorContext.freshFVarId = none := by
+  change (⟨.empty, .empty, .empty⟩ : LocalContext).find?
+    prbConstructorContext.freshFVarId = none
+  exact TypeChecker.emptyLocalContextFindNone _
+
+theorem prbCtorAlphaContextWF : prbCtorAlphaContext.lctx.WF := by
+  simpa [prbCtorAlphaContext, AddInductive.Context.pushLocalDecl] using
+    (LocalContext.WF.mkLocalDecl prbCtorRootWF prbCtorRootFresh)
+
+theorem prbCtorAlphaContextFresh :
+    prbCtorAlphaContext.lctx.find?
+      prbCtorAlphaContext.freshFVarId = none := by
+  have h := LocalContext.WF.find?_eq_find?_toList
+    (fv := prbCtorAlphaContext.freshFVarId) prbCtorAlphaContextWF
+  rw [h]
+  simp only [prbCtorAlphaContext, prbConstructorContext,
+    propRecursiveBoundaryContext, AddInductive.Context.pushLocalDecl,
+    AddInductive.Context.freshFVarId]
+  rw [LocalContext.mkLocalDecl_toList]
+  rw [show ({} : LocalContext).toList = [] by rfl]
+  simp [LocalDecl.fvarId, NameGenerator.next, NameGenerator.curr]
+
+theorem prbCtorAlphaFindInA :
+    prbCtorAContext.lctx.find? prbConstructorContext.freshFVarId =
+      some (.cdecl 0 prbConstructorContext.freshFVarId `α
+        (.sort (.succ (.param `u))) .implicit .default) := by
+  have hnew := TypeChecker.localContextFindNew
+    prbConstructorContext.lctx prbConstructorContext.freshFVarId
+    `α (.sort (.succ (.param `u))) .implicit .default
+    prbCtorRootWF prbCtorRootFresh
+  have hold := TypeChecker.localContextFindOld
+      prbCtorAlphaContext.lctx prbConstructorContext.freshFVarId
+      prbCtorAlphaContext.freshFVarId `a
+      prbConstructorContext.freshExpr .default .default
+      (.cdecl prbConstructorContext.lctx.decls.size
+        prbConstructorContext.freshFVarId `α
+        (.sort (.succ (.param `u))) .implicit .default)
+      prbCtorAlphaContextWF prbCtorAlphaContextFresh (by
+        simpa [prbCtorAlphaContext, AddInductive.Context.pushLocalDecl]
+          using hnew)
+  simpa [prbCtorAContext, prbCtorAlphaContext,
+    prbConstructorContext, propRecursiveBoundaryContext,
+    AddInductive.Context.pushLocalDecl] using hold
+
+open TypeChecker in
+def prbCtorIdentityShape :
+    CandidateExprIdentityReplay.Shaped prbConstructorContext
+      propRecursiveBoundaryKernelCtor.type 3
+      (.app
+        (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+          (.fvar prbConstructorContext.freshFVarId))
+        (.fvar prbCtorAlphaContext.freshFVarId)) := by
+  change CandidateExprIdentityReplay.Shaped prbConstructorContext
+    (.forallE `α (.sort (.succ (.param `u)))
+      (.forallE `a (.bvar 0)
+        (.forallE `next
+          (.forallE `b (.bvar 1)
+            (.app
+              (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+                (.bvar 2))
+              (.bvar 0)) .default)
+          (.app
+            (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+              (.bvar 2))
+            (.bvar 1)) .default) .default) .implicit)
+    3
+    (.app
+      (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+        (.fvar prbConstructorContext.freshFVarId))
+      (.fvar prbCtorAlphaContext.freshFVarId))
+  have alphaInAlpha : AddInductive.CandidateWhnfStep.Valid
+      ⟨prbCtorAlphaContext, prbConstructorContext.freshExpr,
+        prbConstructorContext.freshExpr⟩ := by
+    simpa [prbCtorAlphaContext] using
+      TypeChecker.candidateWhnfPushedFVar_refl
+        prbConstructorContext `α (.sort (.succ (.param `u)))
+        .implicit 9999 (by rfl) prbCtorRootWF prbCtorRootFresh
+  have alphaInA : AddInductive.CandidateWhnfStep.Valid
+      ⟨prbCtorAContext, prbConstructorContext.freshExpr,
+        prbConstructorContext.freshExpr⟩ := by
+    apply TypeChecker.candidateWhnfFVar_refl _ _ 9999
+    · rfl
+    · unfold TypeChecker.Inner.isLetFVar
+      rw [prbCtorAlphaFindInA]
+  have bBody : CandidateExprIdentityReplay.Shaped prbCtorBContext
+      (.app
+        (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+          (.fvar prbConstructorContext.freshFVarId))
+        (.fvar prbCtorAContext.freshFVarId))
+      0
+      (.app
+        (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+          (.fvar prbConstructorContext.freshFVarId))
+        (.fvar prbCtorAContext.freshFVarId)) :=
+    .terminal _ _ (prbCtorFamilyWhnf _ _ _ rfl rfl rfl (by
+      rw [show prbCtorBContext.env = prbConstructorContext.env by rfl]
+      rw [prbFamilyStage.quotInit_eq]
+      rfl)) rfl
+  have nextDomainShape : CandidateExprIdentityReplay.Shaped prbCtorAContext
+      prbCtorNextDomain 1
+      (.app
+        (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+          (.fvar prbConstructorContext.freshFVarId))
+        (.fvar prbCtorAContext.freshFVarId)) := by
+    apply CandidateExprIdentityReplay.Shaped.forallEBuilt prbCtorAContext `b
+      prbConstructorContext.freshExpr
+      (.app
+        (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+          (.fvar prbConstructorContext.freshFVarId))
+        (.bvar 0)) .default (by rfl)
+    · simpa [AddInductive.Context.freshExpr,
+          AddInductive.CandidateTypeAnnotationTrace.build] using
+        (AddInductive.CandidateTypeAnnotationTrace.build_consumed
+          prbConstructorContext.freshExpr).symm
+    · exact (CandidateExprIdentityReplay.Shaped.terminal
+        _ _ alphaInA rfl).replay
+    · simpa [prbCtorBContext, prbCtorNextDomain,
+        AddInductive.Context.freshExpr,
+        Expr.instantiate1_eq, Expr.instantiate1'] using bBody
+  have resultShape : CandidateExprIdentityReplay.Shaped prbCtorNextContext
+      (.app
+        (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+          (.fvar prbConstructorContext.freshFVarId))
+        (.fvar prbCtorAlphaContext.freshFVarId))
+      0
+      (.app
+        (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+          (.fvar prbConstructorContext.freshFVarId))
+        (.fvar prbCtorAlphaContext.freshFVarId)) :=
+    .terminal _ _ (prbCtorFamilyWhnf _ _ _ rfl rfl rfl (by
+      rw [show prbCtorNextContext.env = prbConstructorContext.env by rfl]
+      rw [prbFamilyStage.quotInit_eq]
+      rfl)) rfl
+  have nextShape : CandidateExprIdentityReplay.Shaped prbCtorAContext
+      (.forallE `next prbCtorNextDomain
+        (.app
+          (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+            (.fvar prbConstructorContext.freshFVarId))
+          (.fvar prbCtorAlphaContext.freshFVarId)) .default)
+      1
+      (.app
+        (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+          (.fvar prbConstructorContext.freshFVarId))
+        (.fvar prbCtorAlphaContext.freshFVarId)) := by
+    apply CandidateExprIdentityReplay.Shaped.forallEBuilt
+      prbCtorAContext `next prbCtorNextDomain
+      (.app
+        (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+          (.fvar prbConstructorContext.freshFVarId))
+        (.fvar prbCtorAlphaContext.freshFVarId)) .default (by rfl)
+    · simpa [prbCtorNextDomain,
+          AddInductive.Context.freshExpr,
+          AddInductive.CandidateTypeAnnotationTrace.build] using
+        (AddInductive.CandidateTypeAnnotationTrace.build_consumed
+          prbCtorNextDomain).symm
+    · exact nextDomainShape.replay
+    · simpa [prbCtorNextContext, Expr.instantiate1_eq,
+        Expr.instantiate1'] using resultShape
+  have aShape : CandidateExprIdentityReplay.Shaped prbCtorAlphaContext
+      (.forallE `a prbConstructorContext.freshExpr
+        (.forallE `next
+          (.forallE `b prbConstructorContext.freshExpr
+            (.app
+              (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+                (.fvar prbConstructorContext.freshFVarId))
+              (.bvar 0)) .default)
+          (.app
+            (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+              (.fvar prbConstructorContext.freshFVarId))
+            (.bvar 1)) .default) .default)
+      2
+      (.app
+        (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+          (.fvar prbConstructorContext.freshFVarId))
+        (.fvar prbCtorAlphaContext.freshFVarId)) := by
+    apply CandidateExprIdentityReplay.Shaped.forallEBuilt
+      prbCtorAlphaContext `a
+      prbConstructorContext.freshExpr
+      (.forallE `next
+        (.forallE `b prbConstructorContext.freshExpr
+          (.app
+            (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+              (.fvar prbConstructorContext.freshFVarId))
+            (.bvar 0)) .default)
+          (.app
+            (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+              (.fvar prbConstructorContext.freshFVarId))
+            (.bvar 1)) .default) .default (by rfl)
+    · simpa [AddInductive.Context.freshExpr,
+          AddInductive.CandidateTypeAnnotationTrace.build] using
+        (AddInductive.CandidateTypeAnnotationTrace.build_consumed
+          prbConstructorContext.freshExpr).symm
+    · exact (CandidateExprIdentityReplay.Shaped.terminal
+        _ _ alphaInAlpha rfl).replay
+    · simpa [prbCtorAContext, prbCtorNextDomain,
+        AddInductive.Context.freshExpr,
+        Expr.instantiate1_eq, Expr.instantiate1',
+        Expr.liftLooseBVars_zero] using nextShape
+  apply CandidateExprIdentityReplay.Shaped.forallEBuilt
+    prbConstructorContext `α
+    (.sort (.succ (.param `u)))
+    (.forallE `a (.bvar 0)
+      (.forallE `next
+        (.forallE `b (.bvar 1)
+          (.app
+            (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+              (.bvar 2))
+            (.bvar 0)) .default)
+        (.app
+          (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+            (.bvar 2))
+          (.bvar 1)) .default) .default) .implicit (by rfl)
+  · simpa [AddInductive.CandidateTypeAnnotationTrace.build] using
+      (AddInductive.CandidateTypeAnnotationTrace.build_consumed
+        (.sort (.succ (.param `u)))).symm
+  · exact (CandidateExprIdentityReplay.Shaped.terminal
+      _ _ (by rfl) rfl).replay
+  · simpa [prbCtorAlphaContext, Expr.instantiate1_eq,
+      Expr.instantiate1', Expr.liftLooseBVars_zero,
+      AddInductive.Context.freshExpr] using aShape
+
+theorem prbCtorCandidateBuild :
+    AddInductive.buildCandidateExpr propRecursiveBoundaryKernelCtor.type
+        prbConstructorContext =
+      .ok prbCandidate.families.singleton.constructors.singleton.type := by
+  have produced := prbExecution.families.produced.singleton_constructors
+  rw [AddInductive.CandidateList.singleton_eta
+    prbExecution.families.candidates.singleton.constructors] at produced
+  have exactProduced : AddInductive.CandidateConstructorListProduced
+      prbConstructorContext
+      (.cons prbCandidate.families.singleton.constructors.singleton .nil) := by
+    simpa [prbCandidate,
+      AddInductive.NormalizationCandidateExecution.candidate,
+      prbConstructorContext, propRecursiveBoundaryKernelType] using produced
+  exact exactProduced.singleton_build
+
+def prbCtorIdentityReplay :
+    TypeChecker.CandidateExprIdentityReplay prbConstructorContext
+      propRecursiveBoundaryKernelCtor.type :=
+  prbCtorIdentityShape.replay
+
+def prbCtorIdentityEvidence :
+    TypeChecker.CandidateExprIdentityReplay.Evidence
+      prbCtorIdentityReplay
+      prbCandidate.families.singleton.constructors.singleton.type.trace :=
+  prbCtorIdentityReplay.evidence_of_build prbCtorCandidateBuild
+
 theorem prbTypeEnv_ordered : prbTypeEnv.Ordered :=
   .const (n := propRecursiveBoundaryType.name)
     (ci := propRecursiveBoundaryType.toVConstant)
@@ -1534,7 +2447,7 @@ def cvmCtorSemanticRootRun :
       cvmCanonicalCandidate.families.singleton.constructors.singleton.type
       constructorValidityMatrixType.ctors[0].type :=
   cvmCtorStagedInput.type.rootInput.semanticOfIdentity
-    (TypeChecker.CandidateExprIdentity.of_check cvmCtorIdentityCheck)
+    cvmCtorIdentityEvidence.identity
 
 def cvmCtorSemanticRun :
     VInductDecl.CandidateConstructorSemanticRun cvmTypeEnv [`u]
@@ -1716,7 +2629,7 @@ def prbCtorSemanticRootRun :
       prbCanonicalCandidate.families.singleton.constructors.singleton.type
       propRecursiveBoundaryType.ctors[0].type :=
   prbCtorStagedInput.type.rootInput.semanticOfIdentity
-    (TypeChecker.CandidateExprIdentity.of_check prbCtorIdentityCheck)
+    prbCtorIdentityEvidence.identity
 
 def prbCtorSemanticRun :
     VInductDecl.CandidateConstructorSemanticRun prbTypeEnv [`u]
