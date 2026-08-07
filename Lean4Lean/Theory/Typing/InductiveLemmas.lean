@@ -296,6 +296,29 @@ theorem liftN_liftN_comm : ∀ (e : VExpr) (n k c K : Nat), c ≤ K →
     have := ihb n k (c+1) (K+1) (by omega)
     rwa [show K+1+n = K+n+1 from by omega] at this
 
+/-- Generalized form of `liftN_liftN_mid`: expanding an arbitrary lift at
+the seam above a disjoint lower lift adds the new width to that arbitrary
+lift. -/
+theorem liftN_liftN_midN (e : VExpr) {j c : Nat}
+    (a k d : Nat) (hc : c ≤ j) :
+    ((e.liftN a j).liftN d c).liftN k (j+d) =
+      (e.liftN (a+k) j).liftN d c := by
+  rw [← liftN_liftN_comm (e.liftN a j) d k c j hc]
+  rw [liftN'_liftN_hi]
+
+/-- Telescope form of `liftN_liftN_midN`. -/
+theorem liftTelN_liftN_midN :
+    ∀ (tel : List VExpr) {j c : Nat} (a k d : Nat), c ≤ j →
+      liftTelN k (liftTelN d (liftTelN a tel j) c) (j+d) =
+        liftTelN d (liftTelN (a+k) tel j) c
+  | [], _, _, _, _, _, _ => rfl
+  | A :: tel, j, c, a, k, d, hc => by
+    show ((A.liftN a j).liftN d c).liftN k (j+d) :: _ = _
+    rw [liftN_liftN_midN A a k d hc]
+    congr 1
+    rw [show j+d+1 = j+1+d from by omega]
+    exact liftTelN_liftN_midN tel a k d (Nat.succ_le_succ hc)
+
 theorem instN_appN (a : VExpr) (k : Nat) (f : VExpr) : ∀ (as : List VExpr),
     (f.appN as).inst a k = appN (f.inst a k) (as.map (·.inst a k))
   | [] => rfl
@@ -4267,6 +4290,10 @@ theorem NormalizedCtor.recArgsR_mem {source : VInductDecl}
   obtain ⟨r₀, hr₀, rfl⟩ := List.mem_map.1 hr
   exact ⟨r₀, hr₀, rfl⟩
 
+theorem liftTelN_congr {a a' : Nat} (tel : List VExpr) (k : Nat)
+    (h : a = a') :
+    VExpr.liftTelN a tel k = VExpr.liftTelN a' tel k := h ▸ rfl
+
 theorem BlockGenerationChecked.blockIHsFromRecArgs_length (d m : Nat) :
     ∀ (rs : List RecArg) (p : Nat),
       (BlockGenerationChecked.blockIHsFromRecArgs d m rs p).length = rs.length
@@ -4274,6 +4301,231 @@ theorem BlockGenerationChecked.blockIHsFromRecArgs_length (d m : Nat) :
   | _ :: rs, p => by
     simp [BlockGenerationChecked.blockIHsFromRecArgs,
       BlockGenerationChecked.blockIHsFromRecArgs_length d m rs (p + 1)]
+
+/-- Rule-context normal form of one mutual induction hypothesis. The
+recursive result is routed to the motive selected by `targetType`. -/
+def BlockGenerationChecked.blockRuleIH
+    (d k m : Nat) (r : RecArg) : VExpr :=
+  let n := r.binders.length
+  VExpr.forallN
+    (BlockGenerationChecked.blockRuleBinders (d+k) m r)
+    (VExpr.appN
+      (.bvar (d - 1 - r.targetType + k + m + n))
+      ((r.indices.map fun e =>
+          (e.liftN (d+k) (r.fieldIndex+n)).liftN
+            (m-r.fieldIndex) n) ++
+        [VExpr.appN (.bvar (m-1-r.fieldIndex+n))
+          (VExpr.bvarRevRange 0 n)]))
+
+/-- Rule-context induction hypotheses, weakened past their preceding
+hypothesis binders. -/
+def BlockGenerationChecked.blockRuleIHs (d k m : Nat) :
+    List RecArg → Nat → List VExpr
+  | [], _ => []
+  | r :: rs, p =>
+    (BlockGenerationChecked.blockRuleIH d k m r).liftN p ::
+      BlockGenerationChecked.blockRuleIHs d k m rs (p+1)
+
+theorem BlockGenerationChecked.blockMinorBinders_shift
+    (d : Nat) (r : RecArg) (m p : Nat) :
+    BlockGenerationChecked.blockMinorBinders d m p r =
+      VExpr.liftTelN p
+        (BlockGenerationChecked.blockMinorBinders d m 0 r) 0 := by
+  simp only [BlockGenerationChecked.blockMinorBinders, Nat.add_zero]
+  rw [VExpr.liftTelN_liftTelN]
+
+/-- The shift parameter of a mutual minor IH is precisely weakening past
+the preceding IH binders. -/
+theorem BlockGenerationChecked.blockMinorIH_shift
+    (d : Nat) (r : RecArg) (m p : Nat) (hj : r.fieldIndex < m) :
+    BlockGenerationChecked.blockMinorIH d m p r =
+      (BlockGenerationChecked.blockMinorIH d m 0 r).liftN p := by
+  simp only [BlockGenerationChecked.blockMinorIH,
+    VExpr.liftN_forallN]
+  rw [← BlockGenerationChecked.blockMinorBinders_shift d r m p]
+  rw [show
+      (BlockGenerationChecked.blockMinorBinders d m 0 r).length =
+        r.binders.length by
+      simp [BlockGenerationChecked.blockMinorBinders,
+        VExpr.liftTelN_length],
+    Nat.zero_add]
+  apply congrArg (VExpr.forallN _)
+  rw [VExpr.liftN_appN, List.map_append, List.map_map]
+  show VExpr.appN _ (_ ++ [_]) = VExpr.appN _ (_ ++ [_])
+  congr 1
+  · rw [show
+      (VExpr.bvar
+        (d - 1 - r.targetType + m + 0 + r.binders.length)).liftN
+          p r.binders.length =
+        .bvar (d - 1 - r.targetType + m + p + r.binders.length) from by
+      simp only [VExpr.liftN]
+      rw [liftVar_le (by omega)]
+      congr 1
+      ac_rfl]
+  · congr 1
+    · apply List.map_congr_left
+      intro e _
+      simp only [Function.comp_apply, Nat.add_zero]
+      rw [VExpr.liftN'_liftN_hi]
+    · congr 1
+      simp only [Nat.add_zero, VExpr.liftN_appN]
+      rw [show
+          (VExpr.bvar
+            (m - 1 - r.fieldIndex + r.binders.length)).liftN
+              p r.binders.length =
+            .bvar (m - 1 - r.fieldIndex + p + r.binders.length) from by
+          simp only [VExpr.liftN]
+          rw [liftVar_le (by omega)]
+          congr 1
+          omega,
+        VExpr.bvarRevRange_liftN_high _ _ _ _ (by omega)]
+
+/-- Lifting a base mutual minor IH through all constructor minors yields the
+rule-context normal form. -/
+theorem BlockGenerationChecked.blockMinorIH_zero_lift_ruleIH
+    (d : Nat) (r : RecArg) (m k : Nat) (hj : r.fieldIndex < m) :
+    (BlockGenerationChecked.blockMinorIH d m 0 r).liftN k m =
+      BlockGenerationChecked.blockRuleIH d k m r := by
+  simp only [BlockGenerationChecked.blockMinorIH,
+    BlockGenerationChecked.blockRuleIH,
+    BlockGenerationChecked.blockMinorBinders,
+    BlockGenerationChecked.blockRuleBinders,
+    VExpr.liftN_forallN, VExpr.liftTelN_length, Nat.add_zero]
+  congr 1
+  · rw [show m = r.fieldIndex + (m-r.fieldIndex) by omega]
+    rw [show r.fieldIndex + (m-r.fieldIndex) - r.fieldIndex =
+      m-r.fieldIndex by omega]
+    rw [VExpr.liftTelN_liftN_midN r.binders d k
+      (m-r.fieldIndex) (Nat.zero_le _)]
+  · congr 1
+    rw [VExpr.liftN_appN, List.map_append, List.map_map]
+    show VExpr.appN _ (_ ++ [_]) = VExpr.appN _ (_ ++ [_])
+    congr 1
+    · simp only [VExpr.liftN]
+      rw [liftVar_le (by omega)]
+      congr 1
+      ac_rfl
+    · congr 1
+      · apply List.map_congr_left
+        intro e _
+        simp only [Function.comp_apply]
+        rw [show m + r.binders.length =
+            (r.fieldIndex+r.binders.length) + (m-r.fieldIndex) by omega,
+          VExpr.liftN_liftN_midN e d k (m-r.fieldIndex) (by omega)]
+      · congr 1
+        simp only [VExpr.liftN_appN]
+        rw [show
+            (VExpr.bvar
+              (m - 1 - r.fieldIndex + r.binders.length)).liftN
+                k (m+r.binders.length) =
+              .bvar (m - 1 - r.fieldIndex + r.binders.length) from by
+            simp only [VExpr.liftN]
+            rw [liftVar_lt (by omega)],
+          VExpr.bvarRevRange_liftN_high _ _ _ _ (by omega)]
+
+/-- General mutual minor-IH normalization after `p` earlier hypotheses. -/
+theorem BlockGenerationChecked.blockMinorIH_lift_ruleIH
+    (d : Nat) (r : RecArg) (m k p : Nat)
+    (hj : r.fieldIndex < m) :
+    (BlockGenerationChecked.blockMinorIH d m p r).liftN k (m+p) =
+      (BlockGenerationChecked.blockRuleIH d k m r).liftN p := by
+  rw [BlockGenerationChecked.blockMinorIH_shift d r m p hj]
+  rw [← VExpr.liftN_liftN_comm
+    (BlockGenerationChecked.blockMinorIH d m 0 r)
+    p k 0 m (Nat.zero_le _)]
+  rw [BlockGenerationChecked.blockMinorIH_zero_lift_ruleIH d r m k hj]
+
+theorem BlockGenerationChecked.blockRuleIHs_length (d k m : Nat) :
+    ∀ (rs : List RecArg) (p : Nat),
+      (BlockGenerationChecked.blockRuleIHs d k m rs p).length = rs.length
+  | [], _ => rfl
+  | _ :: rs, p => by
+    simp [BlockGenerationChecked.blockRuleIHs,
+      BlockGenerationChecked.blockRuleIHs_length d k m rs (p+1)]
+
+/-- Lift the complete mutual minor-IH telescope into rule context. -/
+theorem BlockGenerationChecked.blockIHs_liftN (d m k : Nat) :
+    ∀ (rs : List RecArg),
+    (∀ r ∈ rs, r.fieldIndex < m) → ∀ (p : Nat) (X : VExpr),
+    (VExpr.forallN
+      (BlockGenerationChecked.blockIHsFromRecArgs d m rs p) X).liftN
+        k (m+p) =
+      VExpr.forallN
+        (BlockGenerationChecked.blockRuleIHs d k m rs p)
+        (X.liftN k (m+p+rs.length))
+  | [], _, _, _ => rfl
+  | r :: rs, hm, p, X => by
+    show VExpr.forallE _ _ = VExpr.forallE _ _
+    congr 1
+    · exact BlockGenerationChecked.blockMinorIH_lift_ruleIH
+        d r m k p (hm r (.head _))
+    · rw [show m+p+1 = m+(p+1) by omega,
+        BlockGenerationChecked.blockIHs_liftN d m k rs
+          (fun q hq => hm q (.tail _ hq)) (p+1) X,
+        show m+(p+1)+rs.length =
+          m+p+(r :: rs).length from by simp; omega]
+
+theorem BlockGenerationChecked.blockIHs_liftN'
+    (d m k : Nat) (rs : List RecArg)
+    (hm : ∀ r ∈ rs, r.fieldIndex < m)
+    (p : Nat) (X : VExpr) {cut : Nat} (hcut : cut = m+p) :
+    (VExpr.forallN
+      (BlockGenerationChecked.blockIHsFromRecArgs d m rs p) X).liftN
+        k cut =
+      VExpr.forallN
+        (BlockGenerationChecked.blockRuleIHs d k m rs p)
+        (X.liftN k (m+p+rs.length)) := by
+  rw [hcut]
+  exact BlockGenerationChecked.blockIHs_liftN d m k rs hm p X
+
+theorem BlockGenerationChecked.blockRuleIHs_liftN1 (d k m : Nat) :
+    ∀ (rs : List RecArg) (p c : Nat), c ≤ p → ∀ (X : VExpr),
+    VExpr.forallN
+      (BlockGenerationChecked.blockRuleIHs d k m rs (p+1))
+      (X.liftN 1 (c+rs.length)) =
+      (VExpr.forallN
+        (BlockGenerationChecked.blockRuleIHs d k m rs p) X).liftN 1 c
+  | [], p, c, _, X => by
+    simp [BlockGenerationChecked.blockRuleIHs, VExpr.forallN]
+  | r :: rs, p, c, hc, X => by
+    show VExpr.forallE _ _ = VExpr.forallE _ _
+    congr 1
+    · rw [VExpr.liftN'_liftN' (Nat.zero_le _) hc]
+    · rw [show c+(r :: rs).length = (c+1)+rs.length from by
+          simp
+          omega]
+      exact BlockGenerationChecked.blockRuleIHs_liftN1
+        d k m rs (p+1) (c+1) (by omega) X
+
+/-- Consume one routed recursive-call term for every mutual rule IH. -/
+theorem hasType_appN_blockRuleIHs
+    {source : VInductDecl} {gen : BlockGenerationChecked source}
+    {env : VEnv} {Γ : List VExpr} {d m k : Nat}
+    {argOf : RecArg → VExpr} {Dfin : VExpr} :
+    ∀ {rs : List RecArg} {g : VExpr},
+    (∀ r ∈ rs, env.HasType gen.recUvars Γ (argOf r)
+      (BlockGenerationChecked.blockRuleIH d k m r)) →
+    env.HasType gen.recUvars Γ g
+      (VExpr.forallN
+        (BlockGenerationChecked.blockRuleIHs d k m rs 0)
+        (Dfin.liftN rs.length)) →
+    env.HasType gen.recUvars Γ (g.appN (rs.map argOf)) Dfin
+  | [], g, _, hg => by
+    simpa [BlockGenerationChecked.blockRuleIHs] using hg
+  | r :: rs, g, hargs, hg => by
+    have happ := VEnv.HasType.app hg (by
+      simpa [BlockGenerationChecked.blockRuleIHs] using
+        hargs r (.head _))
+    simp only [List.length_cons] at happ
+    rw [show Dfin.liftN (rs.length+1) =
+        (Dfin.liftN rs.length).liftN 1 (0+rs.length) from by
+          rw [Nat.zero_add,
+            VExpr.liftN'_liftN' (Nat.zero_le _) (by omega)],
+      BlockGenerationChecked.blockRuleIHs_liftN1
+        d k m rs 0 0 (Nat.le_refl _) (Dfin.liftN rs.length),
+      VExpr.inst_liftN1] at happ
+    exact hasType_appN_blockRuleIHs
+      (rs := rs) (fun q hq => hargs q (.tail _ hq)) happ
 
 theorem BlockGenerationChecked.minorTypesAux_length
     {source : VInductDecl} (gen : BlockGenerationChecked source) :
@@ -4289,6 +4541,22 @@ theorem BlockGenerationChecked.minorTypes_length
     gen.minorTypes.length = gen.minorCount := by
   simpa [BlockGenerationChecked.minorTypes] using
     gen.minorTypesAux_length gen.flatCtors 0
+
+/-- Positional lookup through the progressively weakened flattened mutual
+minor telescope. -/
+theorem BlockGenerationChecked.minorTypesAux_getElem?
+    {source : VInductDecl} (gen : BlockGenerationChecked source) :
+    ∀ (constructors : List NormalizedBlockCtor) (i q : Nat),
+      (gen.minorTypesAux constructors i)[q]? =
+        constructors[q]?.map fun constructor =>
+          (gen.minorType constructor).liftN (i+q)
+  | [], _, q => by simp [BlockGenerationChecked.minorTypesAux]
+  | _ :: _, _, 0 => by simp [BlockGenerationChecked.minorTypesAux]
+  | _ :: constructors, i, q+1 => by
+    simp only [BlockGenerationChecked.minorTypesAux,
+      List.getElem?_cons_succ]
+    rw [gen.minorTypesAux_getElem? constructors (i+1) q,
+      show i+1+q = i+(q+1) by omega]
 
 namespace BlockGenerationEnv
 
@@ -5579,6 +5847,1055 @@ theorem recursor_wf {family : NormalizedFamily}
     (hfamily : family ∈ gen.families) :
     (gen.recursor family).WF env :=
   S.recType_isType hfamily
+
+theorem recType_levelWF {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) :
+    (gen.recType family).LevelWF gen.recUvars := by
+  obtain ⟨_, h⟩ := S.recType_isType hfamily
+  exact (h.levelWF trivial).1
+
+theorem recType_closedN {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) :
+    (gen.recType family).ClosedN 0 := by
+  obtain ⟨_, h⟩ := S.recType_isType hfamily
+  exact VExpr.WF.closedN S.ord ⟨_, h⟩ trivial
+
+/-- The selected family recursor constant has its generated mutual recursor
+type in every local context. -/
+theorem recursor_hasType {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families)
+    (hrec : env.constants (.str family.raw.name "rec") =
+      some (gen.recursor family)) {Γ : List VExpr} :
+    env.HasType gen.recUvars Γ
+      (.const (.str family.raw.name "rec") gen.recLevels)
+      (gen.recType family) := by
+  have h := VEnv.HasType.const (Γ := Γ) hrec
+    VLevel.params_wf VLevel.params_length
+  rw [show (gen.recursor family).uvars = gen.recUvars from rfl,
+    show (gen.recursor family).type = gen.recType family from rfl] at h
+  rwa [(S.recType_levelWF hfamily).instL_id] at h
+
+/-- Applying a selected recursor to the shared parameters, motives, and
+flattened minors exposes its index-and-major spine. -/
+theorem recBase_hasType {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families)
+    (hrec : env.constants (.str family.raw.name "rec") =
+      some (gen.recursor family))
+    (Δ : List VExpr) :
+    env.HasType gen.recUvars
+      (Δ ++ (gen.minorTypes.reverse ++
+        (gen.motiveTypes.reverse ++ gen.paramsTel.reverse)))
+      (gen.recBase Δ.length family.view.ordinal)
+      ((VExpr.forallN
+        (VExpr.liftTelN
+          (gen.familyCount + gen.minorCount)
+          (gen.idxTel family) 0)
+        (.forallE
+          (VExpr.appN (.const family.raw.name gen.sourceLevels)
+            (VExpr.bvarRevRange
+                ((gen.idxTel family).length +
+                  gen.familyCount + gen.minorCount)
+                source.nparams ++
+              VExpr.bvarRevRange 0 (gen.idxTel family).length))
+          (.app
+            (VExpr.appN
+              (.bvar
+                (gen.familyCount - 1 - family.view.ordinal +
+                  gen.minorCount + (gen.idxTel family).length + 1))
+              (VExpr.bvarRevRange 1 (gen.idxTel family).length))
+            (.bvar 0)))).liftN Δ.length) := by
+  have hf : env.HasType gen.recUvars
+      (Δ ++
+        (gen.paramsTel ++ gen.motiveTypes ++ gen.minorTypes).reverse ++ [])
+      (.const (.str family.raw.name "rec") gen.recLevels)
+      ((VExpr.forallN
+        (gen.paramsTel ++ gen.motiveTypes ++ gen.minorTypes)
+        (VExpr.forallN
+          (VExpr.liftTelN
+            (gen.familyCount + gen.minorCount)
+            (gen.idxTel family) 0)
+          (.forallE
+            (VExpr.appN (.const family.raw.name gen.sourceLevels)
+              (VExpr.bvarRevRange
+                  ((gen.idxTel family).length +
+                    gen.familyCount + gen.minorCount)
+                  source.nparams ++
+                VExpr.bvarRevRange 0 (gen.idxTel family).length))
+            (.app
+              (VExpr.appN
+                (.bvar
+                  (gen.familyCount - 1 - family.view.ordinal +
+                    gen.minorCount + (gen.idxTel family).length + 1))
+                (VExpr.bvarRevRange 1 (gen.idxTel family).length))
+              (.bvar 0))))).liftN
+        (Δ.length +
+          (gen.paramsTel ++ gen.motiveTypes ++ gen.minorTypes).length)) := by
+    rw [show VExpr.forallN
+        (gen.paramsTel ++ gen.motiveTypes ++ gen.minorTypes)
+        (VExpr.forallN
+          (VExpr.liftTelN
+            (gen.familyCount + gen.minorCount)
+            (gen.idxTel family) 0)
+          (.forallE
+            (VExpr.appN (.const family.raw.name gen.sourceLevels)
+              (VExpr.bvarRevRange
+                  ((gen.idxTel family).length +
+                    gen.familyCount + gen.minorCount)
+                  source.nparams ++
+                VExpr.bvarRevRange 0 (gen.idxTel family).length))
+            (.app
+              (VExpr.appN
+                (.bvar
+                  (gen.familyCount - 1 - family.view.ordinal +
+                    gen.minorCount + (gen.idxTel family).length + 1))
+                (VExpr.bvarRevRange 1 (gen.idxTel family).length))
+              (.bvar 0)))) = gen.recType family from by
+          rw [VExpr.forallN_append, VExpr.forallN_append]
+          rfl,
+      (S.recType_closedN hfamily).liftN_eq (Nat.zero_le _)]
+    exact S.recursor_hasType hfamily hrec
+  have hspine := VEnv.HasType.appN_selfSpine
+    (env := env) (U := gen.recUvars) hf
+  simp only [BlockGenerationChecked.recType,
+    List.reverse_append, List.append_nil, List.append_assoc,
+    List.length_append, List.length_reverse,
+    gen.minorTypes_length, gen.motiveTypes_length] at hspine
+  rw [show gen.paramsTel.length = source.nparams from by
+      simpa [BlockGenerationChecked.paramsTel] using
+        S.generationParams_length,
+    VExpr.bvarRevRange_congr' Δ.length
+      (show source.nparams + (gen.familyCount + gen.minorCount) =
+        source.nparams + gen.familyCount + gen.minorCount by omega)] at hspine
+  simpa [BlockGenerationChecked.recBase,
+    gen.familyNameAt_ordinal hfamily,
+    List.append_assoc] using hspine
+
+/-- Applying a selected family recursor to indices and a major premise
+returns the correspondingly selected motive application. -/
+theorem recApp_hasType {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families)
+    (hrec : env.constants (.str family.raw.name "rec") =
+      some (gen.recursor family))
+    (Δ : List VExpr) {idxs : List VExpr} {a : VExpr}
+    (hidx : env.SpineWF gen.recUvars
+      (Δ ++ (gen.minorTypes.reverse ++
+        (gen.motiveTypes.reverse ++ gen.paramsTel.reverse)))
+      (VExpr.forallN
+        (VExpr.liftTelN
+          (Δ.length + gen.familyCount + gen.minorCount)
+          (gen.idxTel family) 0)
+        (.sort (gen.validated.resultLevel.inst gen.sourceLevels)))
+      idxs (.sort (gen.validated.resultLevel.inst gen.sourceLevels)))
+    (hlen : idxs.length = (gen.idxTel family).length)
+    (ha : env.HasType gen.recUvars
+      (Δ ++ (gen.minorTypes.reverse ++
+        (gen.motiveTypes.reverse ++ gen.paramsTel.reverse)))
+      a
+      (VExpr.appN (.const family.raw.name gen.sourceLevels)
+        (VExpr.bvarRevRange
+            (Δ.length + gen.familyCount + gen.minorCount)
+            source.nparams ++ idxs))) :
+    env.HasType gen.recUvars
+      (Δ ++ (gen.minorTypes.reverse ++
+        (gen.motiveTypes.reverse ++ gen.paramsTel.reverse)))
+      (VExpr.appN (gen.recBase Δ.length family.view.ordinal)
+        (idxs ++ [a]))
+      (VExpr.appN
+        (.bvar
+          (gen.familyCount - 1 - family.view.ordinal +
+            gen.minorCount + Δ.length))
+        (idxs ++ [a])) := by
+  have hq := gen.family_ordinal_lt hfamily
+  have hb := S.recBase_hasType hfamily hrec Δ
+  rw [VExpr.liftN_forallN, VExpr.liftTelN_liftTelN,
+    liftTelN_congr _ _
+      (show gen.familyCount + gen.minorCount + Δ.length =
+        Δ.length + gen.familyCount + gen.minorCount by omega)] at hb
+  have hcod :
+      (VExpr.forallE
+        (VExpr.appN (.const family.raw.name gen.sourceLevels)
+          (VExpr.bvarRevRange
+              ((gen.idxTel family).length +
+                gen.familyCount + gen.minorCount)
+              source.nparams ++
+            VExpr.bvarRevRange 0 (gen.idxTel family).length))
+        (.app
+          (VExpr.appN
+            (.bvar
+              (gen.familyCount - 1 - family.view.ordinal +
+                gen.minorCount + (gen.idxTel family).length + 1))
+            (VExpr.bvarRevRange 1 (gen.idxTel family).length))
+          (.bvar 0))).liftN Δ.length
+            (0 + (VExpr.liftTelN
+              (gen.familyCount + gen.minorCount)
+              (gen.idxTel family) 0).length) =
+      VExpr.forallE
+        (VExpr.appN (.const family.raw.name gen.sourceLevels)
+          (VExpr.bvarRevRange
+              ((gen.idxTel family).length + Δ.length +
+                gen.familyCount + gen.minorCount)
+              source.nparams ++
+            VExpr.bvarRevRange 0 (gen.idxTel family).length))
+        (.app
+          (VExpr.appN
+            (.bvar
+              (gen.familyCount - 1 - family.view.ordinal +
+                gen.minorCount + (gen.idxTel family).length +
+                Δ.length + 1))
+            (VExpr.bvarRevRange 1 (gen.idxTel family).length))
+          (.bvar 0)) := by
+    rw [VExpr.liftTelN_length, Nat.zero_add]
+    show VExpr.forallE _ _ = VExpr.forallE _ _
+    congr 1
+    · rw [VExpr.liftN_appN, List.map_append,
+        bvarRevRange_liftN_ge _ _ _ _ (by omega),
+        VExpr.bvarRevRange_liftN_high _ _ _ _ (by omega),
+        VExpr.bvarRevRange_congr source.nparams
+          (show Δ.length +
+              ((gen.idxTel family).length +
+                gen.familyCount + gen.minorCount) =
+            (gen.idxTel family).length + Δ.length +
+              gen.familyCount + gen.minorCount by omega)]
+      rfl
+    · show VExpr.app _ _ = VExpr.app _ _
+      congr 1
+      · rw [VExpr.liftN_appN,
+          VExpr.bvarRevRange_liftN_high _ _ _ _ (by omega)]
+        show VExpr.appN
+          (.bvar (liftVar Δ.length
+            (gen.familyCount - 1 - family.view.ordinal +
+              gen.minorCount + (gen.idxTel family).length + 1)
+            ((gen.idxTel family).length + 1))) _ = _
+        rw [liftVar_le (by omega)]
+        congr 1
+        ac_rfl
+  rw [hcod] at hb
+  have hshape := hidx.retarget
+    (by simpa only [VExpr.liftTelN_length] using hlen)
+    (.forallE
+      (VExpr.appN (.const family.raw.name gen.sourceLevels)
+        (VExpr.bvarRevRange
+            ((gen.idxTel family).length + Δ.length +
+              gen.familyCount + gen.minorCount)
+            source.nparams ++
+          VExpr.bvarRevRange 0 (gen.idxTel family).length))
+      (.sort gen.motiveLevel))
+  rw [VExpr.instRev_forallE_sort, VExpr.instRev_appN,
+    VExpr.instRev_closedN _
+      (C := .const family.raw.name gen.sourceLevels) trivial,
+    List.map_append,
+    VExpr.map_instRev_bvarRevRange_ge _ _ _
+      (by rw [hlen]; omega),
+    show (gen.idxTel family).length + Δ.length +
+        gen.familyCount + gen.minorCount - idxs.length =
+      Δ.length + gen.familyCount + gen.minorCount from by
+        rw [hlen]
+        omega,
+    VExpr.bvarRevRange_congr' 0 hlen.symm,
+    VExpr.map_instRev_bvarRevRange] at hshape
+  rw [hlen] at hshape
+  have hfull := hshape.snoc ha
+  simp only [VExpr.inst] at hfull
+  change env.SpineWF gen.recUvars _
+    (VExpr.forallN
+      (VExpr.liftTelN
+        (Δ.length + gen.familyCount + gen.minorCount)
+        (gen.idxTel family) 0)
+      (VExpr.forallN
+        [VExpr.appN (.const family.raw.name gen.sourceLevels)
+          (VExpr.bvarRevRange
+              ((gen.idxTel family).length + Δ.length +
+                gen.familyCount + gen.minorCount)
+              source.nparams ++
+            VExpr.bvarRevRange 0 (gen.idxTel family).length)]
+        (.sort gen.motiveLevel)))
+    (idxs ++ [a]) (.sort gen.motiveLevel) at hfull
+  rw [← VExpr.forallN_append] at hfull
+  have hfullLen : (idxs ++ [a]).length =
+      (VExpr.liftTelN
+          (Δ.length + gen.familyCount + gen.minorCount)
+          (gen.idxTel family) 0 ++
+        [VExpr.appN (.const family.raw.name gen.sourceLevels)
+          (VExpr.bvarRevRange
+              ((gen.idxTel family).length + Δ.length +
+                gen.familyCount + gen.minorCount)
+              source.nparams ++
+            VExpr.bvarRevRange 0 (gen.idxTel family).length)]).length := by
+    simp only [List.length_append, List.length_singleton,
+      VExpr.liftTelN_length, hlen]
+  have hactual := hfull.retarget hfullLen
+    (VExpr.app
+      (VExpr.appN
+        (.bvar
+          (gen.familyCount - 1 - family.view.ordinal +
+            gen.minorCount + (gen.idxTel family).length +
+            Δ.length + 1))
+        (VExpr.bvarRevRange 1 (gen.idxTel family).length))
+      (.bvar 0))
+  rw [VExpr.forallN_append] at hactual
+  have happ := hactual.hasType_appN hb
+  rw [show VExpr.app
+      (VExpr.appN
+        (.bvar
+          (gen.familyCount - 1 - family.view.ordinal +
+            gen.minorCount + (gen.idxTel family).length +
+            Δ.length + 1))
+        (VExpr.bvarRevRange 1 (gen.idxTel family).length))
+      (.bvar 0) =
+      VExpr.appN
+        (.bvar
+          (gen.familyCount - 1 - family.view.ordinal +
+            gen.minorCount + (gen.idxTel family).length +
+            Δ.length + 1))
+        (VExpr.bvarRevRange 0 ((gen.idxTel family).length + 1)) from by
+      rw [VExpr.bvarRevRange_congr' 0
+          (show (gen.idxTel family).length + 1 =
+            1 + (gen.idxTel family).length by omega),
+        ← VExpr.bvarRevRange_append (gen.idxTel family).length 1]
+      simpa [VExpr.bvarRevRange, VExpr.appN] using
+        (VExpr.appN_append
+          (.bvar
+            (gen.familyCount - 1 - family.view.ordinal +
+              gen.minorCount + (gen.idxTel family).length +
+              Δ.length + 1))
+          (VExpr.bvarRevRange 1 (gen.idxTel family).length)
+          [VExpr.bvar 0]).symm,
+    VExpr.instRev_appN,
+    VExpr.instRev_bvar_ge _ (by
+      simp only [List.length_append, List.length_singleton]
+      rw [hlen]
+      omega),
+    VExpr.bvarRevRange_congr' 0
+      (show (gen.idxTel family).length + 1 =
+        (idxs ++ [a]).length by simp [hlen]),
+    VExpr.map_instRev_bvarRevRange] at happ
+  rw [show gen.familyCount - 1 - family.view.ordinal +
+      gen.minorCount + (gen.idxTel family).length + Δ.length + 1 -
+        (idxs ++ [a]).length =
+      gen.familyCount - 1 - family.view.ordinal +
+        gen.minorCount + Δ.length from by
+    simp only [List.length_append, List.length_singleton]
+    rw [hlen]
+    omega] at happ
+  simpa [List.length_append, hlen,
+    BlockGenerationChecked.recBase,
+    gen.familyNameAt_ordinal hfamily] using happ
+
+/-- The constructor application appearing in a mutual rule has the selected
+owner-family application as its type. -/
+theorem ctorAppRule_hasType
+    {constructor : NormalizedBlockCtor}
+    (hconstructor : constructor ∈ gen.flatCtors)
+    {family : NormalizedFamily} (_hfamily : family ∈ gen.families)
+    (hname : family.raw.name = constructor.familyName) :
+    env.HasType gen.recUvars
+      ((VExpr.liftTelN
+          (gen.familyCount + gen.minorCount)
+          (constructor.ctor.fieldsR source.uvars source.nparams
+            gen.elimination) 0).reverse ++
+        (gen.minorTypes.reverse ++
+          (gen.motiveTypes.reverse ++ gen.paramsTel.reverse)))
+      (VExpr.appN
+        (.const constructor.ctor.raw.name gen.sourceLevels)
+        (VExpr.bvarRevRange
+            ((constructor.ctor.fieldsR source.uvars source.nparams
+                gen.elimination).length +
+              gen.familyCount + gen.minorCount)
+            source.nparams ++
+          VExpr.bvarRevRange 0
+            (constructor.ctor.fieldsR source.uvars source.nparams
+              gen.elimination).length))
+      (VExpr.appN (.const family.raw.name gen.sourceLevels)
+        (VExpr.bvarRevRange
+            ((constructor.ctor.fieldsR source.uvars source.nparams
+                gen.elimination).length +
+              gen.familyCount + gen.minorCount)
+            source.nparams ++
+          (constructor.ctor.resultIndicesR source.uvars
+            gen.elimination).map fun e =>
+              e.liftN (gen.familyCount + gen.minorCount)
+                (constructor.ctor.fieldsR source.uvars source.nparams
+                  gen.elimination).length)) := by
+  have h := S.ctorApp_transport hconstructor hname
+    (gen.minorTypes.reverse ++ gen.motiveTypes.reverse)
+    (g := gen.familyCount + gen.minorCount)
+    (by
+      simp only [List.length_append, List.length_reverse,
+        gen.minorTypes_length, gen.motiveTypes_length]
+      omega)
+    [] (d := 0) rfl
+  rw [VExpr.bvarRevRange_congr source.nparams
+    (show
+      0 + (gen.familyCount + gen.minorCount +
+        (constructor.ctor.fieldsR source.uvars source.nparams
+          gen.elimination).length) =
+      (constructor.ctor.fieldsR source.uvars source.nparams
+          gen.elimination).length +
+        gen.familyCount + gen.minorCount by omega)] at h
+  simpa [List.append_assoc] using h
+
+/-- Parameters, every motive, every flattened minor, and the selected
+constructor fields form the binder telescope of a mutual rule. -/
+theorem ruleBinders_onTel
+    {constructor : NormalizedBlockCtor}
+    (hconstructor : constructor ∈ gen.flatCtors) :
+    env.OnTel gen.recUvars []
+      (gen.paramsTel ++ gen.motiveTypes ++ gen.minorTypes ++
+        VExpr.liftTelN
+          (gen.familyCount + gen.minorCount)
+          (constructor.ctor.fieldsR source.uvars source.nparams
+            gen.elimination) 0) := by
+  have hF₀ := S.fields_onTel_minor hconstructor
+  have hF := hF₀.weakN S.ord
+    (Ctx.LiftN.zero
+      (Γ := gen.motiveTypes.reverse ++ gen.paramsTel.reverse)
+      gen.minorTypes.reverse)
+  rw [VExpr.liftTelN_liftTelN,
+    liftTelN_congr _ _
+      (show gen.familyCount + gen.minorTypes.reverse.length =
+        gen.familyCount + gen.minorCount by
+          simp only [List.length_reverse, gen.minorTypes_length])] at hF
+  refine OnTel.append
+    (OnTel.append
+      (OnTel.append S.paramsTel_onTel
+        (by simpa only [List.append_nil] using S.motiveTypes_onTel))
+      (by simpa only [List.append_nil, List.reverse_append,
+          List.append_assoc] using S.minorTypes_onTel)) ?_
+  simpa only [List.append_nil, List.append_assoc,
+    List.reverse_append] using hF
+
+/-- The constructor-headed left side of a mutual iota rule has the owner
+motive application as its type. -/
+theorem recRuleApp_hasType
+    {constructor : NormalizedBlockCtor}
+    (hconstructor : constructor ∈ gen.flatCtors)
+    (hrecs : ∀ family ∈ gen.families,
+      env.constants (.str family.raw.name "rec") =
+        some (gen.recursor family)) :
+    env.HasType gen.recUvars
+      ((VExpr.liftTelN
+          (gen.familyCount + gen.minorCount)
+          (constructor.ctor.fieldsR source.uvars source.nparams
+            gen.elimination) 0).reverse ++
+        (gen.minorTypes.reverse ++
+          (gen.motiveTypes.reverse ++ gen.paramsTel.reverse)))
+      (VExpr.appN
+        (gen.recBase
+          (constructor.ctor.fieldsR source.uvars source.nparams
+            gen.elimination).length constructor.owner)
+        (((constructor.ctor.resultIndicesR source.uvars
+              gen.elimination).map fun e =>
+            e.liftN (gen.familyCount + gen.minorCount)
+              (constructor.ctor.fieldsR source.uvars source.nparams
+                gen.elimination).length) ++
+          [VExpr.appN
+            (.const constructor.ctor.raw.name gen.sourceLevels)
+            (VExpr.bvarRevRange
+                ((constructor.ctor.fieldsR source.uvars source.nparams
+                    gen.elimination).length +
+                  gen.familyCount + gen.minorCount)
+                source.nparams ++
+              VExpr.bvarRevRange 0
+                (constructor.ctor.fieldsR source.uvars source.nparams
+                  gen.elimination).length)]))
+      (VExpr.appN
+        (.bvar
+          (gen.familyCount - 1 - constructor.owner +
+            gen.minorCount +
+            (constructor.ctor.fieldsR source.uvars source.nparams
+              gen.elimination).length))
+        (((constructor.ctor.resultIndicesR source.uvars
+              gen.elimination).map fun e =>
+            e.liftN (gen.familyCount + gen.minorCount)
+              (constructor.ctor.fieldsR source.uvars source.nparams
+                gen.elimination).length) ++
+          [VExpr.appN
+            (.const constructor.ctor.raw.name gen.sourceLevels)
+            (VExpr.bvarRevRange
+                ((constructor.ctor.fieldsR source.uvars source.nparams
+                    gen.elimination).length +
+                  gen.familyCount + gen.minorCount)
+                source.nparams ++
+              VExpr.bvarRevRange 0
+                (constructor.ctor.fieldsR source.uvars source.nparams
+                  gen.elimination).length)])) := by
+  obtain ⟨family, hfamily, howner, hname, hindices⟩ :=
+    (S.ctorWF constructor hconstructor).owner
+  let Bs := constructor.ctor.fieldsR source.uvars source.nparams
+    gen.elimination
+  let common := gen.familyCount + gen.minorCount
+  let mid := gen.minorTypes.reverse ++ gen.motiveTypes.reverse
+  have hmid : mid.length = common := by
+    simp only [mid, common, List.length_append, List.length_reverse,
+      gen.minorTypes_length, gen.motiveTypes_length]
+    omega
+  have hSp₀ := S.result_transport hconstructor hfamily hindices
+    mid hmid [] (d := 0) rfl
+  have hSp : env.SpineWF gen.recUvars
+      ((VExpr.liftTelN common Bs 0).reverse ++
+        (gen.minorTypes.reverse ++
+          (gen.motiveTypes.reverse ++ gen.paramsTel.reverse)))
+      (VExpr.forallN
+        (VExpr.liftTelN (Bs.length + common)
+          (gen.idxTel family) 0)
+        (.sort (gen.validated.resultLevel.inst gen.sourceLevels)))
+      ((constructor.ctor.resultIndicesR source.uvars gen.elimination).map
+        fun e => e.liftN common Bs.length)
+      (.sort (gen.validated.resultLevel.inst gen.sourceLevels)) := by
+    simpa [Bs, common, mid, List.append_assoc,
+      Nat.add_assoc] using hSp₀
+  have hidxLen :
+      ((constructor.ctor.resultIndicesR source.uvars gen.elimination).map
+        fun e => e.liftN common Bs.length).length =
+      (gen.idxTel family).length := by
+    have hlen := hSp.forallN_sort_length
+    simpa only [VExpr.liftTelN_length] using hlen
+  have ha := S.ctorAppRule_hasType hconstructor hfamily hname
+  have hout := S.recApp_hasType hfamily (hrecs family hfamily)
+    (VExpr.liftTelN common Bs 0).reverse
+    (by simpa [common, List.length_reverse, VExpr.liftTelN_length,
+        Nat.add_assoc] using hSp)
+    hidxLen
+    (by simpa only [Bs, common, List.length_reverse,
+        VExpr.liftTelN_length] using ha)
+  simpa only [Bs, common, howner, List.length_reverse,
+    VExpr.liftTelN_length] using hout
+
+/-- Every recursive field contributes a well-typed rule call to the
+recursor selected by that field's certified target family. -/
+theorem blockRuleCall_hasType
+    {constructor : NormalizedBlockCtor}
+    (hconstructor : constructor ∈ gen.flatCtors)
+    (hrecs : ∀ family ∈ gen.families,
+      env.constants (.str family.raw.name "rec") =
+        some (gen.recursor family))
+    {r : RecArg}
+    (hr : r ∈ constructor.ctor.recArgsR source.uvars gen.elimination) :
+    env.HasType gen.recUvars
+      ((VExpr.liftTelN
+          (gen.familyCount + gen.minorCount)
+          (constructor.ctor.fieldsR source.uvars source.nparams
+            gen.elimination) 0).reverse ++
+        (gen.minorTypes.reverse ++
+          (gen.motiveTypes.reverse ++ gen.paramsTel.reverse)))
+      (BlockGenerationChecked.blockRuleCall
+        (gen.familyCount + gen.minorCount)
+        (constructor.ctor.fieldsR source.uvars source.nparams
+          gen.elimination).length
+        (gen.recBase
+          (constructor.ctor.fieldsR source.uvars source.nparams
+            gen.elimination).length r.targetType) r)
+      (BlockGenerationChecked.blockRuleIH
+        gen.familyCount gen.minorCount
+        (constructor.ctor.fieldsR source.uvars source.nparams
+          gen.elimination).length r) := by
+  obtain ⟨r₀, hr₀, rfl⟩ := NormalizedCtor.recArgsR_mem hr
+  obtain ⟨family, hfamily, hord, ⟨Bview, hBview, hshape⟩, hsem⟩ :=
+    (S.ctorWF constructor hconstructor).recursive r₀ hr₀
+  let ls := gen.sourceLevels
+  let r := r₀.instL ls
+  let d := gen.familyCount
+  let k := gen.minorCount
+  let common := d+k
+  let Bs := constructor.ctor.fieldsR source.uvars source.nparams
+    gen.elimination
+  let m := Bs.length
+  let j := r₀.fieldIndex
+  let Fs := VExpr.liftTelN common Bs 0
+  let As := BlockGenerationChecked.blockRuleBinders common m r
+  let idxs := r.indices.map fun e =>
+    (e.liftN common (r.fieldIndex+r.binders.length)).liftN
+      (m-r.fieldIndex) r.binders.length
+  let Γ := Fs.reverse ++
+    (gen.minorTypes.reverse ++
+      (gen.motiveTypes.reverse ++ gen.paramsTel.reverse))
+  have hjview : r₀.fieldIndex < constructor.ctor.view.fields.length :=
+    (List.getElem?_eq_some_iff.1 hBview).1
+  have hjm : j < m := by
+    have hfields := gen.flatCtor_fields_length hconstructor
+    simp only [j, m, Bs, NormalizedCtor.fieldsR_length]
+    omega
+  have hjraw : r₀.fieldIndex <
+      (constructor.ctor.rawFields source.nparams).length := by
+    simpa [j, m, Bs, NormalizedCtor.fieldsR_length] using hjm
+  let Braw :=
+    (constructor.ctor.rawFields source.nparams)[r₀.fieldIndex]
+  have hBraw :
+      (constructor.ctor.rawFields source.nparams)[r₀.fieldIndex]? =
+        some Braw :=
+    List.getElem?_eq_getElem hjraw
+  have hcommon :
+      (gen.minorTypes.reverse ++ gen.motiveTypes.reverse).length =
+        common := by
+    simp only [List.length_append, List.length_reverse,
+      gen.minorTypes_length, gen.motiveTypes_length]
+    dsimp only [common, d, k]
+    omega
+  have hFsLen : Fs.length = m := by
+    simp [Fs, m, VExpr.liftTelN_length]
+  have ht := S.recArg_transport hconstructor hfamily hsem hjview
+    (gen.minorTypes.reverse ++ gen.motiveTypes.reverse) hcommon
+    (Fs.drop j).reverse (d := m-j) (by
+      simp only [List.length_reverse, List.length_drop, hFsLen])
+  dsimp only [r, j, RecArg.instL] at ht
+  have hctx :
+      (Fs.drop j).reverse ++
+          ((VExpr.liftTelN common (Bs.take j) 0).reverse ++
+            ((gen.minorTypes.reverse ++ gen.motiveTypes.reverse) ++
+              gen.paramsTel.reverse)) = Γ := by
+    dsimp only [Γ, Fs]
+    rw [← VExpr.liftTelN_take, List.append_assoc,
+      ← List.append_assoc
+        (((VExpr.liftTelN common Bs 0).drop j).reverse),
+      ← List.reverse_append, List.take_append_drop,
+      ← List.append_assoc]
+  have htel : env.OnTel gen.recUvars Γ As := by
+    rw [hctx] at ht
+    simpa [r, As, m, common, j, RecArg.instL,
+      BlockGenerationChecked.blockRuleBinders] using ht.1
+  have hsp : env.SpineWF gen.recUvars
+      (As.reverse ++ Γ)
+      (VExpr.forallN
+        (VExpr.liftTelN
+          (m + r.binders.length + common)
+          (gen.idxTel family) 0)
+        (.sort (gen.validated.resultLevel.inst ls)))
+      idxs
+      (.sort (gen.validated.resultLevel.inst ls)) := by
+    rw [hctx] at ht
+    simpa [r, As, idxs, m, common, j, ls,
+      RecArg.instL, BlockGenerationChecked.blockRuleBinders,
+      List.append_assoc,
+      show j + r₀.binders.length + common + (m-j) =
+        m + r₀.binders.length + common by omega] using ht.2
+  have hF : Γ[m-1-j]? =
+      some ((Braw.instL ls).liftN common j) := by
+    dsimp only [Γ, Fs]
+    rw [List.getElem?_append_left
+        (by
+          simp only [List.length_reverse, VExpr.liftTelN_length]
+          omega),
+      List.getElem?_reverse (by rw [hFsLen]; omega),
+      VExpr.liftTelN_length,
+      show m - 1 - (m - 1 - j) = j by omega,
+      VExpr.liftTelN_getElem?,
+      NormalizedCtor.fieldsR_getElem?, hBraw]
+    simp [ls]
+  have hlu := Lookup.of_getElem? hF
+  rw [show m-1-j+1 = m-j by omega] at hlu
+  dsimp only [j, r] at hlu
+  have hf0 := VEnv.HasType.bvar
+    (env := env) (U := gen.recUvars) hlu
+  obtain ⟨u, hdom₀⟩ :=
+    S.emittedField_defeq hconstructor hBraw hBview
+  have hdom₁ := hdom₀.instL
+    (U' := gen.recUvars) gen.sourceLevels_wf
+  have hdomChecked : env.IsDefEq gen.recUvars
+      ((constructor.ctor.fieldsR source.uvars source.nparams
+          gen.elimination |>.take r₀.fieldIndex).reverse ++
+        (gen.block.checked.params.map (VExpr.instL ls)).reverse)
+      (Braw.instL ls) (Bview.instL ls) ((VExpr.sort u).instL ls) := by
+    simpa [NormalizedCtor.fieldsR, List.map_append,
+      List.map_reverse, List.map_take] using hdom₁
+  have hprefix :=
+    S.generationFieldPrefix_ctx_rec hconstructor r₀.fieldIndex
+  have hdomGeneration := hdomChecked.defeqDFC S.ord
+    (hprefix.symm S.ord)
+  have hjlen : (Bs.take r₀.fieldIndex).length =
+      r₀.fieldIndex := by
+    simp only [Bs, NormalizedCtor.fieldsR,
+      List.length_take, List.length_map]
+    omega
+  have Wmid := Ctx.LiftN.consTel (n := common)
+    (Bs.take r₀.fieldIndex)
+    (Ctx.LiftN.zero (n := common) (Γ := gen.paramsTel.reverse)
+      (gen.minorTypes.reverse ++ gen.motiveTypes.reverse)
+      (h := hcommon))
+  rw [hjlen, Nat.add_zero] at Wmid
+  have hdom₂ := hdomGeneration.weakN S.ord Wmid
+  have Wstack := Ctx.LiftN.zero (n := m-j)
+    (Γ := (VExpr.liftTelN common (Bs.take j) 0).reverse ++
+      ((gen.minorTypes.reverse ++ gen.motiveTypes.reverse) ++
+        gen.paramsTel.reverse))
+    (Fs.drop j).reverse
+    (h := by
+      simp only [List.length_reverse, List.length_drop, hFsLen])
+  have hdom₃ := hdom₂.weakN S.ord Wstack
+  rw [hctx] at hdom₃
+  have hfView := hdom₃.defeq hf0
+  have hfield := blockMinor_fieldType_of_eq hshape common m 0
+    (by simpa [j] using hjm) gen.elimination
+  simp only [RecArg.instL] at hfield
+  dsimp only [j] at hfView
+  simp only [Nat.add_zero] at hfield
+  rw [hfield] at hfView
+  have hf := hfView.weakN S.ord
+    (Ctx.LiftN.zero (Γ := Γ) As.reverse)
+  have hmajor := VEnv.HasType.appN_selfSpine
+    (env := env) (U := gen.recUvars)
+    (As := As)
+    (B := VExpr.appN (.const family.raw.name ls)
+      (VExpr.bvarRevRange
+        (m + r.binders.length + common) source.nparams ++ idxs))
+    (Δ := []) (Γ := Γ) (by
+      simpa [As, r, idxs, j, common, ls, RecArg.instL,
+        BlockGenerationChecked.blockRuleBinders,
+        BlockGenerationChecked.blockMinorBinders,
+        List.length_reverse, List.map_map,
+        Function.comp_def] using hf)
+  simp only [List.length_nil, VExpr.liftN_zero,
+    List.nil_append] at hmajor
+  have hAsLen : As.length = r.binders.length := by
+    simp [As, BlockGenerationChecked.blockRuleBinders,
+      VExpr.liftTelN_length]
+  have hmajor' : env.HasType gen.recUvars (As.reverse ++ Γ)
+      ((VExpr.bvar (m-1-r.fieldIndex+As.length)).appN
+        (VExpr.bvarRevRange 0 As.length))
+      (VExpr.appN (.const family.raw.name ls)
+        (VExpr.bvarRevRange
+          (m+r.binders.length+common) source.nparams ++ idxs)) := by
+    simpa [As, common, r, RecArg.instL,
+      BlockGenerationChecked.blockRuleBinders,
+      VExpr.liftN, liftVar_le, Nat.add_comm] using hmajor
+  rw [hAsLen] at hmajor'
+  have hlen : idxs.length = (gen.idxTel family).length := by
+    have hidx := hsem.2.forallN_sort_length
+    simp only [idxs, List.length_map, VExpr.liftTelN_length,
+      BlockGenerationChecked.idxTel] at hidx ⊢
+    simpa [r, RecArg.instL] using hidx.trans
+      (gen.shape.2.2.2.2 family hfamily).2.2.2.1.symm
+  have hcall := S.recApp_hasType hfamily (hrecs family hfamily)
+    (As.reverse ++ Fs.reverse)
+    (by
+      simpa [Γ, List.append_assoc, hAsLen, hFsLen,
+        common, d, k,
+        Nat.add_comm, Nat.add_left_comm,
+        Nat.add_assoc] using hsp)
+    hlen
+    (by
+      simpa [Γ, List.append_assoc, hAsLen, hFsLen,
+        common, d, k,
+        Nat.add_comm, Nat.add_left_comm,
+        Nat.add_assoc] using hmajor')
+  have hbaseLift :
+      (gen.recBase m r.targetType).liftN r.binders.length =
+        gen.recBase (m+r.binders.length) r.targetType := by
+    simp only [BlockGenerationChecked.recBase, VExpr.liftN_appN,
+      VExpr.liftN, List.map_map]
+    rw [bvarRevRange_liftN_ge _ _ _ _ (Nat.zero_le _)]
+    apply congrArg (VExpr.appN _)
+    apply VExpr.bvarRevRange_congr
+    omega
+  have hlam := HasType.lamN htel (by
+    simpa [Γ, Fs, hAsLen, hFsLen, hbaseLift,
+      List.append_assoc, hord, r, RecArg.instL,
+      common, d, k,
+      Nat.add_comm, Nat.add_left_comm,
+      Nat.add_assoc] using hcall)
+  have hrecPos : r₀.binders.length + m = m + r₀.binders.length := by
+    omega
+  have hfieldPos :
+      r₀.binders.length + (m-1-r₀.fieldIndex) =
+        m-1-r₀.fieldIndex+r₀.binders.length := by
+    omega
+  have hmotivePos :
+      r₀.binders.length +
+          (gen.familyCount - 1 - r₀.targetType + (gen.minorCount+m)) =
+        gen.familyCount - 1 - r₀.targetType + gen.minorCount + m +
+          r₀.binders.length := by
+    ac_rfl
+  rw [hrecPos, hfieldPos, hmotivePos] at hlam
+  change env.HasType gen.recUvars Γ
+    (BlockGenerationChecked.blockRuleCall common m
+      (gen.recBase m r.targetType) r)
+    (VExpr.forallN As
+      (VExpr.appN
+        (.bvar (d - 1 - r.targetType + k + m + r.binders.length))
+        (idxs ++
+          [VExpr.appN
+            (.bvar (m - 1 - r.fieldIndex + r.binders.length))
+            (VExpr.bvarRevRange 0 r.binders.length)])))
+  have hcallEq :
+      BlockGenerationChecked.blockRuleCall common m
+          (gen.recBase m r.targetType) r =
+        VExpr.lamN As
+          (VExpr.appN
+            (gen.recBase (m+r.binders.length) r.targetType)
+            (idxs ++
+              [VExpr.appN
+                (.bvar (m-1-r.fieldIndex+r.binders.length))
+                (VExpr.bvarRevRange 0 r.binders.length)])) := by
+    simp [BlockGenerationChecked.blockRuleCall, As, idxs, hbaseLift]
+  rw [hcallEq]
+  simpa [r, RecArg.instL, List.length_map] using hlam
+
+/-- The selected flattened mutual minor applied to its fields and routed
+recursive calls has the owner's motive as its result. -/
+theorem minorApp_hasType {i : Nat}
+    {constructor : NormalizedBlockCtor}
+    (hci : gen.flatCtors[i]? = some constructor)
+    (hrecs : ∀ family ∈ gen.families,
+      env.constants (.str family.raw.name "rec") =
+        some (gen.recursor family)) :
+    env.HasType gen.recUvars
+      ((VExpr.liftTelN
+          (gen.familyCount + gen.minorCount)
+          (constructor.ctor.fieldsR source.uvars source.nparams
+            gen.elimination) 0).reverse ++
+        (gen.minorTypes.reverse ++
+          (gen.motiveTypes.reverse ++ gen.paramsTel.reverse)))
+      (VExpr.appN
+        (.bvar
+          (gen.minorCount - 1 - i +
+            (constructor.ctor.fieldsR source.uvars source.nparams
+              gen.elimination).length))
+        (VExpr.bvarRevRange 0
+            (constructor.ctor.fieldsR source.uvars source.nparams
+              gen.elimination).length ++
+          (constructor.ctor.recArgsR source.uvars gen.elimination).map
+            fun r =>
+              BlockGenerationChecked.blockRuleCall
+                (gen.familyCount + gen.minorCount)
+                (constructor.ctor.fieldsR source.uvars source.nparams
+                  gen.elimination).length
+                (gen.recBase
+                  (constructor.ctor.fieldsR source.uvars source.nparams
+                    gen.elimination).length r.targetType) r))
+      (VExpr.appN
+        (.bvar
+          (gen.familyCount - 1 - constructor.owner + gen.minorCount +
+            (constructor.ctor.fieldsR source.uvars source.nparams
+              gen.elimination).length))
+        (((constructor.ctor.resultIndicesR source.uvars
+              gen.elimination).map fun e =>
+            e.liftN (gen.familyCount + gen.minorCount)
+              (constructor.ctor.fieldsR source.uvars source.nparams
+                gen.elimination).length) ++
+          [VExpr.appN
+            (.const constructor.ctor.raw.name gen.sourceLevels)
+            (VExpr.bvarRevRange
+                ((constructor.ctor.fieldsR source.uvars source.nparams
+                    gen.elimination).length + gen.familyCount +
+                  gen.minorCount)
+                source.nparams ++
+              VExpr.bvarRevRange 0
+                (constructor.ctor.fieldsR source.uvars source.nparams
+                  gen.elimination).length)])) := by
+  obtain ⟨hik, -⟩ := List.getElem?_eq_some_iff.1 hci
+  have hconstructor := List.mem_of_getElem? hci
+  obtain ⟨family, hfamily, howner, -, -⟩ :=
+    (S.ctorWF constructor hconstructor).owner
+  let d := gen.familyCount
+  let k := gen.minorCount
+  let common := d+k
+  let Bs := constructor.ctor.fieldsR source.uvars source.nparams
+    gen.elimination
+  let m := Bs.length
+  let rs := constructor.ctor.recArgsR source.uvars gen.elimination
+  let Fs := VExpr.liftTelN common Bs 0
+  let D := VExpr.appN
+    (.bvar (d - 1 - constructor.owner + m + rs.length))
+    (((constructor.ctor.resultIndicesR source.uvars
+          gen.elimination).map fun e =>
+        (e.liftN d m).liftN rs.length) ++
+      [VExpr.appN
+        (.const constructor.ctor.raw.name gen.sourceLevels)
+        (VExpr.bvarRevRange (rs.length+m+d) source.nparams ++
+          VExpr.bvarRevRange rs.length m)])
+  let Dfin := VExpr.appN
+    (.bvar (d - 1 - constructor.owner + k + m))
+    (((constructor.ctor.resultIndicesR source.uvars
+          gen.elimination).map fun e => e.liftN common m) ++
+      [VExpr.appN
+        (.const constructor.ctor.raw.name gen.sourceLevels)
+        (VExpr.bvarRevRange (m+common) source.nparams ++
+          VExpr.bvarRevRange 0 m)])
+  have hownerLt : constructor.owner < d := by
+    rw [← howner]
+    simpa [d] using gen.family_ordinal_lt hfamily
+  have hrsLt : ∀ r ∈ rs, r.fieldIndex < m := by
+    intro r hr
+    obtain ⟨r₀, hr₀, rfl⟩ :=
+      NormalizedCtor.recArgsR_mem (show
+        r ∈ constructor.ctor.recArgsR source.uvars gen.elimination from
+          by simpa [rs] using hr)
+    obtain ⟨family₀, hfamily₀, htarget,
+        ⟨Bview, hfield, hshape⟩, hsem⟩ :=
+      (S.ctorWF constructor hconstructor).recursive r₀ hr₀
+    have hj := (List.getElem?_eq_some_iff.1 hfield).1
+    simp only [RecArg.instL]
+    dsimp only [m, Bs]
+    rw [NormalizedCtor.fieldsR_length]
+    rw [gen.flatCtor_fields_length hconstructor]
+    exact hj
+  have hik' : i < k := by
+    simpa [k] using hik
+  rw [VExpr.appN_append]
+  have hminorAt :
+      gen.minorTypes[i]? =
+        some ((gen.minorType constructor).liftN i) := by
+    simpa [BlockGenerationChecked.minorTypes, hci] using
+      (gen.minorTypesAux_getElem? gen.flatCtors 0 i)
+  have hlu0 :
+      (Fs.reverse ++
+        (gen.minorTypes.reverse ++
+          (gen.motiveTypes.reverse ++ gen.paramsTel.reverse)))[
+          k - 1 - i + m]? =
+        some ((gen.minorType constructor).liftN i) := by
+    rw [getElem?_rstack_mid _ _ _
+        (by simp [Fs, m, VExpr.liftTelN_length] <;> omega)
+        (by simp [Fs, m, k, gen.minorTypes_length,
+          VExpr.liftTelN_length] <;> omega),
+      show k - 1 - i + m - Fs.reverse.length = k - 1 - i by
+        simp [Fs, m, VExpr.liftTelN_length],
+      List.getElem?_reverse (by
+        rw [gen.minorTypes_length]
+        omega),
+      show gen.minorTypes.length - 1 - (k - 1 - i) = i by
+        rw [gen.minorTypes_length]
+        dsimp only [k]
+        omega,
+      hminorAt]
+  have hlu := Lookup.of_getElem? hlu0
+  rw [VExpr.liftN_liftN,
+    show i + (k - 1 - i + m + 1) = m+k by omega] at hlu
+  have hminorEq :
+      (gen.minorType constructor).liftN (m+k) =
+        (VExpr.forallN Fs
+          ((VExpr.forallN
+            (BlockGenerationChecked.blockIHsFromRecArgs d m rs 0)
+            D).liftN k m)).liftN m := by
+    simp only [BlockGenerationChecked.minorType]
+    conv => lhs; rw [VExpr.liftN_forallN,
+        VExpr.liftTelN_liftTelN,
+        liftTelN_congr _ _
+          (show d + (m+k) = common+m by
+            dsimp only [common]
+            omega),
+        show 0 + (VExpr.liftTelN d Bs 0).length = m by
+          simp [m, VExpr.liftTelN_length]]
+    conv => rhs; rw [VExpr.liftN_forallN,
+        VExpr.liftTelN_liftTelN,
+        show 0 + Fs.length = m by
+          simp [Fs, m, VExpr.liftTelN_length],
+        VExpr.liftN'_liftN_hi,
+        Nat.add_comm k m]
+  have hfields := HasType.appN_selfSpine
+    (env := env) (U := gen.recUvars)
+    (As := Fs)
+    (B := (VExpr.forallN
+      (BlockGenerationChecked.blockIHsFromRecArgs d m rs 0)
+      D).liftN k m)
+    (Δ := [])
+    (Γ := gen.minorTypes.reverse ++
+      (gen.motiveTypes.reverse ++ gen.paramsTel.reverse))
+    (f := .bvar (k-1-i+m))
+    (by
+      have hb := VEnv.HasType.bvar
+        (env := env) (U := gen.recUvars) hlu
+      rw [hminorEq] at hb
+      simpa [Fs, VExpr.liftTelN_length] using hb)
+  simp only [List.length_nil, VExpr.liftN_zero] at hfields
+  rw [BlockGenerationChecked.blockIHs_liftN'
+    d m k rs hrsLt 0 D (cut := m) rfl] at hfields
+  have hD : D.liftN k (m+0+rs.length) =
+      Dfin.liftN rs.length := by
+    dsimp only [D, Dfin]
+    rw [VExpr.liftN_appN, VExpr.liftN_appN,
+      List.map_append, List.map_append,
+      List.map_map, List.map_map]
+    show VExpr.appN _ (_ ++ [_]) = VExpr.appN _ (_ ++ [_])
+    congr 1
+    · show
+        VExpr.bvar
+            (liftVar k
+              (d - 1 - constructor.owner + m + rs.length)
+              (m+0+rs.length)) =
+          VExpr.bvar
+            (liftVar rs.length
+              (d - 1 - constructor.owner + k + m) 0)
+      rw [liftVar_le (by omega), liftVar_le (Nat.zero_le _)]
+      congr 1
+      omega
+    · congr 1
+      · apply List.map_congr_left
+        intro e _
+        simp only [Function.comp_apply]
+        rw [show m+0+rs.length = m+rs.length by omega,
+          VExpr.liftN_liftN_midN e d k rs.length (Nat.zero_le _)]
+      · congr 1
+        simp only [Function.comp_apply]
+        rw [show m+0+rs.length = m+rs.length by omega,
+          VExpr.liftN_appN, VExpr.liftN_appN,
+          List.map_append, List.map_append,
+          bvarRevRange_liftN_ge _ _ _ _ (by omega),
+          VExpr.bvarRevRange_liftN_high _ _ _ _ (by omega),
+          bvarRevRange_liftN_ge _ _ _ _ (Nat.zero_le _),
+          bvarRevRange_liftN_ge _ _ _ _ (Nat.zero_le _),
+          VExpr.bvarRevRange_congr source.nparams
+            (show k + (rs.length+m+d) =
+              rs.length + (m+common) by
+                dsimp only [common]
+                omega),
+          VExpr.bvarRevRange_congr m
+            (show rs.length = rs.length+0 by omega)]
+        rfl
+  rw [hD] at hfields
+  have hres := hasType_appN_blockRuleIHs
+    (env := env) (gen := gen) (d := d) (m := m) (k := k)
+    (rs := rs)
+    (argOf := fun r =>
+      BlockGenerationChecked.blockRuleCall common m
+        (gen.recBase m r.targetType) r)
+    (Dfin := Dfin)
+    (fun r hr => by
+      simpa [d, k, common, m, Bs] using
+        S.blockRuleCall_hasType hconstructor hrecs
+          (show r ∈ constructor.ctor.recArgsR source.uvars
+              gen.elimination by simpa [rs] using hr))
+    hfields
+  simpa [Fs, Bs, m, rs, d, k, common, Dfin,
+    VExpr.liftTelN_length, Nat.add_assoc] using hres
+
+/-- Every flattened mutual iota rule is well formed once all family
+recursors are available. -/
+theorem rule_WF {i : Nat}
+    {constructor : NormalizedBlockCtor}
+    (hci : gen.flatCtors[i]? = some constructor)
+    (hrecs : ∀ family ∈ gen.families,
+      env.constants (.str family.raw.name "rec") =
+        some (gen.recursor family)) :
+    (gen.rule i constructor).WF env := by
+  have hconstructor := List.mem_of_getElem? hci
+  refine ⟨?_, ?_⟩
+  · show env.HasType gen.recUvars []
+      (VExpr.lamN
+        (gen.paramsTel ++ gen.motiveTypes ++ gen.minorTypes ++
+          VExpr.liftTelN
+            (gen.familyCount + gen.minorCount)
+            (constructor.ctor.fieldsR source.uvars source.nparams
+              gen.elimination) 0)
+        _)
+      (VExpr.forallN _ _)
+    refine HasType.lamN (S.ruleBinders_onTel hconstructor) ?_
+    simp only [List.reverse_append, List.append_nil,
+      List.append_assoc]
+    simpa only [Nat.add_assoc] using
+      S.recRuleApp_hasType hconstructor hrecs
+  · show env.HasType gen.recUvars []
+      (VExpr.lamN
+        (gen.paramsTel ++ gen.motiveTypes ++ gen.minorTypes ++
+          VExpr.liftTelN
+            (gen.familyCount + gen.minorCount)
+            (constructor.ctor.fieldsR source.uvars source.nparams
+              gen.elimination) 0)
+        _)
+      (VExpr.forallN _ _)
+    refine HasType.lamN (S.ruleBinders_onTel hconstructor) ?_
+    simp only [List.reverse_append, List.append_nil,
+      List.append_assoc]
+    simpa only [Nat.add_assoc] using
+      S.minorApp_hasType hci hrecs
 
 end BlockGenerationEnv
 
@@ -7311,9 +8628,6 @@ theorem hasType_appN_ruleIHs {env : VEnv} {U : Nat} {Γ : List VExpr} {m k : Nat
       VExpr.inst_liftN1] at happ
     exact hasType_appN_ruleIHs (rs := rs)
       (fun q hq => hargs q (.tail _ hq)) happ
-
-theorem liftTelN_congr {a a' : Nat} (tel : List VExpr) (k : Nat) (h : a = a') :
-    VExpr.liftTelN a tel k = VExpr.liftTelN a' tel k := h ▸ rfl
 
 namespace GenerationEnv
 
@@ -12441,6 +13755,37 @@ theorem GenerationEnv.generatedRulesFold_ordered
   rulesFold_WF gen.generatedRules S.ord
     (S.generatedRules_WF hrec)
 
+/-- Every rule emitted from the flattened mutual constructor list is well
+formed in an environment containing every generated family recursor. -/
+theorem BlockGenerationEnv.generatedRules_WF
+    {source : VInductDecl}
+    {gen : BlockGenerationChecked source} {env : VEnv}
+    (S : BlockGenerationEnv gen env)
+    (hrecs : ∀ family ∈ gen.families,
+      env.constants (.str family.raw.name "rec") =
+        some (gen.recursor family)) :
+    ∀ df ∈ gen.generatedRules, df.WF env := by
+  intro df hdf
+  change df ∈
+    gen.flatCtors.zipIdx.map
+      (fun (constructor, i) => gen.rule i constructor) at hdf
+  obtain ⟨⟨constructor, i⟩, hmem, rfl⟩ := List.mem_map.1 hdf
+  obtain ⟨-, hci⟩ := List.mem_zipIdx_getElem? hmem
+  rw [Nat.sub_zero] at hci
+  exact S.rule_WF hci hrecs
+
+/-- Folding every generated mutual rule preserves environment ordering. -/
+theorem BlockGenerationEnv.generatedRulesFold_ordered
+    {source : VInductDecl}
+    {gen : BlockGenerationChecked source} {env : VEnv}
+    (S : BlockGenerationEnv gen env)
+    (hrecs : ∀ family ∈ gen.families,
+      env.constants (.str family.raw.name "rec") =
+        some (gen.recursor family)) :
+    (gen.generatedRules.foldl VEnv.addDefEq env).Ordered :=
+  rulesFold_WF gen.generatedRules S.ord
+    (S.generatedRules_WF hrecs)
+
 /-- Folding definitional equations only grows the environment and registers
 every equation in the input list. -/
 theorem rulesFold_spec : ∀ (dfs : List VDefEq) (env : VEnv),
@@ -12927,6 +14272,38 @@ private theorem addInductBlockGeneration_recursor_lookup
   simpa [recursor] using
     (ctorFold_spec gen.recursors H.addRecs).2.1 recursor hrecursor
 
+/-- Preserve ordering through the block-wide generated-rule fold. -/
+private theorem addInductBlockGeneration_rules_ordered
+    {source : VInductDecl} {gen : source.BlockGenerationChecked}
+    (H : AddInductBlockGenerationTrace env env' gen)
+    (S : BlockGenerationEnv gen H.recEnv) : env'.Ordered := by
+  have hout := S.generatedRulesFold_ordered
+    (fun family hfamily =>
+      addInductBlockGeneration_recursor_lookup H hfamily)
+  simpa only [H.addRules] using hout
+
+/-- The block-wide transaction preserves ordering through all families,
+constructors, family-indexed recursors, and flattened iota rules. -/
+theorem addInductBlockGeneration_WF
+    {source : VInductDecl} {gen : source.BlockGenerationChecked}
+    {blockEnv : VEnv}
+    (henv : env.Ordered) (hgen : gen.WF env blockEnv)
+    (hadd : addInductBlockGeneration env gen = some env') :
+    env'.Ordered := by
+  rcases addInductBlockGeneration_trace hadd with ⟨H⟩
+  have ordT : H.typeEnv.Ordered :=
+    addInductBlockGeneration_families_ordered H henv hgen
+  have ordC : H.ctorEnv.Ordered :=
+    addInductBlockGeneration_constructors_ordered H hgen ordT
+  have S : BlockGenerationEnv gen H.ctorEnv :=
+    addInductBlockGeneration_constructor_generationEnv H hgen ordC
+  have ordR : H.recEnv.Ordered :=
+    addInductBlockGeneration_recursors_ordered H S
+  have hleCR := (ctorFold_spec gen.recursors H.addRecs).1
+  have SR : BlockGenerationEnv gen H.recEnv :=
+    S.mono hleCR ordR
+  exact addInductBlockGeneration_rules_ordered H SR
+
 /-- Preserve ordering across the raw family insertion, the first generated
 component of an inductive transaction. -/
 private theorem addInductGeneration_family_ordered {source : VInductDecl}
@@ -13060,6 +14437,39 @@ theorem addInductCertified_WF {source : VInductDecl}
     env'.Ordered := by
   apply addInductGeneration_WF henv certificate.wf
   simpa only [addInductCertified_eq_addInductGeneration] using hadd
+
+/-- Recover the exact block-wide transaction phases through the public
+proof-carrying entry point. -/
+theorem addInductBlockCertified_trace {source : VInductDecl}
+    {certificate : source.BlockGenerationCertificate env}
+    (hadd : addInductBlockCertified env certificate = some env') :
+    Nonempty
+      (AddInductBlockGenerationTrace env env'
+        certificate.generation) := by
+  apply addInductBlockGeneration_trace
+  simpa only [addInductBlockCertified_eq_addInductBlockGeneration] using hadd
+
+/-- The public block certificate wrapper has the same atomic behavior as its
+underlying block transaction. -/
+theorem addInductBlockCertified_atomic {source : VInductDecl}
+    (env : VEnv) (certificate : source.BlockGenerationCertificate env) :
+    addInductBlockCertified env certificate = none ∨
+      ∃ env', addInductBlockCertified env certificate = some env' ∧
+        Nonempty
+          (AddInductBlockGenerationTrace env env'
+            certificate.generation) := by
+  simpa only [addInductBlockCertified_eq_addInductBlockGeneration] using
+    addInductBlockGeneration_atomic env certificate.generation
+
+/-- Ordering preservation for the public proof-carrying mutual-block
+transaction. -/
+theorem addInductBlockCertified_WF {source : VInductDecl}
+    {certificate : source.BlockGenerationCertificate env}
+    (henv : env.Ordered)
+    (hadd : addInductBlockCertified env certificate = some env') :
+    env'.Ordered := by
+  apply addInductBlockGeneration_WF henv certificate.wf
+  simpa only [addInductBlockCertified_eq_addInductBlockGeneration] using hadd
 
 /--
 info: 'Lean4Lean.VEnv.addInductGeneration_trace' depends on axioms: [propext, Quot.sound]
