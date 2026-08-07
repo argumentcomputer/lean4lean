@@ -292,7 +292,11 @@ Bare producer success is never generation-shape authority or Theory semantics.
 
 ### 2.2 Live debt
 
-The sorry-frontier script currently accepts exactly 20 live sorries:
+The sorry audit (`Lean4Lean/Audit/SorryFrontier.lean`, a declaration-level
+`sorryAx` allowlist over the compiled Theory/Verify surface) currently
+accepts exactly 20 live sorries across 19 declarations (`NormalEq.parRed`
+carries two), plus six deliberately kernel-rejected fixture recoveries that
+are not proof debt:
 
 | Area | Live debt |
 |---|---|
@@ -319,9 +323,9 @@ The remaining v4.31-added sorry is classified:
 - The fetched `logrel@upstream` branch at `e431dad8` is a serious experimental
   route to injectivity/unique typing, but it depends on unfinished
   `ShapeLogRel`/adequacy work and cannot be merged as a completed proof.
-- Flake evaluation uses `inputs.self.outPath` (fixes all-system evaluation but
-  broadens source invalidation); restoring a narrow evaluation-safe source
-  filter is packaging debt. The `system` deprecation warning comes from the
+- The dev-branch flake rework scoped `leanSrc` to a fileset, retiring the
+  earlier `inputs.self.outPath` source-invalidation debt; remaining flake
+  debt is cosmetic. The `system` deprecation warning comes from the
   pinned Nix stack and is non-fatal.
 - The generated transitive axiom-closure report for all supported roots does
   not exist yet (L4L-20A); the reachability audit is partially established,
@@ -715,10 +719,12 @@ theorem over this full environment class.
 exact closures; only the mechanical zero-sorry policy switch remains.
 
 **L4L-19C — zero-sorry gate.** Remove every remaining supported Theory/Verify
-sorry. Keep the token-aware script exact throughout: every proof PR deletes
+sorry. Keep the audit allowlist exact throughout: every proof PR deletes
 entries, and no PR may rename/move a sorry and merely update the allowlist.
-At zero, invert the script to reject every live sorry without an allowlist.
-*Exit:* the frontier is zero, no allowlist remains, and full gates pass.
+At zero, reduce the allowlist to the deliberately kernel-rejected fixture
+recoveries so any sorried declaration fails outright.
+*Exit:* the proof-debt frontier is zero, only fixture-recovery entries
+remain, and full gates pass.
 
 ### Trust closure and release (L4L-20A–L4L-20C)
 
@@ -784,15 +790,19 @@ manifests are reproducible.
 Every milestone must pass all applicable gates:
 
 ```text
-perl .github/scripts/check_sorry_frontier.pl
 lake build Lean4Lean.Theory Lean4Lean.Verify
+lake build Lean4Lean.Audit.SorryFrontier
 lake build
-nix build
-nix flake check --all-systems --no-build --accept-flake-config
+nix build --accept-flake-config .#lean4lean .#lake-dependency
 nix flake check --accept-flake-config --print-build-logs
-nix fmt -- --check .
+nix fmt --accept-flake-config -- --check flake.nix
 git diff --check
 ```
+
+The dev-branch fileset flake does not support eval-only checking
+(`nix flake check --no-build` fails with "path '…-source' is not valid", as
+documented at the `leanSrc` definition), so the flake gate builds for real;
+non-Linux systems stay declared but ungated, matching dev CI.
 
 The flake is authoritative: milestone evidence must use the pinned Nix
 toolchain and dependencies. The Lake commands above run directly from the

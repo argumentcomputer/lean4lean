@@ -15,7 +15,7 @@ namespace Lean4Lean.InductiveReplayFixtures
 open Lean
 open Lean4Lean.InductiveFixtures
 
-local instance : Inhabited VEnv := ⟨.empty⟩
+local instance instInhabitedVEnvParityReplay : Inhabited VEnv := ⟨.empty⟩
 
 structure SingletonReplayArtifact where
   label : Name

@@ -14,7 +14,7 @@ namespace Lean4Lean.InductiveReplayFixtures
 open Lean Meta Elab Term
 open Lean4Lean.InductiveFixtures
 
-local instance : Inhabited VEnv := ⟨.empty⟩
+local instance instInhabitedVEnvValidityReplay : Inhabited VEnv := ⟨.empty⟩
 
 private theorem exceptUnit_eq_ok_of_isOk {error : Type}
     (result : Except error Unit) (h : result.isOk = true) :

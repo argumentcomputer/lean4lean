@@ -257,13 +257,18 @@ to the replacement.
 ## D005 — exact sorry-frontier enforcement
 
 - **Status:** published-fork
-- **Commits:** `c8a9ef8`, with the current Stage-3 wording in `472a6f0`
-- **Delta:** token-aware, declaration-attributed allowlist excluding
-  `Experimental/`, wired into Nix and CI.
+- **Commits:** `c8a9ef8` (Perl token audit), replaced by the Lean
+  environment audit in dev's `0d541a4` and reconciled with the
+  formalization line at this checkpoint
+- **Delta:** declaration-level `sorryAx` allowlist over the compiled
+  `Theory`/`Verify` surface (`Lean4Lean/Audit/SorryFrontier.lean`),
+  excluding `Experimental/`, wired into Nix and CI.
 - **Ix impact:** guarantees that upstream proof debt can only shrink at pin
-  boundaries; the current exact allowlist records 20 supported-tree sorries.
-- **Tests:** `perl .github/scripts/check_sorry_frontier.pl` and the
-  `sorry-frontier` flake check.
+  boundaries; the current exact allowlist records 19 sorried declarations
+  (20 `sorry` tokens) plus six deliberately kernel-rejected fixture
+  recoveries.
+- **Tests:** `lake build Lean4Lean.Audit.SorryFrontier` and the `proofs`
+  flake check.
 - **Upstream issue/PR:** TBD.
 - **Removal condition:** upstream adopts an equal or stricter shrink-only gate;
   at zero debt, replace the allowlist with an unconditional rejection rule.
