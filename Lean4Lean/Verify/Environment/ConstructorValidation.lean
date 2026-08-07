@@ -1648,6 +1648,114 @@ theorem nonempty_of_alignment
 
 end ConstructorPostFamilySemanticListRun
 
+/-- A retained constructor telescope whose strengthened universe decisions are
+all true replays the exact executable universe traversal.  This is the
+converse of `universeSemantics_of_loop`: the trace supplies the same parameter
+choices and `ensureType` results, while the Boolean supplies only the
+additional verified comparison at ordinary fields. -/
+theorem ConstructorTypeValidationTrace.universeLoop_of_semantics
+    (trace : ConstructorTypeValidationTrace stats isUnsafe familyIdx ctor
+      context source argIdx fuel)
+    (semantic : trace.universeSemantics = true) :
+    checkConstructorUniverseSemantics.loop stats source argIdx fuel context =
+      .ok () := by
+  induction trace with
+  | parameter context fuel argIdx name domain body binderInfo parameter
+      parameterType parameterAt parameterTypeRun defeq tail ih =>
+      simp only [universeSemantics] at semantic
+      rw [show fuel + 1 = Nat.succ fuel by rfl]
+      rw [checkConstructorUniverseSemantics.loop.eq_2]
+      rw [parameterAt]
+      exact ih semantic
+  | ordinary context fuel argIdx name domain body binderInfo sortResult
+      noParameter ensureType universeTrace positivity tail ih =>
+      simp only [universeSemantics, Bool.and_eq_true] at semantic
+      rw [show fuel + 1 = Nat.succ fuel by rfl]
+      rw [checkConstructorUniverseSemantics.loop.eq_2]
+      rw [noParameter]
+      simp only [ReaderT.bind, Bind.bind, liftTypeChecker_apply]
+      rw [ensureType]
+      simp only [Except.bind]
+      have valid : constructorUniverseSemanticGe stats.resultLevel
+          sortResult.sortLevel! = true := by
+        simpa only [ConstructorUniverseTrace.semantic] using semantic.1
+      rw [valid]
+      simp only [Pure.pure]
+      exact ih semantic.2
+  | terminal context source fuel argIdx terminal valid =>
+      cases source <;> try rfl
+      case forallE =>
+        change true = false at terminal
+        contradiction
+
+/-- Root form of `universeLoop_of_semantics`, initialized from the same
+context fuel as ordinary constructor validation. -/
+theorem ConstructorTypeValidationTrace.universeRun_of_semantics
+    (trace : ConstructorTypeValidationTrace stats isUnsafe familyIdx ctor
+      context source 0 context.fuel.inductiveFuel)
+    (semantic : trace.universeSemantics = true) :
+    checkConstructorUniverseSemantics stats source context = .ok () := by
+  unfold checkConstructorUniverseSemantics
+  simpa only [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, Bind.bind, ReaderT.pure, Pure.pure,
+    Except.bind, Except.pure] using trace.universeLoop_of_semantics semantic
+
+/-- A retained source-ordered constructor list whose strengthened universe
+decisions are all true replays the exact executable list audit. -/
+theorem ConstructorListValidationTrace.universeRun_of_semantics
+    (trace : ConstructorListValidationTrace stats isUnsafe familyIdx
+      context seen constructors)
+    (semantic : trace.universeSemantics = true) :
+    checkConstructorUniverseListSemantics stats constructors context =
+      .ok () := by
+  induction trace with
+  | nil => rfl
+  | cons seen head tail fresh closed rootCheck typeTrace tailTrace ih =>
+      simp only [universeSemantics, Bool.and_eq_true] at semantic
+      simp only [checkConstructorUniverseListSemantics,
+        ReaderT.bind, Bind.bind]
+      rw [typeTrace.universeRun_of_semantics semantic.1]
+      simp only [Except.bind]
+      exact ih semantic.2
+
+/-- Impredicative `Prop` makes every strengthened constructor-universe node
+true, independently of the field level selected by the retained checker run. -/
+theorem ConstructorUniverseTrace.semantic_of_resultLevel_isZero
+    (trace : ConstructorUniverseTrace resultLevel fieldLevel)
+    (zero : resultLevel.isZero = true) : trace.semantic = true := by
+  simp [ConstructorUniverseTrace.semantic, constructorUniverseSemanticGe,
+    zero]
+
+/-- Every universe node in a retained constructor telescope is admitted by
+the strengthened audit when the family result is `Prop`. -/
+theorem ConstructorTypeValidationTrace.universeSemantics_of_resultLevel_isZero
+    (trace : ConstructorTypeValidationTrace stats isUnsafe familyIdx ctor
+      context source argIdx fuel)
+    (zero : stats.resultLevel.isZero = true) :
+    trace.universeSemantics = true := by
+  induction trace with
+  | parameter context fuel argIdx name domain body binderInfo parameter
+      parameterType parameterAt parameterTypeRun defeq tail ih =>
+      simpa only [universeSemantics] using ih
+  | ordinary context fuel argIdx name domain body binderInfo sortResult
+      noParameter ensureType universeTrace positivity tail ih =>
+      simp only [universeSemantics, Bool.and_eq_true]
+      exact ⟨universeTrace.semantic_of_resultLevel_isZero zero, ih⟩
+  | terminal => rfl
+
+/-- Source-list form of
+`ConstructorTypeValidationTrace.universeSemantics_of_resultLevel_isZero`. -/
+theorem ConstructorListValidationTrace.universeSemantics_of_resultLevel_isZero
+    (trace : ConstructorListValidationTrace stats isUnsafe familyIdx
+      context seen constructors)
+    (zero : stats.resultLevel.isZero = true) :
+    trace.universeSemantics = true := by
+  induction trace with
+  | nil => rfl
+  | cons seen head tail fresh closed rootCheck typeTrace tailTrace ih =>
+      simp only [universeSemantics, Bool.and_eq_true]
+      exact ⟨typeTrace.universeSemantics_of_resultLevel_isZero zero, ih⟩
+
 /-- A successful executable universe audit marks every universe node in an
 arbitrary retained constructor telescope.  The proof uses determinism of the
 same `ensureType` execution retained by the ordinary trace; it cannot change a

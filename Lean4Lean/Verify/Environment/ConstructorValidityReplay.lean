@@ -2351,8 +2351,14 @@ theorem prbUniverseRun :
         prbFamilyValidationRun.stats propRecursiveBoundaryKernelType.ctors
         { prbCandidate.families.singleton.familyType.type.trace.terminalContext with
           env := prbConstructorContext.env } = .ok () := by
-  apply exceptUnit_eq_ok_of_isOk
-  native_decide
+  let validation : AddInductive.ConstructorValidationRun
+      propRecursiveBoundaryKernelType prbFamilyValidationRun.stats false
+      { prbCandidate.families.singleton.familyType.type.trace.terminalContext with
+        env := prbConstructorContext.env } :=
+    AddInductive.ConstructorValidationRun.of_run prbCheckConstructorsRun
+  apply validation.trace.universeRun_of_semantics
+  apply validation.trace.universeSemantics_of_resultLevel_isZero
+  rfl
 
 def prbConstructorValidationResult :=
   AddInductive.ConstructorValidationRun.buildExecution
