@@ -1734,6 +1734,30 @@ theorem prbConstructorCandidateContext_eq :
     AddInductive.NormalizationCandidateExecution.candidate,
     prbConstructorContext] using h
 
+/-- The retained singleton family spine selects exactly its first generated
+local as the sole kernel parameter.  This is derived from the structural
+identity witness, not by evaluating the opaque outer producer again. -/
+theorem prbStatsParams_eq :
+    prbFamilyValidationRun.stats.params =
+      #[prbFamilyContext.freshExpr] := by
+  rw [prbFamilyValidationRun.stats_eq]
+  change
+    (prbCandidate.families.singleton.familyType.type.trace.parameterList 1).toArray =
+      #[prbFamilyContext.freshExpr]
+  have identity := prbFamilyIdentityEvidence.identity
+  have spineLength := prbFamilyIdentityEvidence.spineLength_eq
+  generalize htrace :
+    prbCandidate.families.singleton.familyType.type.trace = trace at identity spineLength ⊢
+  cases identity with
+  | terminal result_eq =>
+      simp only [AddInductive.CandidateExprTrace.spineLength] at spineLength
+      rw [prbFamilyIdentityReplay_shape.1] at spineLength
+      omega
+  | forallE domainCandidate bodyCandidate source_eq consumed_eq
+      domainIdentity bodyIdentity =>
+      simp only [AddInductive.CandidateExprTrace.parameterList]
+      rw [prbFamilyCandidateContext_eq]
+
 theorem prbFamilyPrefix_ne :
     prbFamilyContext.ngen.namePrefix ≠
       (({} : TypeChecker.VState).ngen).namePrefix := by
@@ -2248,6 +2272,21 @@ def prbCtorIdentityEvidence :
       prbCtorIdentityReplay
       prbCandidate.families.singleton.constructors.singleton.type.trace :=
   prbCtorIdentityReplay.evidence_of_build prbCtorCandidateBuild
+
+/-- The structurally identity-normalizing constructor candidate reconstructs
+the exact closed kernel constructor type.  In particular, later alignment can
+inspect the retained view without a separate computation oracle. -/
+theorem prbCtorView_eq :
+    prbCandidate.families.singleton.constructors.singleton.type.view =
+      propRecursiveBoundaryKernelCtor.type := by
+  apply prbCtorIdentityEvidence.identity.view_eq_source
+  · apply TypeChecker.CandidateLocalContextRun.empty
+    rw [prbConstructorCandidateContext_eq]
+    rfl
+  · rw [prbConstructorCandidateContext_eq]
+    simp [propRecursiveBoundaryKernelCtor,
+      propRecursiveBoundaryMkInfo, ConstantInfo.type,
+      ConstantInfo.toConstantVal, FVarsIn, Level.hasMVar']
 
 theorem prbCtorIdentityReplay_shape :
     prbCtorIdentityReplay.spineLength = 3 ∧

@@ -124,6 +124,97 @@ theorem push_findOld (run : CandidateLocalContextRun context)
 
 end CandidateLocalContextRun
 
+/-- A recursively identity-normalizing candidate reconstructs its exact stored
+kernel expression when every source free variable belongs to the candidate's
+fresh-local context.
+
+The scope premise is operational: it is the same implementation-context
+condition retained by candidate checking.  `CandidateLocalContextRun` proves
+that each generated identifier is fresh, so abstracting the instantiated body
+recovers the original stored binder body rather than merely an alpha-equivalent
+expression. -/
+theorem CandidateExprIdentity.view_eq_source
+    {context : AddInductive.Context} {source : Expr}
+    {trace : AddInductive.CandidateExprTrace context source}
+    (identity : CandidateExprIdentity trace)
+    (localRun : CandidateLocalContextRun context)
+    (scope : source.FVarsIn
+      (fun fv => (context.lctx.find? fv).isSome = true)) :
+    trace.view = source := by
+  induction identity with
+  | terminal result_eq =>
+      simpa [AddInductive.CandidateExprTrace.view] using result_eq
+  | forallE domainCandidate bodyCandidate source_eq consumed_eq
+      domainIdentity bodyIdentity domainIH bodyIH =>
+      rename_i traceContext domain name binderInfo traceSource inferred body
+        fresh annotations annotationsEq checked normalized
+      rw [source_eq] at scope
+      simp only [FVarsIn] at scope
+      have domainEq := domainIH localRun scope.1
+      let pushedRun := localRun.push name binderInfo annotations.consumed
+      have oldScope : body.FVarsIn (fun fv =>
+          ((traceContext.pushLocalDecl name binderInfo
+            annotations.consumed).lctx.find? fv).isSome = true) := by
+        apply scope.2.mono
+        intro fv present
+        obtain ⟨decl, find⟩ := Option.isSome_iff_exists.mp present
+        apply Option.isSome_iff_exists.mpr
+        exact ⟨decl, localRun.push_findOld name binderInfo
+          annotations.consumed find⟩
+      have freshScope : traceContext.freshExpr.FVarsIn (fun fv =>
+          ((traceContext.pushLocalDecl name binderInfo
+            annotations.consumed).lctx.find? fv).isSome = true) := by
+        simp only [AddInductive.Context.freshExpr, FVarsIn]
+        rw [localRun.push_findNew name binderInfo annotations.consumed]
+        rfl
+      have bodyScope := oldScope.instantiate1 freshScope
+      have bodyScope' : (body.instantiate1 traceContext.freshExpr).FVarsIn
+          (fun fv => ((traceContext.pushLocalDecl name binderInfo
+            annotations.consumed).lctx.find? fv).isSome = true) := by
+        simpa only [Expr.instantiate1_eq] using bodyScope
+      have bodyEq := bodyIH pushedRun bodyScope'
+      have bodyAvoid : body.FVarsIn (· ≠ traceContext.freshFVarId) := by
+        apply scope.2.mono
+        intro fv present equal
+        subst fv
+        rw [localRun.fresh] at present
+        contradiction
+      calc
+        (AddInductive.CandidateExprTrace.forallE traceContext traceSource
+          inferred name domain body binderInfo fresh annotations annotationsEq
+          checked normalized domainCandidate bodyCandidate).view =
+            .forallE name domainCandidate.view
+              (bodyCandidate.view.abstract #[traceContext.freshExpr])
+              binderInfo := rfl
+        _ = .forallE name domain body binderInfo := by
+          rw [domainEq, bodyEq]
+          congr 1
+          rw [show #[traceContext.freshExpr] =
+            ⟨[traceContext.freshFVarId].map Expr.fvar⟩ by rfl]
+          rw [Expr.abstract_eq]
+          change (body.instantiate1 traceContext.freshExpr).abstract1
+            traceContext.freshFVarId = body
+          simpa only [Expr.instantiate1_eq,
+            AddInductive.Context.freshExpr] using
+            (bodyAvoid.abstract_instantiate1 (k := 0))
+        _ = traceSource := source_eq.symm
+
+/- The structural reconstruction bridge has only the expected standard and
+kernel-expression infrastructure closure; in particular, it does not depend
+on a fixture computation oracle. -/
+/--
+info: 'Lean4Lean.TypeChecker.CandidateExprIdentity.view_eq_source' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ Expr.abstract_eq,
+ Expr.instantiate1_eq,
+ PersistentArray.toList'_push,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms CandidateExprIdentity.view_eq_source
+
 @[simp] theorem candidateLiftLooseBVarsFVar
     (id : FVarId) (s d : Nat) :
     (Expr.fvar id).liftLooseBVars' s d = .fvar id := by

@@ -1980,6 +1980,58 @@ info: 'Lean4Lean.AddInductive.ConstructorSemanticValidationRun.universeSemantics
 #guard_msgs in
 #print axioms ConstructorSemanticValidationRun.universeSemantics
 
+/- The reverse executable bridge and its impredicative-Prop specialization
+have the same standard-only closure as the forward universe interpretation.
+In particular, replaying a retained validator trace does not inherit a
+fixture computation oracle. -/
+/--
+info: 'Lean4Lean.AddInductive.ConstructorTypeValidationTrace.universeLoop_of_semantics' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms ConstructorTypeValidationTrace.universeLoop_of_semantics
+
+/--
+info: 'Lean4Lean.AddInductive.ConstructorTypeValidationTrace.universeRun_of_semantics' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms ConstructorTypeValidationTrace.universeRun_of_semantics
+
+/--
+info: 'Lean4Lean.AddInductive.ConstructorListValidationTrace.universeRun_of_semantics' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms ConstructorListValidationTrace.universeRun_of_semantics
+
+/--
+info: 'Lean4Lean.AddInductive.ConstructorUniverseTrace.semantic_of_resultLevel_isZero' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms ConstructorUniverseTrace.semantic_of_resultLevel_isZero
+
+/--
+info: 'Lean4Lean.AddInductive.ConstructorTypeValidationTrace.universeSemantics_of_resultLevel_isZero' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms ConstructorTypeValidationTrace.universeSemantics_of_resultLevel_isZero
+
+/--
+info: 'Lean4Lean.AddInductive.ConstructorListValidationTrace.universeSemantics_of_resultLevel_isZero' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms ConstructorListValidationTrace.universeSemantics_of_resultLevel_isZero
+
 /-!
 ## Executable pre-family safety and replay
 
