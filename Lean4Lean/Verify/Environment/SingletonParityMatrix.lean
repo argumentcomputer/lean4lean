@@ -324,4 +324,129 @@ example : singletonKernelRows.map (·.artifact.label) =
 #guard singletonKernelRows.all (·.agrees)
 #guard singletonKernelRows.all (·.producerAccepted)
 
+/-! ## Consolidated rejection matrix -/
+
+/-- One named rejection whose Boolean is computed by the public Theory
+analyzer, the ordinary metadata producer, or the environment transaction it
+is intended to guard. -/
+structure SingletonNegativeRow where
+  label : Name
+  rejected : Bool
+
+def theoryDeclarationRejected07 (decl : VInductDecl) : Bool :=
+  decl.checked?.isNone && (VEnv.empty.addInduct decl).isNone
+
+def producerRejected07 (nparams : Nat) (source : InductiveType)
+    (context : AddInductive.Context) : Bool :=
+  match AddInductive.buildNormalizationCandidate nparams [source] 0 false
+      context with
+  | .error _ => true
+  | .ok _ => false
+
+def aliasFormerTruncatedViewType07 : VInductiveType :=
+  { aliasFormerViewType with ctors := [] }
+
+def aliasFormerTruncatedViewDecl07 : VInductDecl :=
+  { aliasFormerViewDecl with types := [aliasFormerTruncatedViewType07] }
+
+def listReorderedViewType07 : VInductiveType :=
+  { listType with ctors := listType.ctors.reverse }
+
+def listReorderedViewDecl07 : VInductDecl :=
+  { listDecl with types := [listReorderedViewType07] }
+
+def recursorKRejected07 (info : ConstantInfo) (expected : Bool) : Bool :=
+  match info with
+  | .recInfo rec => rec.k != expected
+  | _ => false
+
+/-- A large recursor has one fresh universe parameter and a small recursor
+has none.  Supplying the wrong mode must therefore disagree with the actual
+metadata even when the source-universe list itself is otherwise unchanged. -/
+def recursorEliminationRejected07 (info : ConstantInfo) (sourceUvars : Nat) :
+    VInductDecl.ElimMode → Bool
+  | VInductDecl.ElimMode.large =>
+      info.levelParams.length != sourceUvars + 1
+  | VInductDecl.ElimMode.small =>
+      info.levelParams.length != sourceUvars
+
+def typeCollisionEnv07 : VEnv :=
+  (VEnv.empty.addConst ``Nat ⟨0, .sort .zero⟩).get (by decide)
+
+/-- The complete L4L-07 negative matrix.  Earlier phase-specific fixtures
+retain their exact kernel error messages; this table makes their coverage and
+combined acceptance result executable from one public artifact path. -/
+def singletonNegativeRows : List SingletonNegativeRow :=
+  [ ⟨.mkSimple "loose-variables",
+      theoryDeclarationRejected07 looseIndexDecl⟩,
+    ⟨.mkSimple "duplicate-constructor-name",
+      theoryDeclarationRejected07 duplicateCtorDecl⟩,
+    ⟨.mkSimple "type-constructor-name-alias",
+      theoryDeclarationRejected07 typeCtorAliasDecl⟩,
+    ⟨.mkSimple "constructor-recursor-name-alias",
+      theoryDeclarationRejected07 ctorRecAliasDecl⟩,
+    ⟨.mkSimple "self-reference-before-family-staging",
+      theoryDeclarationRejected07 selfParamDecl⟩,
+    ⟨.mkSimple "bad-parameter-universe",
+      theoryDeclarationRejected07 badParamLevelDecl⟩,
+    ⟨.mkSimple "bad-constructor-universe",
+      theoryDeclarationRejected07 badCtorLevelDecl⟩,
+    ⟨.mkSimple "non-sort-family-result",
+      theoryDeclarationRejected07 nonSortResultDecl⟩,
+    ⟨.mkSimple "wrong-constructor-result-head",
+      theoryDeclarationRejected07 wrongCtorHeadDecl⟩,
+    ⟨.mkSimple "wrong-parameter-spine",
+      theoryDeclarationRejected07 wrongParamSpineDecl⟩,
+    ⟨.mkSimple "parameter-count-mismatch",
+      theoryDeclarationRejected07 shortParamDecl⟩,
+    ⟨.mkSimple "family-universe-count-mismatch",
+      theoryDeclarationRejected07 badTypeUvarsDecl⟩,
+    ⟨.mkSimple "constructor-universe-count-mismatch",
+      theoryDeclarationRejected07 badCtorUvarsDecl⟩,
+    ⟨.mkSimple "negative-recursive-pi-domain",
+      theoryDeclarationRejected07 recDomainDecl⟩,
+    ⟨.mkSimple "changed-recursive-target-parameter",
+      theoryDeclarationRejected07 recTargetDecl⟩,
+    ⟨.mkSimple "recursive-index-family-occurrence",
+      theoryDeclarationRejected07 recIndexDecl⟩,
+    ⟨.mkSimple "truncated-normalization-view",
+      (VInductDecl.normalizedGeneration? aliasFormerRawDecl
+        aliasFormerTruncatedViewDecl07).isNone⟩,
+    ⟨.mkSimple "reordered-normalization-view",
+      (VInductDecl.normalizedGeneration? listDecl
+        listReorderedViewDecl07).isNone⟩,
+    ⟨.mkSimple "opaque-normalization-view",
+      !matrixCandidateExact matrixOpaquePiAliasContext⟩,
+    ⟨.mkSimple "non-defeq-normalization-view",
+      producerRejected07 1 matrixNonDefEqType (matrixCandidateContext 10)⟩,
+    ⟨.mkSimple "nested-negativity",
+      (l4l05CandidateError l4l05NestedNegativeType).isSome⟩,
+    ⟨.mkSimple "family-in-nonrecursive-field",
+      (l4l05CandidateError l4l05FamilyNonrecursiveType).isSome⟩,
+    ⟨.mkSimple "family-in-proof-field",
+      (l4l05CandidateError l4l05FamilyProofType).isSome⟩,
+    ⟨.mkSimple "recursive-local-dependency",
+      (l4l05CandidateError l4l05RecursiveDependencyType).isSome &&
+        l4l05RecursiveDependencyPreFamilyError.isSome⟩,
+    ⟨.mkSimple "constructor-field-universe-boundary",
+      (l4l05CandidateError l4l05UniverseRejectType).isSome⟩,
+    ⟨.mkSimple "preexisting-type-name",
+      (typeCollisionEnv07.addInduct natDecl).isNone⟩,
+    ⟨.mkSimple "preexisting-constructor-name",
+      (ctorCollisionEnv.addInduct natDecl).isNone⟩,
+    ⟨.mkSimple "preexisting-recursor-name",
+      (recCollisionEnv.addInduct natDecl).isNone⟩,
+    ⟨.mkSimple "eq-wrong-k-target", recursorKRejected07 eqRecInfo false⟩,
+    ⟨.mkSimple "and-wrong-k-target", recursorKRejected07 andRecInfo06 true⟩,
+    ⟨.mkSimple "eq-wrong-small-elimination",
+      recursorEliminationRejected07 eqRecInfo eqDecl.uvars
+        VInductDecl.ElimMode.small⟩,
+    ⟨.mkSimple "or-wrong-large-elimination",
+      recursorEliminationRejected07 orRecInfo06 orDecl.uvars
+        VInductDecl.ElimMode.large⟩ ]
+
+example : singletonNegativeRows.length = 32 := rfl
+
+#guard singletonNegativeRows.all (·.rejected)
+
 end Lean4Lean.InductiveReplayFixtures
