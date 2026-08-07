@@ -67,12 +67,12 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-08C active**; L4L-08B and everything above it are complete and pruned from §5; everything below L4L-08C is queued |
-| Current formalization source | L4L-08B mutual validation/normalization closure in the current committed checkpoint, built on the L4L-08A checked representation `79e1ae4f`; published at `jcb/formalization`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
+| Ladder position | **L4L-09A active**; L4L-08C and everything above it are complete and pruned from §5; everything below L4L-09A is queued |
+| Current formalization source | L4L-08C mutual generation/preservation/replay implementation through `aa10005d`, built on the L4L-08A checked representation `79e1ae4f` and L4L-08B validation semantics; this closure checkpoint adds the migration shim and completion audit at `jcb/formalization`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
-| Trust frontier | exactly 20 live sorries and 29 custom-axiom declarations, both pinned by exact audits |
-| Gates | the full §6 gate is green on the L4L-08B closure source, including the focused and aggregate Lean builds, Nix build, all-system flake evaluation, all six native flake checks, sorry-frontier audit, Theory import-boundary audit, formatter check, and whitespace check |
+| Trust frontier | exactly 20 live source `sorry` tokens across 19 proof declarations, plus six kernel-rejection recovery declarations (25 compiled allowlist entries total), and 29 custom-axiom declarations; all are pinned by exact audits |
+| Gates | the full §6 gate is green on the L4L-08C closure source, including focused, aggregate, and default Lake builds, the Nix proof/dependency build, all native flake checks, sorry-frontier and Theory import-boundary audits, formatter check, and whitespace check |
 
 ### 2.1 What is green
 
@@ -84,20 +84,26 @@ with computed `normalizationShape` and semantic `Normalization.WF env`;
 `NormalizedChecked` and `GenerationChecked` paired raw/view blocks; mixed
 motive/minor/recursor/rule generation that retains raw binder syntax while
 consulting the checked view for recursive classification, proved well formed
-through the complete ordered rule fold; one transaction core
-`VEnv.addInductGeneration` with data-bearing trace, atomicity, freshness,
-lookup/membership, and normalized `Ordered`-preservation theorems; the public
-identity wrapper `addInduct` and the proof-carrying Theory-only
-`GenerationCertificate`/`addInductCertified` consumer boundary whose WF proof
-cannot affect computation. The shared checked/generation artifact retains the
-exact K-target decision separately from its elimination mode. The slice covers
-one generalized family with parameters, indices, direct recursion, recursive
-targets below Pi telescopes, small elimination, subsingleton large elimination,
-K-target metadata, and exact zero-/one-constructor generation. Preservation is
-factored through the common checked family, constructor fold, recursor, and
-rule-fold components, with empty folds using that same path.
+through the complete ordered rule fold. The one-family transaction
+`VEnv.addInductGeneration` and its proof-carrying
+`GenerationCertificate`/`addInductCertified` boundary remain available.
+`BlockGenerationChecked` generalizes the same artifact path: it emits one
+motive and recursor per family, globally flattens constructor minors and rules
+in family/source order, and routes recursive hypotheses and rule calls by the
+checked target-family ordinal. `VEnv.addInductBlockGeneration` inserts all
+families, then all constructors, then all recursors, then all rules; its exact
+trace supplies atomicity, freshness, lookups/membership, monotonicity, and
+`Ordered` preservation through every phase. The raw public `addInduct` now
+selects this block descriptor without singleton projection. A deprecated
+`addInductSingleton` wrapper retains the former raw one-family transaction for
+the migration window without becoming a competing block path. The shared
+checked/generation artifact retains the exact K-target decision separately
+from its elimination mode. The slice covers parameters, per-family indices,
+direct and sibling recursion, recursive targets below Pi telescopes, small
+elimination, subsingleton large elimination, K-target metadata, and exact
+zero-/one-constructor generation.
 
-**Mutual validation and normalization.** `VInductDecl.CheckedBlock` and
+**Mutual validation, generation, and replay.** `VInductDecl.CheckedBlock` and
 `checkedBlock?` analyze an arbitrary nonempty `decl.types` list without
 singleton destructuring. Shared parameters are retained once, while
 `CheckedFamilies source params ordinal types` is indexed simultaneously by
@@ -118,11 +124,20 @@ trace records every family/constructor/ordinary-field target in source order,
 including sibling recursion and recursion beneath Pi binders. The real
 Tree/TreeList and indexed IndexedTree/IndexedTreeList fixtures execute the
 ordinary kernel validators, compute the exact target matrices, and inhabit
-complete normalization and checked-block WF certificates. Exact negatives pin
-the parameter-mismatch, result-universe-mismatch, and reordered-family phases,
-including the host Lean diagnostics and the transparent validator errors.
-Both blocks deliberately remain rejected by the singleton generation and
-insertion path: L4L-08B introduces no mutual generator theorem.
+complete normalization, checked-block, and block-generation WF certificates.
+Their generated inventories have respectively two motives, five/four globally
+ordered minors, two recursors, and five/four rules. Exact kernel comparisons
+cover every `InductiveVal`, `ConstructorVal`, `RecursorVal`, and
+`RecursorRule` field represented by the Theory boundary, including constructor
+indices, block-wide recursion/reflexivity flags, recursor motives/minors/K,
+translated types in metadata universe order, rule ownership/field counts, and
+every RHS. Both raw `addInduct` and the proof-carrying block transaction produce
+the same final Theory environments. The four phase boundaries replay through
+`AddInductBlockTrace`, `TrEnv'.inductBlock`, and `Aligned.addInductBlock` to
+actual implementation `ConstMap`s, with exact final ordering, lookup, rule
+membership, and guarded trust closures. Exact negatives still pin the
+parameter-mismatch, result-universe-mismatch, and reordered-family validation
+phases, including host Lean diagnostics and transparent validator errors.
 
 **Kernel parity fixtures.** One integrated 14-row matrix covers Nat, Bool,
 List, Option, Prod, Unit (honestly represented by the kernel's `PUnit`), Empty,
@@ -284,10 +299,10 @@ fixture still spells indices as `Nat.zero`/`Nat.succ`, deliberately excluding
 notation's `OfNat`/`HAdd` instance closure — a reduced dependency claim, not
 full prelude replay.
 
-**Not claimed.** Mutual generation, environment insertion, or generated
-recursor/iota metadata parity; constructor-generation parity beyond the
-singleton-family scope; nested blocks, patterns, projections, and the
-remaining metatheory/checker roots.
+**Not claimed.** Nested blocks, generated patterns, projections, and the
+remaining metatheory/checker roots. The mutual fixtures prove the current
+non-nested block boundary; they do not claim the kernel's nested flattening or
+auxiliary-family transformation.
 Bare producer success is never generation-shape authority or Theory semantics.
 
 ### 2.2 Live debt
@@ -308,9 +323,9 @@ are not proof debt:
 The remaining v4.31-added sorry is classified:
 `Lean4Lean.addDecl.WF` → L4L-19B. Non-sorry debt:
 
-- The public inductive spec has complete one-family execution plus checked,
-  normalized, semantically validated mutual blocks, but remains a growing
-  subset rather than kernel-complete; mutual generation/insertion, nested,
+- The public inductive spec has complete one-family and non-nested mutual
+  generation, preservation, metadata parity, and environment replay, but
+  remains a growing subset rather than kernel-complete; nested,
   generated-pattern, and projection coverage remain queued.
 - Consumer-neutral APIs (`VLocalDecl` core, literal encodings,
   `ContainsLits`, `HasPrimitives`, `TrProj`) still live under `Verify/`,
@@ -483,21 +498,9 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Mutual blocks (L4L-08C)
-
-**L4L-08C — mutual generation, preservation, and replay (active).** Generate one
-motive and recursor per family, flatten all constructor minors in kernel
-order, and route each recursive call to the correct motive/recursor. Insert
-all type constants before constructors, all constructors before recursors,
-and all recursors before rules; prove `Ordered`, lookups, and preservation
-through the chain.
-*Exit:* Tree/TreeList and the mutual indexed fixture compare every
-`inductInfo`, `ctorInfo`, `recInfo`, and rule, and replay through the
-environment layer; no singleton destructuring remains on the public path.
-
 ### Nested inductives (L4L-09A–L4L-09C)
 
-**L4L-09A — nested representation decision.** Audit how translated
+**L4L-09A — nested representation decision (active).** Audit how translated
 `inductInfo` represents flattened nested auxiliaries even though the producer
 receives `numNested` and `VInductDecl` does not. Commit a design note plus
 executable metadata probes. Choose an additive metadata/checked-block type or

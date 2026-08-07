@@ -2979,6 +2979,27 @@ def VEnv.addInduct (env : VEnv) (decl : VInductDecl) : Option VEnv := do
   let generation ← decl.identityBlockGeneration?
   env.addInductBlockGeneration generation
 
+/-- Compatibility wrapper for the pre-L4L-08C one-family raw transaction.
+
+Unlike `addInduct`, this deliberately projects the legacy `Checked` artifact
+and therefore rejects every genuinely mutual declaration.  It remains only
+for a deprecation window so existing one-family consumers can separate their
+API migration from the semantic switch to block-wide generation. -/
+@[deprecated VEnv.addInduct (since := "2026-08-07")]
+def VEnv.addInductSingleton (env : VEnv) (decl : VInductDecl) : Option VEnv := do
+  let checked ← decl.checked?
+  env.addInductGeneration checked.identityGeneration
+
+/-- The compatibility wrapper is exactly the former identity-normalization
+transaction; it is not a second block-generation path. -/
+@[simp, deprecated VEnv.addInduct (since := "2026-08-07")]
+theorem VEnv.addInductSingleton_eq_addInductGeneration
+    (env : VEnv) (decl : VInductDecl) :
+    env.addInductSingleton decl =
+      decl.checked? >>= fun checked =>
+        env.addInductGeneration checked.identityGeneration :=
+  rfl
+
 /-- The raw public API is transparently the identity-normalization
 specialization of the normalized block transaction. -/
 theorem VEnv.addInduct_eq_addInductBlockGeneration
@@ -2987,6 +3008,12 @@ theorem VEnv.addInduct_eq_addInductBlockGeneration
       decl.identityBlockGeneration? >>= fun generation =>
         env.addInductBlockGeneration generation :=
   rfl
+
+/--
+info: 'Lean4Lean.VEnv.addInductSingleton_eq_addInductGeneration' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms VEnv.addInductSingleton_eq_addInductGeneration
 
 /-- Stable, consumer-facing consequences of a successful `addInduct`
 transaction. This deliberately hides the internal `foldlM` sequence: a

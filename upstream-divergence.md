@@ -4,7 +4,7 @@ This file tracks every deliberate semantic, API, build, or verification delta
 from `upstream/master` that must either be upstreamed or explicitly retained.
 It is the tracked counterpart to `plans/roadmap.md`.
 
-Audit baseline after the complete L4L-08B mutual validation/normalization
+Audit baseline after the complete L4L-08C mutual generation/preservation/replay
 checkpoint (2026-08-07):
 
 - current upstream reconciliation parent: digama `upstream/master`
@@ -107,14 +107,18 @@ checkpoint (2026-08-07):
 - remote development mutual-block checkpoints at `jcb/formalization`:
   `79e1ae4f697c` adds the L4L-08A source-indexed dependent family spine,
   shared block parameters, per-family indices/results/constructors, and
-  block-wide recursive-target ordinals. The current L4L-08B closure adds
+  block-wide recursive-target ordinals. The L4L-08B closure adds
   executable block validation/normalization, all-family staging, exact mutual
   semantic certificates, phase-local negatives, and recursive-Pi target
-  traces. It intentionally adds no mutual generation or environment
-  insertion.
+  traces. L4L-08C then lands block generation and its typing chain in
+  `12040b3e`, `3d97ac16`, `6311fa69`, `48882b9c`, and `67d65928`; complete
+  metadata comparison in `1d280960`; Theory/Verify environment replay in
+  `eeae5282`; the block-wide public raw transaction in `1159c655`; and the
+  metadata/trust audit in `aa10005d`; this closure checkpoint adds the
+  deprecated singleton migration shim and completion records.
 - fixed fork master: `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb`
   on local and `origin/master`
-- current audited semantic checkpoint: the L4L-08B closure extends the
+- current audited semantic checkpoint: the L4L-08C closure extends the
   `jcb/formalization` L4L-07 base, which integrates Nat, Bool, List, Option,
   Prod, Unit/`PUnit`,
   Empty, Or, And, Eq, HEq, Fin, Vector, and Acc into one executable kernel
@@ -132,12 +136,20 @@ checkpoint (2026-08-07):
   than unchecked parallel data. `ValidatedBlock.WF` and
   `ValidationCertificate` pair that structure with arbitrary-block
   normalization, one shared semantic result universe, all-family staging, and
-  constructor semantics. Tree/TreeList and IndexedTree/IndexedTreeList execute
-  the exact ordinary validator phases, compute recursive targets including
-  Pi-hidden sibling recursion, and inhabit the complete semantic packages;
-  mismatch/reordering negatives pin the nearest kernel phases. They explicitly
-  remain outside the singleton generation/insertion path. Exact closure guards
-  and the full completion gate are recorded in the roadmap.
+  constructor semantics. `BlockGenerationChecked` then constructs one motive
+  and recursor per family, one globally flattened minor/rule inventory, and
+  target-family-directed recursive calls. The transaction exposes exact
+  all-family/all-constructor/all-recursor/rule phase boundaries and preserves
+  ordering, lookup, freshness, and rule membership. Tree/TreeList and
+  IndexedTree/IndexedTreeList execute the exact ordinary validator phases,
+  compute recursive targets including Pi-hidden sibling recursion, compare
+  every family/constructor/recursor/rule metadata field represented by Theory,
+  and replay the actual metadata maps through `TrEnv'.inductBlock` to final
+  aligned environments. The raw public `addInduct` consumes the same block
+  artifact; `addInductSingleton` retains the former one-family raw wrapper for
+  a deprecation window. Mismatch/reordering negatives still pin the nearest
+  kernel phases. Exact closure guards and the full completion gate are recorded
+  in the roadmap.
 - generation-readiness source checkpoint: `bbb45e0e` builds on the exact
   arbitrary-length
   producer witnesses and source-indexed semantic inputs that return a
@@ -276,15 +288,16 @@ to the replacement.
 ## D006 — staged computational inductive semantics
 
 - **Status:** remote-development (the earlier checkpoints are published-fork;
-  the elimination/K/edge, complete L4L-07 singleton-parity, and L4L-08B
-  mutual-validation extensions are pushed at `jcb/formalization`, while
+  the elimination/K/edge, complete L4L-07 singleton-parity, and L4L-08C
+  mutual-generation extensions are pushed at `jcb/formalization`, while
   publication to `jcb/induct` remains pending)
 - **Commits:** `71f2eae`, `06e904d`, `201c12f`, `efb2a2b`, the generalized
   single-family integration in `472a6f0`, the L4L-06A/B checkpoints
   `37e2ada6` and `41e1126b`, the L4L-06C edge checkpoints `0c6b178c` and
   `df58a3a0`, and the L4L-07 checkpoints `bb39cb2a`, `cc132cdd`,
-  `fefb93fe`, `9910e14e`, the L4L-08A checked representation `79e1ae4f`, and
-  the current L4L-08B validation/normalization closure
+  `fefb93fe`, `9910e14e`, the L4L-08A checked representation `79e1ae4f`, the
+  L4L-08B validation/normalization closure, the L4L-08C implementation chain
+  through `aa10005d`, and this closure/audit follow-up
 - **Delta:** replace the three placeholder inductive declarations with real
   `VInductDecl.WF`, computational generation, generated recursor/iota rules,
   and sorry-free preservation for the accepted class. The published
@@ -302,9 +315,12 @@ to the replacement.
   index/result/constructor data, and cross-family target ordinals. L4L-08B
   adds executable block family/constructor validation, all-family staging,
   arbitrary-block normalization semantics, and exact environment-indexed
-  checked/validated certificates. This remains an underapproximation of the
-  full kernel: mutual generation and insertion are not implemented, nor are
-  nested inductives and the later generated-pattern/projection corpus.
+  checked/validated certificates. L4L-08C adds block-wide motive, minor,
+  recursor, and rule generation; proves every artifact well formed and the
+  exact four-phase transaction ordered; and replays both real mutual fixtures
+  through the implementation environment. This remains an underapproximation
+  of the full kernel: nested inductives and the later
+  generated-pattern/projection corpus are not implemented.
 - **Ix impact:** discharges ix gap A1's three upstream `sorryAx` origins and is
   the semantic basis for constructing `InductiveOracle`; current breadth is
   not yet enough for all ix blocks.
@@ -314,11 +330,13 @@ to the replacement.
   and universe order, names/counts/flags, recursor types, rule metadata, and
   every iota RHS; supporting `IndexedVec`, elimination/K, and edge
   differentials; exact Tree/TreeList and indexed-mutual representation,
-  validator execution, recursive-target matrices, and semantic certificates;
-  exact parameter/result-universe mismatch and reordering failures with
-  singleton transaction rejection; Theory/Verify and default Lake builds;
-  full Nix/flake gate; exact axiom guards for the matrix, singleton
-  inventories, and mutual validation roots.
+  validator execution, recursive-target matrices, semantic/generation
+  certificates, complete family/constructor/recursor/rule metadata, global
+  minor/rule order, and Theory/Verify environment replay; exact
+  parameter/result-universe mismatch and reordering failures at their
+  validation phases; Theory/Verify and default Lake builds; full Nix/flake
+  gate; exact axiom guards for the matrix, singleton inventories, mutual
+  generation/preservation roots, and replay outputs.
 - **Upstream issue/PR:** TBD; submit in the staged PR sequence described in the
   roadmap rather than as one proof mega-diff.
 - **Removal condition:** upstream exposes kernel-complete checked inductive
@@ -326,23 +344,30 @@ to the replacement.
 
 ## D007 — consumer-facing inductive transaction API
 
-- **Status:** published-fork
-- **Commits:** the normalized core in `472a6f0` and the proof-carrying
-  non-identity API in `6a77882`
+- **Status:** remote-development (the one-family base is published-fork; the
+  L4L-08C block transaction is pushed at `jcb/formalization`)
+- **Commits:** the normalized core in `472a6f0`, the proof-carrying
+  non-identity API in `6a77882`, and the block transaction/public migration
+  through `12040b3e`, `48882b9c`, `67d65928`, `1159c655`, and `aa10005d`
 - **Delta:** `VEnv.AddInductSuccess`, `AddInductGenerationTrace`,
   `addInductGeneration`, `GenerationCertificate`, and
   `addInductCertified`, with generated type/constructor/recursor lookups,
   rule membership, freshness, monotonicity, atomic success/failure, and
-  `Ordered` preservation. The legacy `VEnv.addInduct` is an exact identity-view
-  compatibility wrapper; the certified API erases its proof and computes
-  through the same normalized transaction.
+  `Ordered` preservation. L4L-08C adds `BlockGenerationCertificate`,
+  `AddInductBlockGenerationTrace`, `addInductBlockGeneration`, and
+  `addInductBlockCertified`, with list-wide phase invariants and consequences.
+  The raw `VEnv.addInduct` now selects the same block artifact and no longer
+  performs singleton projection. The former one-family raw computation remains
+  available as deprecated `addInductSingleton`; the normalized
+  `addInductGeneration`/`addInductCertified` APIs remain unchanged.
 - **Ix impact:** lets `InductiveOracle` consume checked block results without
   unfolding `Option` binds or `foldlM`, and gives ix a Theory-only
   non-identity certificate boundary without importing Verify.
 - **Tests:** identity and non-identity transaction fixtures, consumer-style
   `IndexedVec`, `Acc`, AliasFormer, AnnotatedPi, `PUnit`, and `Empty`
-  transactions, collision and atomicity fixtures, Theory/Verify and flake
-  gates, and exact axiom guards for the public trace/WF roots.
+  transactions; raw/certified Tree/TreeList and indexed-mutual transactions;
+  collision and atomicity fixtures; Theory/Verify and flake gates; and exact
+  axiom guards for the public singleton/block trace and WF roots.
 - **Upstream issue/PR:** TBD; submit after or with the Stage-3 preservation PR.
 - **Removal condition:** equivalent stable postconditions are upstream and ix
   no longer imports the fork-only names.
@@ -350,11 +375,12 @@ to the replacement.
 ## D008 — Verify inductive-environment alignment
 
 - **Status:** remote-development (the earlier checkpoints are published-fork;
-  complete L4L-07 actual-metadata execution alignment is pushed at
-  `jcb/formalization`)
+  complete L4L-07 actual-metadata execution alignment and L4L-08C mutual
+  replay are pushed at `jcb/formalization`)
 - **Commits:** initial alignment in `472a6f0`, extended through `a1d8943`,
   `6a77882`, `bc37d43`, `37e2ada6`, `41e1126b`, `0c6b178c`, `df58a3a0`,
-  `bb39cb2a`, `cc132cdd`, `fefb93fe`, and the current L4L-07 closure
+  `bb39cb2a`, `cc132cdd`, `fefb93fe`, the L4L-07 closure, and the L4L-08C
+  replay/audit checkpoints `eeae5282` and `aa10005d`
 - **Delta:** replace the empty `AddInduct` relation with a data-bearing trace
   for `inductInfo`, ordered `ctorInfo` insertion, `recInfo`, and the generated
   defeq fold. Fold realization, lookup, freshness, monotonicity,
@@ -371,26 +397,33 @@ to the replacement.
   the real `Array.size` metadata in Vector's dependency slice. The normalized
   trace owns the exact generation and its semantic certificate instead of
   restating artifacts; the legacy phase fixtures remain implementation inputs,
-  not competing public inventories.
+  not competing public inventories. L4L-08C adds `AddInductBlockTrace` and
+  list-wide constant phases, proves fold realization and monotonicity, and
+  extends `TrEnv'`/`Aligned` with an atomic mutual-block case. Both real mutual
+  maps replay every family, constructor, and recursor in kernel order before
+  installing the globally flattened rules.
 - **Ix impact:** establishes the implementation-to-Theory environment bridge
   needed to translate checked inductive blocks and eventually construct
-  `InductiveOracle`; later I2-I4 replay fixtures plus the I5 pattern package
-  are still required before that oracle is constructible.
+  `InductiveOracle`; non-nested mutual replay is now closed, while nested and
+  generated-pattern/projection work is still required before that oracle is
+  constructible for the full kernel surface.
 - **Tests:** `lake build Lean4Lean.Verify.Environment.SingletonParityReplay`;
   executable 14/5/19 inventory equalities; every actual-metadata transaction,
   final alignment, and derived output ordering; exact Fin/Vector dependency
   maps; the pre-Nat value-preservation regression; full Theory/Verify, default
   Lake, Nix, and flake gates; compile-time trust manifests for the fixed,
-  normalization, combined replay, and output-ordering roots.
+  normalization, combined replay, output-ordering, and both mutual-block roots.
 - **Axiom note:** the guarded roots currently inherit `sorryAx` through
   `TrConstVal → TrExprS → TrProj`, plus the standard logical baseline. E1
   declares no new axiom. The fixed replay inventory additionally reaches the
   three existing persistent-map contracts while proving its `SMap` insertion
   freshness. The normalization and combined inventories expose the already
   classified pointer, expression/level, persistent-array/map, and syntax
-  contracts inherited from their ordinary producer evidence. All four public
-  roots have exact compile-time manifests; Track P/T2 must remove or narrowly
-  justify these inherited dependencies before release.
+  contracts inherited from their ordinary producer evidence. The mutual replay
+  roots use only the already classified `TrProj` and persistent-map frontier;
+  fixture-local native-decision axioms have been removed from their semantic
+  closures. Every public root has an exact compile-time manifest; Track P/T2
+  must remove or narrowly justify these inherited dependencies before release.
 - **Upstream issue/PR:** TBD; submit with or immediately after the staged
   inductive-semantics series.
 - **Removal condition:** upstream has a non-vacuous inductive alignment with
@@ -400,13 +433,14 @@ to the replacement.
 ## D009 — shared checked inductive descriptor
 
 - **Status:** remote-development (the base descriptor is published-fork; its
-  K-target, empty/singleton, complete singleton-parity, and mutual-validation
+  K-target, empty/singleton, complete singleton-parity, and mutual-generation
   extensions are pushed at `jcb/formalization`)
 - **Commit:** introduced and integrated in `472a6f0`; K-target retention is
   extended through `41e1126b`, with zero-/one-constructor coverage through
   `0c6b178c`, `df58a3a0`, singleton closure through `9910e14e`, and the
-  L4L-08A checked representation `79e1ae4f`, and the current L4L-08B
-  validation/normalization closure
+  L4L-08A checked representation `79e1ae4f`, the L4L-08B
+  validation/normalization closure, the L4L-08C implementation chain through
+  `aa10005d`, and this closure/audit follow-up
 - **Delta:** add dependent `VInductDecl.Checked`, normalized constructor and
   recursive-argument records, and the computational `checked?` analyzer.
   Define public Stage-3 acceptance as descriptor existence. Route recursor/rule
@@ -431,9 +465,12 @@ to the replacement.
   recursive analysis records sibling targets in `RecArg.targetType`. L4L-08B
   adds `NormalizedCheckedBlock`, `ValidatedBlock`, their computational
   analyzers, block-wide WF relations, and the Theory-only
-  `ValidationCertificate`. The old `Checked`/`checked?` generation descriptor
-  remains the explicit singleton compatibility path until L4L-08C supplies
-  mutual generation.
+  `ValidationCertificate`. L4L-08C adds `BlockGenerationChecked` and its
+  family/constructor semantic WF package, block-wide generated artifacts, and
+  `BlockGenerationCertificate`. The old `Checked`/`checked?`,
+  `GenerationChecked`, and certified one-family path remain available; raw
+  compatibility is exposed by deprecated `addInductSingleton`, while public
+  `stage3`/`addInduct` consume the non-singleton block descriptor.
 - **Ix impact:** creates the stable, consumer-neutral analysis object that E2
   can use to assemble `InductiveOracle` without duplicating raw declaration or
   de Bruijn analysis. The semantic certificate gives ix an environment-indexed
@@ -446,10 +483,10 @@ to the replacement.
   `PUnit`, and `Empty`; exact Tree/TreeList and indexed-mutual source order,
   shared parameters, per-family indices/results, constructor order,
   recursive field positions/indices, and target ordinals; exact mutual
-  normalization/checked WF certificates and parameter/result-universe/
-  reordering phase checks; explicit rejection by the singleton
-  `stage3`/`addInduct` path; semantic bridge fixtures for `IndexedVec`; negative
-  fixtures for loose data,
+  normalization/checked/generation WF certificates and
+  parameter/result-universe/reordering phase checks; computed mutual
+  motive/minor/recursor/rule inventories and public raw transaction success;
+  semantic bridge fixtures for `IndexedVec`; negative fixtures for loose data,
   internal/pre-existing name collisions, self-referential parameters, invalid
   levels, malformed results/spines, parameter counts, and universe-count
   mismatches; exact Theory/Verify build; 20-sorry audit; Theory import boundary;
@@ -636,9 +673,9 @@ to the replacement.
   This split is deliberate: no second hand-assembled produced package is
   claimed for `AnnotatedParam`.
 - **Current gap:** the singleton normalization differential, omitted-local
-  dependency boundary, and mutual result-universe equality/block staging are
-  closed through L4L-08B. Mutual generation and replay remain assigned to
-  L4L-08C.
+  dependency boundary, mutual result-universe equality/block staging, mutual
+  generation, and environment replay are closed through L4L-08C. Nested
+  transformation and producer packaging remain assigned to L4L-09.
 - **Tests:** exact positive AliasFormer, AnnotatedPi, and `IndexedVec`
   whole-call equations; positive semantic/transaction/replay fixtures for the
   first two plus the complete checkpoint semantic/transaction/E1 replay for
