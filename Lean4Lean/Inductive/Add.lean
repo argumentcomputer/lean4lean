@@ -2469,14 +2469,18 @@ def getElimLevel (stats : InductiveStats) (indTypes : Array InductiveType) :
   let {lparams, ..} ← read
   return .param (getFreshElimParam lparams)
 
+/-- The constructor-shape fragment of the kernel's K-target test. A visible
+Pi is accepted only while it belongs to the shared parameter prefix; the
+first visible field makes the target ineligible. -/
+def isKTargetCtor (nparams : Nat) : Nat → Expr → Bool
+  | i, .forallE _ _ body _ => i < nparams && isKTargetCtor nparams (i + 1) body
+  | _, _ => true
+
 def isKTarget (stats : InductiveStats) (indTypes : Array InductiveType) : M Bool := do
   let #[indType] := indTypes | return false
   unless stats.resultLevel.isZero do return false
   let [ctor] := indType.ctors | return false
-  let rec loop i
-    | .forallE _ _ body _ => i < stats.params.size && loop (i + 1) body
-    | _ => true
-  return loop 0 ctor.type
+  return isKTargetCtor stats.params.size 0 ctor.type
 
 @[inline] def getIIndices (stats : InductiveStats) (t : Expr) : Nat × Array Expr :=
   ((isValidIndApp? stats t).get!, t.getAppArgs[stats.params.size:])

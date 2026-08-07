@@ -342,8 +342,137 @@ theorem recLevelParams_eq_large
 
 end ElimLevelExecution
 
+/-- Exact traversal of the constructor-shape fragment of `isKTarget`. The
+trace stops at the first visible non-parameter binder, just as the executable
+does; it never treats K eligibility as evidence for large elimination. -/
+inductive KTargetCtorTrace (nparams : Nat) :
+    (source : Expr) → (argIdx : Nat) → (result : Bool) → Type where
+  | parameter
+      (argIdx : Nat) (name : Name) (domain body : Expr)
+      (binderInfo : BinderInfo)
+      (isParameter : argIdx < nparams)
+      (tail : KTargetCtorTrace nparams body (argIdx + 1) result) :
+      KTargetCtorTrace nparams (.forallE name domain body binderInfo)
+        argIdx result
+  | field
+      (argIdx : Nat) (name : Name) (domain body : Expr)
+      (binderInfo : BinderInfo)
+      (isField : argIdx ≥ nparams) :
+      KTargetCtorTrace nparams (.forallE name domain body binderInfo)
+        argIdx false
+  | terminal
+      (source : Expr) (argIdx : Nat)
+      (notForall : source.isForall = false) :
+      KTargetCtorTrace nparams source argIdx true
+
+namespace KTargetCtorTrace
+
+/-- Erasing the retained constructor trace yields the exact Boolean consumed
+by `isKTarget`. -/
+theorem run
+    (trace : KTargetCtorTrace nparams source argIdx result) :
+    isKTargetCtor nparams argIdx source = result := by
+  induction trace with
+  | parameter argIdx name domain body binderInfo isParameter tail ih =>
+      simp [isKTargetCtor, isParameter, ih]
+  | field argIdx name domain body binderInfo isField =>
+      have notParameter : ¬ argIdx < nparams := Nat.not_lt.mpr isField
+      simp [isKTargetCtor, notParameter]
+  | terminal source argIdx notForall =>
+      cases source <;> simp_all [isKTargetCtor, Expr.isForall]
+
+/-- Compute the K-target constructor branch while retaining the exact point
+where the parameter prefix ends. -/
+def buildExecution (nparams : Nat) :
+    (source : Expr) → (argIdx : Nat) →
+      Sigma fun result => KTargetCtorTrace nparams source argIdx result
+  | .bvar i, argIdx => ⟨true, .terminal (.bvar i) argIdx rfl⟩
+  | .fvar id, argIdx => ⟨true, .terminal (.fvar id) argIdx rfl⟩
+  | .mvar id, argIdx => ⟨true, .terminal (.mvar id) argIdx rfl⟩
+  | .sort level, argIdx => ⟨true, .terminal (.sort level) argIdx rfl⟩
+  | .const name levels, argIdx =>
+      ⟨true, .terminal (.const name levels) argIdx rfl⟩
+  | .app fn arg, argIdx => ⟨true, .terminal (.app fn arg) argIdx rfl⟩
+  | .lam name domain body binderInfo, argIdx =>
+      ⟨true, .terminal (.lam name domain body binderInfo) argIdx rfl⟩
+  | .forallE name domain body binderInfo, argIdx =>
+      if isParameter : argIdx < nparams then
+        let ⟨result, tail⟩ := buildExecution nparams body (argIdx + 1)
+        ⟨result, .parameter argIdx name domain body binderInfo
+          isParameter tail⟩
+      else
+        ⟨false, .field argIdx name domain body binderInfo
+          (Nat.le_of_not_gt isParameter)⟩
+  | .letE name type value body nondep, argIdx =>
+      ⟨true, .terminal (.letE name type value body nondep) argIdx rfl⟩
+  | .lit literal, argIdx => ⟨true, .terminal (.lit literal) argIdx rfl⟩
+  | .mdata data expr, argIdx =>
+      ⟨true, .terminal (.mdata data expr) argIdx rfl⟩
+  | .proj typeName idx struct, argIdx =>
+      ⟨true, .terminal (.proj typeName idx struct) argIdx rfl⟩
+
+end KTargetCtorTrace
+
+/-- The singleton-Prop branch data of one exact `isKTarget` execution. -/
+structure KTargetSingletonExecution
+    (stats : InductiveStats) (indTypes : Array InductiveType)
+    (result : Bool) where
+  indType : InductiveType
+  indTypes_eq : indTypes = #[indType]
+  resultLevelZero : stats.resultLevel.isZero = true
+  ctor : Constructor
+  ctors_eq : indType.ctors = [ctor]
+  trace : KTargetCtorTrace stats.params.size ctor.type 0 result
+
+/-- One exact successful execution of `isKTarget`. The ordinary monadic
+equation is always retained; a singleton candidate additionally exposes the
+constructor-prefix trace that decided its flag. -/
+structure KTargetExecution
+    (stats : InductiveStats) (indTypes : Array InductiveType)
+    (context : Context) where
+  result : Bool
+  singleton : Option (KTargetSingletonExecution stats indTypes result)
+  run_eq : isKTarget stats indTypes context = .ok result
+
+namespace KTargetExecution
+
+def buildExecution (stats : InductiveStats)
+    (indTypes : Array InductiveType) (context : Context) :
+    Except Exception (KTargetExecution stats indTypes context) :=
+  match hrun : isKTarget stats indTypes context with
+  | .error error => .error error
+  | .ok result =>
+      match _htypes : indTypes with
+      | #[indType] =>
+          if hzero : stats.resultLevel.isZero then
+            match hctors : indType.ctors with
+            | [ctor] =>
+                let ⟨traceResult, trace⟩ :=
+                  KTargetCtorTrace.buildExecution stats.params.size ctor.type 0
+                if hsame : traceResult = result then
+                  .ok {
+                    result
+                    singleton := some {
+                      indType
+                      indTypes_eq := rfl
+                      resultLevelZero := hzero
+                      ctor
+                      ctors_eq := hctors
+                      trace := hsame ▸ trace }
+                    run_eq := hrun }
+                else
+                  .error <| .other
+                    "K-target trace disagrees with ordinary result"
+            | _ => .ok { result, singleton := none, run_eq := hrun }
+          else
+            .ok { result, singleton := none, run_eq := hrun }
+      | _ => .ok { result, singleton := none, run_eq := hrun }
+
+end KTargetExecution
+
 /-- The normalization/validation execution extended through constructor
-declaration and the exact elimination-level decision used by `run`.  This is
+declaration and the exact elimination-level and K-target decisions used by
+`run`.  This is
 an operational refinement only: erasing the added fields leaves the existing
 normalization candidate and checker equations unchanged. -/
 structure NormalizationEliminationExecution
@@ -358,6 +487,8 @@ structure NormalizationEliminationExecution
         env := normalization.familyEnv } = .ok constructorEnv
   elimination : ElimLevelExecution normalization.stats types.toArray
     { normalization.validationContext with env := constructorEnv }
+  kTarget : KTargetExecution normalization.stats types.toArray
+    { normalization.validationContext with env := constructorEnv }
 
 namespace NormalizationEliminationExecution
 
@@ -367,7 +498,7 @@ def candidate
   execution.normalization.candidate
 
 /-- Execute the existing detailed candidate producer, declare the already
-validated constructors, and retain the eliminator decision at precisely the
+validated constructors, and retain both recursor decisions at precisely the
 post-constructor context used by `run`. -/
 def buildExecution
     (nparams : Nat) (types : List InductiveType)
@@ -387,11 +518,17 @@ def buildExecution
       match ElimLevelExecution.buildExecution normalization.stats
           types.toArray eliminationContext with
       | .error error => .error error
-      | .ok elimination => .ok {
-          normalization
-          constructorEnv
-          declareConstructorsRun := by simpa [constructorContext] using hdeclare
-          elimination := by simpa [eliminationContext] using elimination }
+      | .ok elimination =>
+          match KTargetExecution.buildExecution normalization.stats
+              types.toArray eliminationContext with
+          | .error error => .error error
+          | .ok kTarget => .ok {
+              normalization
+              constructorEnv
+              declareConstructorsRun := by
+                simpa [constructorContext] using hdeclare
+              elimination := by simpa [eliminationContext] using elimination
+              kTarget := by simpa [eliminationContext] using kTarget }
 
 /-- The level list supplied to generated recursive calls. -/
 def recLevels

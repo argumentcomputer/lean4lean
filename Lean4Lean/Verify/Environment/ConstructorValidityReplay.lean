@@ -11828,7 +11828,7 @@ noncomputable def cvmAddInductTraceChecked :
       cvmReplayMap cvmCertifiedFinalEnv := by
   refine cvmProducedGenerationCandidatePackage.package.addInductTrace
     cvmReplayTypeMap cvmTypeEnv cvmReplayCtorMap cvmReplayCtorEnv
-    cvmReplayRecEnv ?_ ?_ ?_ ⟨rfl⟩
+    cvmReplayRecEnv ?_ ?_ ?_ ?_ ⟨rfl⟩
   · exact {
       info := constructorValidityMatrixInfo
       kind_eq := by
@@ -11859,6 +11859,7 @@ noncomputable def cvmAddInductTraceChecked :
         exact cvmReplayRec_fresh
       env_add := rfl
       map_add := rfl }
+  · decide
 
 theorem cvm_addInduct_checked :
     AddInduct ({} : ConstMap) VEnv.empty constructorValidityMatrixDecl
@@ -12068,7 +12069,7 @@ noncomputable def prbAddInductTraceChecked :
       prbReplayMap prbCertifiedFinalEnv := by
   refine prbProducedGenerationCandidatePackage.package.addInductTrace
     prbReplayTypeMap prbTypeEnv prbReplayCtorMap prbReplayCtorEnv
-    prbReplayRecEnv ?_ ?_ ?_ ⟨rfl⟩
+    prbReplayRecEnv ?_ ?_ ?_ ?_ ⟨rfl⟩
   · exact {
       info := propRecursiveBoundaryInfo
       kind_eq := by
@@ -12099,6 +12100,7 @@ noncomputable def prbAddInductTraceChecked :
         exact prbReplayRec_fresh
       env_add := rfl
       map_add := rfl }
+  · decide
 
 theorem prb_addInduct_checked :
     AddInduct ({} : ConstMap) VEnv.empty propRecursiveBoundaryDecl

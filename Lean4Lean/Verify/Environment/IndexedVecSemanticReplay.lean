@@ -2916,7 +2916,7 @@ noncomputable def indexedVecSemanticAddInductTraceChecked :
       indexedVecFinalEnv := by
   refine indexedVecSemanticProducedGenerationCandidatePackage.package.addInductTrace
     indexedVecTypeMap indexedVecTypeEnv indexedVecCtorMap
-    indexedVecCtorEnv indexedVecRecEnv ?_ ?_ ?_ ⟨rfl⟩
+    indexedVecCtorEnv indexedVecRecEnv ?_ ?_ ?_ ?_ ⟨rfl⟩
   · exact {
       info := indexedVecInfo
       kind_eq := by simp [indexedVecInfo, InductConstantKind.Matches]
@@ -2957,6 +2957,7 @@ noncomputable def indexedVecSemanticAddInductTraceChecked :
         exact indexedVecRec_fresh
       env_add := rfl
       map_add := rfl }
+  · decide
 
 theorem indexedVecSemantic_addInduct_checked :
     AddInduct natMap natFinalEnv indexedVecDecl indexedVecMap

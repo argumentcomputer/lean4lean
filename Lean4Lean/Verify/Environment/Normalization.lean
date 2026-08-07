@@ -5042,6 +5042,7 @@ def GenerationCandidatePackage.addInductTrace
       package.generation.block.sourceType.ctors ctorMap ctorEnv)
     (addRec : AddInductConstant .recursor ctorMap ctorEnv
       (inductGenerationRecVal package.generation) m₂ recEnv)
+    (recK : RecursorKMatches addRec.info package.generation.kTarget)
     (addRules : AddDefEqs recEnv
       package.generation.generatedRules env₂) :
     AddInductTrace m₁ env package.source m₂ env₂ where
@@ -5055,6 +5056,7 @@ def GenerationCandidatePackage.addInductTrace
   addType := addType
   addCtors := addCtors
   addRec := addRec
+  recK := recK
   addRules := addRules
 
 /-- Optional outer provenance for packages obtained by the executable

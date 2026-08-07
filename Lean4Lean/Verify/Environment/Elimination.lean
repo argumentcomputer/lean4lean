@@ -90,6 +90,41 @@ theorem small_result_iff
 
 end CheckerElimLevelRun
 
+/-- Exact alignment between the ordinary K-target execution and the Boolean
+retained by Theory generation. This flag is certified independently of the
+elimination-mode decision. -/
+structure CheckerKTargetRun
+    {source : VInductDecl} (generation : VInductDecl.GenerationChecked source)
+    {stats : InductiveStats} {indTypes : Array InductiveType}
+    {context : Context}
+    (execution : KTargetExecution stats indTypes context) : Type where
+  result_eq : generation.kTarget = execution.result
+
+namespace CheckerKTargetRun
+
+def build?
+    {source : VInductDecl} (generation : VInductDecl.GenerationChecked source)
+    {stats : InductiveStats} {indTypes : Array InductiveType}
+    {context : Context}
+    (execution : KTargetExecution stats indTypes context) :
+    Option (CheckerKTargetRun generation execution) :=
+  if h : generation.kTarget = execution.result then
+    some ⟨h⟩
+  else
+    none
+
+theorem result_true_iff
+    (run : CheckerKTargetRun generation execution) :
+    execution.result = true ↔ generation.kTarget = true := by
+  rw [run.result_eq]
+
+theorem result_false_iff
+    (run : CheckerKTargetRun generation execution) :
+    execution.result = false ↔ generation.kTarget = false := by
+  rw [run.result_eq]
+
+end CheckerKTargetRun
+
 /-- Executable alignment between an exact ordinary elimination run and the
 mode/universe layout consumed by one Theory generation artifact.
 
@@ -108,6 +143,7 @@ structure CheckerEliminationRun
     execution.normalization.validationContext.lparams.length
   mode_eq : generation.elimination =
     checkerElimMode execution.elimination.large.result
+  kTarget_eq : generation.kTarget = execution.kTarget.result
   recUvars_eq : generation.recUvars = execution.recLevelParams.length
   recLevels_eq : execution.recLevels.mapM
     (VLevel.ofLevel execution.recLevelParams) = some generation.recLevels
@@ -128,17 +164,20 @@ def build?
         execution.normalization.validationContext.lparams.length then
       if hmode : generation.elimination =
           checkerElimMode execution.elimination.large.result then
-        if hrecUvars : generation.recUvars =
-            execution.recLevelParams.length then
-          if hlevels : execution.recLevels.mapM
-              (VLevel.ofLevel execution.recLevelParams) =
-                some generation.recLevels then
-            some {
-              nparams_eq := hparams
-              sourceUvars_eq := huvars
-              mode_eq := hmode
-              recUvars_eq := hrecUvars
-              recLevels_eq := hlevels }
+        if hkTarget : generation.kTarget = execution.kTarget.result then
+          if hrecUvars : generation.recUvars =
+              execution.recLevelParams.length then
+            if hlevels : execution.recLevels.mapM
+                (VLevel.ofLevel execution.recLevelParams) =
+                  some generation.recLevels then
+              some {
+                nparams_eq := hparams
+                sourceUvars_eq := huvars
+                mode_eq := hmode
+                kTarget_eq := hkTarget
+                recUvars_eq := hrecUvars
+                recLevels_eq := hlevels }
+            else none
           else none
         else none
       else none
@@ -173,6 +212,16 @@ theorem small_result_iff
         simpa [checkerElimMode, hresult] using run.mode_eq
       simp [hmode]
 
+theorem kTarget_result_true_iff
+    (run : CheckerEliminationRun generation execution) :
+    execution.kTarget.result = true ↔ generation.kTarget = true := by
+  rw [run.kTarget_eq]
+
+theorem kTarget_result_false_iff
+    (run : CheckerEliminationRun generation execution) :
+    execution.kTarget.result = false ↔ generation.kTarget = false := by
+  rw [run.kTarget_eq]
+
 end CheckerEliminationRun
 
 /--
@@ -188,6 +237,12 @@ info: 'Lean4Lean.AddInductive.CheckerElimLevelRun.large_result_iff' depends on a
 -/
 #guard_msgs in
 #print axioms CheckerElimLevelRun.large_result_iff
+
+/--
+info: 'Lean4Lean.AddInductive.CheckerKTargetRun.result_true_iff' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms CheckerKTargetRun.result_true_iff
 
 end AddInductive
 end Lean4Lean

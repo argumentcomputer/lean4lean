@@ -323,6 +323,7 @@ theorem nat_addInduct :
         exact natRec_fresh
       env_add := rfl
       map_add := rfl }
+    recK := by decide
     addRules := ⟨rfl⟩ }⟩
   exact .cons {
       info := natZeroInfo
@@ -583,6 +584,7 @@ theorem seedNat_addInduct :
         exact seedNatRec_fresh
       env_add := rfl
       map_add := rfl }
+    recK := by decide
     addRules := ⟨rfl⟩ }⟩
   exact .cons {
       info := natZeroInfo
@@ -836,6 +838,7 @@ theorem eq_addInduct :
         exact eqRec_fresh
       env_add := rfl
       map_add := rfl }
+    recK := by decide
     addRules := ⟨rfl⟩ }⟩
   exact .cons {
     info := eqReflInfo
@@ -1327,6 +1330,7 @@ theorem indexedVec_addInduct :
         exact indexedVecRec_fresh
       env_add := rfl
       map_add := rfl }
+    recK := by decide
     addRules := ⟨rfl⟩ }⟩
   exact .cons {
       info := indexedVecNilInfo
@@ -1636,6 +1640,7 @@ theorem acc_addInduct :
         exact accRec_fresh
       env_add := rfl
       map_add := rfl }
+    recK := by decide
     addRules := ⟨rfl⟩ }⟩
   exact .cons {
     info := accIntroInfo
@@ -1954,6 +1959,7 @@ private def aliasFormerAddInductTraceWith
         exact aliasFormerRec_fresh
       env_add := rfl
       map_add := rfl }
+    recK := by decide
     addRules := ⟨rfl⟩ }
   exact .cons {
     info := aliasFormerMkInfo
@@ -2257,6 +2263,7 @@ private def aliasRecAddInductTraceWith
         exact aliasRecRec_fresh
       env_add := rfl
       map_add := rfl }
+    recK := by decide
     addRules := ⟨rfl⟩ }
   exact .cons {
     info := aliasRecMkInfo
@@ -10356,7 +10363,7 @@ noncomputable def annotatedPiAddInductTraceChecked :
       annotatedPiMap annotatedPiFinalEnv := by
   refine annotatedPiProducedGenerationCandidatePackage.package.addInductTrace
     annotatedPiTypeMap annotatedPiTypeEnv annotatedPiCtorMap
-    annotatedPiCtorEnv annotatedPiRecEnv annotatedPiAddType ?_ ?_ ⟨rfl⟩
+    annotatedPiCtorEnv annotatedPiRecEnv annotatedPiAddType ?_ ?_ ?_ ⟨rfl⟩
   · exact .cons {
       info := annotatedPiMkInfo
       kind_eq := by simp [annotatedPiMkInfo, InductConstantKind.Matches]
@@ -10377,6 +10384,7 @@ noncomputable def annotatedPiAddInductTraceChecked :
         exact annotatedPiRec_fresh
       env_add := rfl
       map_add := rfl }
+  · decide
 
 theorem annotatedPi_addInduct_checked :
     AddInduct outParamMap outParamEnv annotatedPiRawDecl
@@ -10652,6 +10660,7 @@ def annotatedParamAddInductTraceChecked :
         exact annotatedParamRec_fresh
       env_add := rfl
       map_add := rfl }
+    recK := by decide
     addRules := ⟨rfl⟩ }
   exact .cons {
     info := annotatedParamMkInfo
@@ -10764,7 +10773,7 @@ noncomputable def aliasFormerAddInductTraceChecked :
     aliasFormerAddInductTraceWith aliasFormerGenerationCertificate.wf
   aliasFormerProducedGenerationCandidatePackage.package.addInductTrace
     replay.typeMap replay.typeEnv replay.ctorMap replay.ctorEnv replay.recEnv
-    replay.addType replay.addCtors replay.addRec replay.addRules
+    replay.addType replay.addCtors replay.addRec replay.recK replay.addRules
 
 theorem aliasFormer_addInduct_checked :
     AddInduct typeFamilyAliasMap typeFamilyAliasEnv

@@ -639,6 +639,7 @@ private def normalizationMatrixAddInductTraceWith
         exact normalizationMatrixRec_fresh
       env_add := rfl
       map_add := rfl }
+    recK := by decide
     addRules := ⟨rfl⟩ }
   exact .cons {
     info := normalizationMatrixMkInfo

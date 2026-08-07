@@ -118,6 +118,19 @@ def inductGenerationRecVal {decl : VInductDecl}
     (generation : decl.GenerationChecked) : VConstVal :=
   ⟨generation.recursor, .str generation.block.sourceType.name "rec"⟩
 
+/-- The implementation recursor metadata carries the same K-like reduction
+flag retained by Theory generation. Keeping this separate from `TrConstant`
+prevents a type-correct recursor with the wrong reduction behavior from
+satisfying an inductive alignment trace. -/
+def RecursorKMatches (info : ConstantInfo) (kTarget : Bool) : Prop :=
+  match info with
+  | .recInfo rec => rec.k = kTarget
+  | _ => False
+
+instance (info : ConstantInfo) (kTarget : Bool) :
+    Decidable (RecursorKMatches info kTarget) := by
+  cases info <;> simp [RecursorKMatches] <;> infer_instance
+
 /-- Data-bearing trace of a complete normalized inductive transaction: one
 `inductInfo`, the constructor `ctorInfo`s in declaration order, one `recInfo`,
 and finally the generated Theory iota equations. The retained generation
@@ -138,6 +151,7 @@ structure AddInductTrace (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
     generation.block.sourceType.ctors ctorMap ctorEnv
   addRec : AddInductConstant .recursor ctorMap ctorEnv
     (inductGenerationRecVal generation) m₂ recEnv
+  recK : RecursorKMatches addRec.info generation.kTarget
   addRules : AddDefEqs recEnv generation.generatedRules env₂
 
 /-- Proposition-valued environment alignment, preserving the public shape of

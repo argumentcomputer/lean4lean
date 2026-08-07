@@ -289,6 +289,24 @@ def largeElim (ni : Nat) (ty : VInductiveType) : Bool :=
   | [c] => subsingletonOK U T np ni c.type
   | _ => false
 
+/-- The constructor-shape fragment of the kernel's K-target test. Only the
+visible shared-parameter prefix may precede the constructor result. -/
+def isKTargetCtor (nparams : Nat) : Nat → VExpr → Bool
+  | i, .forallE _ body =>
+      i < nparams && isKTargetCtor nparams (i + 1) body
+  | _, _ => true
+
+/-- Whether a checked one-family declaration receives the kernel's K-like
+recursor reduction flag. This decision is deliberately independent of
+`largeElim`: K eligibility must never be used to bypass the ordinary
+large-elimination criterion. -/
+def isKTarget (np : Nat) (resultLevel : VLevel)
+    (ty : VInductiveType) : Bool :=
+  resultLevel == .zero &&
+    match ty.ctors with
+    | [ctor] => isKTargetCtor np 0 ctor.type
+    | _ => false
+
 /-- A family type is checked before its own constant is declared, so neither
 its parameter nor index domains may already mention the family. This is the
 one-family form of `checkInductiveTypes`' pre-environment type check. -/
@@ -519,6 +537,8 @@ structure Checked (source : VInductDecl) where
   elimination : ElimMode
   elimination_eq : elimination =
     eliminationMode source.uvars type.name source.nparams indices.length type
+  kTarget : Bool
+  kTarget_eq : kTarget = isKTarget source.nparams resultLevel type
   names : List Name
   names_eq : names = generatedNames type
   constructors : List CheckedCtor
@@ -546,6 +566,8 @@ def checked? : (decl : VInductDecl) → Option decl.Checked
           result_eq := hresult
           elimination := eliminationMode U ty.name np indices.length ty
           elimination_eq := rfl
+          kTarget := isKTarget np l ty
+          kTarget_eq := rfl
           names := generatedNames ty
           names_eq := rfl
           constructors := ty.ctors.map (CheckedCtor.ofDirect U ty.name np indices.length)
@@ -574,6 +596,8 @@ theorem Checked.unique {decl : VInductDecl}
     injection hb
   have helim : a.elimination = b.elimination := by
     rw [a.elimination_eq, b.elimination_eq, htype, hindices]
+  have hkTarget : a.kTarget = b.kTarget := by
+    rw [a.kTarget_eq, b.kTarget_eq, htype, hlevel]
   have hnames : a.names = b.names := by
     rw [a.names_eq, b.names_eq, htype]
   have hctors : a.constructors = b.constructors := by
@@ -592,12 +616,13 @@ theorem Checked.analyzer_isSome {decl : VInductDecl}
       rcases checked with
         ⟨type, types_eq, params, params_eq,
           indices, indices_eq, resultLevel, result_eq,
-          elimination, elimination_eq, names, names_eq,
+          elimination, elimination_eq, kTarget, kTarget_eq, names, names_eq,
           constructors, constructors_eq, accepted⟩
       change types = [type] at types_eq
       subst types
       subst params
       subst indices
+      subst kTarget
       subst names
       subst constructors
       change (VExpr.dropN np type.type).resultOf =
@@ -1180,6 +1205,11 @@ abbrev elimination {source : VInductDecl} (gen : GenerationChecked source) :
     ElimMode :=
   gen.block.checked.elimination
 
+/-- K-like reduction flag retained by the single checked analysis. It is
+metadata for reduction and does not select the elimination mode. -/
+abbrev kTarget {source : VInductDecl} (gen : GenerationChecked source) : Bool :=
+  gen.block.checked.kTarget
+
 /-- Universe arity of this generated recursor. -/
 abbrev recUvars {source : VInductDecl} (gen : GenerationChecked source) : Nat :=
   gen.elimination.recUvars source.uvars
@@ -1317,6 +1347,10 @@ namespace Checked
 @[simp] theorem identityGeneration_elimination {decl : VInductDecl}
     (checked : decl.Checked) :
     checked.identityGeneration.elimination = checked.elimination := rfl
+
+@[simp] theorem identityGeneration_kTarget {decl : VInductDecl}
+    (checked : decl.Checked) :
+    checked.identityGeneration.kTarget = checked.kTarget := rfl
 
 @[simp] theorem identityGeneration_recUvars {decl : VInductDecl}
     (checked : decl.Checked) :
