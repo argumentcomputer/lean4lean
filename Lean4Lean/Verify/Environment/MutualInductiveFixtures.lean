@@ -28,6 +28,7 @@ local instance : Inhabited VEnv := ⟨.empty⟩
 /-- Quote a kernel recursor type using the recursor metadata's own universe
 parameter order. -/
 syntax "kernelRecConstant08C%" ident : term
+syntax "kernelConstVType08C%" ident : term
 
 elab_rules : term
   | `(kernelRecConstant08C% $n:ident) => do
@@ -37,6 +38,116 @@ elab_rules : term
     let type ← Lean4Lean.Meta.expandExpr info.type
     let type ← Lean4Lean.Meta.ofExpr info.levelParams {} type
     return toExpr ({ uvars := info.levelParams.length, type } : VConstant)
+
+/-- Quote a stored kernel metadata type in that record's own universe order.
+Together with the explicit record-field checks below, this observes universe
+permutations as well as the translated type expression. -/
+elab_rules : term
+  | `(kernelConstVType08C% $n:ident) => do
+    let name ← realizeGlobalConstNoOverloadWithInfo n
+    let info ← getConstInfo name
+    let type ← Lean4Lean.Meta.expandExpr info.type
+    let type ← Lean4Lean.Meta.ofExpr info.levelParams {} type
+    return toExpr type
+
+/-! ## Complete block metadata parity -/
+
+/-- One block-wide comparison between the retained Theory generation and all
+kernel inductive metadata.  The nested lists preserve family/constructor
+ownership and split each recursor's local rules out of the globally flattened
+Theory rule list. -/
+structure MutualKernelBlockRow where
+  source : VInductDecl
+  generation : BlockGenerationChecked source
+  inductInfos : List ConstantInfo
+  ctorInfos : List (List ConstantInfo)
+  recInfos : List ConstantInfo
+  familyTypes : List VExpr
+  ctorTypes : List (List VExpr)
+  recTypes : List VExpr
+  ruleRhs : List (List VExpr)
+
+namespace MutualKernelBlockRow
+
+def ctorMatches (row : MutualKernelBlockRow)
+    (family : NormalizedFamily) (info : ConstantInfo)
+    (constructor : NormalizedCtor) (storedType : VExpr) : Bool :=
+  match info with
+  | .ctorInfo ctor =>
+      ctor.name == constructor.raw.name &&
+        ctor.levelParams.length == row.source.uvars &&
+        ctor.induct == family.raw.name &&
+        ctor.numParams == row.source.nparams &&
+        ctor.numFields == constructor.view.fields.length &&
+        !ctor.isUnsafe && storedType == constructor.raw.type
+  | _ => false
+
+def ctorsMatch (row : MutualKernelBlockRow)
+    (family : NormalizedFamily) :
+    List ConstantInfo → List NormalizedCtor → List VExpr → Bool
+  | [], [], [] => true
+  | info :: infos, constructor :: constructors, storedType :: storedTypes =>
+      row.ctorMatches family info constructor storedType &&
+        row.ctorsMatch family infos constructors storedTypes
+  | _, _, _ => false
+
+def recursorMatches (row : MutualKernelBlockRow)
+    (family : NormalizedFamily) (offset : Nat)
+    (info : ConstantInfo) (storedType : VExpr)
+    (rhs : List VExpr) : Bool :=
+  match info with
+  | .recInfo rec =>
+      rec.name == .str family.raw.name "rec" &&
+        rec.levelParams.length == row.generation.recUvars &&
+        rec.all == row.source.types.map (·.name) &&
+        rec.numParams == row.source.nparams &&
+        rec.numIndices == family.view.indices.length &&
+        rec.numMotives == row.generation.familyCount &&
+        rec.numMinors == row.generation.minorCount &&
+        rec.k == row.generation.kTarget &&
+        !rec.isUnsafe &&
+        rec.rules.map (fun rule => (rule.ctor, rule.nfields)) ==
+          family.ctorPairs.map (fun constructor =>
+            (constructor.raw.name, constructor.view.fields.length)) &&
+        storedType == (row.generation.recursor family).type &&
+        rhs == ((row.generation.generatedRules.drop offset).take
+          family.ctorPairs.length |>.map (·.rhs))
+  | _ => false
+
+def familiesMatch (row : MutualKernelBlockRow) :
+    List NormalizedFamily → List ConstantInfo → List (List ConstantInfo) →
+      List ConstantInfo → List VExpr → List (List VExpr) → List VExpr →
+      List (List VExpr) → Nat → Bool
+  | [], [], [], [], [], [], [], [], _ => true
+  | family :: families, inductInfo :: inductInfos,
+      ctorInfos :: ctorInfosTail, recInfo :: recInfos,
+      familyType :: familyTypes, ctorTypes :: ctorTypesTail,
+      recType :: recTypes, ruleRhs :: ruleRhsTail, offset =>
+      (match inductInfo with
+        | .inductInfo induct =>
+            induct.name == family.raw.name &&
+              induct.levelParams.length == row.source.uvars &&
+              induct.numParams == row.source.nparams &&
+              induct.numIndices == family.view.indices.length &&
+              induct.all == row.source.types.map (·.name) &&
+              induct.ctors == family.raw.ctors.map (·.name) &&
+              induct.numNested == 0 && !induct.isUnsafe &&
+              familyType == family.raw.type
+        | _ => false) &&
+      row.ctorsMatch family ctorInfos family.ctorPairs ctorTypes &&
+      row.recursorMatches family offset recInfo recType ruleRhs &&
+      row.familiesMatch families inductInfos ctorInfosTail recInfos
+        familyTypes ctorTypesTail recTypes ruleRhsTail
+        (offset + family.ctorPairs.length)
+  | _, _, _, _, _, _, _, _, _ => false
+
+/-- Every list must agree position-for-position; no truncated family,
+constructor, recursor, or rule inventory can satisfy the comparison. -/
+def agrees (row : MutualKernelBlockRow) : Bool :=
+  row.familiesMatch row.generation.families row.inductInfos row.ctorInfos
+    row.recInfos row.familyTypes row.ctorTypes row.recTypes row.ruleRhs 0
+
+end MutualKernelBlockRow
 
 /-! ## Executable kernel validation -/
 
@@ -216,6 +327,55 @@ example : indexedTreeListNilKernelRuleRhs =
     indexedTreeGeneration.generatedRules[2].rhs := rfl
 example : indexedTreeListConsKernelRuleRhs =
     indexedTreeGeneration.generatedRules[3].rhs := rfl
+
+/-- Complete kernel/Theory metadata row for the unindexed mutual block. -/
+def treeKernelBlockRow : MutualKernelBlockRow where
+  source := treeDecl
+  generation := treeGeneration
+  inductInfos := [treeKernelInfo, treeListKernelInfo]
+  ctorInfos := [
+    [treeLeafKernelInfo, treeNodeKernelInfo, treeBranchKernelInfo],
+    [treeListNilKernelInfo, treeListConsKernelInfo]]
+  recInfos := [treeRecKernelInfo, treeListRecKernelInfo]
+  familyTypes := [kernelConstVType08C% Tree,
+    kernelConstVType08C% TreeList]
+  ctorTypes := [
+    [kernelConstVType08C% Tree.leaf, kernelConstVType08C% Tree.node,
+      kernelConstVType08C% Tree.branch],
+    [kernelConstVType08C% TreeList.nil,
+      kernelConstVType08C% TreeList.cons]]
+  recTypes := [kernelConstVType08C% Tree.rec,
+    kernelConstVType08C% TreeList.rec]
+  ruleRhs := [
+    [treeLeafKernelRuleRhs, treeNodeKernelRuleRhs,
+      treeBranchKernelRuleRhs],
+    [treeListNilKernelRuleRhs, treeListConsKernelRuleRhs]]
+
+#guard treeKernelBlockRow.agrees
+
+/-- Complete kernel/Theory metadata row for the indexed mutual block. -/
+def indexedTreeKernelBlockRow : MutualKernelBlockRow where
+  source := indexedTreeDecl
+  generation := indexedTreeGeneration
+  inductInfos := [indexedTreeKernelInfo, indexedTreeListKernelInfo]
+  ctorInfos := [
+    [indexedTreeLeafKernelInfo, indexedTreeNodeKernelInfo],
+    [indexedTreeListNilKernelInfo, indexedTreeListConsKernelInfo]]
+  recInfos := [indexedTreeRecKernelInfo, indexedTreeListRecKernelInfo]
+  familyTypes := [kernelConstVType08C% IndexedTree,
+    kernelConstVType08C% IndexedTreeList]
+  ctorTypes := [
+    [kernelConstVType08C% IndexedTree.leaf,
+      kernelConstVType08C% IndexedTree.node],
+    [kernelConstVType08C% IndexedTreeList.nil,
+      kernelConstVType08C% IndexedTreeList.cons]]
+  recTypes := [kernelConstVType08C% IndexedTree.rec,
+    kernelConstVType08C% IndexedTreeList.rec]
+  ruleRhs := [
+    [indexedTreeLeafKernelRuleRhs, indexedTreeNodeKernelRuleRhs],
+    [indexedTreeListNilKernelRuleRhs, indexedTreeListConsKernelRuleRhs]]
+
+#guard indexedTreeKernelBlockRow.agrees
 
 def indexedTreeKernelType : InductiveType where
   name := indexedTreeKernelInfo.name
