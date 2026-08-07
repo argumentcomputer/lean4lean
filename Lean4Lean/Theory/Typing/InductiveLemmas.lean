@@ -4063,6 +4063,15 @@ theorem BlockGenerationChecked.family_ordinal_lt
     (gen.family_getElem?_ordinal hfamily)
   exact h
 
+/-- Selecting a retained family by its checked ordinal recovers its exact
+raw constant name. -/
+@[simp] theorem BlockGenerationChecked.familyNameAt_ordinal
+    {source : VInductDecl} (gen : BlockGenerationChecked source)
+    {family : NormalizedFamily} (hfamily : family ∈ gen.families) :
+    gen.familyNameAt family.view.ordinal = family.raw.name := by
+  simp [BlockGenerationChecked.familyNameAt,
+    gen.family_getElem?_ordinal hfamily]
+
 /-- Positional lookup through the progressively weakened mutual motive
 telescope. -/
 theorem BlockGenerationChecked.motiveTypesAux_getElem?
@@ -5563,6 +5572,13 @@ theorem recType_isType {family : NormalizedFamily}
       Γ, Base, A, LiftedIs, Is, ni, d, k, q, K,
       VExpr.liftTelN_length, VExpr.inst, List.append_assoc,
       Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using happ⟩
+
+/-- Every family-selected mutual recursor constant is well formed in the
+environment containing the complete raw block. -/
+theorem recursor_wf {family : NormalizedFamily}
+    (hfamily : family ∈ gen.families) :
+    (gen.recursor family).WF env :=
+  S.recType_isType hfamily
 
 end BlockGenerationEnv
 
@@ -12845,6 +12861,71 @@ private theorem addInductBlockGeneration_constructors_ordered
     constructor.ctor.raw.type
   rw [gen.flatCtor_uvars hconstructor]
   exact hgen.rawCtor_isType hconstructor
+
+/-- Assemble the mutual generation invariant once every raw family and every
+globally flattened constructor has been inserted. -/
+private theorem addInductBlockGeneration_constructor_generationEnv
+    {source : VInductDecl} {gen : source.BlockGenerationChecked}
+    {blockEnv : VEnv}
+    (H : AddInductBlockGenerationTrace env env' gen)
+    (hgen : gen.WF env blockEnv) (ordC : H.ctorEnv.Ordered) :
+    BlockGenerationEnv gen H.ctorEnv := by
+  obtain ⟨hleET, hfamilyLookup, -⟩ :=
+    ctorFold_spec source.blockTypeConstants H.addTypes
+  obtain ⟨hleTC, hctorLookup, -⟩ :=
+    ctorFold_spec source.blockConstructorConstants H.addCtors
+  have hstage : env.stageInductiveTypes source.types = some blockEnv :=
+    hgen.blockWF.1.1
+  rw [← blockTypeConstants_foldlM_eq_stageInductiveTypes env source,
+    H.addTypes] at hstage
+  have htypeEnv : H.typeEnv = blockEnv := Option.some.inj hstage
+  rw [htypeEnv] at hleET hfamilyLookup hleTC
+  have hfamilies : ∀ family ∈ gen.families,
+      H.ctorEnv.constants family.raw.name =
+        some family.raw.toVConstant := by
+    intro family hfamily
+    apply hleTC.constants
+    apply hfamilyLookup family.raw.toVConstVal
+    simp only [VInductDecl.blockTypeConstants, List.mem_map]
+    refine ⟨family.raw, ?_, rfl⟩
+    rw [← gen.families_map_raw]
+    exact List.mem_map.2 ⟨family, hfamily, rfl⟩
+  have hctors : ∀ constructor ∈ gen.flatCtors,
+      H.ctorEnv.constants constructor.ctor.raw.name =
+        some constructor.ctor.raw.toVConstant := by
+    intro constructor hconstructor
+    apply hctorLookup constructor.ctor.raw
+    rw [← gen.flatCtors_map_raw]
+    exact List.mem_map.2 ⟨constructor, hconstructor, rfl⟩
+  exact hgen.toBlockGenerationEnv (hleET.trans hleTC) hleTC ordC
+    hfamilies hctors
+
+/-- Preserve ordering while inserting the family-indexed recursor list. -/
+private theorem addInductBlockGeneration_recursors_ordered
+    {source : VInductDecl} {gen : source.BlockGenerationChecked}
+    (H : AddInductBlockGenerationTrace env env' gen)
+    (S : BlockGenerationEnv gen H.ctorEnv) :
+    H.recEnv.Ordered := by
+  apply constFold_ordered gen.recursors S.ord ?_ H.addRecs
+  intro recursor hrecursor
+  simp only [BlockGenerationChecked.recursors, List.mem_map] at hrecursor
+  obtain ⟨family, hfamily, rfl⟩ := hrecursor
+  exact S.recursor_wf hfamily
+
+/-- The recursor fold stores the exact generated recursor selected by every
+family ordinal. -/
+private theorem addInductBlockGeneration_recursor_lookup
+    {source : VInductDecl} {gen : source.BlockGenerationChecked}
+    (H : AddInductBlockGenerationTrace env env' gen)
+    {family : NormalizedFamily} (hfamily : family ∈ gen.families) :
+    H.recEnv.constants (.str family.raw.name "rec") =
+      some (gen.recursor family) := by
+  let recursor : VConstVal :=
+    ⟨gen.recursor family, .str family.raw.name "rec"⟩
+  have hrecursor : recursor ∈ gen.recursors :=
+    List.mem_map.2 ⟨family, hfamily, rfl⟩
+  simpa [recursor] using
+    (ctorFold_spec gen.recursors H.addRecs).2.1 recursor hrecursor
 
 /-- Preserve ordering across the raw family insertion, the first generated
 component of an inductive transaction. -/
