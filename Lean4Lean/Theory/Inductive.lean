@@ -2758,6 +2758,14 @@ structure NormalizedBlockCtor.WF {source : VInductDecl}
   recursive : ∀ recursive ∈ constructor.ctor.view.recursive,
     ∃ family ∈ gen.families,
       family.view.ordinal = recursive.targetType ∧
+        (∃ B,
+          constructor.ctor.view.fields[recursive.fieldIndex]? = some B ∧
+            B = VExpr.forallN recursive.binders
+              (VExpr.appN
+                (.const family.raw.name (VLevel.params source.uvars))
+                (VExpr.bvarRevRange
+                    (recursive.fieldIndex + recursive.binders.length)
+                    source.nparams ++ recursive.indices))) ∧
         recursive.WF source.uvars env gen.validated.resultLevel
           family.view.indices
           ((constructor.ctor.view.fields.take recursive.fieldIndex).reverse ++

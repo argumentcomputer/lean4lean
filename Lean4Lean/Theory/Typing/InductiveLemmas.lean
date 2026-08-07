@@ -2733,9 +2733,9 @@ theorem NormalizedBlockCtor.WF.mono
   emittedResult := h.emittedResult.mono henv
   owner := h.owner
   recursive := fun recursive hrecursive => by
-    obtain ⟨family, hfamily, hordinal, hwf⟩ :=
+    obtain ⟨family, hfamily, hordinal, hfield, hwf⟩ :=
       h.recursive recursive hrecursive
-    exact ⟨family, hfamily, hordinal,
+    exact ⟨family, hfamily, hordinal, hfield,
       ⟨hwf.1.mono henv, hwf.2.mono henv⟩⟩
   resultSpine := h.resultSpine.mono henv
 
@@ -3983,6 +3983,163 @@ theorem BlockGenerationChecked.motiveTypes_length
     gen.motiveTypes.length = gen.familyCount := by
   unfold BlockGenerationChecked.motiveTypes
   exact gen.motiveTypesAux_length gen.families 0
+
+/-- Pairing arbitrary stored families with a dependent checked-family spine
+does not change the checked ordinal at any surviving position. -/
+theorem CheckedFamilies.pairNormalizedFamilies_getElem?_ordinal
+    {source : VInductDecl} {params : List VExpr}
+    {ordinal : Nat} {types : List VInductiveType}
+    (families : CheckedFamilies source params ordinal types) :
+    ∀ {raws i family},
+      (pairNormalizedFamilies raws families.data)[i]? = some family →
+      family.view.ordinal = ordinal + i := by
+  induction families with
+  | nil =>
+    intro raws i family h
+    simp [CheckedFamilies.data, pairNormalizedFamilies] at h
+  | @cons ordinal type types head tail ih =>
+    intro raws i family h
+    cases raws with
+    | nil => simp [pairNormalizedFamilies] at h
+    | cons raw raws =>
+      cases i with
+      | zero =>
+        simp only [CheckedFamilies.data, pairNormalizedFamilies,
+          List.getElem?_cons_zero] at h
+        injection h with hfamily
+        subst family
+        rfl
+      | succ i =>
+        simp only [CheckedFamilies.data, pairNormalizedFamilies,
+          List.getElem?_cons_succ] at h
+        have hord := ih h
+        omega
+
+/-- Every retained family is found at its checked source ordinal. -/
+theorem BlockGenerationChecked.family_getElem?_ordinal
+    {source : VInductDecl} (gen : BlockGenerationChecked source)
+    {family : NormalizedFamily} (hfamily : family ∈ gen.families) :
+    gen.families[family.view.ordinal]? = some family := by
+  obtain ⟨i, hi⟩ := List.mem_iff_getElem?.1 hfamily
+  have hi' :
+      (pairNormalizedFamilies source.types
+        gen.block.checked.families.data)[i]? = some family := by
+    simpa [BlockGenerationChecked.families,
+      NormalizedCheckedBlock.familyPairs] using hi
+  have hord :=
+    CheckedFamilies.pairNormalizedFamilies_getElem?_ordinal
+      gen.block.checked.families hi'
+  have hord' : family.view.ordinal = i := by
+    simpa using hord
+  rwa [hord']
+
+theorem BlockGenerationChecked.family_ordinal_lt
+    {source : VInductDecl} (gen : BlockGenerationChecked source)
+    {family : NormalizedFamily} (hfamily : family ∈ gen.families) :
+    family.view.ordinal < gen.familyCount := by
+  obtain ⟨h, -⟩ := List.getElem?_eq_some_iff.1
+    (gen.family_getElem?_ordinal hfamily)
+  exact h
+
+/-- Positional lookup through the progressively weakened mutual motive
+telescope. -/
+theorem BlockGenerationChecked.motiveTypesAux_getElem?
+    {source : VInductDecl} (gen : BlockGenerationChecked source) :
+    ∀ (families : List NormalizedFamily) (i q : Nat),
+      (gen.motiveTypesAux families i)[q]? =
+        families[q]?.map fun family =>
+          (gen.motiveType family).liftN (i + q)
+  | [], _, q => by simp [BlockGenerationChecked.motiveTypesAux]
+  | _ :: _, _, 0 => by simp [BlockGenerationChecked.motiveTypesAux]
+  | _ :: families, i, q + 1 => by
+    simp only [BlockGenerationChecked.motiveTypesAux,
+      List.getElem?_cons_succ]
+    rw [gen.motiveTypesAux_getElem? families (i + 1) q,
+      show i + 1 + q = i + (q + 1) by omega]
+
+theorem BlockGenerationChecked.motiveTypes_getElem?_ordinal
+    {source : VInductDecl} (gen : BlockGenerationChecked source)
+    {family : NormalizedFamily} (hfamily : family ∈ gen.families) :
+    gen.motiveTypes[family.view.ordinal]? =
+      some ((gen.motiveType family).liftN family.view.ordinal) := by
+  rw [show gen.motiveTypes = gen.motiveTypesAux gen.families 0 from rfl,
+    gen.motiveTypesAux_getElem?]
+  rw [gen.family_getElem?_ordinal hfamily]
+  simp
+
+/-- Syntactic lifting law for any member of the mutual motive telescope. -/
+theorem BlockGenerationChecked.motiveType_liftN
+    {source : VInductDecl} (gen : BlockGenerationChecked source)
+    (family : NormalizedFamily) (n : Nat) :
+    (gen.motiveType family).liftN n =
+      VExpr.forallN (VExpr.liftTelN n (gen.idxTel family) 0)
+        (.forallE
+          (VExpr.appN
+            (.const family.raw.name gen.sourceLevels)
+            (VExpr.bvarRevRange (n + (gen.idxTel family).length)
+                source.nparams ++
+              VExpr.bvarRevRange 0 (gen.idxTel family).length))
+          (.sort gen.motiveLevel)) := by
+  rw [show gen.motiveType family =
+      VExpr.forallN (gen.idxTel family)
+        (.forallE
+          (VExpr.appN
+            (.const family.raw.name gen.sourceLevels)
+            (VExpr.bvarRevRange (gen.idxTel family).length source.nparams ++
+              VExpr.bvarRevRange 0 (gen.idxTel family).length))
+          (.sort gen.motiveLevel)) from rfl,
+    VExpr.liftN_forallN]
+  refine congrArg _ ?_
+  show VExpr.forallE _ _ = VExpr.forallE _ _
+  refine congr (congrArg _ ?_) rfl
+  rw [VExpr.liftN_appN, List.map_append,
+    bvarRevRange_liftN_ge _ _ _ _ (by omega),
+    VExpr.bvarRevRange_liftN_high _ _ _ _ (by omega)]
+  rfl
+
+/-- Apply a selected mutual motive variable to its target-family indices and
+a typed major premise. -/
+theorem BlockGenerationChecked.motiveVarApp_hasType
+    {source : VInductDecl} (gen : BlockGenerationChecked source)
+    (family : NormalizedFamily) {env : VEnv} {l : VLevel}
+    {Γ : List VExpr} {K q : Nat} {idxs : List VExpr} {a : VExpr}
+    (hM : env.HasType gen.recUvars Γ (.bvar K)
+      ((gen.motiveType family).liftN (q + K + 1)))
+    (hidx : env.SpineWF gen.recUvars Γ
+      (VExpr.forallN
+        (VExpr.liftTelN (q + K + 1) (gen.idxTel family) 0)
+        (.sort l))
+      idxs (.sort l))
+    (hlen : idxs.length = (gen.idxTel family).length)
+    (ha : env.HasType gen.recUvars Γ a
+      (VExpr.appN (.const family.raw.name gen.sourceLevels)
+        (VExpr.bvarRevRange (q + K + 1) source.nparams ++ idxs))) :
+    env.HasType gen.recUvars Γ
+      (VExpr.appN (.bvar K) (idxs ++ [a]))
+      (.sort gen.motiveLevel) := by
+  rw [gen.motiveType_liftN family] at hM
+  have hshape := hidx.retarget
+    (by simpa only [VExpr.liftTelN_length] using hlen)
+    (.forallE
+      (VExpr.appN (.const family.raw.name gen.sourceLevels)
+        (VExpr.bvarRevRange
+            (q + K + 1 + (gen.idxTel family).length)
+            source.nparams ++
+          VExpr.bvarRevRange 0 (gen.idxTel family).length))
+      (.sort gen.motiveLevel))
+  rw [VExpr.instRev_forallE_sort, VExpr.instRev_appN,
+    VExpr.instRev_closedN _
+      (C := .const family.raw.name gen.sourceLevels) trivial,
+    List.map_append,
+    VExpr.map_instRev_bvarRevRange_ge _ _ _ (by rw [hlen]; omega),
+    show q + K + 1 + (gen.idxTel family).length - idxs.length =
+      q + K + 1 from by rw [hlen]; omega,
+    VExpr.bvarRevRange_congr' 0 hlen.symm,
+    VExpr.map_instRev_bvarRevRange] at hshape
+  rw [hlen] at hshape
+  have hApp := hshape.hasType_appN hM
+  rw [VExpr.appN_append]
+  exact HasType.app hApp (by simpa using ha)
 
 namespace BlockGenerationEnv
 
