@@ -230,15 +230,55 @@ def stage3Ctor (ni : Nat) : Nat → VExpr → Bool
   | j, .forallE B rest => stage3Field U T np ni j B && stage3Ctor ni (j+1) rest
   | j, e => isRecField U T np ni j e
 
-/-- The kernel's subsingleton-elimination criterion, strengthened
-syntactically: every non-recursive field appears literally among the
-result's index arguments. -/
+/-- Levels that are structurally forced to evaluate to zero. This is the
+environment-free fragment needed to recognize proof-valued constructor
+fields; Verify supplies the exact ordinary-checker sort observations. -/
+def _root_.Lean4Lean.VLevel.isDefinitelyZero : VLevel → Bool
+  | .zero => true
+  | .max l₁ l₂ => l₁.isDefinitelyZero && l₂.isDefinitelyZero
+  | .imax _ l₂ => l₂.isDefinitelyZero
+  | .param _ | .succ _ => false
+
+/-- Partial local type synthesis used only to recognize fields whose inferred
+sort is structurally `Prop`. Constants and terms requiring reduction remain
+unknown and are conservatively treated as data. -/
+def inferLocalType? (Γ : List VExpr) : VExpr → Option VExpr
+  | .bvar i => Γ[i]?
+  | .sort l => some (.sort (.succ l))
+  | .const _ _ => none
+  | .app f a => do
+    let .forallE _ body ← inferLocalType? Γ f | none
+    return body.inst a
+  | .lam A body => do
+    let bodyType ← inferLocalType? (A :: Γ) body
+    return .forallE A bodyType
+  | .forallE A body => do
+    let .sort u ← inferLocalType? Γ A | none
+    let .sort v ← inferLocalType? (A :: Γ) body | none
+    return .sort (.imax u v)
+
+/-- Whether the partial local synthesis proves that a binder is a proof. -/
+def knownProofField (Γ : List VExpr) (B : VExpr) : Bool :=
+  match inferLocalType? Γ B with
+  | some (.sort l) => l.isDefinitelyZero
+  | _ => false
+
+/-- The kernel's singleton large-elimination criterion. Recursive arguments
+and proof fields impose no recovery condition; every remaining data field
+must occur literally in the constructor result's index spine. The proof-field
+test is a conservative environment-free reflection here and is connected to
+the exact checker result by Verify. -/
 def subsingletonOK (ni : Nat) (ct : VExpr) : Bool :=
-  let Bs := ctorFields ct
+  let Bs := ctorFields (VExpr.dropN np ct)
   let m := Bs.length
-  let ridx := recFieldIdxs np (VExpr.resultOf ct)
-  Bs.zipIdx.all fun (B, j) =>
-    (recArg? U T np ni j B).isSome || ridx.contains (.bvar (m-1-j))
+  let ridx := recFieldIdxs np (VExpr.resultOf (VExpr.dropN np ct))
+  let rec loop (Γ : List VExpr) (j : Nat) : List VExpr → Bool
+    | [] => true
+    | B :: Bs =>
+      ((recArg? U T np ni j B).isSome || knownProofField Γ B ||
+        ridx.contains (.bvar (m-1-j))) &&
+      loop (B :: Γ) (j+1) Bs
+  loop (VExpr.telN np ct).reverse 0 Bs
 
 /-- Large elimination: a never-zero result sort, or the (syntactic)
 subsingleton criterion. -/
@@ -246,7 +286,7 @@ def largeElim (ni : Nat) (ty : VInductiveType) : Bool :=
   (sortLevel np ty).isNeverZero ||
   match ty.ctors with
   | [] => true
-  | [c] => subsingletonOK U T np ni (VExpr.dropN np c.type)
+  | [c] => subsingletonOK U T np ni c.type
   | _ => false
 
 /-- A family type is checked before its own constant is declared, so neither
@@ -265,7 +305,6 @@ def stage3DirectCore (U np : Nat) (ty : VInductiveType) : Bool :=
     | .sort l => decide (l.WF U)
     | _ => false) &&
   typeFormerOK np ty &&
-  largeElim U ty.name np ni ty &&
   ty.ctors.all fun c => c.uvars == U &&
     VExpr.telN np c.type == VExpr.telN np ty.type &&
     stage3Ctor U ty.name np ni 0 (VExpr.dropN np c.type)
@@ -389,12 +428,65 @@ def Normalization.WF {source : VInductDecl} (norm : Normalization source)
         raw.ctors view.ctors
 
 /-- Whether the recursor may eliminate into a fresh universe or is confined
-to `Prop`. I2 will make the small case constructible; the current direct
-indexed slice produces `large` descriptors only. -/
+to `Prop`. -/
 inductive ElimMode where
   | large
   | small
   deriving DecidableEq, Repr
+
+/-- Universe-slot offset used by recursor metadata. Large elimination inserts
+the fresh motive universe before the declaration universes; small elimination
+adds no universe parameter. -/
+def ElimMode.offset : ElimMode → Nat
+  | .large => 1
+  | .small => 0
+
+/-- Universe arity of the generated recursor. -/
+abbrev ElimMode.recUvars (mode : ElimMode) (U : Nat) : Nat := U + mode.offset
+
+/-- The motive's result level in the recursor universe context. -/
+def ElimMode.motiveLevel : ElimMode → VLevel
+  | .large => .param 0
+  | .small => .zero
+
+/-- Declaration universes as seen by the recursor. Large elimination shifts
+them past the fresh motive level; small elimination retains their order. -/
+abbrev ElimMode.sourceLevels (mode : ElimMode) (U : Nat) : List VLevel :=
+  VLevel.params' U mode.offset
+
+/-- Identity universe arguments for recursive calls to the generated
+recursor. -/
+abbrev ElimMode.recLevels (mode : ElimMode) (U : Nat) : List VLevel :=
+  VLevel.params (mode.recUvars U)
+
+@[simp] theorem ElimMode.large_offset : ElimMode.large.offset = 1 := rfl
+@[simp] theorem ElimMode.small_offset : ElimMode.small.offset = 0 := rfl
+
+@[simp] theorem ElimMode.large_recUvars (U : Nat) :
+    ElimMode.large.recUvars U = U + 1 := rfl
+
+@[simp] theorem ElimMode.small_recUvars (U : Nat) :
+    ElimMode.small.recUvars U = U := by
+  simp [ElimMode.recUvars, ElimMode.offset]
+
+@[simp] theorem ElimMode.large_sourceLevels (U : Nat) :
+    ElimMode.large.sourceLevels U = VLevel.params' U 1 := rfl
+
+@[simp] theorem ElimMode.small_sourceLevels (U : Nat) :
+    ElimMode.small.sourceLevels U = VLevel.params U := rfl
+
+@[simp] theorem ElimMode.large_motiveLevel :
+    ElimMode.large.motiveLevel = .param 0 := rfl
+
+@[simp] theorem ElimMode.small_motiveLevel :
+    ElimMode.small.motiveLevel = .zero := rfl
+
+/-- Environment-free elimination analysis used by the raw compatibility
+path. Verify's ordinary checker replay refines the singleton criterion with
+the exact inferred field sorts. -/
+def eliminationMode (U : Nat) (T : Name) (np ni : Nat)
+    (ty : VInductiveType) : ElimMode :=
+  if largeElim U T np ni ty then .large else .small
 
 /-- Normalized data for one constructor. -/
 structure CheckedCtor where
@@ -425,7 +517,8 @@ structure Checked (source : VInductDecl) where
   resultLevel : VLevel
   result_eq : VExpr.resultOf (VExpr.dropN source.nparams type.type) = .sort resultLevel
   elimination : ElimMode
-  elimination_eq : elimination = .large
+  elimination_eq : elimination =
+    eliminationMode source.uvars type.name source.nparams indices.length type
   names : List Name
   names_eq : names = generatedNames type
   constructors : List CheckedCtor
@@ -451,7 +544,7 @@ def checked? : (decl : VInductDecl) → Option decl.Checked
           indices_eq := rfl
           resultLevel := l
           result_eq := hresult
-          elimination := .large
+          elimination := eliminationMode U ty.name np indices.length ty
           elimination_eq := rfl
           names := generatedNames ty
           names_eq := rfl
@@ -480,7 +573,7 @@ theorem Checked.unique {decl : VInductDecl}
     rw [← htype, a.result_eq] at hb
     injection hb
   have helim : a.elimination = b.elimination := by
-    rw [a.elimination_eq, b.elimination_eq]
+    rw [a.elimination_eq, b.elimination_eq, htype, hindices]
   have hnames : a.names = b.names := by
     rw [a.names_eq, b.names_eq, htype]
   have hctors : a.constructors = b.constructors := by
@@ -505,7 +598,6 @@ theorem Checked.analyzer_isSome {decl : VInductDecl}
       subst types
       subst params
       subst indices
-      subst elimination
       subst names
       subst constructors
       change (VExpr.dropN np type.type).resultOf =
@@ -540,7 +632,7 @@ theorem Checked.direct_layout {decl : VInductDecl}
       have hdirect := hcore.1
       simp only [stage3DirectCore, Bool.and_eq_true, beq_iff_eq,
         List.all_eq_true] at hdirect
-      obtain ⟨⟨⟨⟨⟨-, hparams⟩, -⟩, -⟩, -⟩, hctors⟩ := hdirect
+      obtain ⟨⟨⟨⟨-, hparams⟩, -⟩, -⟩, hctors⟩ := hdirect
       refine ⟨hparams, fun c hc => ?_⟩
       rw [(hctors c hc).1.2]
       exact hparams
@@ -796,37 +888,40 @@ not a second ad-hoc pass over the declaration. -/
 def stage3 (decl : VInductDecl) : Bool := decl.checked?.isSome
 
 /-- The parameter telescope in the recursor's universe context. -/
-def paramsTel (ty : VInductiveType) : List VExpr :=
-  (VExpr.telN np ty.type).map (VExpr.instL (VLevel.params' U 1))
+def paramsTel (ty : VInductiveType) (mode : ElimMode := .large) : List VExpr :=
+  (VExpr.telN np ty.type).map (VExpr.instL (mode.sourceLevels U))
 
 /-- The index telescope in the recursor's universe context (at parameter
 depth). -/
-def idxTel (ty : VInductiveType) : List VExpr :=
-  (ctorFields (VExpr.dropN np ty.type)).map (VExpr.instL (VLevel.params' U 1))
+def idxTel (ty : VInductiveType) (mode : ElimMode := .large) : List VExpr :=
+  (ctorFields (VExpr.dropN np ty.type)).map
+    (VExpr.instL (mode.sourceLevels U))
 
 /-- `recApp` in the recursor's universe context. -/
-def recApp' (off : Nat) : VExpr :=
-  VExpr.appN (.const T (VLevel.params' U 1)) (VExpr.bvarRevRange off np)
+def recApp' (off : Nat) (mode : ElimMode := .large) : VExpr :=
+  VExpr.appN (.const T (mode.sourceLevels U)) (VExpr.bvarRevRange off np)
 
 /-- `motive : ∀ indices, T params indices → Sort u`, in context
 `params`. -/
-def motiveType (ty : VInductiveType) : VExpr :=
-  let ni := (idxTel U np ty).length
-  VExpr.forallN (idxTel U np ty)
-    (.forallE (VExpr.appN (.const T (VLevel.params' U 1))
+def motiveType (ty : VInductiveType) (mode : ElimMode := .large) : VExpr :=
+  let ni := (idxTel U np ty mode).length
+  VExpr.forallN (idxTel U np ty mode)
+    (.forallE (VExpr.appN (.const T (mode.sourceLevels U))
       (VExpr.bvarRevRange ni np ++ VExpr.bvarRevRange 0 ni))
-      (.sort (.param 0)))
+      (.sort mode.motiveLevel))
 
 /-- Constructor fields in the recursor's universe context (still at
 parameter depth, no motive shift). -/
-def ctorFieldsR (c : VConstVal) : List VExpr :=
-  (ctorFields (VExpr.dropN np c.type)).map (VExpr.instL (VLevel.params' U 1))
+def ctorFieldsR (c : VConstVal) (mode : ElimMode := .large) : List VExpr :=
+  (ctorFields (VExpr.dropN np c.type)).map
+    (VExpr.instL (mode.sourceLevels U))
 
 /-- The recursive positions of a constructor with their index arguments,
 in the recursor's universe context. -/
-def recPairsR (ni : Nat) (c : VConstVal) : List (Nat × List VExpr) :=
+def recPairsR (ni : Nat) (c : VConstVal)
+    (mode : ElimMode := .large) : List (Nat × List VExpr) :=
   (recPairs U T np ni (ctorFields (VExpr.dropN np c.type))).map
-    fun (j, idxs) => (j, idxs.map (VExpr.instL (VLevel.params' U 1)))
+    fun (j, idxs) => (j, idxs.map (VExpr.instL (mode.sourceLevels U)))
 
 /-- A recursive-argument descriptor transported into the recursor's universe
 context. Telescope dependency is preserved because universe instantiation does
@@ -839,31 +934,33 @@ def RecArg.instL (r : RecArg) (ls : List VLevel) : RecArg where
 
 /-- Recursive constructor arguments, including recursive Pi arguments, in the
 recursor universe context. -/
-def recArgsR (ni : Nat) (c : VConstVal) : List RecArg :=
+def recArgsR (ni : Nat) (c : VConstVal)
+    (mode : ElimMode := .large) : List RecArg :=
   (recArgs U T np ni (ctorFields (VExpr.dropN np c.type))).map
-    fun r => r.instL (VLevel.params' U 1)
+    fun r => r.instL (mode.sourceLevels U)
 
 /-- The result index arguments of a constructor, recursor universes (at
 result depth: past the parameters and all fields, no motive). -/
-def ctorIdxs (c : VConstVal) : List VExpr :=
+def ctorIdxs (c : VConstVal) (mode : ElimMode := .large) : List VExpr :=
   (recFieldIdxs np (VExpr.resultOf (VExpr.dropN np c.type))).map
-    (VExpr.instL (VLevel.params' U 1))
+    (VExpr.instL (mode.sourceLevels U))
 
 /-- The minor premise for one constructor, in context `params ++ [motive]`:
 `∀ fields, ∀ ihs, motive idxs (ctor params fields)`, with one induction
 hypothesis per directly recursive field. The fields shift by one for the
 interposed motive. -/
-def minorType (ty : VInductiveType) (c : VConstVal) : VExpr :=
-  let Bs := ctorFieldsR U np c
+def minorType (ty : VInductiveType) (c : VConstVal)
+    (mode : ElimMode := .large) : VExpr :=
+  let Bs := ctorFieldsR U np c mode
   let m := Bs.length
-  let ni := (idxTel U np ty).length
-  let rsP := recPairsR U T np ni c
+  let ni := (idxTel U np ty mode).length
+  let rsP := recPairsR U T np ni c mode
   let r := rsP.length
   VExpr.forallN (VExpr.liftTelN 1 Bs 0)
     (VExpr.forallN (ihsFrom m rsP 0)
       (VExpr.appN (.bvar (m+r))
-        (((ctorIdxs U np c).map fun e => (e.liftN 1 m).liftN r) ++
-          [VExpr.appN (.const c.name (VLevel.params' U 1))
+        (((ctorIdxs U np c mode).map fun e => (e.liftN 1 m).liftN r) ++
+          [VExpr.appN (.const c.name (mode.sourceLevels U))
             (VExpr.bvarRevRange (r+m+1) np ++ VExpr.bvarRevRange r m)])))
 
 /-- Binder telescope of a functional induction hypothesis. Starting from the
@@ -894,35 +991,42 @@ def ihsFromRecArgs (m : Nat) : List RecArg → Nat → List VExpr
 
 /-- General one-family minor premise, extending `minorType` to recursive
 arguments beneath Pi telescopes. -/
-def minorTypeRec (ty : VInductiveType) (c : VConstVal) : VExpr :=
-  let Bs := ctorFieldsR U np c
+def minorTypeRec (ty : VInductiveType) (c : VConstVal)
+    (mode : ElimMode := .large) : VExpr :=
+  let Bs := ctorFieldsR U np c mode
   let m := Bs.length
-  let ni := (idxTel U np ty).length
-  let rs := recArgsR U T np ni c
+  let ni := (idxTel U np ty mode).length
+  let rs := recArgsR U T np ni c mode
   let r := rs.length
   VExpr.forallN (VExpr.liftTelN 1 Bs 0)
     (VExpr.forallN (ihsFromRecArgs m rs 0)
       (VExpr.appN (.bvar (m+r))
-        (((ctorIdxs U np c).map fun e => (e.liftN 1 m).liftN r) ++
-          [VExpr.appN (.const c.name (VLevel.params' U 1))
+        (((ctorIdxs U np c mode).map fun e => (e.liftN 1 m).liftN r) ++
+          [VExpr.appN (.const c.name (mode.sourceLevels U))
             (VExpr.bvarRevRange (r+m+1) np ++ VExpr.bvarRevRange r m)])))
 
-def minorTypesRec (ty : VInductiveType) : List VConstVal → (i : Nat := 0) → List VExpr
-  | [], _ => []
-  | c :: cs, i => VExpr.liftN i (minorTypeRec U T np ty c) :: minorTypesRec ty cs (i+1)
+def minorTypesRec (ty : VInductiveType) : List VConstVal →
+    (i : Nat := 0) → (mode : ElimMode := .large) → List VExpr
+  | [], _, _ => []
+  | c :: cs, i, mode =>
+    VExpr.liftN i (minorTypeRec U T np ty c mode) ::
+      minorTypesRec ty cs (i+1) mode
 
-def recTypeRec (ty : VInductiveType) : VExpr :=
+def recTypeRec (ty : VInductiveType)
+    (mode : ElimMode := .large) : VExpr :=
   let k := ty.ctors.length
-  let ni := (idxTel U np ty).length
-  VExpr.forallN (paramsTel U np ty) <|
-    .forallE (motiveType U T np ty) <|
-      VExpr.forallN (minorTypesRec U T np ty ty.ctors) <|
-        VExpr.forallN (VExpr.liftTelN (k+1) (idxTel U np ty) 0) <|
-          .forallE (VExpr.appN (.const T (VLevel.params' U 1))
+  let ni := (idxTel U np ty mode).length
+  VExpr.forallN (paramsTel U np ty mode) <|
+    .forallE (motiveType U T np ty mode) <|
+      VExpr.forallN (minorTypesRec U T np ty ty.ctors (mode := mode)) <|
+        VExpr.forallN (VExpr.liftTelN (k+1) (idxTel U np ty mode) 0) <|
+          .forallE (VExpr.appN (.const T (mode.sourceLevels U))
             (VExpr.bvarRevRange (ni+k+1) np ++ VExpr.bvarRevRange 0 ni)) <|
             .app (VExpr.appN (.bvar (ni+k+1)) (VExpr.bvarRevRange 1 ni)) (.bvar 0)
 
-def recConstRec (ty : VInductiveType) : VConstant := ⟨U + 1, recTypeRec U T np ty⟩
+def recConstRec (ty : VInductiveType)
+    (mode : ElimMode := .large) : VConstant :=
+  ⟨mode.recUvars U, recTypeRec U T np ty mode⟩
 
 /-- The telescope introduced around a functional recursive call in an iota
 RHS. It is the source Pi telescope transported under the recursor's common
@@ -961,29 +1065,32 @@ def ruleIHs (m k : Nat) : List RecArg → Nat → List VExpr
   | [], _ => []
   | r :: rs, p => (r.ruleIH m k).liftN p :: ruleIHs m k rs (p+1)
 
-def ruleRec (ty : VInductiveType) (i : Nat) (c : VConstVal) : VDefEq :=
+def ruleRec (ty : VInductiveType) (i : Nat) (c : VConstVal)
+    (mode : ElimMode := .large) : VDefEq :=
   let k := ty.ctors.length
-  let Bs := ctorFieldsR U np c
+  let Bs := ctorFieldsR U np c mode
   let m := Bs.length
-  let ni := (idxTel U np ty).length
-  let rs := recArgsR U T np ni c
-  let binders := paramsTel U np ty ++
-    motiveType U T np ty :: minorTypesRec U T np ty ty.ctors ++
+  let ni := (idxTel U np ty mode).length
+  let rs := recArgsR U T np ni c mode
+  let binders := paramsTel U np ty mode ++
+    motiveType U T np ty mode ::
+      minorTypesRec U T np ty ty.ctors (mode := mode) ++
     VExpr.liftTelN (k+1) Bs 0
-  let recBase := VExpr.appN (.const (.str T "rec") (VLevel.params (U+1)))
+  let recBase := VExpr.appN (.const (.str T "rec") (mode.recLevels U))
     (VExpr.bvarRevRange m (np+k+1))
-  let idxR := (ctorIdxs U np c).map fun e => e.liftN (k+1) m
-  let ctorApp := VExpr.appN (.const c.name (VLevel.params' U 1))
+  let idxR := (ctorIdxs U np c mode).map fun e => e.liftN (k+1) m
+  let ctorApp := VExpr.appN (.const c.name (mode.sourceLevels U))
     (VExpr.bvarRevRange (m+k+1) np ++ VExpr.bvarRevRange 0 m)
   let ihs := rs.map fun r => r.ruleCall m k recBase
-  { uvars := U + 1
+  { uvars := mode.recUvars U
     lhs := VExpr.lamN binders (VExpr.appN recBase (idxR ++ [ctorApp]))
     rhs := VExpr.lamN binders
       (VExpr.appN (.bvar (k-1-i+m)) (VExpr.bvarRevRange 0 m ++ ihs))
     type := VExpr.forallN binders (VExpr.appN (.bvar (k+m)) (idxR ++ [ctorApp])) }
 
-def rulesRec (ty : VInductiveType) : List VDefEq :=
-  ty.ctors.zipIdx.map fun (c, i) => ruleRec U T np ty i c
+def rulesRec (ty : VInductiveType)
+    (mode : ElimMode := .large) : List VDefEq :=
+  ty.ctors.zipIdx.map fun (c, i) => ruleRec U T np ty i c mode
 
 /-- Minor premise types in position: the `i`-th lives under
 `params ++ motive` and the previous `i` minors. -/
@@ -1041,17 +1148,20 @@ def rules (ty : VInductiveType) : List VDefEq :=
 namespace NormalizedCtor
 
 /-- Raw field binders transported to the recursor universe context. -/
-def fieldsR (ctor : NormalizedCtor) (U np : Nat) : List VExpr :=
-  (ctor.rawFields np).map (VExpr.instL (VLevel.params' U 1))
+def fieldsR (ctor : NormalizedCtor) (U np : Nat)
+    (mode : ElimMode := .large) : List VExpr :=
+  (ctor.rawFields np).map (VExpr.instL (mode.sourceLevels U))
 
 /-- Normalized recursive classifications transported without re-peeling the
 raw constructor type. -/
-def recArgsR (ctor : NormalizedCtor) (U : Nat) : List RecArg :=
-  ctor.view.recursive.map fun r => r.instL (VLevel.params' U 1)
+def recArgsR (ctor : NormalizedCtor) (U : Nat)
+    (mode : ElimMode := .large) : List RecArg :=
+  ctor.view.recursive.map fun r => r.instL (mode.sourceLevels U)
 
 /-- Normalized constructor-result indices in recursor universes. -/
-def resultIndicesR (ctor : NormalizedCtor) (U : Nat) : List VExpr :=
-  ctor.view.resultIndices.map (VExpr.instL (VLevel.params' U 1))
+def resultIndicesR (ctor : NormalizedCtor) (U : Nat)
+    (mode : ElimMode := .large) : List VExpr :=
+  ctor.view.resultIndices.map (VExpr.instL (mode.sourceLevels U))
 
 end NormalizedCtor
 
@@ -1065,6 +1175,30 @@ below re-runs `recArg?` on raw metadata.
 
 namespace GenerationChecked
 
+/-- Elimination mode retained by the single checked analysis. -/
+abbrev elimination {source : VInductDecl} (gen : GenerationChecked source) :
+    ElimMode :=
+  gen.block.checked.elimination
+
+/-- Universe arity of this generated recursor. -/
+abbrev recUvars {source : VInductDecl} (gen : GenerationChecked source) : Nat :=
+  gen.elimination.recUvars source.uvars
+
+/-- Declaration universes in this recursor's universe context. -/
+abbrev sourceLevels {source : VInductDecl}
+    (gen : GenerationChecked source) : List VLevel :=
+  gen.elimination.sourceLevels source.uvars
+
+/-- Result level of the motive. -/
+abbrev motiveLevel {source : VInductDecl}
+    (gen : GenerationChecked source) : VLevel :=
+  gen.elimination.motiveLevel
+
+/-- Identity universe arguments of recursive recursor calls. -/
+abbrev recLevels {source : VInductDecl}
+    (gen : GenerationChecked source) : List VLevel :=
+  gen.elimination.recLevels source.uvars
+
 /-- Kernel-observable family-parameter telescope in recursor universes.
 
 Lean consumes the four parameter annotations before emission, but otherwise
@@ -1072,12 +1206,12 @@ retains stored syntax rather than replacing reducible aliases by their WHNF. -/
 def paramsTel {source : VInductDecl} (gen : GenerationChecked source) :
     List VExpr :=
   gen.block.generationParams.map
-    (VExpr.instL (VLevel.params' source.uvars 1))
+    (VExpr.instL gen.sourceLevels)
 
 /-- Raw index-binder telescope in recursor universes. -/
 def idxTel {source : VInductDecl} (gen : GenerationChecked source) :
     List VExpr :=
-  gen.block.rawIndices.map (VExpr.instL (VLevel.params' source.uvars 1))
+  gen.block.rawIndices.map (VExpr.instL gen.sourceLevels)
 
 /-- Mixed motive: raw index binders, normalized index arity, and the retained
 raw family identity. -/
@@ -1086,24 +1220,25 @@ def motiveType {source : VInductDecl} (gen : GenerationChecked source) : VExpr :
   VExpr.forallN gen.idxTel
     (.forallE
       (VExpr.appN
-        (.const gen.block.sourceType.name (VLevel.params' source.uvars 1))
+        (.const gen.block.sourceType.name gen.sourceLevels)
         (VExpr.bvarRevRange ni source.nparams ++ VExpr.bvarRevRange 0 ni))
-      (.sort (.param 0)))
+      (.sort gen.motiveLevel))
 
 /-- One mixed minor premise. Raw fields are bound verbatim, while induction
 hypotheses and constructor result indices come from the checked view. -/
-def minorType {source : VInductDecl} (ctor : NormalizedCtor) : VExpr :=
-  let Bs := ctor.fieldsR source.uvars source.nparams
+def minorType {source : VInductDecl} (ctor : NormalizedCtor)
+    (mode : ElimMode := .large) : VExpr :=
+  let Bs := ctor.fieldsR source.uvars source.nparams mode
   let m := Bs.length
-  let rs := ctor.recArgsR source.uvars
+  let rs := ctor.recArgsR source.uvars mode
   let r := rs.length
   VExpr.forallN (VExpr.liftTelN 1 Bs 0)
     (VExpr.forallN (ihsFromRecArgs m rs 0)
       (VExpr.appN (.bvar (m+r))
-        ((ctor.resultIndicesR source.uvars |>.map fun e =>
+        ((ctor.resultIndicesR source.uvars mode |>.map fun e =>
             (e.liftN 1 m).liftN r) ++
           [VExpr.appN
-            (.const ctor.raw.name (VLevel.params' source.uvars 1))
+            (.const ctor.raw.name (mode.sourceLevels source.uvars))
             (VExpr.bvarRevRange (r+m+1) source.nparams ++
               VExpr.bvarRevRange r m)])))
 
@@ -1111,7 +1246,7 @@ def minorTypesAux {source : VInductDecl} (gen : GenerationChecked source) :
     List NormalizedCtor → (i : Nat := 0) → List VExpr
   | [], _ => []
   | ctor :: ctors, i =>
-    VExpr.liftN i (minorType (source := source) ctor) ::
+    VExpr.liftN i (minorType (source := source) ctor gen.elimination) ::
       gen.minorTypesAux ctors (i+1)
 
 def minorTypes {source : VInductDecl} (gen : GenerationChecked source) :
@@ -1130,7 +1265,7 @@ def recType {source : VInductDecl} (gen : GenerationChecked source) : VExpr :=
           .forallE
             (VExpr.appN
               (.const gen.block.sourceType.name
-                (VLevel.params' source.uvars 1))
+                gen.sourceLevels)
               (VExpr.bvarRevRange (ni+k+1) source.nparams ++
                 VExpr.bvarRevRange 0 ni)) <|
             .app
@@ -1139,7 +1274,7 @@ def recType {source : VInductDecl} (gen : GenerationChecked source) : VExpr :=
 
 def recursor {source : VInductDecl} (gen : GenerationChecked source) :
     VConstant :=
-  ⟨source.uvars + 1, gen.recType⟩
+  ⟨gen.recUvars, gen.recType⟩
 
 /-- One mixed iota rule. Raw fields and constructor names are observable in
 the rule telescope; normalized recursive descriptors determine recursive calls
@@ -1147,24 +1282,24 @@ and normalized result indices determine the major's index spine. -/
 def rule {source : VInductDecl} (gen : GenerationChecked source)
     (i : Nat) (ctor : NormalizedCtor) : VDefEq :=
   let k := gen.block.ctorPairs.length
-  let Bs := ctor.fieldsR source.uvars source.nparams
+  let Bs := ctor.fieldsR source.uvars source.nparams gen.elimination
   let m := Bs.length
-  let rs := ctor.recArgsR source.uvars
+  let rs := ctor.recArgsR source.uvars gen.elimination
   let binders := gen.paramsTel ++
     gen.motiveType :: gen.minorTypes ++
     VExpr.liftTelN (k+1) Bs 0
   let recBase := VExpr.appN
     (.const (.str gen.block.sourceType.name "rec")
-      (VLevel.params (source.uvars+1)))
+      gen.recLevels)
     (VExpr.bvarRevRange m (source.nparams+k+1))
-  let idxR := ctor.resultIndicesR source.uvars |>.map fun e =>
+  let idxR := ctor.resultIndicesR source.uvars gen.elimination |>.map fun e =>
     e.liftN (k+1) m
   let ctorApp := VExpr.appN
-    (.const ctor.raw.name (VLevel.params' source.uvars 1))
+    (.const ctor.raw.name gen.sourceLevels)
     (VExpr.bvarRevRange (m+k+1) source.nparams ++
       VExpr.bvarRevRange 0 m)
   let ihs := rs.map fun r => r.ruleCall m k recBase
-  { uvars := source.uvars + 1
+  { uvars := gen.recUvars
     lhs := VExpr.lamN binders (VExpr.appN recBase (idxR ++ [ctorApp]))
     rhs := VExpr.lamN binders
       (VExpr.appN (.bvar (k-1-i+m)) (VExpr.bvarRevRange 0 m ++ ihs))
@@ -1179,34 +1314,61 @@ end GenerationChecked
 
 namespace Checked
 
+@[simp] theorem identityGeneration_elimination {decl : VInductDecl}
+    (checked : decl.Checked) :
+    checked.identityGeneration.elimination = checked.elimination := rfl
+
+@[simp] theorem identityGeneration_recUvars {decl : VInductDecl}
+    (checked : decl.Checked) :
+    checked.identityGeneration.recUvars =
+      checked.elimination.recUvars decl.uvars := rfl
+
+@[simp] theorem identityGeneration_sourceLevels {decl : VInductDecl}
+    (checked : decl.Checked) :
+    checked.identityGeneration.sourceLevels =
+      checked.elimination.sourceLevels decl.uvars := rfl
+
+@[simp] theorem identityGeneration_motiveLevel {decl : VInductDecl}
+    (checked : decl.Checked) :
+    checked.identityGeneration.motiveLevel = checked.elimination.motiveLevel := rfl
+
+@[simp] theorem identityGeneration_recLevels {decl : VInductDecl}
+    (checked : decl.Checked) :
+    checked.identityGeneration.recLevels =
+      checked.elimination.recLevels decl.uvars := rfl
+
 private theorem identity_paramsTel {decl : VInductDecl}
     (checked : decl.Checked) :
     checked.identityGeneration.paramsTel =
-      VInductDecl.paramsTel decl.uvars decl.nparams checked.type := by
+      VInductDecl.paramsTel decl.uvars decl.nparams checked.type
+        checked.elimination := by
   simp [GenerationChecked.paramsTel, VInductDecl.paramsTel,
+    GenerationChecked.sourceLevels, GenerationChecked.elimination,
     NormalizedChecked.generationParams, NormalizedChecked.rawParams,
     Checked.identityGeneration, Checked.identityBlock, checked.params_eq]
 
 private theorem identity_idxTel {decl : VInductDecl}
     (checked : decl.Checked) :
     checked.identityGeneration.idxTel =
-      VInductDecl.idxTel decl.uvars decl.nparams checked.type := rfl
+      VInductDecl.idxTel decl.uvars decl.nparams checked.type
+        checked.elimination := rfl
 
 private theorem identity_motiveType {decl : VInductDecl}
     (checked : decl.Checked) :
     checked.identityGeneration.motiveType =
       VInductDecl.motiveType decl.uvars checked.type.name decl.nparams
-        checked.type := rfl
+        checked.type checked.elimination := rfl
 
 private theorem identity_minorType {decl : VInductDecl}
     (checked : decl.Checked) (c : VConstVal) :
     GenerationChecked.minorType (source := decl)
       ⟨c, CheckedCtor.ofDirect decl.uvars checked.type.name decl.nparams
-        checked.indices.length c⟩ =
+        checked.indices.length c⟩ checked.elimination =
       VInductDecl.minorTypeRec decl.uvars checked.type.name decl.nparams
-        checked.type c := by
+        checked.type c checked.elimination := by
   have hni : checked.indices.length =
-      (VInductDecl.idxTel decl.uvars decl.nparams checked.type).length := by
+      (VInductDecl.idxTel decl.uvars decl.nparams checked.type
+        checked.elimination).length := by
     rw [checked.indices_eq]
     simp [VInductDecl.idxTel]
   rw [hni]
@@ -1220,7 +1382,7 @@ private theorem identity_minorTypesAux {decl : VInductDecl}
           (cs.map (CheckedCtor.ofDirect decl.uvars checked.type.name
             decl.nparams checked.indices.length))) i =
       VInductDecl.minorTypesRec decl.uvars checked.type.name decl.nparams
-        checked.type cs i
+        checked.type cs i checked.elimination
   | [], _ => rfl
   | c :: cs, i => by
       simp [pairNormalizedCtors, GenerationChecked.minorTypesAux,
@@ -1231,7 +1393,7 @@ private theorem identity_minorTypes {decl : VInductDecl}
     (checked : decl.Checked) :
     checked.identityGeneration.minorTypes =
       VInductDecl.minorTypesRec decl.uvars checked.type.name decl.nparams
-        checked.type checked.type.ctors := by
+        checked.type checked.type.ctors (mode := checked.elimination) := by
   unfold GenerationChecked.minorTypes
   simp only [Checked.identityGeneration, Checked.identityBlock,
     NormalizedChecked.ctorPairs]
@@ -1242,7 +1404,7 @@ private theorem identity_recType {decl : VInductDecl}
     (checked : decl.Checked) :
     checked.identityGeneration.recType =
       VInductDecl.recTypeRec decl.uvars checked.type.name decl.nparams
-        checked.type := by
+        checked.type checked.elimination := by
   simp only [GenerationChecked.recType, VInductDecl.recTypeRec]
   rw [identity_paramsTel checked, identity_motiveType checked,
     identity_minorTypes checked, identity_idxTel checked]
@@ -1257,9 +1419,11 @@ private theorem identity_recursor {decl : VInductDecl}
     (checked : decl.Checked) :
     checked.identityGeneration.recursor =
       VInductDecl.recConstRec decl.uvars checked.type.name decl.nparams
-        checked.type := by
+        checked.type checked.elimination := by
   unfold GenerationChecked.recursor VInductDecl.recConstRec
   rw [identity_recType checked]
+  simp [GenerationChecked.recUvars, GenerationChecked.elimination,
+    Checked.identityGeneration, Checked.identityBlock]
 
 private theorem identity_rule {decl : VInductDecl}
     (checked : decl.Checked) (i : Nat) (c : VConstVal) :
@@ -1267,9 +1431,10 @@ private theorem identity_rule {decl : VInductDecl}
         ⟨c, CheckedCtor.ofDirect decl.uvars checked.type.name decl.nparams
           checked.indices.length c⟩ =
       VInductDecl.ruleRec decl.uvars checked.type.name decl.nparams
-        checked.type i c := by
+        checked.type i c checked.elimination := by
   have hni : checked.indices.length =
-      (VInductDecl.idxTel decl.uvars decl.nparams checked.type).length := by
+      (VInductDecl.idxTel decl.uvars decl.nparams checked.type
+        checked.elimination).length := by
     rw [checked.indices_eq]
     simp [VInductDecl.idxTel]
   have hk : checked.identityGeneration.block.ctorPairs.length =
@@ -1297,7 +1462,7 @@ private theorem identity_rulesAux {decl : VInductDecl}
       List.map
         (fun (c, i) =>
           VInductDecl.ruleRec decl.uvars checked.type.name decl.nparams
-            checked.type i c)
+            checked.type i c checked.elimination)
         (List.zipIdx cs n)
   | [], _ => rfl
   | c :: cs, n => by
@@ -1308,7 +1473,7 @@ private theorem identity_generatedRules {decl : VInductDecl}
     (checked : decl.Checked) :
     checked.identityGeneration.generatedRules =
       VInductDecl.rulesRec decl.uvars checked.type.name decl.nparams
-        checked.type := by
+        checked.type checked.elimination := by
   unfold GenerationChecked.generatedRules VInductDecl.rulesRec
   simp only [Checked.identityGeneration, Checked.identityBlock,
     NormalizedChecked.ctorPairs]
@@ -1340,7 +1505,7 @@ theorem motiveType_eq_legacy {decl : VInductDecl}
     (checked : decl.Checked) :
     checked.motiveType =
       VInductDecl.motiveType decl.uvars checked.type.name decl.nparams
-        checked.type :=
+        checked.type checked.elimination :=
   identity_motiveType checked
 
 /-- The public minor telescope retains the exact legacy identity-normal
@@ -1349,7 +1514,7 @@ theorem minorTypes_eq_legacy {decl : VInductDecl}
     (checked : decl.Checked) :
     checked.minorTypes =
       VInductDecl.minorTypesRec decl.uvars checked.type.name decl.nparams
-        checked.type checked.type.ctors :=
+        checked.type checked.type.ctors (mode := checked.elimination) :=
   identity_minorTypes checked
 
 /-- The public recursor retains the exact legacy identity-normal form while
@@ -1358,7 +1523,7 @@ theorem recursor_eq_legacy {decl : VInductDecl}
     (checked : decl.Checked) :
     checked.recursor =
       VInductDecl.recConstRec decl.uvars checked.type.name decl.nparams
-        checked.type :=
+        checked.type checked.elimination :=
   identity_recursor checked
 
 /-- The public iota-rule list retains the exact legacy identity-normal form
@@ -1367,7 +1532,7 @@ theorem generatedRules_eq_legacy {decl : VInductDecl}
     (checked : decl.Checked) :
     checked.generatedRules =
       VInductDecl.rulesRec decl.uvars checked.type.name decl.nparams
-        checked.type :=
+        checked.type checked.elimination :=
   identity_generatedRules checked
 
 end Checked
@@ -1623,6 +1788,11 @@ structure VEnv.AddInductSuccess (env env' : VEnv) (decl : VInductDecl) : Prop wh
   rec_fresh : ∀ ty ∈ decl.types, env.constants (.str ty.name "rec") = none
   rec_lookup : ∀ ty ∈ decl.types,
     env'.constants (.str ty.name "rec") =
-      some (VInductDecl.recConstRec decl.uvars ty.name decl.nparams ty)
+      some (VInductDecl.recConstRec decl.uvars ty.name decl.nparams ty
+        (VInductDecl.eliminationMode decl.uvars ty.name decl.nparams
+          (VInductDecl.ctorFields (VExpr.dropN decl.nparams ty.type)).length ty))
   rule_mem : ∀ ty ∈ decl.types,
-    ∀ df ∈ VInductDecl.rulesRec decl.uvars ty.name decl.nparams ty, env'.defeqs df
+    ∀ df ∈ VInductDecl.rulesRec decl.uvars ty.name decl.nparams ty
+      (VInductDecl.eliminationMode decl.uvars ty.name decl.nparams
+        (VInductDecl.ctorFields (VExpr.dropN decl.nparams ty.type)).length ty),
+      env'.defeqs df

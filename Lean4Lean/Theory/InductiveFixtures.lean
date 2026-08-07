@@ -2788,24 +2788,28 @@ example : recCollisionEnv.constants ``Nat.rec = some ⟨0, .sort .zero⟩ := rfl
 example : recCollisionEnv.addInduct natDecl = none :=
   VEnv.addInduct_eq_none_of_rec_present rfl ⟨_, rfl⟩
 
-/-! ## Conservativity: outside the stage-3 class `addInduct` refuses. -/
+/-! ## Small elimination -/
 
-/-- `Or` is Prop-valued with two constructors: no large elimination, so
-stage 3 rejects it. -/
-example : (show VInductDecl from ⟨0, 2, [{
-      name := ``Or
-      uvars := 0
-      type := vconst(type_of% @Or).type
-      ctors := [⟨vconst(type_of% @Or.inl), ``Or.inl⟩,
-        ⟨vconst(type_of% @Or.inr), ``Or.inr⟩] }]⟩).checked? = none := rfl
+/-- `Or` is the canonical small-elimination family: its motive remains in
+`Prop`, so the generated recursor introduces no fresh universe parameter. -/
+def orType : VInductiveType where
+  name := ``Or
+  uvars := 0
+  type := vconst(type_of% @Or).type
+  ctors := [⟨vconst(type_of% @Or.inl), ``Or.inl⟩,
+    ⟨vconst(type_of% @Or.inr), ``Or.inr⟩]
 
-example :
-    VEnv.empty.addInduct ⟨0, 2, [{
-      name := ``Or
-      uvars := 0
-      type := vconst(type_of% @Or).type
-      ctors := [⟨vconst(type_of% @Or.inl), ``Or.inl⟩,
-        ⟨vconst(type_of% @Or.inr), ``Or.inr⟩] }]⟩ = none := rfl
+def orDecl : VInductDecl := ⟨0, 2, [orType]⟩
+
+def orChecked : orDecl.Checked := orDecl.checked?.get (by decide)
+
+example : orDecl.stage3 = true := rfl
+example : orChecked.elimination = .small := rfl
+example : orChecked.recursor.uvars = 0 := rfl
+example : orChecked.recursor = vconst(type_of% @Or.rec) := rfl
+example : (VEnv.empty.addInduct orDecl).isSome = true := rfl
+
+/-! ## Conservativity: malformed declarations and name collisions refuse. -/
 
 /-- A name collision rejects the whole transaction. -/
 example (env : VEnv) (h : env.contains ``Nat) : env.addInduct natDecl = none :=

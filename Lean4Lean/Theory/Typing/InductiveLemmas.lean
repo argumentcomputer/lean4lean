@@ -23,7 +23,7 @@ theorem params'_wf : ∀ l ∈ params' n k, l.WF (n + k) := by
 theorem params'_one_wf : ∀ l ∈ params' n 1, l.WF (n + 1) := params'_wf
 
 theorem params_map_inst_params' :
-    (params n).map (VLevel.inst (params' n 1)) = params' n 1 :=
+    (params n).map (VLevel.inst (params' n k)) = params' n k :=
   inst_map_id params'_length
 
 end VLevel
@@ -1072,7 +1072,7 @@ theorem Checked.direct_anatomy {decl : VInductDecl} (checked : decl.Checked) :
   have hdirect := checked.analysis_accepted.1
   simp only [stage3DirectCore, Bool.and_eq_true, beq_iff_eq,
     List.all_eq_true] at hdirect
-  obtain ⟨⟨⟨⟨⟨hU, hparams⟩, hresult⟩, hformer⟩, -⟩, hctors⟩ := hdirect
+  obtain ⟨⟨⟨⟨hU, hparams⟩, hresult⟩, hformer⟩, hctors⟩ := hdirect
   simp only [typeFormerOK, Bool.and_eq_true, List.all_eq_true] at hformer
   refine ⟨hU, by simpa [checked.params_eq] using hparams, ?_, ?_, ?_, ?_⟩
   · rw [checked.result_eq] at hresult
@@ -1259,7 +1259,7 @@ theorem stage3_anatomy {U np ty} (h : stage3 ⟨U, np, [ty]⟩ = true) :
   have hdirect := hcore.1
   simp only [stage3DirectCore, Bool.and_eq_true, beq_iff_eq,
     List.all_eq_true] at hdirect
-  obtain ⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, -⟩, h6⟩ := hdirect
+  obtain ⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h6⟩ := hdirect
   simp only [typeFormerOK, Bool.and_eq_true, List.all_eq_true] at h4
   refine ⟨h1, h2, ?_, fun I hI => by simpa [Bool.not_eq_true'] using h4.2 I hI,
     fun c hc => by simpa [and_assoc] using h6 c hc⟩
@@ -1789,12 +1789,14 @@ target. -/
 theorem recArg_minor_fieldType {U : Nat} {T : Name} {np ni : Nat}
     {B : VExpr} {r₀ : RecArg}
     (hr : recArg? U T np ni r₀.fieldIndex B = some r₀)
-    (m p : Nat) (hj : r₀.fieldIndex < m) :
-    let r := r₀.instL (VLevel.params' U 1)
-    ((B.instL (VLevel.params' U 1)).liftN 1 r.fieldIndex).liftN
+    (m p : Nat) (hj : r₀.fieldIndex < m)
+    (mode : ElimMode := .large) :
+    let ls := mode.sourceLevels U
+    let r := r₀.instL ls
+    ((B.instL ls).liftN 1 r.fieldIndex).liftN
         (m-r.fieldIndex+p) =
       VExpr.forallN (r.minorBinders m p)
-        (VExpr.appN (.const T (VLevel.params' U 1))
+        (VExpr.appN (.const T ls)
           (VExpr.bvarRevRange (m+p+r.binders.length+1) np ++
             r.indices.map fun e =>
               (e.liftN 1 (r.fieldIndex+r.binders.length)).liftN
@@ -1804,9 +1806,10 @@ theorem recArg_minor_fieldType {U : Nat} {T : Name} {np ni : Nat}
   conv => lhs; rw [hB]
   simp only [RecArg.instL, VExpr.instL_forallN, VExpr.instL_appN,
     List.map_append, bvarRevRange_instL,
-    show (VExpr.const T (VLevel.params U)).instL (VLevel.params' U 1) =
-      .const T (VLevel.params' U 1) from by
-        simp [VExpr.instL, VLevel.params_map_inst_params'],
+    show (VExpr.const T (VLevel.params U)).instL (mode.sourceLevels U) =
+      .const T (mode.sourceLevels U) from by
+        simp [VExpr.instL, ElimMode.sourceLevels,
+          VLevel.params_map_inst_params'],
     VExpr.liftN_forallN, VExpr.liftN_appN]
   simp only [List.length_map, VExpr.liftTelN_length, Nat.zero_add]
   rw [bvarRevRange_liftN_ge _ _ _ _ (Nat.le_refl _),
@@ -1816,7 +1819,7 @@ theorem recArg_minor_fieldType {U : Nat} {T : Name} {np ni : Nat}
         m + p + r₀.binders.length + 1 from by omega]
   simp only [List.map_map, RecArg.minorBinders]
   apply congrArg (VExpr.forallN _)
-  apply congrArg (VExpr.appN (.const T (VLevel.params' U 1)))
+  apply congrArg (VExpr.appN (.const T (mode.sourceLevels U)))
   apply congrArg (VExpr.bvarRevRange (m + p + r₀.binders.length + 1) np ++ ·)
   apply List.map_congr_left
   intro e _
@@ -1828,12 +1831,14 @@ constructor fields. -/
 theorem recArg_rule_fieldType {U : Nat} {T : Name} {np ni : Nat}
     {B : VExpr} {r₀ : RecArg}
     (hr : recArg? U T np ni r₀.fieldIndex B = some r₀)
-    (m k : Nat) (hj : r₀.fieldIndex < m) :
-    let r := r₀.instL (VLevel.params' U 1)
-    ((B.instL (VLevel.params' U 1)).liftN (k+1) r.fieldIndex).liftN
+    (m k : Nat) (hj : r₀.fieldIndex < m)
+    (mode : ElimMode := .large) :
+    let ls := mode.sourceLevels U
+    let r := r₀.instL ls
+    ((B.instL ls).liftN (k+1) r.fieldIndex).liftN
         (m-r.fieldIndex) =
       VExpr.forallN (r.ruleBinders m k)
-        (VExpr.appN (.const T (VLevel.params' U 1))
+        (VExpr.appN (.const T ls)
           (VExpr.bvarRevRange (m+k+r.binders.length+1) np ++
             r.indices.map fun e =>
               (e.liftN (k+1) (r.fieldIndex+r.binders.length)).liftN
@@ -1843,9 +1848,10 @@ theorem recArg_rule_fieldType {U : Nat} {T : Name} {np ni : Nat}
   conv => lhs; rw [hB]
   simp only [RecArg.instL, VExpr.instL_forallN, VExpr.instL_appN,
     List.map_append, bvarRevRange_instL,
-    show (VExpr.const T (VLevel.params U)).instL (VLevel.params' U 1) =
-      .const T (VLevel.params' U 1) from by
-        simp [VExpr.instL, VLevel.params_map_inst_params'],
+    show (VExpr.const T (VLevel.params U)).instL (mode.sourceLevels U) =
+      .const T (mode.sourceLevels U) from by
+        simp [VExpr.instL, ElimMode.sourceLevels,
+          VLevel.params_map_inst_params'],
     VExpr.liftN_forallN, VExpr.liftN_appN]
   simp only [List.length_map, VExpr.liftTelN_length, Nat.zero_add]
   rw [bvarRevRange_liftN_ge _ _ _ _ (Nat.le_refl _),
@@ -1854,7 +1860,7 @@ theorem recArg_rule_fieldType {U : Nat} {T : Name} {np ni : Nat}
       m + k + r₀.binders.length + 1 from by omega]
   simp only [List.map_map, RecArg.ruleBinders]
   apply congrArg (VExpr.forallN _)
-  apply congrArg (VExpr.appN (.const T (VLevel.params' U 1)))
+  apply congrArg (VExpr.appN (.const T (mode.sourceLevels U)))
   apply congrArg (VExpr.bvarRevRange (m+k+r₀.binders.length+1) np ++ ·)
   apply List.map_congr_left
   intro e _
@@ -2006,7 +2012,8 @@ theorem recApp_instL {U : Nat} {T : Name} {np off : Nat} :
     (recApp U T np off).instL (VLevel.params' U 1) = recApp' U T np off := by
   simp only [recApp, recApp', VExpr.instL_appN]
   rw [bvarRevRange_instL]
-  simp [VExpr.instL, VLevel.params_map_inst_params']
+  simp [VExpr.instL, VLevel.params_map_inst_params', ElimMode.sourceLevels,
+    ElimMode.offset]
 
 theorem recApp'_congr {U : Nat} {T : Name} {np : Nat} {off off' : Nat}
     (h : off = off') : recApp' U T np off = recApp' U T np off' := h ▸ rfl
@@ -2657,6 +2664,47 @@ info: 'Lean4Lean.VInductDecl.GenerationChecked.checkedResultTarget_hasType' depe
 /-- Final-environment invariant for mixed raw/view generation. It contains
 only facts stable after the raw family and constructors have been inserted;
 the staged pre-family/post-family split remains in `GenerationChecked.WF`. -/
+theorem GenerationChecked.sourceLevels_wf {source : VInductDecl}
+    (gen : GenerationChecked source) :
+    ∀ l ∈ gen.sourceLevels, l.WF gen.recUvars :=
+  VLevel.params'_wf
+
+@[simp] theorem GenerationChecked.sourceLevels_eq {source : VInductDecl}
+    (gen : GenerationChecked source) :
+    gen.sourceLevels =
+      VLevel.params' source.uvars gen.elimination.offset := rfl
+
+@[simp] theorem GenerationChecked.recUvars_eq {source : VInductDecl}
+    (gen : GenerationChecked source) :
+    gen.recUvars = source.uvars + gen.elimination.offset := rfl
+
+@[simp] theorem GenerationChecked.recLevels_eq {source : VInductDecl}
+    (gen : GenerationChecked source) :
+    gen.recLevels = VLevel.params gen.recUvars := rfl
+
+theorem GenerationChecked.sourceLevels_length {source : VInductDecl}
+    (gen : GenerationChecked source) :
+    gen.sourceLevels.length = source.uvars :=
+  VLevel.params'_length
+
+theorem GenerationChecked.motiveLevel_wf {source : VInductDecl}
+    (gen : GenerationChecked source) :
+    gen.motiveLevel.WF gen.recUvars := by
+  cases h : gen.elimination <;>
+    simp [GenerationChecked.motiveLevel,
+      GenerationChecked.recUvars, ElimMode.recUvars,
+      ElimMode.offset, ElimMode.motiveLevel, VLevel.WF, h]
+
+theorem GenerationChecked.recLevels_wf {source : VInductDecl}
+    (gen : GenerationChecked source) :
+    ∀ l ∈ gen.recLevels, l.WF gen.recUvars :=
+  VLevel.params_wf
+
+theorem GenerationChecked.recLevels_length {source : VInductDecl}
+    (gen : GenerationChecked source) :
+    gen.recLevels.length = gen.recUvars :=
+  VLevel.params_length
+
 structure GenerationEnv {source : VInductDecl}
     (gen : GenerationChecked source) (env : VEnv) : Prop where
   ord : env.Ordered
@@ -2804,11 +2852,11 @@ theorem generationParams_length :
     gen.shape.1
 
 theorem generationParams_ctx_rec :
-    env.IsDefEqCtx (source.uvars + 1) [] gen.paramsTel.reverse
+    env.IsDefEqCtx (gen.recUvars) [] gen.paramsTel.reverse
       (gen.block.checked.params.map
-        (VExpr.instL (VLevel.params' source.uvars 1))).reverse := by
+        (VExpr.instL (gen.sourceLevels))).reverse := by
   have h := S.generationParams_defeq.instL
-    (U' := source.uvars + 1) VLevel.params'_one_wf
+    (U' := gen.recUvars) gen.sourceLevels_wf
   simpa [GenerationChecked.paramsTel, List.map_reverse] using h.ctx
 
 /--
@@ -2821,32 +2869,32 @@ info: 'Lean4Lean.VInductDecl.GenerationEnv.generationParams_defeq' depends on ax
 parameter surface after universe transport. -/
 theorem generationFields_onTel_rec {ctor : NormalizedCtor}
     (hctor : ctor ∈ gen.block.ctorPairs) :
-    env.OnTel (source.uvars + 1) gen.paramsTel.reverse
-      (ctor.fieldsR source.uvars source.nparams) := by
+    env.OnTel (gen.recUvars) gen.paramsTel.reverse
+      (ctor.fieldsR source.uvars source.nparams gen.elimination) := by
   have hemitted := (S.ctorWF ctor hctor).rawEmitted_onTel
   have hfields₀ := (OnTel.of_append
     (As := gen.block.checked.params) hemitted).2
   have hfields₁ := hfields₀.instL
-    (U' := source.uvars + 1) VLevel.params'_one_wf
-  have hfieldsChecked : env.OnTel (source.uvars + 1)
+    (U' := gen.recUvars) gen.sourceLevels_wf
+  have hfieldsChecked : env.OnTel (gen.recUvars)
       (gen.block.checked.params.map
-        (VExpr.instL (VLevel.params' source.uvars 1))).reverse
-      (ctor.fieldsR source.uvars source.nparams) := by
+        (VExpr.instL (gen.sourceLevels))).reverse
+      (ctor.fieldsR source.uvars source.nparams gen.elimination) := by
     simpa [NormalizedCtor.fieldsR, List.map_reverse] using hfields₁
   exact hfieldsChecked.defeqDFC S.ord
     (S.generationParams_ctx_rec.symm S.ord)
 
 theorem generationFieldPrefix_ctx_rec {ctor : NormalizedCtor}
     (hctor : ctor ∈ gen.block.ctorPairs) (j : Nat) :
-    env.IsDefEqCtx (source.uvars + 1) []
-      ((ctor.fieldsR source.uvars source.nparams |>.take j).reverse ++
+    env.IsDefEqCtx (gen.recUvars) []
+      ((ctor.fieldsR source.uvars source.nparams gen.elimination |>.take j).reverse ++
         gen.paramsTel.reverse)
-      ((ctor.fieldsR source.uvars source.nparams |>.take j).reverse ++
+      ((ctor.fieldsR source.uvars source.nparams gen.elimination |>.take j).reverse ++
         (gen.block.checked.params.map
-          (VExpr.instL (VLevel.params' source.uvars 1))).reverse) := by
+          (VExpr.instL (gen.sourceLevels))).reverse) := by
   have hfields := S.generationFields_onTel_rec hctor
   rw [← List.take_append_drop j
-    (ctor.fieldsR source.uvars source.nparams)] at hfields
+    (ctor.fieldsR source.uvars source.nparams gen.elimination)] at hfields
   exact (hfields.of_append.1).extendDefEqCtx
     S.generationParams_ctx_rec
 
@@ -3024,31 +3072,31 @@ theorem ctorApp_emitted_decl {ctor : NormalizedCtor}
 
 /-- The raw family constant instantiated into recursor universes. -/
 theorem familyConst_rec {Γ : List VExpr} :
-    env.HasType (source.uvars + 1) Γ
+    env.HasType (gen.recUvars) Γ
       (.const gen.block.sourceType.name
-        (VLevel.params' source.uvars 1))
+        (gen.sourceLevels))
       (gen.block.sourceType.type.instL
-        (VLevel.params' source.uvars 1)) := by
+        (gen.sourceLevels)) := by
   have h := (S.familyConst_decl (Γ := [])).instL
-    (U' := source.uvars + 1) VLevel.params'_one_wf
+    (U' := gen.recUvars) gen.sourceLevels_wf
   rw [show
     (VExpr.const gen.block.sourceType.name
       (VLevel.params source.uvars)).instL
-        (VLevel.params' source.uvars 1) =
+        (gen.sourceLevels) =
       .const gen.block.sourceType.name
-        (VLevel.params' source.uvars 1) by
+        (gen.sourceLevels) by
     simp [VExpr.instL, VLevel.params_map_inst_params']] at h
   exact h.weak0 S.ord
 
 /-- The raw family type decomposed in recursor universes. -/
 theorem rawType_rec_eq :
-    gen.block.sourceType.type.instL (VLevel.params' source.uvars 1) =
+    gen.block.sourceType.type.instL (gen.sourceLevels) =
       VExpr.forallN
         (gen.block.rawParams.map
-          (VExpr.instL (VLevel.params' source.uvars 1)))
+          (VExpr.instL (gen.sourceLevels)))
         (VExpr.forallN gen.idxTel
           (gen.block.rawResult.instL
-            (VLevel.params' source.uvars 1))) := by
+            (gen.sourceLevels))) := by
   rw [gen.block.rawType_eq, VExpr.instL_forallN,
     VExpr.instL_forallN]
   rfl
@@ -3097,20 +3145,20 @@ info: 'Lean4Lean.VInductDecl.GenerationEnv.familyConst_generation_decl' depends 
 /-- The family applied to its checked-parameter/raw-index self-spine has the
 normalized result sort. -/
 theorem familyApp_hasType :
-    env.HasType (source.uvars + 1)
+    env.HasType (gen.recUvars)
       (gen.idxTel.reverse ++ gen.paramsTel.reverse)
       (VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange gen.idxTel.length source.nparams ++
           VExpr.bvarRevRange 0 gen.idxTel.length))
       (.sort
         (gen.block.checked.resultLevel.inst
-          (VLevel.params' source.uvars 1))) := by
-  let ls := VLevel.params' source.uvars 1
+          (gen.sourceLevels))) := by
+  let ls := gen.sourceLevels
   have hconst₀ := S.familyConst_generation_decl.instL
-    (U' := source.uvars + 1) VLevel.params'_one_wf
-  have hconst₁ : env.HasType (source.uvars + 1) []
+    (U' := gen.recUvars) gen.sourceLevels_wf
+  have hconst₁ : env.HasType (gen.recUvars) []
       (.const gen.block.sourceType.name ls)
       (VExpr.forallN (gen.paramsTel ++ gen.idxTel)
         (gen.block.rawResult.instL ls)) := by
@@ -3121,7 +3169,7 @@ theorem familyApp_hasType :
       (VExpr.forallN (gen.paramsTel ++ gen.idxTel)
         (gen.block.rawResult.instL ls)).ClosedN 0 := by
     exact (hconst₁.closedN' S.ord.closed trivial).2.2
-  have hconst : env.HasType (source.uvars + 1)
+  have hconst : env.HasType (gen.recUvars)
       ((gen.paramsTel ++ gen.idxTel).reverse)
       (.const gen.block.sourceType.name ls)
       (VExpr.forallN (gen.paramsTel ++ gen.idxTel)
@@ -3142,20 +3190,20 @@ theorem familyApp_hasType :
   rw [VExpr.bvarRevRange_congr' 0 hlen,
     ← VExpr.bvarRevRange_append] at happ
   have hresult := S.familyResult.instL
-    (U' := source.uvars + 1) VLevel.params'_one_wf
+    (U' := gen.recUvars) gen.sourceLevels_wf
   simp only [List.map_reverse] at hresult
   have hctxChecked := (S.emittedFamilyTel.instL
-    (U' := source.uvars + 1) VLevel.params'_one_wf).ctx
+    (U' := gen.recUvars) gen.sourceLevels_wf).ctx
   simp only [List.map_nil, List.append_nil,
     List.map_reverse] at hctxChecked
   have hresultChecked := hresult.defeqDFC S.ord hctxChecked
   have hctxGeneration := (S.generationFamilyTel.instL
-    (U' := source.uvars + 1) VLevel.params'_one_wf).ctx
+    (U' := gen.recUvars) gen.sourceLevels_wf).ctx
   simp only [List.map_nil, List.append_nil,
     List.map_reverse] at hctxGeneration
   have hresultGeneration := hresultChecked.defeqDFC S.ord
     (hctxGeneration.symm S.ord)
-  have hresult' : env.IsDefEq (source.uvars + 1)
+  have hresult' : env.IsDefEq (gen.recUvars)
       (gen.idxTel.reverse ++ gen.paramsTel.reverse)
       (gen.block.rawResult.instL ls)
       (.sort (gen.block.checked.resultLevel.inst ls))
@@ -3168,24 +3216,22 @@ theorem familyApp_hasType :
 /-- The mixed motive is a well-formed type over the checked parameter
 context. -/
 theorem motive_isType :
-    env.IsType (source.uvars + 1) gen.paramsTel.reverse
+    env.IsType (gen.recUvars) gen.paramsTel.reverse
       gen.motiveType := by
   have htel₀ := S.generationFamily_onTel.instL
-    (U' := source.uvars + 1) VLevel.params'_one_wf
+    (U' := gen.recUvars) gen.sourceLevels_wf
   have htel :
-      env.OnTel (source.uvars + 1) []
+      env.OnTel (gen.recUvars) []
         (gen.paramsTel ++ gen.idxTel) := by
     simpa [GenerationChecked.paramsTel, GenerationChecked.idxTel] using htel₀
-  have hidx : env.OnTel (source.uvars + 1) gen.paramsTel.reverse
+  have hidx : env.OnTel (gen.recUvars) gen.paramsTel.reverse
       gen.idxTel := by
     simpa using htel.of_append.2
   refine IsType.forallN hidx ?_
   exact ⟨_, by
     simpa [GenerationChecked.motiveType] using
       HasType.forallE S.familyApp_hasType
-        (HasType.sort (by
-          change 0 < source.uvars + 1
-          omega))⟩
+        (HasType.sort gen.motiveLevel_wf)⟩
 
 end GenerationEnv
 
@@ -3443,13 +3489,13 @@ theorem emittedIndexTel_defeq :
 /-- The raw/view index telescope relation transported into recursor
 universes. -/
 theorem rawIndexTel_defeq_rec :
-    env.TelDefEq (source.uvars + 1) gen.paramsTel.reverse gen.idxTel
+    env.TelDefEq (gen.recUvars) gen.paramsTel.reverse gen.idxTel
       (gen.block.checked.indices.map
-        (VExpr.instL (VLevel.params' source.uvars 1))) := by
+        (VExpr.instL (gen.sourceLevels))) := by
   have hdecl := S.emittedIndexTel_defeq.defeqDFC S.ord
     (S.generationParams_ctx.symm S.ord)
   have h := hdecl.instL
-    (U' := source.uvars + 1) VLevel.params'_one_wf
+    (U' := gen.recUvars) gen.sourceLevels_wf
   simpa [GenerationChecked.paramsTel, GenerationChecked.idxTel,
     List.map_reverse] using h
 
@@ -3462,32 +3508,32 @@ theorem recArg_transport {ctor : NormalizedCtor}
     (hr₀ : r₀ ∈ ctor.view.recursive)
     (mid : List VExpr) {g : Nat} (hg : mid.length = g)
     (As₂ : List VExpr) {d : Nat} (hd : As₂.length = d) :
-    let r := r₀.instL (VLevel.params' source.uvars 1)
+    let r := r₀.instL (gen.sourceLevels)
     let As := VExpr.liftTelN d
       (VExpr.liftTelN g r.binders r.fieldIndex) 0
-    env.OnTel (source.uvars + 1)
+    env.OnTel (gen.recUvars)
         (As₂ ++ ((VExpr.liftTelN g
-          ((ctor.fieldsR source.uvars source.nparams).take
+          ((ctor.fieldsR source.uvars source.nparams gen.elimination).take
             r.fieldIndex) 0).reverse ++
           (mid ++ gen.paramsTel.reverse))) As ∧
-      env.SpineWF (source.uvars + 1)
+      env.SpineWF (gen.recUvars)
         (As.reverse ++
           (As₂ ++ ((VExpr.liftTelN g
-            ((ctor.fieldsR source.uvars source.nparams).take
+            ((ctor.fieldsR source.uvars source.nparams gen.elimination).take
               r.fieldIndex) 0).reverse ++
             (mid ++ gen.paramsTel.reverse))))
         (VExpr.forallN
           (VExpr.liftTelN
             (r.fieldIndex + r.binders.length + g + d) gen.idxTel 0)
           (.sort (gen.block.checked.resultLevel.inst
-            (VLevel.params' source.uvars 1))))
+            (gen.sourceLevels))))
         (r.indices.map fun e =>
           (e.liftN g (r.fieldIndex + r.binders.length)).liftN d
             r.binders.length)
         (.sort (gen.block.checked.resultLevel.inst
-          (VLevel.params' source.uvars 1))) := by
+          (gen.sourceLevels))) := by
   dsimp only
-  let ls := VLevel.params' source.uvars 1
+  let ls := gen.sourceLevels
   have hjlt :
       r₀.fieldIndex < (ctor.rawFields source.nparams).length := by
     have hview := S.viewRecArg_lt hctor hr₀
@@ -3496,19 +3542,19 @@ theorem recArg_transport {ctor : NormalizedCtor}
     omega
   have hsem := S.rawRecArg_WF hctor hr₀
   have htel₁ := hsem.1.instL
-    (U' := source.uvars + 1) VLevel.params'_one_wf
+    (U' := gen.recUvars) gen.sourceLevels_wf
   have hsp₁ := hsem.2.instL
-    (U' := source.uvars + 1) VLevel.params'_one_wf
-  have htelChecked : env.OnTel (source.uvars + 1)
-      ((ctor.fieldsR source.uvars source.nparams |>.take
+    (U' := gen.recUvars) gen.sourceLevels_wf
+  have htelChecked : env.OnTel (gen.recUvars)
+      ((ctor.fieldsR source.uvars source.nparams gen.elimination |>.take
         r₀.fieldIndex).reverse ++
         (gen.block.checked.params.map (VExpr.instL ls)).reverse)
       (r₀.binders.map (VExpr.instL ls)) := by
     simpa [NormalizedCtor.fieldsR, List.map_append,
       List.map_reverse, List.map_take] using htel₁
-  have hspChecked : env.SpineWF (source.uvars + 1)
+  have hspChecked : env.SpineWF (gen.recUvars)
       ((r₀.binders.map (VExpr.instL ls)).reverse ++
-        ((ctor.fieldsR source.uvars source.nparams |>.take
+        ((ctor.fieldsR source.uvars source.nparams gen.elimination |>.take
           r₀.fieldIndex).reverse ++
           (gen.block.checked.params.map (VExpr.instL ls)).reverse))
       (VExpr.instL ls
@@ -3529,19 +3575,19 @@ theorem recArg_transport {ctor : NormalizedCtor}
   simp only [RecArg.instL, VExpr.instL_forallN,
     VExpr.liftTelN_instL, List.map_reverse] at htelGeneration hspGeneration
   have hjlen :
-      ((ctor.fieldsR source.uvars source.nparams).take
+      ((ctor.fieldsR source.uvars source.nparams gen.elimination).take
         r₀.fieldIndex).length = r₀.fieldIndex := by
     simp only [NormalizedCtor.fieldsR, List.length_take,
       List.length_map]
     omega
   have hidxField := S.rawIndexTel_defeq_rec.weakN S.ord
     (Ctx.LiftN.zero (Γ := gen.paramsTel.reverse)
-      ((ctor.fieldsR source.uvars source.nparams).take
+      ((ctor.fieldsR source.uvars source.nparams gen.elimination).take
         r₀.fieldIndex).reverse)
   rw [List.length_reverse, hjlen] at hidxField
   have hidxPrivate := hidxField.weakN S.ord
     (Ctx.LiftN.zero
-      (Γ := ((ctor.fieldsR source.uvars source.nparams).take
+      (Γ := ((ctor.fieldsR source.uvars source.nparams gen.elimination).take
           r₀.fieldIndex).reverse ++ gen.paramsTel.reverse)
       (r₀.binders.map (VExpr.instL ls)).reverse)
   simp only [List.length_reverse, List.length_map] at hidxPrivate
@@ -3558,7 +3604,7 @@ theorem recArg_transport {ctor : NormalizedCtor}
   have hspRaw :=
     hidxPrivate.spine_sort S.ord hspGeneration hidxLen
   have W₁ := Ctx.LiftN.consTel (n := mid.length)
-    ((ctor.fieldsR source.uvars source.nparams).take
+    ((ctor.fieldsR source.uvars source.nparams gen.elimination).take
       r₀.fieldIndex)
     (Ctx.LiftN.zero (Γ := gen.paramsTel.reverse) mid)
   rw [hjlen, Nat.add_zero] at W₁
@@ -3569,7 +3615,7 @@ theorem recArg_transport {ctor : NormalizedCtor}
   rw [hg] at htel₂ hsp₂
   have W₂ := Ctx.LiftN.zero
     (Γ := (VExpr.liftTelN g
-        ((ctor.fieldsR source.uvars source.nparams).take
+        ((ctor.fieldsR source.uvars source.nparams gen.elimination).take
           r₀.fieldIndex) 0).reverse ++
       (mid ++ gen.paramsTel.reverse)) As₂ (h := hd)
   have htel₃ := htel₂.weakN S.ord W₂
@@ -3597,26 +3643,26 @@ end GenerationEnv
 /-- Raw mixed fields preserve their arity under recursor-universe
 instantiation. -/
 theorem NormalizedCtor.fieldsR_length {source : VInductDecl}
-    (ctor : NormalizedCtor) :
-    (ctor.fieldsR source.uvars source.nparams).length =
+    (ctor : NormalizedCtor) {mode : ElimMode} :
+    (ctor.fieldsR source.uvars source.nparams mode).length =
       (ctor.rawFields source.nparams).length :=
   List.length_map ..
 
 /-- Pointwise lookup through the raw mixed field universe transport. -/
 theorem NormalizedCtor.fieldsR_getElem? {source : VInductDecl}
-    {ctor : NormalizedCtor} {q : Nat} :
-    (ctor.fieldsR source.uvars source.nparams)[q]? =
+    {ctor : NormalizedCtor} {q : Nat} {mode : ElimMode} :
+    (ctor.fieldsR source.uvars source.nparams mode)[q]? =
       (ctor.rawFields source.nparams)[q]?.map
-        (VExpr.instL (VLevel.params' source.uvars 1)) :=
+        (VExpr.instL (mode.sourceLevels source.uvars)) :=
   List.getElem?_map ..
 
 /-- Unpack one mixed recursive descriptor to the retained declaration-level
 descriptor from the checked view. -/
 theorem NormalizedCtor.recArgsR_mem {source : VInductDecl}
-    {ctor : NormalizedCtor} {r : RecArg}
-    (hr : r ∈ ctor.recArgsR source.uvars) :
+    {ctor : NormalizedCtor} {r : RecArg} {mode : ElimMode}
+    (hr : r ∈ ctor.recArgsR source.uvars mode) :
     ∃ r₀, r₀ ∈ ctor.view.recursive ∧
-      r = r₀.instL (VLevel.params' source.uvars 1) := by
+      r = r₀.instL (mode.sourceLevels source.uvars) := by
   obtain ⟨r₀, hr₀, rfl⟩ := List.mem_map.1 hr
   exact ⟨r₀, hr₀, rfl⟩
 
@@ -3628,20 +3674,20 @@ theorem GenerationChecked.motiveType_liftN {source : VInductDecl}
         (.forallE
           (VExpr.appN
             (.const gen.block.sourceType.name
-              (VLevel.params' source.uvars 1))
+              (gen.sourceLevels))
             (VExpr.bvarRevRange (n + gen.idxTel.length)
                 source.nparams ++
               VExpr.bvarRevRange 0 gen.idxTel.length))
-          (.sort (.param 0))) := by
+          (.sort gen.motiveLevel)) := by
   rw [show gen.motiveType =
       VExpr.forallN gen.idxTel
         (.forallE
           (VExpr.appN
             (.const gen.block.sourceType.name
-              (VLevel.params' source.uvars 1))
+              (gen.sourceLevels))
             (VExpr.bvarRevRange gen.idxTel.length source.nparams ++
               VExpr.bvarRevRange 0 gen.idxTel.length))
-          (.sort (.param 0))) from rfl,
+          (.sort gen.motiveLevel)) from rfl,
     VExpr.liftN_forallN]
   refine congrArg _ ?_
   show VExpr.forallE _ _ = VExpr.forallE _ _
@@ -3656,35 +3702,35 @@ major. -/
 theorem GenerationChecked.motiveVarApp_hasType {source : VInductDecl}
     (gen : GenerationChecked source) {env : VEnv} {l : VLevel}
     {Γ : List VExpr} {K : Nat} {idxs : List VExpr} {a : VExpr}
-    (hM : env.HasType (source.uvars + 1) Γ (.bvar K)
+    (hM : env.HasType (gen.recUvars) Γ (.bvar K)
       (gen.motiveType.liftN (K+1)))
-    (hidx : env.SpineWF (source.uvars + 1) Γ
+    (hidx : env.SpineWF (gen.recUvars) Γ
       (VExpr.forallN (VExpr.liftTelN (K+1) gen.idxTel 0)
         (.sort l))
       idxs (.sort l))
     (hlen : idxs.length = gen.idxTel.length)
-    (ha : env.HasType (source.uvars + 1) Γ a
+    (ha : env.HasType (gen.recUvars) Γ a
       (VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange (K+1) source.nparams ++ idxs))) :
-    env.HasType (source.uvars + 1) Γ
-      (VExpr.appN (.bvar K) (idxs ++ [a])) (.sort (.param 0)) := by
+    env.HasType (gen.recUvars) Γ
+      (VExpr.appN (.bvar K) (idxs ++ [a])) (.sort gen.motiveLevel) := by
   rw [gen.motiveType_liftN] at hM
   have hshape := hidx.retarget
     (by simpa only [VExpr.liftTelN_length] using hlen)
     (.forallE
       (VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange (K+1 + gen.idxTel.length)
             source.nparams ++
           VExpr.bvarRevRange 0 gen.idxTel.length))
-      (.sort (.param 0)))
+      (.sort gen.motiveLevel))
   rw [VExpr.instRev_forallE_sort, VExpr.instRev_appN,
     VExpr.instRev_closedN _
       (C := .const gen.block.sourceType.name
-        (VLevel.params' source.uvars 1)) trivial,
+        (gen.sourceLevels)) trivial,
     List.map_append,
     VExpr.map_instRev_bvarRevRange_ge _ _ _ (by rw [hlen]; omega),
     show K+1+gen.idxTel.length-idxs.length = K+1 from by
@@ -3723,7 +3769,7 @@ theorem GenerationChecked.minorTypesAux_getElem?
         ctors[q]?.map fun ctor =>
           VExpr.liftN (i+q)
             (GenerationChecked.minorType
-              (source := source) ctor)
+              (source := source) ctor gen.elimination)
   | [], _, q => by simp [GenerationChecked.minorTypesAux]
   | _ :: _, _, 0 => by simp [GenerationChecked.minorTypesAux]
   | _ :: ctors, i, q+1 => by
@@ -3743,22 +3789,22 @@ field keeps its raw domain; `emittedField_defeq` converts it to the retained
 recursive-Pi view only at the semantic application point. -/
 theorem recArgMinor_isType {ctor : NormalizedCtor}
     (hctor : ctor ∈ gen.block.ctorPairs) {r : RecArg}
-    (hrmem : r ∈ ctor.recArgsR source.uvars)
+    (hrmem : r ∈ ctor.recArgsR source.uvars gen.elimination)
     (Δ : List VExpr) (p : Nat) (hΔ : Δ.length = p) :
-    env.IsType (source.uvars + 1)
+    env.IsType (gen.recUvars)
       (Δ ++
         (VExpr.liftTelN 1
-          (ctor.fieldsR source.uvars source.nparams) 0).reverse ++
+          (ctor.fieldsR source.uvars source.nparams gen.elimination) 0).reverse ++
         (gen.motiveType :: gen.paramsTel.reverse))
       (r.minorIH
-        (ctor.fieldsR source.uvars source.nparams).length p) := by
+        (ctor.fieldsR source.uvars source.nparams gen.elimination).length p) := by
   obtain ⟨r₀, hr₀, rfl⟩ :=
     NormalizedCtor.recArgsR_mem hrmem
   obtain ⟨Bview, hBview, hrec⟩ :=
     S.viewRecArg_data hctor hr₀
-  let ls := VLevel.params' source.uvars 1
+  let ls := gen.sourceLevels
   let r := r₀.instL ls
-  let Bs := ctor.fieldsR source.uvars source.nparams
+  let Bs := ctor.fieldsR source.uvars source.nparams gen.elimination
   let m := Bs.length
   let j := r₀.fieldIndex
   let Fs := VExpr.liftTelN 1 Bs 0
@@ -3803,11 +3849,11 @@ theorem recArgMinor_isType {ctor : NormalizedCtor}
       ← List.reverse_append, List.take_append_drop,
       List.singleton_append, ← List.append_assoc]
   dsimp only [j] at ht hctx
-  have htel : env.OnTel (source.uvars + 1) Γ As := by
+  have htel : env.OnTel (gen.recUvars) Γ As := by
     rw [hctx] at ht
     simpa [r, As, m, j, Bs, RecArg.instL,
       RecArg.minorBinders] using ht.1
-  have hsp : env.SpineWF (source.uvars + 1)
+  have hsp : env.SpineWF (gen.recUvars)
       (As.reverse ++ Γ)
       (VExpr.forallN
         (VExpr.liftTelN
@@ -3843,13 +3889,13 @@ theorem recArgMinor_isType {ctor : NormalizedCtor}
   rw [show m-1-j+p+1 = m-j+p from by omega] at hlu
   dsimp only [j, r] at hlu
   have hf0 := VEnv.HasType.bvar
-    (env := env) (U := source.uvars + 1) hlu
+    (env := env) (U := gen.recUvars) hlu
   obtain ⟨u, hdom₀⟩ :=
     S.emittedField_defeq hctor hBraw hBview
   have hdom₁ := hdom₀.instL
-    (U' := source.uvars + 1) VLevel.params'_one_wf
-  have hdomChecked : env.IsDefEq (source.uvars + 1)
-      ((ctor.fieldsR source.uvars source.nparams |>.take
+    (U' := gen.recUvars) gen.sourceLevels_wf
+  have hdomChecked : env.IsDefEq (gen.recUvars)
+      ((ctor.fieldsR source.uvars source.nparams gen.elimination |>.take
           r₀.fieldIndex).reverse ++
         (gen.block.checked.params.map (VExpr.instL ls)).reverse)
       (Braw.instL ls) (Bview.instL ls) ((VExpr.sort u).instL ls) := by
@@ -3877,13 +3923,13 @@ theorem recArgMinor_isType {ctor : NormalizedCtor}
   rw [hctx] at hdom₃
   have hfView := hdom₃.defeq hf0
   have hfield := recArg_minor_fieldType hrec m p
-    (by simpa [j] using hjm)
+    (by simpa [j] using hjm) gen.elimination
   simp only [RecArg.instL] at hfield
   rw [hfield] at hfView
   have hf := hfView.weakN S.ord
     (Ctx.LiftN.zero (Γ := Γ) As.reverse)
   have hmajor := VEnv.HasType.appN_selfSpine
-    (env := env) (U := source.uvars + 1)
+    (env := env) (U := gen.recUvars)
     (As := As)
     (B := VExpr.appN
       (.const gen.block.sourceType.name ls)
@@ -3897,7 +3943,7 @@ theorem recArgMinor_isType {ctor : NormalizedCtor}
     List.nil_append] at hmajor
   have hAsLen : As.length = r.binders.length := by
     simp [As, RecArg.minorBinders, VExpr.liftTelN_length]
-  change env.HasType (source.uvars + 1) (As.reverse ++ Γ)
+  change env.HasType (gen.recUvars) (As.reverse ++ Γ)
     ((VExpr.bvar (m-1-r.fieldIndex+p+As.length)).appN
       (VExpr.bvarRevRange 0 As.length))
     (VExpr.appN
@@ -3917,7 +3963,7 @@ theorem recArgMinor_isType {ctor : NormalizedCtor}
         omega)
     simpa [Γ, List.append_assoc] using hM0
   have hM := VEnv.HasType.bvar
-    (env := env) (U := source.uvars + 1)
+    (env := env) (U := gen.recUvars)
     (Lookup.of_getElem? hMget)
   have hlen : idxs.length = gen.idxTel.length := by
     simpa [idxs, r, RecArg.instL,
@@ -3927,7 +3973,7 @@ theorem recArgMinor_isType {ctor : NormalizedCtor}
   have hbody := gen.motiveVarApp_hasType
     (l := gen.block.checked.resultLevel.inst ls)
     hM hsp hlen hmajor
-  refine IsType.forallN htel ⟨VLevel.param 0, ?_⟩
+  refine IsType.forallN htel ⟨gen.motiveLevel, ?_⟩
   simpa [RecArg.minorIH, r, As, idxs, m, Γ, Fs, Bs,
     List.append_assoc] using hbody
 
@@ -3936,15 +3982,15 @@ and depth. -/
 theorem ihs_onTel {ctor : NormalizedCtor}
     (hctor : ctor ∈ gen.block.ctorPairs) :
     ∀ (rsSuf : List RecArg),
-    (∀ r ∈ rsSuf, r ∈ ctor.recArgsR source.uvars) →
+    (∀ r ∈ rsSuf, r ∈ ctor.recArgsR source.uvars gen.elimination) →
     ∀ (Δ : List VExpr) (p : Nat), Δ.length = p →
-    env.OnTel (source.uvars + 1)
+    env.OnTel (gen.recUvars)
       (Δ ++
         (VExpr.liftTelN 1
-          (ctor.fieldsR source.uvars source.nparams) 0).reverse ++
+          (ctor.fieldsR source.uvars source.nparams gen.elimination) 0).reverse ++
         (gen.motiveType :: gen.paramsTel.reverse))
       (ihsFromRecArgs
-        (ctor.fieldsR source.uvars source.nparams).length rsSuf p)
+        (ctor.fieldsR source.uvars source.nparams gen.elimination).length rsSuf p)
   | [], _, _, _, _ => trivial
   | r :: rsSuf, hqs, Δ, p, hΔ =>
     ⟨S.recArgMinor_isType hctor
@@ -4028,27 +4074,27 @@ theorem result_transport {ctor : NormalizedCtor}
     (hctor : ctor ∈ gen.block.ctorPairs)
     (mid : List VExpr) {g : Nat} (hg : mid.length = g)
     (As₂ : List VExpr) {d : Nat} (hd : As₂.length = d) :
-    env.SpineWF (source.uvars + 1)
+    env.SpineWF (gen.recUvars)
       (As₂ ++
         ((VExpr.liftTelN g
-          (ctor.fieldsR source.uvars source.nparams) 0).reverse ++
+          (ctor.fieldsR source.uvars source.nparams gen.elimination) 0).reverse ++
           (mid ++ gen.paramsTel.reverse)))
       (VExpr.forallN
         (VExpr.liftTelN
-          ((ctor.fieldsR source.uvars source.nparams).length + g + d)
+          ((ctor.fieldsR source.uvars source.nparams gen.elimination).length + g + d)
           gen.idxTel 0)
         (.sort (gen.block.checked.resultLevel.inst
-          (VLevel.params' source.uvars 1))))
-      ((ctor.resultIndicesR source.uvars).map fun e =>
+          (gen.sourceLevels))))
+      ((ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
         (e.liftN g
-          (ctor.fieldsR source.uvars source.nparams).length).liftN d)
+          (ctor.fieldsR source.uvars source.nparams gen.elimination).length).liftN d)
       (.sort (gen.block.checked.resultLevel.inst
-        (VLevel.params' source.uvars 1))) := by
-  let ls := VLevel.params' source.uvars 1
+        (gen.sourceLevels))) := by
+  let ls := gen.sourceLevels
   have h1 := (S.rawResultSpine hctor).instL
-    (U' := source.uvars + 1) VLevel.params'_one_wf
-  have h1Checked : env.SpineWF (source.uvars + 1)
-      ((ctor.fieldsR source.uvars source.nparams).reverse ++
+    (U' := gen.recUvars) gen.sourceLevels_wf
+  have h1Checked : env.SpineWF (gen.recUvars)
+      ((ctor.fieldsR source.uvars source.nparams gen.elimination).reverse ++
         (gen.block.checked.params.map (VExpr.instL ls)).reverse)
       (VExpr.instL ls
         (VExpr.forallN
@@ -4068,9 +4114,9 @@ theorem result_transport {ctor : NormalizedCtor}
       (gen.block.rawIndices.map (VExpr.instL ls)) =
         gen.idxTel by rfl] at h1Generation
   rw [← NormalizedCtor.fieldsR_length
-    (source := source) ctor] at h1Generation
+    (source := source) (mode := gen.elimination) ctor] at h1Generation
   have W₁ := Ctx.LiftN.consTel (n := mid.length)
-    (ctor.fieldsR source.uvars source.nparams)
+    (ctor.fieldsR source.uvars source.nparams gen.elimination)
     (Ctx.LiftN.zero (Γ := gen.paramsTel.reverse) mid)
   rw [Nat.add_zero] at W₁
   have h2 := h1Generation.weakN S.ord W₁
@@ -4079,7 +4125,7 @@ theorem result_transport {ctor : NormalizedCtor}
     (Ctx.LiftN.zero (Γ := _) As₂ (h := hd))
   rw [VExpr.liftN_forallN] at h3
   rw [VExpr.liftTelN_liftTelN_hi'
-      (ctor.fieldsR source.uvars source.nparams).length
+      (ctor.fieldsR source.uvars source.nparams gen.elimination).length
       g _ 0 (by omega),
     VExpr.liftTelN_liftTelN] at h3
   simpa [ls, NormalizedCtor.resultIndicesR,
@@ -4090,29 +4136,29 @@ theorem result_transport {ctor : NormalizedCtor}
 universes, before inserting the motive or any induction-hypothesis stack. -/
 theorem ctorApp_emitted_rec {ctor : NormalizedCtor}
     (hctor : ctor ∈ gen.block.ctorPairs) :
-    env.HasType (source.uvars + 1)
-      ((ctor.fieldsR source.uvars source.nparams).reverse ++
+    env.HasType (gen.recUvars)
+      ((ctor.fieldsR source.uvars source.nparams gen.elimination).reverse ++
         gen.paramsTel.reverse)
       (VExpr.appN
         (.const ctor.raw.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
-            (ctor.fieldsR source.uvars source.nparams).length
+            (ctor.fieldsR source.uvars source.nparams gen.elimination).length
             source.nparams ++
           VExpr.bvarRevRange 0
-            (ctor.fieldsR source.uvars source.nparams).length))
+            (ctor.fieldsR source.uvars source.nparams gen.elimination).length))
       (VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
-            (ctor.fieldsR source.uvars source.nparams).length
+            (ctor.fieldsR source.uvars source.nparams gen.elimination).length
             source.nparams ++
-          ctor.resultIndicesR source.uvars)) := by
-  let ls := VLevel.params' source.uvars 1
+          ctor.resultIndicesR source.uvars gen.elimination)) := by
+  let ls := gen.sourceLevels
   have h := (S.ctorApp_emitted_decl hctor).instL
-    (U' := source.uvars + 1) VLevel.params'_one_wf
-  have hChecked : env.HasType (source.uvars + 1)
-      ((ctor.fieldsR source.uvars source.nparams).reverse ++
+    (U' := gen.recUvars) gen.sourceLevels_wf
+  have hChecked : env.HasType (gen.recUvars)
+      ((ctor.fieldsR source.uvars source.nparams gen.elimination).reverse ++
         (gen.block.checked.params.map (VExpr.instL ls)).reverse)
       ((VExpr.appN
         (.const ctor.raw.name (VLevel.params source.uvars))
@@ -4128,7 +4174,7 @@ theorem ctorApp_emitted_rec {ctor : NormalizedCtor}
   have hGeneration := hChecked.defeqDFC S.ord
     (hfieldsCtx.symm S.ord)
   rw [← NormalizedCtor.fieldsR_length
-    (source := source) ctor] at hGeneration
+    (source := source) (mode := gen.elimination) ctor] at hGeneration
   simpa [ls, NormalizedCtor.fieldsR,
     GenerationChecked.paramsTel,
     NormalizedCtor.resultTarget,
@@ -4143,49 +4189,49 @@ theorem ctorApp_transport {ctor : NormalizedCtor}
     (hctor : ctor ∈ gen.block.ctorPairs)
     (mid : List VExpr) {g : Nat} (hg : mid.length = g)
     (As₂ : List VExpr) {d : Nat} (hd : As₂.length = d) :
-    env.HasType (source.uvars + 1)
+    env.HasType (gen.recUvars)
       (As₂ ++
         ((VExpr.liftTelN g
-          (ctor.fieldsR source.uvars source.nparams) 0).reverse ++
+          (ctor.fieldsR source.uvars source.nparams gen.elimination) 0).reverse ++
           (mid ++ gen.paramsTel.reverse)))
       (VExpr.appN
         (.const ctor.raw.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             (d + (g +
-              (ctor.fieldsR source.uvars source.nparams).length))
+              (ctor.fieldsR source.uvars source.nparams gen.elimination).length))
             source.nparams ++
           VExpr.bvarRevRange d
-            (ctor.fieldsR source.uvars source.nparams).length))
+            (ctor.fieldsR source.uvars source.nparams gen.elimination).length))
       (VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             (d + (g +
-              (ctor.fieldsR source.uvars source.nparams).length))
+              (ctor.fieldsR source.uvars source.nparams gen.elimination).length))
             source.nparams ++
-          (ctor.resultIndicesR source.uvars).map fun e =>
+          (ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
             (e.liftN g
-              (ctor.fieldsR source.uvars source.nparams).length).liftN d)) := by
-  let Bs := ctor.fieldsR source.uvars source.nparams
+              (ctor.fieldsR source.uvars source.nparams gen.elimination).length).liftN d)) := by
+  let Bs := ctor.fieldsR source.uvars source.nparams gen.elimination
   have W₁ := Ctx.LiftN.consTel (n := mid.length) Bs
     (Ctx.LiftN.zero (Γ := gen.paramsTel.reverse) mid)
   rw [Nat.add_zero] at W₁
   have h₁ := (S.ctorApp_emitted_rec hctor).weakN S.ord W₁
   rw [hg] at h₁
-  have hmid : env.HasType (source.uvars + 1)
+  have hmid : env.HasType (gen.recUvars)
       ((VExpr.liftTelN g Bs 0).reverse ++
         (mid ++ gen.paramsTel.reverse))
       (VExpr.appN
         (.const ctor.raw.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange (g + Bs.length) source.nparams ++
           VExpr.bvarRevRange 0 Bs.length))
       (VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange (g + Bs.length) source.nparams ++
-          (ctor.resultIndicesR source.uvars).map
+          (ctor.resultIndicesR source.uvars gen.elimination).map
             (VExpr.liftN g · Bs.length))) := by
     simpa [Bs, VExpr.liftN_appN, List.map_append,
       bvarRevRange_liftN_ge _ _ _ _ (Nat.le_refl _),
@@ -4202,30 +4248,30 @@ theorem ctorApp_transport {ctor : NormalizedCtor}
 /-- Constructor application in the exact mixed minor-premise context. -/
 theorem ctorAppMinor_hasType {ctor : NormalizedCtor}
     (hctor : ctor ∈ gen.block.ctorPairs) (Δ : List VExpr) :
-    env.HasType (source.uvars + 1)
+    env.HasType (gen.recUvars)
       (Δ ++
         (VExpr.liftTelN 1
-          (ctor.fieldsR source.uvars source.nparams) 0).reverse ++
+          (ctor.fieldsR source.uvars source.nparams gen.elimination) 0).reverse ++
         (gen.motiveType :: gen.paramsTel.reverse))
       (VExpr.appN
         (.const ctor.raw.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             (Δ.length +
-              (ctor.fieldsR source.uvars source.nparams).length + 1)
+              (ctor.fieldsR source.uvars source.nparams gen.elimination).length + 1)
             source.nparams ++
           VExpr.bvarRevRange Δ.length
-            (ctor.fieldsR source.uvars source.nparams).length))
+            (ctor.fieldsR source.uvars source.nparams gen.elimination).length))
       (VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             (Δ.length +
-              (ctor.fieldsR source.uvars source.nparams).length + 1)
+              (ctor.fieldsR source.uvars source.nparams gen.elimination).length + 1)
             source.nparams ++
-          (ctor.resultIndicesR source.uvars).map fun e =>
+          (ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
             (e.liftN 1
-              (ctor.fieldsR source.uvars source.nparams).length).liftN
+              (ctor.fieldsR source.uvars source.nparams gen.elimination).length).liftN
                 Δ.length)) := by
   have h := S.ctorApp_transport hctor [gen.motiveType]
     (g := 1) rfl Δ (d := Δ.length) rfl
@@ -4233,9 +4279,9 @@ theorem ctorAppMinor_hasType {ctor : NormalizedCtor}
     (show
       Δ.length +
           (1 +
-            (ctor.fieldsR source.uvars source.nparams).length) =
+            (ctor.fieldsR source.uvars source.nparams gen.elimination).length) =
         Δ.length +
-          (ctor.fieldsR source.uvars source.nparams).length + 1 by
+          (ctor.fieldsR source.uvars source.nparams gen.elimination).length + 1 by
       omega)] at h
   simpa [List.append_assoc] using h
 
@@ -4243,10 +4289,10 @@ theorem ctorAppMinor_hasType {ctor : NormalizedCtor}
 universe instantiation and insertion of the motive. -/
 theorem fields_onTel_minor {ctor : NormalizedCtor}
     (hctor : ctor ∈ gen.block.ctorPairs) :
-    env.OnTel (source.uvars + 1)
+    env.OnTel (gen.recUvars)
       (gen.motiveType :: gen.paramsTel.reverse)
       (VExpr.liftTelN 1
-        (ctor.fieldsR source.uvars source.nparams) 0) := by
+        (ctor.fieldsR source.uvars source.nparams gen.elimination) 0) := by
   have hout := (S.generationFields_onTel_rec hctor).weakN S.ord
     (Ctx.LiftN.zero (Γ := gen.paramsTel.reverse)
       [gen.motiveType])
@@ -4257,13 +4303,13 @@ and mixed motive. Raw field syntax is preserved; recursive classifications
 and result indices come from the checked view. -/
 theorem minor_isType {ctor : NormalizedCtor}
     (hctor : ctor ∈ gen.block.ctorPairs) :
-    env.IsType (source.uvars + 1)
+    env.IsType (gen.recUvars)
       (gen.motiveType :: gen.paramsTel.reverse)
       (GenerationChecked.minorType
-        (source := source) ctor) := by
-  let Bs := ctor.fieldsR source.uvars source.nparams
+        (source := source) ctor gen.elimination) := by
+  let Bs := ctor.fieldsR source.uvars source.nparams gen.elimination
   let m := Bs.length
-  let rs := ctor.recArgsR source.uvars
+  let rs := ctor.recArgsR source.uvars gen.elimination
   let IHs := ihsFromRecArgs m rs 0
   let Fs := VExpr.liftTelN 1 Bs 0
   let Γ := IHs.reverse ++
@@ -4287,7 +4333,7 @@ theorem minor_isType {ctor : NormalizedCtor}
           VExpr.liftTelN_length]
         omega)
     simpa [Γ] using h
-  have hM : env.HasType (source.uvars + 1) Γ
+  have hM : env.HasType (gen.recUvars) Γ
       (.bvar (m + rs.length))
       (gen.motiveType.liftN (m + rs.length + 1)) :=
     VEnv.HasType.bvar (Lookup.of_getElem? hMget)
@@ -4296,19 +4342,19 @@ theorem minor_isType {ctor : NormalizedCtor}
     (d := rs.length) hrlen
   rw [show m + 1 + rs.length =
     m + rs.length + 1 by omega] at hSp
-  have hSp' : env.SpineWF (source.uvars + 1) Γ
+  have hSp' : env.SpineWF (gen.recUvars) Γ
       (VExpr.forallN
         (VExpr.liftTelN (m + rs.length + 1)
           gen.idxTel 0)
         (.sort (gen.block.checked.resultLevel.inst
-          (VLevel.params' source.uvars 1))))
-      ((ctor.resultIndicesR source.uvars).map fun e =>
+          (gen.sourceLevels))))
+      ((ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
         (e.liftN 1 m).liftN rs.length)
       (.sort (gen.block.checked.resultLevel.inst
-        (VLevel.params' source.uvars 1))) := by
+        (gen.sourceLevels))) := by
     simpa [Γ, Fs, Bs, m, List.append_assoc] using hSp
   have hlen :
-      ((ctor.resultIndicesR source.uvars).map fun e =>
+      ((ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
         (e.liftN 1 m).liftN rs.length).length =
         gen.idxTel.length := by
     simp only [List.length_map, NormalizedCtor.resultIndicesR,
@@ -4319,19 +4365,19 @@ theorem minor_isType {ctor : NormalizedCtor}
   rw [hrlen,
     VExpr.bvarRevRange_congr source.nparams
       (show rs.length + m + 1 = m + rs.length + 1 by omega)] at hctorApp
-  have hctorApp' : env.HasType (source.uvars + 1) Γ
+  have hctorApp' : env.HasType (gen.recUvars) Γ
       (VExpr.appN
         (.const ctor.raw.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             (m + rs.length + 1) source.nparams ++
           VExpr.bvarRevRange rs.length m))
       (VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             (m + rs.length + 1) source.nparams ++
-          (ctor.resultIndicesR source.uvars).map fun e =>
+          (ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
             (e.liftN 1 m).liftN rs.length)) := by
     simpa [Γ, Fs, Bs, m, IHs, rs,
       List.append_assoc] using hctorApp
@@ -4339,16 +4385,16 @@ theorem minor_isType {ctor : NormalizedCtor}
   rw [VExpr.bvarRevRange_congr source.nparams
     (show m + rs.length + 1 =
       rs.length + m + 1 by omega)] at hbody
-  exact ⟨.param 0, by
+  exact ⟨gen.motiveLevel, by
     simpa [Γ, Fs, Bs, m, rs, IHs,
       List.append_assoc] using hbody⟩
 
 /-- The checked parameter telescope is well formed in recursor universes. -/
 theorem paramsTel_onTel :
-    env.OnTel (source.uvars + 1) [] gen.paramsTel := by
+    env.OnTel (gen.recUvars) [] gen.paramsTel := by
   have h := S.generationFamily_onTel.instL
-    (U' := source.uvars + 1) VLevel.params'_one_wf
-  have h' : env.OnTel (source.uvars + 1) []
+    (U' := gen.recUvars) gen.sourceLevels_wf
+  have h' : env.OnTel (gen.recUvars) []
       (gen.paramsTel ++ gen.idxTel) := by
     simpa [GenerationChecked.paramsTel,
       GenerationChecked.idxTel] using h
@@ -4356,11 +4402,11 @@ theorem paramsTel_onTel :
 
 /-- The raw index telescope is well formed over the checked parameters. -/
 theorem idxTel_onTel :
-    env.OnTel (source.uvars + 1)
+    env.OnTel (gen.recUvars)
       gen.paramsTel.reverse gen.idxTel := by
   have h := S.generationFamily_onTel.instL
-    (U' := source.uvars + 1) VLevel.params'_one_wf
-  have h' : env.OnTel (source.uvars + 1) []
+    (U' := gen.recUvars) gen.sourceLevels_wf
+  have h' : env.OnTel (gen.recUvars) []
       (gen.paramsTel ++ gen.idxTel) := by
     simpa [GenerationChecked.paramsTel,
       GenerationChecked.idxTel] using h
@@ -4372,7 +4418,7 @@ theorem minorTypesAux_onTel :
     ∀ (ctors : List NormalizedCtor),
       (∀ ctor ∈ ctors, ctor ∈ gen.block.ctorPairs) →
       ∀ (Δ : List VExpr) (i : Nat), Δ.length = i →
-        env.OnTel (source.uvars + 1)
+        env.OnTel (gen.recUvars)
           (Δ ++
             (gen.motiveType :: gen.paramsTel.reverse))
           (gen.minorTypesAux ctors i)
@@ -4390,7 +4436,7 @@ theorem minorTypesAux_onTel :
 /-- The complete mixed minor telescope is well formed over parameters and
 motive. -/
 theorem minorTypes_onTel :
-    env.OnTel (source.uvars + 1)
+    env.OnTel (gen.recUvars)
       (gen.motiveType :: gen.paramsTel.reverse)
       gen.minorTypes := by
   simpa [GenerationChecked.minorTypes] using
@@ -4402,35 +4448,35 @@ indices and then under an arbitrary top stack. -/
 theorem familyApp_transport
     (mid : List VExpr) {g : Nat} (hg : mid.length = g)
     (As₂ : List VExpr) {d : Nat} (hd : As₂.length = d) :
-    env.HasType (source.uvars + 1)
+    env.HasType (gen.recUvars)
       (As₂ ++
         ((VExpr.liftTelN g gen.idxTel 0).reverse ++
           (mid ++ gen.paramsTel.reverse)))
       (VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             (d + (g + gen.idxTel.length))
             source.nparams ++
           VExpr.bvarRevRange d gen.idxTel.length))
       (.sort (gen.block.checked.resultLevel.inst
-        (VLevel.params' source.uvars 1))) := by
+        (gen.sourceLevels))) := by
   have W₁ := Ctx.LiftN.consTel (n := mid.length) gen.idxTel
     (Ctx.LiftN.zero (Γ := gen.paramsTel.reverse) mid)
   rw [Nat.add_zero] at W₁
   have h₁ := S.familyApp_hasType.weakN S.ord W₁
   rw [hg] at h₁
-  have hmid : env.HasType (source.uvars + 1)
+  have hmid : env.HasType (gen.recUvars)
       ((VExpr.liftTelN g gen.idxTel 0).reverse ++
         (mid ++ gen.paramsTel.reverse))
       (VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             (g + gen.idxTel.length) source.nparams ++
           VExpr.bvarRevRange 0 gen.idxTel.length))
       (.sort (gen.block.checked.resultLevel.inst
-        (VLevel.params' source.uvars 1))) := by
+        (gen.sourceLevels))) := by
     simpa [VExpr.liftN_appN, List.map_append,
       bvarRevRange_liftN_ge _ _ _ _ (Nat.le_refl _),
       VExpr.bvarRevRange_liftN_high
@@ -4446,12 +4492,12 @@ theorem familyApp_transport
 parameter and index syntax while its motive and minors use the checked
 recursive classification. -/
 theorem recType_isType :
-    env.IsType (source.uvars + 1) [] gen.recType := by
+    env.IsType (gen.recUvars) [] gen.recType := by
   refine IsType.forallN S.paramsTel_onTel ?_
   simp only [List.append_nil]
   refine IsType.forallE S.motive_isType ?_
   refine IsType.forallN S.minorTypes_onTel ?_
-  have hI : env.OnTel (source.uvars + 1)
+  have hI : env.OnTel (gen.recUvars)
       (gen.minorTypes.reverse ++
         (gen.motiveType :: gen.paramsTel.reverse))
       (VExpr.liftTelN (gen.block.ctorPairs.length + 1)
@@ -4474,27 +4520,27 @@ theorem recType_isType :
       0 + ((gen.block.ctorPairs.length + 1) +
         gen.idxTel.length) =
       gen.idxTel.length + gen.block.ctorPairs.length + 1 by omega)] at hmaj₀
-  have hmaj : env.HasType (source.uvars + 1)
+  have hmaj : env.HasType (gen.recUvars)
       ((VExpr.liftTelN (gen.block.ctorPairs.length + 1)
           gen.idxTel 0).reverse ++
         (gen.minorTypes.reverse ++
           (gen.motiveType :: gen.paramsTel.reverse)))
       (VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             (gen.idxTel.length +
               gen.block.ctorPairs.length + 1)
             source.nparams ++
           VExpr.bvarRevRange 0 gen.idxTel.length))
       (.sort (gen.block.checked.resultLevel.inst
-        (VLevel.params' source.uvars 1))) := by
+        (gen.sourceLevels))) := by
     simpa [List.append_assoc] using hmaj₀
   refine IsType.forallE ⟨_, hmaj⟩ ?_
   have hM := getElem?_rstack3
     [VExpr.appN
       (.const gen.block.sourceType.name
-        (VLevel.params' source.uvars 1))
+        (gen.sourceLevels))
       (VExpr.bvarRevRange
           (gen.idxTel.length +
             gen.block.ctorPairs.length + 1)
@@ -4524,10 +4570,10 @@ theorem recType_isType :
       congr 1
       omega,
     gen.motiveType_liftN] at hmlu
-  have hfun : env.HasType (source.uvars + 1)
+  have hfun : env.HasType (gen.recUvars)
       (VExpr.appN
           (.const gen.block.sourceType.name
-            (VLevel.params' source.uvars 1))
+            (gen.sourceLevels))
           (VExpr.bvarRevRange
               (gen.idxTel.length +
                 gen.block.ctorPairs.length + 1)
@@ -4548,13 +4594,13 @@ theorem recType_isType :
         (.forallE
           (VExpr.appN
             (.const gen.block.sourceType.name
-              (VLevel.params' source.uvars 1))
+              (gen.sourceLevels))
             (VExpr.bvarRevRange
                 (gen.block.ctorPairs.length + 1 +
                   gen.idxTel.length)
                 source.nparams ++
               VExpr.bvarRevRange 0 gen.idxTel.length))
-          (.sort (.param 0)))).liftN
+          (.sort gen.motiveLevel))).liftN
         (1 + (VExpr.liftTelN
           (gen.block.ctorPairs.length + 1)
           gen.idxTel 0).length)) := by
@@ -4567,7 +4613,7 @@ theorem recType_isType :
       gen.idxTel 0)
     (Δ := [VExpr.appN
       (.const gen.block.sourceType.name
-        (VLevel.params' source.uvars 1))
+        (gen.sourceLevels))
       (VExpr.bvarRevRange
           (gen.idxTel.length +
             gen.block.ctorPairs.length + 1)
@@ -4582,7 +4628,7 @@ theorem recType_isType :
   have h0 :
       (VExpr.appN
           (.const gen.block.sourceType.name
-            (VLevel.params' source.uvars 1))
+            (gen.sourceLevels))
           (VExpr.bvarRevRange
               (gen.idxTel.length +
                 gen.block.ctorPairs.length + 1)
@@ -4595,19 +4641,19 @@ theorem recType_isType :
             (gen.motiveType :: gen.paramsTel.reverse))))[0]? =
         some (VExpr.appN
           (.const gen.block.sourceType.name
-            (VLevel.params' source.uvars 1))
+            (gen.sourceLevels))
           (VExpr.bvarRevRange
               (gen.idxTel.length +
                 gen.block.ctorPairs.length + 1)
               source.nparams ++
             VExpr.bvarRevRange 0 gen.idxTel.length)) := rfl
   have harg := HasType.bvar
-    (env := env) (U := source.uvars + 1)
+    (env := env) (U := gen.recUvars)
     (Lookup.of_getElem? h0)
-  have harg' : env.HasType (source.uvars + 1)
+  have harg' : env.HasType (gen.recUvars)
       ([VExpr.appN
           (.const gen.block.sourceType.name
-            (VLevel.params' source.uvars 1))
+            (gen.sourceLevels))
           (VExpr.bvarRevRange
               (gen.idxTel.length +
                 gen.block.ctorPairs.length + 1)
@@ -4621,7 +4667,7 @@ theorem recType_isType :
       (.bvar 0)
       ((VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             (gen.block.ctorPairs.length + 1 +
               gen.idxTel.length)
@@ -4709,7 +4755,9 @@ theorem recPairsR_mem {U : Nat} {T : Name} {np ni : Nat} {c : VConstVal} {q}
       q.2 = (recFieldIdxs np B).map (VExpr.instL (VLevel.params' U 1)) := by
   obtain ⟨⟨j, idxs⟩, hmem, rfl⟩ := List.mem_map.1 hq
   obtain ⟨B, hB, hrec, hidx⟩ := recPairs_getElem _ hmem
-  exact ⟨B, by simpa using hB, hrec, by simp only []; rw [show idxs = recFieldIdxs np B from hidx]⟩
+  exact ⟨B, by simpa using hB, hrec, by
+    simpa using congrArg
+      (List.map (VExpr.instL (ElimMode.large.sourceLevels U))) hidx⟩
 
 /-- Recursor-universe transport preserves each recursive argument's source
 field position. -/
@@ -4963,7 +5011,7 @@ include S
 /-- Syntactic universe well-formedness follows from semantic well-formedness
 of the closed mixed recursor type. -/
 theorem recType_levelWF :
-    gen.recType.LevelWF (source.uvars + 1) := by
+    gen.recType.LevelWF (gen.recUvars) := by
   obtain ⟨_, h⟩ := S.recType_isType
   exact (h.levelWF trivial).1
 
@@ -4977,14 +5025,14 @@ theorem recursor_hasType
     (hrec : env.constants
       (.str gen.block.sourceType.name "rec") =
         some gen.recursor) {Γ} :
-    env.HasType (source.uvars + 1) Γ
+    env.HasType (gen.recUvars) Γ
       (.const (.str gen.block.sourceType.name "rec")
-        (VLevel.params (source.uvars + 1)))
+        (gen.recLevels))
       gen.recType := by
   have h := HasType.const (Γ := Γ) hrec
     VLevel.params_wf VLevel.params_length
   rw [show gen.recursor.uvars =
-      source.uvars + 1 from rfl,
+      gen.recUvars from rfl,
     show gen.recursor.type = gen.recType from rfl] at h
   rwa [S.recType_levelWF.instL_id] at h
 
@@ -4995,12 +5043,12 @@ theorem recBase_hasType
       (.str gen.block.sourceType.name "rec") =
         some gen.recursor)
     (Δ : List VExpr) :
-    env.HasType (source.uvars + 1)
+    env.HasType (gen.recUvars)
       (Δ ++ (gen.minorTypes.reverse ++
         (gen.motiveType :: gen.paramsTel.reverse)))
       (VExpr.appN
         (.const (.str gen.block.sourceType.name "rec")
-          (VLevel.params (source.uvars + 1)))
+          (gen.recLevels))
         (VExpr.bvarRevRange Δ.length
           (source.nparams +
             gen.block.ctorPairs.length + 1)))
@@ -5011,7 +5059,7 @@ theorem recBase_hasType
         (.forallE
           (VExpr.appN
             (.const gen.block.sourceType.name
-              (VLevel.params' source.uvars 1))
+              (gen.sourceLevels))
             (VExpr.bvarRevRange
                 (gen.idxTel.length +
                   gen.block.ctorPairs.length + 1)
@@ -5024,12 +5072,12 @@ theorem recBase_hasType
                   gen.block.ctorPairs.length + 1))
               (VExpr.bvarRevRange 1 gen.idxTel.length))
             (.bvar 0)))).liftN Δ.length) := by
-  have hf : env.HasType (source.uvars + 1)
+  have hf : env.HasType (gen.recUvars)
       (Δ ++
         (gen.paramsTel ++
           gen.motiveType :: gen.minorTypes).reverse ++ [])
       (.const (.str gen.block.sourceType.name "rec")
-        (VLevel.params (source.uvars + 1)))
+        (gen.recLevels))
       ((VExpr.forallN
         (gen.paramsTel ++
           gen.motiveType :: gen.minorTypes)
@@ -5040,7 +5088,7 @@ theorem recBase_hasType
           (.forallE
             (VExpr.appN
               (.const gen.block.sourceType.name
-                (VLevel.params' source.uvars 1))
+                (gen.sourceLevels))
               (VExpr.bvarRevRange
                   (gen.idxTel.length +
                     gen.block.ctorPairs.length + 1)
@@ -5066,7 +5114,7 @@ theorem recBase_hasType
           (.forallE
             (VExpr.appN
               (.const gen.block.sourceType.name
-                (VLevel.params' source.uvars 1))
+                (gen.sourceLevels))
               (VExpr.bvarRevRange
                   (gen.idxTel.length +
                     gen.block.ctorPairs.length + 1)
@@ -5085,7 +5133,7 @@ theorem recBase_hasType
       S.recType_closedN.liftN_eq (Nat.zero_le _)]
     exact S.recursor_hasType hrec
   have hspine := HasType.appN_selfSpine
-    (env := env) (U := source.uvars + 1) hf
+    (env := env) (U := gen.recUvars) hf
   simp only [GenerationChecked.recType,
     List.reverse_append, List.reverse_cons,
     List.append_nil, List.append_assoc,
@@ -5108,7 +5156,7 @@ theorem recApp_hasType
       (.str gen.block.sourceType.name "rec") =
         some gen.recursor)
     (Δ : List VExpr) {idxs : List VExpr} {a : VExpr}
-    (hidx : env.SpineWF (source.uvars + 1)
+    (hidx : env.SpineWF (gen.recUvars)
       (Δ ++ (gen.minorTypes.reverse ++
         (gen.motiveType :: gen.paramsTel.reverse)))
       (VExpr.forallN
@@ -5117,30 +5165,30 @@ theorem recApp_hasType
             gen.block.ctorPairs.length + 1)
           gen.idxTel 0)
         (.sort (gen.block.checked.resultLevel.inst
-          (VLevel.params' source.uvars 1))))
+          (gen.sourceLevels))))
       idxs
       (.sort (gen.block.checked.resultLevel.inst
-        (VLevel.params' source.uvars 1))))
+        (gen.sourceLevels))))
     (hlen : idxs.length = gen.idxTel.length)
-    (ha : env.HasType (source.uvars + 1)
+    (ha : env.HasType (gen.recUvars)
       (Δ ++ (gen.minorTypes.reverse ++
         (gen.motiveType :: gen.paramsTel.reverse)))
       a
       (VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             (Δ.length +
               gen.block.ctorPairs.length + 1)
             source.nparams ++
           idxs))) :
-    env.HasType (source.uvars + 1)
+    env.HasType (gen.recUvars)
       (Δ ++ (gen.minorTypes.reverse ++
         (gen.motiveType :: gen.paramsTel.reverse)))
       (VExpr.appN
         (VExpr.appN
           (.const (.str gen.block.sourceType.name "rec")
-            (VLevel.params (source.uvars + 1)))
+            (gen.recLevels))
           (VExpr.bvarRevRange Δ.length
             (source.nparams +
               gen.block.ctorPairs.length + 1)))
@@ -5161,7 +5209,7 @@ theorem recApp_hasType
       (VExpr.forallE
         (VExpr.appN
           (.const gen.block.sourceType.name
-            (VLevel.params' source.uvars 1))
+            (gen.sourceLevels))
           (VExpr.bvarRevRange
               (gen.idxTel.length +
                 gen.block.ctorPairs.length + 1)
@@ -5180,7 +5228,7 @@ theorem recApp_hasType
       VExpr.forallE
         (VExpr.appN
           (.const gen.block.sourceType.name
-            (VLevel.params' source.uvars 1))
+            (gen.sourceLevels))
           (VExpr.bvarRevRange
               (gen.idxTel.length + Δ.length +
                 gen.block.ctorPairs.length + 1)
@@ -5227,17 +5275,17 @@ theorem recApp_hasType
     (.forallE
       (VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             (gen.idxTel.length + Δ.length +
               gen.block.ctorPairs.length + 1)
             source.nparams ++
           VExpr.bvarRevRange 0 gen.idxTel.length))
-      (.sort (.param 0)))
+      (.sort gen.motiveLevel))
   rw [VExpr.instRev_forallE_sort, VExpr.instRev_appN,
     VExpr.instRev_closedN _
       (C := .const gen.block.sourceType.name
-        (VLevel.params' source.uvars 1)) trivial,
+        (gen.sourceLevels)) trivial,
     List.map_append,
     VExpr.map_instRev_bvarRevRange_ge _ _ _
       (by rw [hlen]; omega),
@@ -5251,7 +5299,7 @@ theorem recApp_hasType
   rw [hlen] at hshape
   have hfull := hshape.snoc ha
   simp only [VExpr.inst] at hfull
-  change env.SpineWF (source.uvars + 1) _
+  change env.SpineWF (gen.recUvars) _
     (VExpr.forallN
       (VExpr.liftTelN
         (Δ.length + gen.block.ctorPairs.length + 1)
@@ -5259,14 +5307,14 @@ theorem recApp_hasType
       (VExpr.forallN
         [VExpr.appN
           (.const gen.block.sourceType.name
-            (VLevel.params' source.uvars 1))
+            (gen.sourceLevels))
           (VExpr.bvarRevRange
               (gen.idxTel.length + Δ.length +
                 gen.block.ctorPairs.length + 1)
               source.nparams ++
             VExpr.bvarRevRange 0 gen.idxTel.length)]
-        (.sort (.param 0))))
-    (idxs ++ [a]) (.sort (.param 0)) at hfull
+        (.sort gen.motiveLevel)))
+    (idxs ++ [a]) (.sort gen.motiveLevel) at hfull
   rw [← VExpr.forallN_append] at hfull
   have hfullLen : (idxs ++ [a]).length =
       (VExpr.liftTelN
@@ -5275,7 +5323,7 @@ theorem recApp_hasType
           gen.idxTel 0 ++
         [VExpr.appN
           (.const gen.block.sourceType.name
-            (VLevel.params' source.uvars 1))
+            (gen.sourceLevels))
           (VExpr.bvarRevRange
               (gen.idxTel.length + Δ.length +
                 gen.block.ctorPairs.length + 1)
@@ -5341,7 +5389,7 @@ theorem recApp_hasType
 /-- The mixed motive variable applied to an index spine and major. -/
 theorem motiveApp_hasType
     (Δ : List VExpr) {idxs : List VExpr} {a : VExpr}
-    (hidx : env.SpineWF (source.uvars + 1)
+    (hidx : env.SpineWF (gen.recUvars)
       (Δ ++ (gen.minorTypes.reverse ++
         (gen.motiveType :: gen.paramsTel.reverse)))
       (VExpr.forallN
@@ -5350,24 +5398,24 @@ theorem motiveApp_hasType
             gen.block.ctorPairs.length + 1)
           gen.idxTel 0)
         (.sort (gen.block.checked.resultLevel.inst
-          (VLevel.params' source.uvars 1))))
+          (gen.sourceLevels))))
       idxs
       (.sort (gen.block.checked.resultLevel.inst
-        (VLevel.params' source.uvars 1))))
+        (gen.sourceLevels))))
     (hlen : idxs.length = gen.idxTel.length)
-    (ha : env.HasType (source.uvars + 1)
+    (ha : env.HasType (gen.recUvars)
       (Δ ++ (gen.minorTypes.reverse ++
         (gen.motiveType :: gen.paramsTel.reverse)))
       a
       (VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             (Δ.length +
               gen.block.ctorPairs.length + 1)
             source.nparams ++
           idxs))) :
-    env.HasType (source.uvars + 1)
+    env.HasType (gen.recUvars)
       (Δ ++ (gen.minorTypes.reverse ++
         (gen.motiveType :: gen.paramsTel.reverse)))
       (VExpr.appN
@@ -5375,7 +5423,7 @@ theorem motiveApp_hasType
           (Δ.length +
             gen.block.ctorPairs.length))
         (idxs ++ [a]))
-      (.sort (.param 0)) := by
+      (.sort gen.motiveLevel) := by
   have hM := getElem?_rstack3 Δ
     gen.minorTypes.reverse gen.motiveType
     gen.paramsTel.reverse
@@ -5389,37 +5437,37 @@ theorem motiveApp_hasType
 /-- The raw constructor-headed major in the complete mixed rule context. -/
 theorem ctorAppRule_hasType {ctor : NormalizedCtor}
     (hctor : ctor ∈ gen.block.ctorPairs) :
-    env.HasType (source.uvars + 1)
+    env.HasType (gen.recUvars)
       ((VExpr.liftTelN
           (gen.block.ctorPairs.length + 1)
-          (ctor.fieldsR source.uvars source.nparams)
+          (ctor.fieldsR source.uvars source.nparams gen.elimination)
           0).reverse ++
         (gen.minorTypes.reverse ++
           (gen.motiveType :: gen.paramsTel.reverse)))
       (VExpr.appN
         (.const ctor.raw.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             ((ctor.fieldsR
-                source.uvars source.nparams).length +
+                source.uvars source.nparams gen.elimination).length +
               gen.block.ctorPairs.length + 1)
             source.nparams ++
           VExpr.bvarRevRange 0
             (ctor.fieldsR
-              source.uvars source.nparams).length))
+              source.uvars source.nparams gen.elimination).length))
       (VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             ((ctor.fieldsR
-                source.uvars source.nparams).length +
+                source.uvars source.nparams gen.elimination).length +
               gen.block.ctorPairs.length + 1)
             source.nparams ++
-          (ctor.resultIndicesR source.uvars).map fun e =>
+          (ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
             e.liftN
               (gen.block.ctorPairs.length + 1)
               (ctor.fieldsR
-                source.uvars source.nparams).length)) := by
+                source.uvars source.nparams gen.elimination).length)) := by
   have h := S.ctorApp_transport hctor
     (gen.minorTypes.reverse ++ [gen.motiveType])
     (g := gen.block.ctorPairs.length + 1)
@@ -5429,21 +5477,21 @@ theorem ctorAppRule_hasType {ctor : NormalizedCtor}
     (show
       0 + (gen.block.ctorPairs.length + 1 +
         (ctor.fieldsR
-          source.uvars source.nparams).length) =
+          source.uvars source.nparams gen.elimination).length) =
       (ctor.fieldsR
-          source.uvars source.nparams).length +
+          source.uvars source.nparams gen.elimination).length +
         gen.block.ctorPairs.length + 1 by omega)] at h
   simpa [List.append_assoc] using h
 
 /-- The complete mixed rule binder telescope is well formed. -/
 theorem ruleBinders_onTel {ctor : NormalizedCtor}
     (hctor : ctor ∈ gen.block.ctorPairs) :
-    env.OnTel (source.uvars + 1) []
+    env.OnTel (gen.recUvars) []
       (gen.paramsTel ++
         gen.motiveType :: gen.minorTypes ++
         VExpr.liftTelN
           (gen.block.ctorPairs.length + 1)
-          (ctor.fieldsR source.uvars source.nparams)
+          (ctor.fieldsR source.uvars source.nparams gen.elimination)
           0) := by
   have hF₀ := S.fields_onTel_minor hctor
   have hF := hF₀.weakN S.ord
@@ -5466,37 +5514,37 @@ theorem ruleBinders_onTel {ctor : NormalizedCtor}
 /-- The type recorded on every mixed iota rule is itself a type. -/
 theorem ruleType_isType {i : Nat} {ctor : NormalizedCtor}
     (hctor : ctor ∈ gen.block.ctorPairs) :
-    env.IsType (source.uvars + 1) []
+    env.IsType (gen.recUvars) []
       ((gen.rule i ctor).type) := by
-  show env.IsType (source.uvars + 1) []
+  show env.IsType (gen.recUvars) []
     (VExpr.forallN
       (gen.paramsTel ++
         gen.motiveType :: gen.minorTypes ++
         VExpr.liftTelN
           (gen.block.ctorPairs.length + 1)
-          (ctor.fieldsR source.uvars source.nparams)
+          (ctor.fieldsR source.uvars source.nparams gen.elimination)
           0)
       (VExpr.appN
         (.bvar
           (gen.block.ctorPairs.length +
             (ctor.fieldsR
-              source.uvars source.nparams).length))
-        (((ctor.resultIndicesR source.uvars).map fun e =>
+              source.uvars source.nparams gen.elimination).length))
+        (((ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
             e.liftN
               (gen.block.ctorPairs.length + 1)
               (ctor.fieldsR
-                source.uvars source.nparams).length) ++
+                source.uvars source.nparams gen.elimination).length) ++
           [VExpr.appN
             (.const ctor.raw.name
-              (VLevel.params' source.uvars 1))
+              (gen.sourceLevels))
             (VExpr.bvarRevRange
                 ((ctor.fieldsR
-                    source.uvars source.nparams).length +
+                    source.uvars source.nparams gen.elimination).length +
                   gen.block.ctorPairs.length + 1)
                 source.nparams ++
               VExpr.bvarRevRange 0
                 (ctor.fieldsR
-                  source.uvars source.nparams).length)])))
+                  source.uvars source.nparams gen.elimination).length)])))
   refine IsType.forallN (S.ruleBinders_onTel hctor) ?_
   simp only [List.reverse_append, List.reverse_cons,
     List.append_nil, List.append_assoc,
@@ -5506,35 +5554,35 @@ theorem ruleType_isType {i : Nat} {ctor : NormalizedCtor}
     (g := gen.block.ctorPairs.length + 1)
     (by simp [gen.minorTypes_length])
     [] (d := 0) rfl
-  have hSp : env.SpineWF (source.uvars + 1)
+  have hSp : env.SpineWF (gen.recUvars)
       ((VExpr.liftTelN
           (gen.block.ctorPairs.length + 1)
-          (ctor.fieldsR source.uvars source.nparams)
+          (ctor.fieldsR source.uvars source.nparams gen.elimination)
           0).reverse ++
         (gen.minorTypes.reverse ++
           (gen.motiveType :: gen.paramsTel.reverse)))
       (VExpr.forallN
         (VExpr.liftTelN
           ((ctor.fieldsR
-              source.uvars source.nparams).length +
+              source.uvars source.nparams gen.elimination).length +
             gen.block.ctorPairs.length + 1)
           gen.idxTel 0)
         (.sort (gen.block.checked.resultLevel.inst
-          (VLevel.params' source.uvars 1))))
-      ((ctor.resultIndicesR source.uvars).map fun e =>
+          (gen.sourceLevels))))
+      ((ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
         e.liftN
           (gen.block.ctorPairs.length + 1)
           (ctor.fieldsR
-            source.uvars source.nparams).length)
+            source.uvars source.nparams gen.elimination).length)
       (.sort (gen.block.checked.resultLevel.inst
-        (VLevel.params' source.uvars 1))) := by
+        (gen.sourceLevels))) := by
     simpa [List.append_assoc, Nat.add_assoc] using hSp₀
   have hidxLen :
-      ((ctor.resultIndicesR source.uvars).map fun e =>
+      ((ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
         e.liftN
           (gen.block.ctorPairs.length + 1)
           (ctor.fieldsR
-            source.uvars source.nparams).length).length =
+            source.uvars source.nparams gen.elimination).length).length =
       gen.idxTel.length := by
     simp only [List.length_map,
       NormalizedCtor.resultIndicesR,
@@ -5542,10 +5590,10 @@ theorem ruleType_isType {i : Nat} {ctor : NormalizedCtor}
     exact (S.viewResultIndices_length hctor).trans
       gen.shape.2.2.1.symm
   have hctorApp := S.ctorAppRule_hasType hctor
-  have hSp' : env.SpineWF (source.uvars + 1)
+  have hSp' : env.SpineWF (gen.recUvars)
       ((VExpr.liftTelN
           (gen.block.ctorPairs.length + 1)
-          (ctor.fieldsR source.uvars source.nparams)
+          (ctor.fieldsR source.uvars source.nparams gen.elimination)
           0).reverse ++
         (gen.minorTypes.reverse ++
           (gen.motiveType :: gen.paramsTel.reverse)))
@@ -5554,78 +5602,78 @@ theorem ruleType_isType {i : Nat} {ctor : NormalizedCtor}
           ((VExpr.liftTelN
               (gen.block.ctorPairs.length + 1)
               (ctor.fieldsR
-                source.uvars source.nparams)
+                source.uvars source.nparams gen.elimination)
               0).reverse.length +
             gen.block.ctorPairs.length + 1)
           gen.idxTel 0)
         (.sort (gen.block.checked.resultLevel.inst
-          (VLevel.params' source.uvars 1))))
-      ((ctor.resultIndicesR source.uvars).map fun e =>
+          (gen.sourceLevels))))
+      ((ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
         e.liftN
           (gen.block.ctorPairs.length + 1)
           (ctor.fieldsR
-            source.uvars source.nparams).length)
+            source.uvars source.nparams gen.elimination).length)
       (.sort (gen.block.checked.resultLevel.inst
-        (VLevel.params' source.uvars 1))) := by
+        (gen.sourceLevels))) := by
     simpa only [List.length_reverse,
       VExpr.liftTelN_length] using hSp
-  have hctorApp' : env.HasType (source.uvars + 1)
+  have hctorApp' : env.HasType (gen.recUvars)
       ((VExpr.liftTelN
           (gen.block.ctorPairs.length + 1)
-          (ctor.fieldsR source.uvars source.nparams)
+          (ctor.fieldsR source.uvars source.nparams gen.elimination)
           0).reverse ++
         (gen.minorTypes.reverse ++
           (gen.motiveType :: gen.paramsTel.reverse)))
       (VExpr.appN
         (.const ctor.raw.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             ((ctor.fieldsR
-                source.uvars source.nparams).length +
+                source.uvars source.nparams gen.elimination).length +
               gen.block.ctorPairs.length + 1)
             source.nparams ++
           VExpr.bvarRevRange 0
             (ctor.fieldsR
-              source.uvars source.nparams).length))
+              source.uvars source.nparams gen.elimination).length))
       (VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             ((VExpr.liftTelN
                 (gen.block.ctorPairs.length + 1)
                 (ctor.fieldsR
-                  source.uvars source.nparams)
+                  source.uvars source.nparams gen.elimination)
                 0).reverse.length +
               gen.block.ctorPairs.length + 1)
             source.nparams ++
-          (ctor.resultIndicesR source.uvars).map fun e =>
+          (ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
             e.liftN
               (gen.block.ctorPairs.length + 1)
               (ctor.fieldsR
-                source.uvars source.nparams).length)) := by
+                source.uvars source.nparams gen.elimination).length)) := by
     simpa only [List.length_reverse,
       VExpr.liftTelN_length] using hctorApp
-  refine ⟨.param 0, ?_⟩
+  refine ⟨gen.motiveLevel, ?_⟩
   have hm := S.motiveApp_hasType
     (VExpr.liftTelN
       (gen.block.ctorPairs.length + 1)
-      (ctor.fieldsR source.uvars source.nparams)
+      (ctor.fieldsR source.uvars source.nparams gen.elimination)
       0).reverse
     hSp' hidxLen hctorApp'
   rw [List.length_reverse, VExpr.liftTelN_length,
     show
       (ctor.fieldsR
-          source.uvars source.nparams).length +
+          source.uvars source.nparams gen.elimination).length +
           gen.block.ctorPairs.length =
         gen.block.ctorPairs.length +
           (ctor.fieldsR
-            source.uvars source.nparams).length by omega,
+            source.uvars source.nparams gen.elimination).length by omega,
     show
       gen.block.ctorPairs.length +
           (ctor.fieldsR
-            source.uvars source.nparams).length + 1 =
+            source.uvars source.nparams gen.elimination).length + 1 =
         (ctor.fieldsR
-            source.uvars source.nparams).length +
+            source.uvars source.nparams gen.elimination).length +
           gen.block.ctorPairs.length + 1 by omega] at hm
   exact hm
 
@@ -5637,36 +5685,36 @@ theorem ruleCall_hasType {ctor : NormalizedCtor}
       (.str gen.block.sourceType.name "rec") =
         some gen.recursor)
     {r : RecArg}
-    (hr : r ∈ ctor.recArgsR source.uvars) :
-    env.HasType (source.uvars + 1)
+    (hr : r ∈ ctor.recArgsR source.uvars gen.elimination) :
+    env.HasType (gen.recUvars)
       ((VExpr.liftTelN
           (gen.block.ctorPairs.length + 1)
-          (ctor.fieldsR source.uvars source.nparams)
+          (ctor.fieldsR source.uvars source.nparams gen.elimination)
           0).reverse ++
         (gen.minorTypes.reverse ++
           (gen.motiveType :: gen.paramsTel.reverse)))
       (r.ruleCall
-        (ctor.fieldsR source.uvars source.nparams).length
+        (ctor.fieldsR source.uvars source.nparams gen.elimination).length
         gen.block.ctorPairs.length
         (VExpr.appN
           (.const
             (.str gen.block.sourceType.name "rec")
-            (VLevel.params (source.uvars + 1)))
+            (gen.recLevels))
           (VExpr.bvarRevRange
             (ctor.fieldsR
-              source.uvars source.nparams).length
+              source.uvars source.nparams gen.elimination).length
             (source.nparams +
               gen.block.ctorPairs.length + 1))))
       (r.ruleIH
-        (ctor.fieldsR source.uvars source.nparams).length
+        (ctor.fieldsR source.uvars source.nparams gen.elimination).length
         gen.block.ctorPairs.length) := by
   obtain ⟨r₀, hr₀, rfl⟩ :=
     NormalizedCtor.recArgsR_mem hr
   obtain ⟨Bview, hBview, hrecArg⟩ :=
     S.viewRecArg_data hctor hr₀
-  let ls := VLevel.params' source.uvars 1
+  let ls := gen.sourceLevels
   let r := r₀.instL ls
-  let Bs := ctor.fieldsR source.uvars source.nparams
+  let Bs := ctor.fieldsR source.uvars source.nparams gen.elimination
   let m := Bs.length
   let k := gen.block.ctorPairs.length
   let j := r₀.fieldIndex
@@ -5719,11 +5767,11 @@ theorem ruleCall_hasType {ctor : NormalizedCtor}
       ← List.reverse_append, List.take_append_drop,
       List.singleton_append, ← List.append_assoc]
   have htel : env.OnTel
-      (source.uvars + 1) Γ As := by
+      (gen.recUvars) Γ As := by
     rw [hctx] at ht
     simpa [r, As, m, k, j, RecArg.instL,
       RecArg.ruleBinders] using ht.1
-  have hsp : env.SpineWF (source.uvars + 1)
+  have hsp : env.SpineWF (gen.recUvars)
       (As.reverse ++ Γ)
       (VExpr.forallN
         (VExpr.liftTelN
@@ -5757,14 +5805,14 @@ theorem ruleCall_hasType {ctor : NormalizedCtor}
   rw [show m-1-r₀.fieldIndex+1 =
       m-r₀.fieldIndex by omega] at hlu
   have hf0 := VEnv.HasType.bvar
-    (env := env) (U := source.uvars + 1) hlu
+    (env := env) (U := gen.recUvars) hlu
   obtain ⟨u, hdom₀⟩ :=
     S.emittedField_defeq hctor hBraw hBview
   have hdom₁ := hdom₀.instL
-    (U' := source.uvars + 1)
-    VLevel.params'_one_wf
-  have hdomChecked : env.IsDefEq (source.uvars + 1)
-      ((ctor.fieldsR source.uvars source.nparams |>.take
+    (U' := gen.recUvars)
+    gen.sourceLevels_wf
+  have hdomChecked : env.IsDefEq (gen.recUvars)
+      ((ctor.fieldsR source.uvars source.nparams gen.elimination |>.take
           r₀.fieldIndex).reverse ++
         (gen.block.checked.params.map (VExpr.instL ls)).reverse)
       (Braw.instL ls) (Bview.instL ls) ((VExpr.sort u).instL ls) := by
@@ -5805,7 +5853,7 @@ theorem ruleCall_hasType {ctor : NormalizedCtor}
   rw [hctx] at hdom₃
   have hfView := hdom₃.defeq hf0
   have hfield := recArg_rule_fieldType
-    hrecArg m k (by simpa [j] using hjm)
+    hrecArg m k (by simpa [j] using hjm) gen.elimination
   simp only [RecArg.instL] at hfield
   dsimp only [j] at hfView
   simp only [Nat.add_zero] at hfView
@@ -5813,7 +5861,7 @@ theorem ruleCall_hasType {ctor : NormalizedCtor}
   have hf := hfView.weakN S.ord
     (Ctx.LiftN.zero (Γ := Γ) As.reverse)
   have hmajor := VEnv.HasType.appN_selfSpine
-    (env := env) (U := source.uvars + 1)
+    (env := env) (U := gen.recUvars)
     (As := As)
     (B := VExpr.appN
       (.const gen.block.sourceType.name ls)
@@ -5832,7 +5880,7 @@ theorem ruleCall_hasType {ctor : NormalizedCtor}
       As.length = r.binders.length := by
     simp [As, RecArg.ruleBinders,
       VExpr.liftTelN_length]
-  change env.HasType (source.uvars + 1)
+  change env.HasType (gen.recUvars)
     (As.reverse ++ Γ)
     ((VExpr.bvar
       (m-1-r.fieldIndex+As.length)).appN
@@ -5864,14 +5912,14 @@ theorem ruleCall_hasType {ctor : NormalizedCtor}
       (VExpr.appN
         (.const
           (.str gen.block.sourceType.name "rec")
-          (VLevel.params (source.uvars + 1)))
+          (gen.recLevels))
         (VExpr.bvarRevRange m
           (source.nparams+(k+1)))).liftN
           r.binders.length =
       VExpr.appN
         (.const
           (.str gen.block.sourceType.name "rec")
-          (VLevel.params (source.uvars + 1)))
+          (gen.recLevels))
         (VExpr.bvarRevRange
           (m+r.binders.length)
           (source.nparams+(1+k))) := by
@@ -5888,7 +5936,7 @@ theorem ruleCall_hasType {ctor : NormalizedCtor}
       VExpr.appN
         ((VExpr.const
           (.str gen.block.sourceType.name "rec")
-          (VLevel.params (source.uvars + 1))).app
+          (gen.recLevels)).app
             (VExpr.bvar
               (source.nparams +
                 (k + (m + r.binders.length)))))
@@ -5898,7 +5946,7 @@ theorem ruleCall_hasType {ctor : NormalizedCtor}
       VExpr.appN
         (.const
           (.str gen.block.sourceType.name "rec")
-          (VLevel.params (source.uvars + 1)))
+          (gen.recLevels))
         (VExpr.bvarRevRange
           (m+r.binders.length)
           (source.nparams+(1+k))) := by
@@ -5927,10 +5975,10 @@ theorem minorApp_hasType {i : Nat} {ctor : NormalizedCtor}
     (hrec : env.constants
       (.str gen.block.sourceType.name "rec") =
         some gen.recursor) :
-    env.HasType (source.uvars + 1)
+    env.HasType (gen.recUvars)
       ((VExpr.liftTelN
           (gen.block.ctorPairs.length + 1)
-          (ctor.fieldsR source.uvars source.nparams)
+          (ctor.fieldsR source.uvars source.nparams gen.elimination)
           0).reverse ++
         (gen.minorTypes.reverse ++
           (gen.motiveType :: gen.paramsTel.reverse)))
@@ -5938,55 +5986,55 @@ theorem minorApp_hasType {i : Nat} {ctor : NormalizedCtor}
         (.bvar
           (gen.block.ctorPairs.length - 1 - i +
             (ctor.fieldsR
-              source.uvars source.nparams).length))
+              source.uvars source.nparams gen.elimination).length))
         (VExpr.bvarRevRange 0
-            (ctor.fieldsR source.uvars source.nparams).length ++
+            (ctor.fieldsR source.uvars source.nparams gen.elimination).length ++
           List.map (fun r =>
               r.ruleCall
                 (ctor.fieldsR
-                  source.uvars source.nparams).length
+                  source.uvars source.nparams gen.elimination).length
                 gen.block.ctorPairs.length
                 (VExpr.appN
                   (.const
                     (.str gen.block.sourceType.name "rec")
-                    (VLevel.params (source.uvars + 1)))
+                    (gen.recLevels))
                   (VExpr.bvarRevRange
                     (ctor.fieldsR
-                      source.uvars source.nparams).length
+                      source.uvars source.nparams gen.elimination).length
                     (source.nparams +
                       gen.block.ctorPairs.length + 1))))
-            (ctor.recArgsR source.uvars)))
+            (ctor.recArgsR source.uvars gen.elimination)))
       (VExpr.appN
         (.bvar
           (gen.block.ctorPairs.length +
             (ctor.fieldsR
-              source.uvars source.nparams).length))
-        (((ctor.resultIndicesR source.uvars).map fun e =>
+              source.uvars source.nparams gen.elimination).length))
+        (((ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
             e.liftN
               (gen.block.ctorPairs.length + 1)
               (ctor.fieldsR
-                source.uvars source.nparams).length) ++
+                source.uvars source.nparams gen.elimination).length) ++
           [VExpr.appN
             (.const ctor.raw.name
-              (VLevel.params' source.uvars 1))
+              (gen.sourceLevels))
             (VExpr.bvarRevRange
                 ((ctor.fieldsR
-                    source.uvars source.nparams).length +
+                    source.uvars source.nparams gen.elimination).length +
                   gen.block.ctorPairs.length + 1)
                 source.nparams ++
               VExpr.bvarRevRange 0
                 (ctor.fieldsR
-                  source.uvars source.nparams).length)])) := by
+                  source.uvars source.nparams gen.elimination).length)])) := by
   obtain ⟨hik, -⟩ :=
     List.getElem?_eq_some_iff.1 hci
   have hctor := List.mem_of_getElem? hci
-  let rs := ctor.recArgsR source.uvars
+  let rs := ctor.recArgsR source.uvars gen.elimination
   have hrs :
-      rs = ctor.recArgsR source.uvars := rfl
+      rs = ctor.recArgsR source.uvars gen.elimination := rfl
   have hrsLt : ∀ r ∈ rs,
       r.fieldIndex <
         (ctor.fieldsR
-          source.uvars source.nparams).length := by
+          source.uvars source.nparams gen.elimination).length := by
     intro r hr
     obtain ⟨r₀, hr₀, rfl⟩ :=
       NormalizedCtor.recArgsR_mem (hrs ▸ hr)
@@ -6002,24 +6050,24 @@ theorem minorApp_hasType {i : Nat} {ctor : NormalizedCtor}
         some
           (VExpr.liftN i
             (GenerationChecked.minorType
-              (source := source) ctor)) := by
+              (source := source) ctor gen.elimination)) := by
     simpa [GenerationChecked.minorTypes, hci] using
       gen.minorTypesAux_getElem?
         gen.block.ctorPairs 0 i
   have hlu0 :
       ((VExpr.liftTelN
           (gen.block.ctorPairs.length + 1)
-          (ctor.fieldsR source.uvars source.nparams)
+          (ctor.fieldsR source.uvars source.nparams gen.elimination)
           0).reverse ++
         (gen.minorTypes.reverse ++
           (gen.motiveType :: gen.paramsTel.reverse)))[
           gen.block.ctorPairs.length - 1 - i +
             (ctor.fieldsR
-              source.uvars source.nparams).length]? =
+              source.uvars source.nparams gen.elimination).length]? =
         some
           (VExpr.liftN i
             (GenerationChecked.minorType
-              (source := source) ctor)) := by
+              (source := source) ctor gen.elimination)) := by
     rw [getElem?_rstack_mid _ _ _
         (by
           simp only [List.length_reverse,
@@ -6033,11 +6081,11 @@ theorem minorApp_hasType {i : Nat} {ctor : NormalizedCtor}
       show
         gen.block.ctorPairs.length - 1 - i +
             (ctor.fieldsR
-              source.uvars source.nparams).length -
+              source.uvars source.nparams gen.elimination).length -
             (VExpr.liftTelN
               (gen.block.ctorPairs.length + 1)
               (ctor.fieldsR
-                source.uvars source.nparams)
+                source.uvars source.nparams gen.elimination)
               0).reverse.length =
           gen.block.ctorPairs.length - 1 - i by
         simp only [List.length_reverse,
@@ -6060,55 +6108,55 @@ theorem minorApp_hasType {i : Nat} {ctor : NormalizedCtor}
       i +
           (gen.block.ctorPairs.length - 1 - i +
             (ctor.fieldsR
-              source.uvars source.nparams).length + 1) =
+              source.uvars source.nparams gen.elimination).length + 1) =
         (ctor.fieldsR
-            source.uvars source.nparams).length +
+            source.uvars source.nparams gen.elimination).length +
           gen.block.ctorPairs.length by omega] at hlu
   have hminorEq :
       (GenerationChecked.minorType
-        (source := source) ctor).liftN
+              (source := source) ctor gen.elimination).liftN
           ((ctor.fieldsR
-              source.uvars source.nparams).length +
+              source.uvars source.nparams gen.elimination).length +
             gen.block.ctorPairs.length) =
         (VExpr.forallN
           (VExpr.liftTelN
             (gen.block.ctorPairs.length + 1)
             (ctor.fieldsR
-              source.uvars source.nparams)
+              source.uvars source.nparams gen.elimination)
             0)
           ((VExpr.forallN
             (ihsFromRecArgs
               (ctor.fieldsR
-                source.uvars source.nparams).length
+                source.uvars source.nparams gen.elimination).length
               rs 0)
             (VExpr.appN
               (.bvar
                 ((ctor.fieldsR
-                    source.uvars source.nparams).length +
+                    source.uvars source.nparams gen.elimination).length +
                   rs.length))
-              (((ctor.resultIndicesR source.uvars).map
+              (((ctor.resultIndicesR source.uvars gen.elimination).map
                   fun e =>
                     (e.liftN 1
                       (ctor.fieldsR
-                        source.uvars source.nparams).length).liftN
+                        source.uvars source.nparams gen.elimination).length).liftN
                       rs.length) ++
                 [VExpr.appN
                   (.const ctor.raw.name
-                    (VLevel.params' source.uvars 1))
+                    (gen.sourceLevels))
                   (VExpr.bvarRevRange
                       (rs.length +
                         (ctor.fieldsR
-                          source.uvars source.nparams).length +
+                          source.uvars source.nparams gen.elimination).length +
                         1)
                       source.nparams ++
                     VExpr.bvarRevRange rs.length
                       (ctor.fieldsR
-                        source.uvars source.nparams).length)]))).liftN
+                        source.uvars source.nparams gen.elimination).length)]))).liftN
               gen.block.ctorPairs.length
               (ctor.fieldsR
-                source.uvars source.nparams).length)).liftN
+                source.uvars source.nparams gen.elimination).length)).liftN
           (ctor.fieldsR
-            source.uvars source.nparams).length := by
+            source.uvars source.nparams gen.elimination).length := by
     simp only [GenerationChecked.minorType,
       rs, hrs]
     conv => lhs; rw [VExpr.liftN_forallN,
@@ -6117,20 +6165,20 @@ theorem minorApp_hasType {i : Nat} {ctor : NormalizedCtor}
           (show
             (1 : Nat) +
                 ((ctor.fieldsR
-                    source.uvars source.nparams).length +
+                    source.uvars source.nparams gen.elimination).length +
                   gen.block.ctorPairs.length) =
               gen.block.ctorPairs.length + 1 +
                 (ctor.fieldsR
-                  source.uvars source.nparams).length by
+                  source.uvars source.nparams gen.elimination).length by
             omega),
         show
           (0 : Nat) +
               (VExpr.liftTelN 1
                 (ctor.fieldsR
-                  source.uvars source.nparams)
+                  source.uvars source.nparams gen.elimination)
                 0).length =
             (ctor.fieldsR
-              source.uvars source.nparams).length by
+              source.uvars source.nparams gen.elimination).length by
           simp [VExpr.liftTelN_length]]
     conv => rhs; rw [VExpr.liftN_forallN,
         VExpr.liftTelN_liftTelN,
@@ -6139,143 +6187,143 @@ theorem minorApp_hasType {i : Nat} {ctor : NormalizedCtor}
               (VExpr.liftTelN
                 (gen.block.ctorPairs.length + 1)
                 (ctor.fieldsR
-                  source.uvars source.nparams)
+                  source.uvars source.nparams gen.elimination)
                 0).length =
             (ctor.fieldsR
-              source.uvars source.nparams).length by
+              source.uvars source.nparams gen.elimination).length by
           simp [VExpr.liftTelN_length],
         VExpr.liftN'_liftN_hi,
         Nat.add_comm gen.block.ctorPairs.length
           (ctor.fieldsR
-            source.uvars source.nparams).length]
+            source.uvars source.nparams gen.elimination).length]
   have hfields := HasType.appN_selfSpine
-    (env := env) (U := source.uvars + 1)
+    (env := env) (U := gen.recUvars)
     (As := VExpr.liftTelN
       (gen.block.ctorPairs.length + 1)
-      (ctor.fieldsR source.uvars source.nparams)
+      (ctor.fieldsR source.uvars source.nparams gen.elimination)
       0)
     (B :=
       (VExpr.forallN
         (ihsFromRecArgs
           (ctor.fieldsR
-            source.uvars source.nparams).length
+            source.uvars source.nparams gen.elimination).length
           rs 0)
         (VExpr.appN
           (.bvar
             ((ctor.fieldsR
-                source.uvars source.nparams).length +
+                source.uvars source.nparams gen.elimination).length +
               rs.length))
-          (((ctor.resultIndicesR source.uvars).map
+          (((ctor.resultIndicesR source.uvars gen.elimination).map
               fun e =>
                 (e.liftN 1
                   (ctor.fieldsR
-                    source.uvars source.nparams).length).liftN
+                    source.uvars source.nparams gen.elimination).length).liftN
                   rs.length) ++
             [VExpr.appN
               (.const ctor.raw.name
-                (VLevel.params' source.uvars 1))
+                (gen.sourceLevels))
               (VExpr.bvarRevRange
                   (rs.length +
                     (ctor.fieldsR
-                      source.uvars source.nparams).length +
+                      source.uvars source.nparams gen.elimination).length +
                     1)
                   source.nparams ++
                 VExpr.bvarRevRange rs.length
                   (ctor.fieldsR
-                    source.uvars source.nparams).length)]))).liftN
+                    source.uvars source.nparams gen.elimination).length)]))).liftN
         gen.block.ctorPairs.length
         (ctor.fieldsR
-          source.uvars source.nparams).length)
+          source.uvars source.nparams gen.elimination).length)
     (Δ := [])
     (Γ := gen.minorTypes.reverse ++
       (gen.motiveType :: gen.paramsTel.reverse))
     (f := .bvar
       (gen.block.ctorPairs.length - 1 - i +
         (ctor.fieldsR
-          source.uvars source.nparams).length))
+          source.uvars source.nparams gen.elimination).length))
     (by
       have hb := VEnv.HasType.bvar
-        (env := env) (U := source.uvars + 1) hlu
+        (env := env) (U := gen.recUvars) hlu
       rw [hminorEq] at hb
       simpa [VExpr.liftTelN_length] using hb)
   simp only [List.length_nil,
     VExpr.liftTelN_length,
     VExpr.liftN_zero] at hfields
   rw [ihsFromRecArgs_liftN'
-    (ctor.fieldsR source.uvars source.nparams).length
+    (ctor.fieldsR source.uvars source.nparams gen.elimination).length
     gen.block.ctorPairs.length rs hrsLt 0
     (VExpr.appN
       (.bvar
         ((ctor.fieldsR
-            source.uvars source.nparams).length +
+            source.uvars source.nparams gen.elimination).length +
           rs.length))
-      (((ctor.resultIndicesR source.uvars).map fun e =>
+      (((ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
           (e.liftN 1
             (ctor.fieldsR
-              source.uvars source.nparams).length).liftN
+              source.uvars source.nparams gen.elimination).length).liftN
             rs.length) ++
         [VExpr.appN
           (.const ctor.raw.name
-            (VLevel.params' source.uvars 1))
+            (gen.sourceLevels))
           (VExpr.bvarRevRange
               (rs.length +
                 (ctor.fieldsR
-                  source.uvars source.nparams).length + 1)
+                  source.uvars source.nparams gen.elimination).length + 1)
               source.nparams ++
             VExpr.bvarRevRange rs.length
               (ctor.fieldsR
-                source.uvars source.nparams).length)]))
+                source.uvars source.nparams gen.elimination).length)]))
     (cut :=
       (ctor.fieldsR
-        source.uvars source.nparams).length)
+        source.uvars source.nparams gen.elimination).length)
     rfl] at hfields
   have hD :
       (VExpr.appN
         (.bvar
           ((ctor.fieldsR
-              source.uvars source.nparams).length +
+              source.uvars source.nparams gen.elimination).length +
             rs.length))
-        (((ctor.resultIndicesR source.uvars).map fun e =>
+        (((ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
             (e.liftN 1
               (ctor.fieldsR
-                source.uvars source.nparams).length).liftN
+                source.uvars source.nparams gen.elimination).length).liftN
               rs.length) ++
           [VExpr.appN
             (.const ctor.raw.name
-              (VLevel.params' source.uvars 1))
+              (gen.sourceLevels))
             (VExpr.bvarRevRange
                 (rs.length +
                   (ctor.fieldsR
-                    source.uvars source.nparams).length + 1)
+                    source.uvars source.nparams gen.elimination).length + 1)
                 source.nparams ++
               VExpr.bvarRevRange rs.length
                 (ctor.fieldsR
-                  source.uvars source.nparams).length)])).liftN
+                  source.uvars source.nparams gen.elimination).length)])).liftN
         gen.block.ctorPairs.length
         ((ctor.fieldsR
-            source.uvars source.nparams).length +
+            source.uvars source.nparams gen.elimination).length +
           0 + rs.length) =
       (VExpr.appN
         (.bvar
           (gen.block.ctorPairs.length +
             (ctor.fieldsR
-              source.uvars source.nparams).length))
-        (((ctor.resultIndicesR source.uvars).map fun e =>
+              source.uvars source.nparams gen.elimination).length))
+        (((ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
             e.liftN
               (gen.block.ctorPairs.length + 1)
               (ctor.fieldsR
-                source.uvars source.nparams).length) ++
+                source.uvars source.nparams gen.elimination).length) ++
           [VExpr.appN
             (.const ctor.raw.name
-              (VLevel.params' source.uvars 1))
+              (gen.sourceLevels))
             (VExpr.bvarRevRange
                 ((ctor.fieldsR
-                    source.uvars source.nparams).length +
+                    source.uvars source.nparams gen.elimination).length +
                   gen.block.ctorPairs.length + 1)
                 source.nparams ++
               VExpr.bvarRevRange 0
                 (ctor.fieldsR
-                  source.uvars source.nparams).length)])).liftN
+                  source.uvars source.nparams gen.elimination).length)])).liftN
         rs.length := by
     rw [VExpr.liftN_appN, VExpr.liftN_appN,
       List.map_append, List.map_append,
@@ -6287,16 +6335,16 @@ theorem minorApp_hasType {i : Nat} {ctor : NormalizedCtor}
         VExpr.bvar
             (liftVar gen.block.ctorPairs.length
               ((ctor.fieldsR
-                  source.uvars source.nparams).length +
+                  source.uvars source.nparams gen.elimination).length +
                 rs.length)
               ((ctor.fieldsR
-                  source.uvars source.nparams).length +
+                  source.uvars source.nparams gen.elimination).length +
                 0 + rs.length)) =
           VExpr.bvar
             (liftVar rs.length
               (gen.block.ctorPairs.length +
                 (ctor.fieldsR
-                  source.uvars source.nparams).length)
+                  source.uvars source.nparams gen.elimination).length)
               0)
       rw [liftVar_le (by omega),
         liftVar_le (Nat.zero_le _)]
@@ -6308,10 +6356,10 @@ theorem minorApp_hasType {i : Nat} {ctor : NormalizedCtor}
         simp only [Function.comp_apply]
         rw [show
             (ctor.fieldsR
-                source.uvars source.nparams).length +
+                source.uvars source.nparams gen.elimination).length +
                 0 + rs.length =
               (ctor.fieldsR
-                  source.uvars source.nparams).length +
+                  source.uvars source.nparams gen.elimination).length +
                 rs.length by omega,
           VExpr.liftN_liftN_mid e
             gen.block.ctorPairs.length rs.length
@@ -6320,10 +6368,10 @@ theorem minorApp_hasType {i : Nat} {ctor : NormalizedCtor}
         simp only [Function.comp_apply]
         rw [show
             (ctor.fieldsR
-                source.uvars source.nparams).length +
+                source.uvars source.nparams gen.elimination).length +
                 0 + rs.length =
               (ctor.fieldsR
-                  source.uvars source.nparams).length +
+                  source.uvars source.nparams gen.elimination).length +
                 rs.length by omega]
         rw [VExpr.liftN_appN,
           VExpr.liftN_appN,
@@ -6340,11 +6388,11 @@ theorem minorApp_hasType {i : Nat} {ctor : NormalizedCtor}
               gen.block.ctorPairs.length +
                   (rs.length +
                     (ctor.fieldsR
-                      source.uvars source.nparams).length +
+                      source.uvars source.nparams gen.elimination).length +
                     1) =
                 rs.length +
                   ((ctor.fieldsR
-                      source.uvars source.nparams).length +
+                      source.uvars source.nparams gen.elimination).length +
                     gen.block.ctorPairs.length + 1) by
               omega),
           VExpr.bvarRevRange_congr _
@@ -6352,24 +6400,24 @@ theorem minorApp_hasType {i : Nat} {ctor : NormalizedCtor}
         rfl
   rw [hD] at hfields
   have hres := hasType_appN_ruleIHs
-    (env := env) (U := source.uvars + 1)
+    (env := env) (U := gen.recUvars)
     (m :=
       (ctor.fieldsR
-        source.uvars source.nparams).length)
+        source.uvars source.nparams gen.elimination).length)
     (k := gen.block.ctorPairs.length)
     (rs := rs)
     (argOf := fun r =>
       r.ruleCall
         (ctor.fieldsR
-          source.uvars source.nparams).length
+          source.uvars source.nparams gen.elimination).length
         gen.block.ctorPairs.length
         (VExpr.appN
           (.const
             (.str gen.block.sourceType.name "rec")
-            (VLevel.params (source.uvars + 1)))
+            (gen.recLevels))
           (VExpr.bvarRevRange
             (ctor.fieldsR
-              source.uvars source.nparams).length
+              source.uvars source.nparams gen.elimination).length
             (source.nparams +
               gen.block.ctorPairs.length + 1))))
     (fun r hr =>
@@ -6383,10 +6431,10 @@ theorem recRuleApp_hasType {ctor : NormalizedCtor}
     (hrec : env.constants
       (.str gen.block.sourceType.name "rec") =
         some gen.recursor) :
-    env.HasType (source.uvars + 1)
+    env.HasType (gen.recUvars)
       ((VExpr.liftTelN
           (gen.block.ctorPairs.length + 1)
-          (ctor.fieldsR source.uvars source.nparams)
+          (ctor.fieldsR source.uvars source.nparams gen.elimination)
           0).reverse ++
         (gen.minorTypes.reverse ++
           (gen.motiveType :: gen.paramsTel.reverse)))
@@ -6394,58 +6442,58 @@ theorem recRuleApp_hasType {ctor : NormalizedCtor}
         (VExpr.appN
           (.const
             (.str gen.block.sourceType.name "rec")
-            (VLevel.params (source.uvars + 1)))
+            (gen.recLevels))
           (VExpr.bvarRevRange
             (ctor.fieldsR
-              source.uvars source.nparams).length
+              source.uvars source.nparams gen.elimination).length
             (source.nparams +
               gen.block.ctorPairs.length + 1)))
-        (((ctor.resultIndicesR source.uvars).map fun e =>
+        (((ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
             e.liftN
               (gen.block.ctorPairs.length + 1)
               (ctor.fieldsR
-                source.uvars source.nparams).length) ++
+                source.uvars source.nparams gen.elimination).length) ++
           [VExpr.appN
             (.const ctor.raw.name
-              (VLevel.params' source.uvars 1))
+              (gen.sourceLevels))
             (VExpr.bvarRevRange
                 ((ctor.fieldsR
-                    source.uvars source.nparams).length +
+                    source.uvars source.nparams gen.elimination).length +
                   gen.block.ctorPairs.length + 1)
                 source.nparams ++
               VExpr.bvarRevRange 0
                 (ctor.fieldsR
-                  source.uvars source.nparams).length)]))
+                  source.uvars source.nparams gen.elimination).length)]))
       (VExpr.appN
         (.bvar
           (gen.block.ctorPairs.length +
             (ctor.fieldsR
-              source.uvars source.nparams).length))
-        (((ctor.resultIndicesR source.uvars).map fun e =>
+              source.uvars source.nparams gen.elimination).length))
+        (((ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
             e.liftN
               (gen.block.ctorPairs.length + 1)
               (ctor.fieldsR
-                source.uvars source.nparams).length) ++
+                source.uvars source.nparams gen.elimination).length) ++
           [VExpr.appN
             (.const ctor.raw.name
-              (VLevel.params' source.uvars 1))
+              (gen.sourceLevels))
             (VExpr.bvarRevRange
                 ((ctor.fieldsR
-                    source.uvars source.nparams).length +
+                    source.uvars source.nparams gen.elimination).length +
                   gen.block.ctorPairs.length + 1)
                 source.nparams ++
               VExpr.bvarRevRange 0
                 (ctor.fieldsR
-                  source.uvars source.nparams).length)])) := by
+                  source.uvars source.nparams gen.elimination).length)])) := by
   have hSp₀ := S.result_transport hctor
     (gen.minorTypes.reverse ++ [gen.motiveType])
     (g := gen.block.ctorPairs.length + 1)
     (by simp [gen.minorTypes_length])
     [] (d := 0) rfl
-  have hSp : env.SpineWF (source.uvars + 1)
+  have hSp : env.SpineWF (gen.recUvars)
       ((VExpr.liftTelN
           (gen.block.ctorPairs.length + 1)
-          (ctor.fieldsR source.uvars source.nparams)
+          (ctor.fieldsR source.uvars source.nparams gen.elimination)
           0).reverse ++
         (gen.minorTypes.reverse ++
           (gen.motiveType :: gen.paramsTel.reverse)))
@@ -6454,30 +6502,30 @@ theorem recRuleApp_hasType {ctor : NormalizedCtor}
           ((VExpr.liftTelN
               (gen.block.ctorPairs.length + 1)
               (ctor.fieldsR
-                source.uvars source.nparams)
+                source.uvars source.nparams gen.elimination)
               0).reverse.length +
             gen.block.ctorPairs.length + 1)
           gen.idxTel 0)
         (.sort
           (gen.block.checked.resultLevel.inst
-            (VLevel.params' source.uvars 1))))
-      ((ctor.resultIndicesR source.uvars).map fun e =>
+            (gen.sourceLevels))))
+      ((ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
         e.liftN
           (gen.block.ctorPairs.length + 1)
           (ctor.fieldsR
-            source.uvars source.nparams).length)
+            source.uvars source.nparams gen.elimination).length)
       (.sort
         (gen.block.checked.resultLevel.inst
-          (VLevel.params' source.uvars 1))) := by
+          (gen.sourceLevels))) := by
     simpa [List.append_assoc, Nat.add_assoc,
       List.length_reverse, VExpr.liftTelN_length]
       using hSp₀
   have hidxLen :
-      ((ctor.resultIndicesR source.uvars).map fun e =>
+      ((ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
         e.liftN
           (gen.block.ctorPairs.length + 1)
           (ctor.fieldsR
-            source.uvars source.nparams).length).length =
+            source.uvars source.nparams gen.elimination).length).length =
         gen.idxTel.length := by
     simp only [List.length_map,
       NormalizedCtor.resultIndicesR,
@@ -6485,63 +6533,63 @@ theorem recRuleApp_hasType {ctor : NormalizedCtor}
     exact (S.viewResultIndices_length hctor).trans
       gen.shape.2.2.1.symm
   have ha₀ := S.ctorAppRule_hasType hctor
-  have ha : env.HasType (source.uvars + 1)
+  have ha : env.HasType (gen.recUvars)
       ((VExpr.liftTelN
           (gen.block.ctorPairs.length + 1)
-          (ctor.fieldsR source.uvars source.nparams)
+          (ctor.fieldsR source.uvars source.nparams gen.elimination)
           0).reverse ++
         (gen.minorTypes.reverse ++
           (gen.motiveType :: gen.paramsTel.reverse)))
       (VExpr.appN
         (.const ctor.raw.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             ((ctor.fieldsR
-                source.uvars source.nparams).length +
+                source.uvars source.nparams gen.elimination).length +
               gen.block.ctorPairs.length + 1)
             source.nparams ++
           VExpr.bvarRevRange 0
             (ctor.fieldsR
-              source.uvars source.nparams).length))
+              source.uvars source.nparams gen.elimination).length))
       (VExpr.appN
         (.const gen.block.sourceType.name
-          (VLevel.params' source.uvars 1))
+          (gen.sourceLevels))
         (VExpr.bvarRevRange
             ((VExpr.liftTelN
                 (gen.block.ctorPairs.length + 1)
                 (ctor.fieldsR
-                  source.uvars source.nparams)
+                  source.uvars source.nparams gen.elimination)
                 0).reverse.length +
               gen.block.ctorPairs.length + 1)
             source.nparams ++
-          (ctor.resultIndicesR source.uvars).map fun e =>
+          (ctor.resultIndicesR source.uvars gen.elimination).map fun e =>
             e.liftN
               (gen.block.ctorPairs.length + 1)
               (ctor.fieldsR
-                source.uvars source.nparams).length)) := by
+                source.uvars source.nparams gen.elimination).length)) := by
     simpa only [List.length_reverse,
       VExpr.liftTelN_length] using ha₀
   have hr := S.recApp_hasType hrec
     (VExpr.liftTelN
       (gen.block.ctorPairs.length + 1)
-      (ctor.fieldsR source.uvars source.nparams)
+      (ctor.fieldsR source.uvars source.nparams gen.elimination)
       0).reverse
     hSp hidxLen ha
   rw [List.length_reverse, VExpr.liftTelN_length,
     show
       (ctor.fieldsR
-          source.uvars source.nparams).length +
+          source.uvars source.nparams gen.elimination).length +
           gen.block.ctorPairs.length =
         gen.block.ctorPairs.length +
           (ctor.fieldsR
-            source.uvars source.nparams).length by
+            source.uvars source.nparams gen.elimination).length by
       omega,
     show
       gen.block.ctorPairs.length +
           (ctor.fieldsR
-            source.uvars source.nparams).length + 1 =
+            source.uvars source.nparams gen.elimination).length + 1 =
         (ctor.fieldsR
-            source.uvars source.nparams).length +
+            source.uvars source.nparams gen.elimination).length +
           gen.block.ctorPairs.length + 1 by
       omega] at hr
   exact hr
@@ -6556,14 +6604,14 @@ theorem rule_WF {i : Nat} {ctor : NormalizedCtor}
     (gen.rule i ctor).WF env := by
   have hctor := List.mem_of_getElem? hci
   refine ⟨?_, ?_⟩
-  · show env.HasType (source.uvars + 1) []
+  · show env.HasType (gen.recUvars) []
       (VExpr.lamN
         (gen.paramsTel ++
           gen.motiveType :: gen.minorTypes ++
           VExpr.liftTelN
             (gen.block.ctorPairs.length + 1)
             (ctor.fieldsR
-              source.uvars source.nparams)
+              source.uvars source.nparams gen.elimination)
             0)
         _)
       (VExpr.forallN _ _)
@@ -6573,14 +6621,14 @@ theorem rule_WF {i : Nat} {ctor : NormalizedCtor}
       List.reverse_cons, List.append_nil,
       List.append_assoc, List.singleton_append]
     exact S.recRuleApp_hasType hctor hrec
-  · show env.HasType (source.uvars + 1) []
+  · show env.HasType (gen.recUvars) []
       (VExpr.lamN
         (gen.paramsTel ++
           gen.motiveType :: gen.minorTypes ++
           VExpr.liftTelN
             (gen.block.ctorPairs.length + 1)
             (ctor.fieldsR
-              source.uvars source.nparams)
+              source.uvars source.nparams gen.elimination)
             0)
         _)
       (VExpr.forallN _ _)
@@ -7278,7 +7326,7 @@ theorem Stage3Env.recArgMinor_isType {c : VConstVal} (hc : c ∈ ty.ctors)
   rw [show m-1-j+p+1 = m-j+p from by omega] at hlu
   dsimp only [j, r] at hlu
   have hfield := recArg_minor_fieldType hr₀ m p (by simpa [j] using hjm)
-  simp only [RecArg.instL] at hfield
+  simp only [RecArg.instL, ElimMode.large_sourceLevels] at hfield
   rw [hfield] at hlu
   have hf0 := VEnv.HasType.bvar (env := env) (U := U+1) hlu
   have hf := hf0.weakN S.ord (Ctx.LiftN.zero (Γ := Γ) As.reverse)
@@ -9141,7 +9189,7 @@ theorem Stage3Env.ruleCallRec_hasType {c : VConstVal} (hc : c ∈ ty.ctors)
   rw [show m-1-r₀.fieldIndex+1 = m-r₀.fieldIndex from by omega]
     at hlu
   have hfield := recArg_rule_fieldType hr₀ m k (by simpa [j] using hjm)
-  simp only [RecArg.instL] at hfield
+  simp only [RecArg.instL, ElimMode.large_sourceLevels] at hfield
   rw [hfield] at hlu
   have hf0 := VEnv.HasType.bvar (env := env) (U := U+1) hlu
   have hf := hf0.weakN S.ord (Ctx.LiftN.zero (Γ := Γ) As.reverse)
@@ -9276,7 +9324,7 @@ theorem Stage3Env.minorApp_hasType {i : Nat} {c : VConstVal}
                   VExpr.bvarRevRange rs.length (ctorFieldsR U np c).length)]))).liftN
             ty.ctors.length (ctorFieldsR U np c).length)).liftN
         (ctorFieldsR U np c).length := by
-    simp only [minorType, rs, hrs]
+    simp only [minorType, rs, hrs, ElimMode.large_sourceLevels]
     conv => lhs; rw [VExpr.liftN_forallN, VExpr.liftTelN_liftTelN,
         liftTelN_congr _ _ (show (1:Nat) +
           ((ctorFieldsR U np c).length + ty.ctors.length) =
@@ -9469,7 +9517,7 @@ theorem Stage3Env.minorAppRec_hasType {i : Nat} {c : VConstVal}
                   VExpr.bvarRevRange rs.length (ctorFieldsR U np c).length)]))).liftN
             ty.ctors.length (ctorFieldsR U np c).length)).liftN
         (ctorFieldsR U np c).length := by
-    simp only [minorTypeRec, rs, hrs]
+    simp only [minorTypeRec, rs, hrs, ElimMode.large_sourceLevels]
     conv => lhs; rw [VExpr.liftN_forallN, VExpr.liftTelN_liftTelN,
         liftTelN_congr _ _ (show (1:Nat) +
           ((ctorFieldsR U np c).length + ty.ctors.length) =
@@ -10533,6 +10581,7 @@ theorem addInduct_success (hadd : addInduct env decl = some env') :
     change env'.constants (.str checked.type.name "rec") =
       some checked.recursor at hout
     rw [checked.recursor_eq_legacy] at hout
+    rw [checked.elimination_eq, checked.indices_eq] at hout
     exact hout
   · intro ty hty df hdf
     rw [checked.types_eq] at hty
@@ -10540,6 +10589,7 @@ theorem addInduct_success (hadd : addInduct env decl = some env') :
     apply H.rule_mem
     change df ∈ checked.generatedRules
     rw [checked.generatedRules_eq_legacy]
+    rw [checked.elimination_eq, checked.indices_eq]
     exact hdf
 
 /-- Successful inductive addition is monotone. -/
@@ -10576,11 +10626,16 @@ theorem addInduct_rec_fresh (hadd : addInduct env decl = some env')
 theorem addInduct_rec_lookup (hadd : addInduct env decl = some env')
     (hty : ty ∈ decl.types) :
     env'.constants (.str ty.name "rec") =
-      some (recConstRec decl.uvars ty.name decl.nparams ty) :=
+      some (recConstRec decl.uvars ty.name decl.nparams ty
+        (eliminationMode decl.uvars ty.name decl.nparams
+          (ctorFields (VExpr.dropN decl.nparams ty.type)).length ty)) :=
   (addInduct_success hadd).rec_lookup ty hty
 
 theorem addInduct_rule_mem (hadd : addInduct env decl = some env')
-    (hty : ty ∈ decl.types) (hdf : df ∈ rulesRec decl.uvars ty.name decl.nparams ty) :
+    (hty : ty ∈ decl.types)
+    (hdf : df ∈ rulesRec decl.uvars ty.name decl.nparams ty
+      (eliminationMode decl.uvars ty.name decl.nparams
+        (ctorFields (VExpr.dropN decl.nparams ty.type)).length ty)) :
     env'.defeqs df :=
   (addInduct_success hadd).rule_mem ty hty df hdf
 
