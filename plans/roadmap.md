@@ -1,6 +1,6 @@
 # Lean4Lean completion roadmap
 
-**Status:** authoritative local roadmap, audited 2026-08-06 against the
+**Status:** authoritative local roadmap, audited 2026-08-07 against the
 committed fork and the current `jcb/induct` development branch.
 
 **Versioning.** `plans/roadmap.md` is intentionally tracked so the
@@ -66,12 +66,12 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-06A active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
-| Current formalization source | L4L-05 closure at the current `jcb/formalization` checkpoint, built on Theory checkpoint `a5a010790b81`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
+| Ladder position | **L4L-06B active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
+| Current formalization source | L4L-06A closure at the current `jcb/formalization` checkpoint, built on Theory checkpoint `a5a010790b81`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 20 live sorries and 29 custom-axiom declarations, both pinned by exact audits |
-| Gates | the full §6 gate list is green on the current L4L-05 closure source, including the Theory/Verify and default Lake builds, Nix build/check suite, trust audits, and formatter |
+| Gates | the full §6 gate list is green on the current L4L-06A closure source, including the Theory/Verify and default Lake builds, Nix build/check suite, trust audits, and formatter |
 
 ### 2.1 What is green
 
@@ -104,6 +104,17 @@ Pi-hidden-recursive positions, including retained beta/let bodies. Its exact
 kernel candidate succeeds at fuel 10 and fails at 9, opaque and non-defeq
 variants reject, and the actual family/constructor/recursor/rule metadata
 replays through the final aligned Theory environment.
+
+**Elimination parity.** The ordinary large-eliminator decision and elimination
+level run now retain exact operational traces, including inferred singleton
+field sorts, occurrence tests, the fresh elimination parameter, and both
+recursor level orders. Theory generation constructs both elimination modes and
+is differentially aligned with those executions. Exact kernel fixtures pin
+`Or` as small/Prop-only, `And` as legitimately large through its singleton
+proof fields, `Eq` as large with fresh-first parameters `[u, u_1]`, `Nat` as
+large through the never-zero branch, and a source-universe-bearing small
+family that retains its source parameter without adding a fresh one. Their
+recursor metadata and every focused rule RHS match the pinned kernel.
 
 **Verify.** A checker-run certificate layer (`WhnfRun`, `CheckTypeRun`,
 `IsDefEqRun`, `DefEqEvidence`, `TelDefEqEvidence`, `NormalizedCtorRun`,
@@ -216,7 +227,7 @@ replay. `AliasRec` remains the compositional constructor-normalization
 specification until its candidate list is migrated.
 
 **Not claimed.** The complete normalization differential matrix, constructor
-parity beyond the singleton-family scope, small elimination, K behavior,
+parity beyond the singleton-family scope, K behavior,
 mutual/nested blocks, patterns, projections, and the remaining
 metatheory/checker roots.
 Bare producer success is never generation-shape authority or Theory semantics.
@@ -408,19 +419,12 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Singleton kernel parity (L4L-06A–L4L-07)
+### Singleton kernel parity (L4L-06B–L4L-07)
 
-**L4L-06A — elimination mode and recursor levels (active).** Implement
-`isLargeEliminator`, `getElimLevel`, `getRecLevels`, and `getRecLevelParams`
-faithfully; make `ElimMode.small` constructible and drive motive/recursor
-generation by it.
-*Exit:* Or/And have exact Prop-only recursors; Eq-like and never-zero
-families retain legitimate large elimination; level parameter order matches
-kernel metadata and all rules.
-
-**L4L-06B — K-target parity.** Add `isKTarget` data and generation behavior
-without using K as a shortcut for invalid large elimination; verify the exact
-universe ordering rather than normalizing away meaningful permutations.
+**L4L-06B — K-target parity (active).** Add `isKTarget` data and generation
+behavior without using K as a shortcut for invalid large elimination; verify
+the exact universe ordering rather than normalizing away meaningful
+permutations.
 *Exit:* Eq-like positive and non-K negative fixtures match the kernel flag,
 recursor, universe order, and rules; L4L-06A regressions stay green.
 

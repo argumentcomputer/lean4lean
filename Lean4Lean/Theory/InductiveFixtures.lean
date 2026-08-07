@@ -2807,7 +2807,36 @@ example : orDecl.stage3 = true := rfl
 example : orChecked.elimination = .small := rfl
 example : orChecked.recursor.uvars = 0 := rfl
 example : orChecked.recursor = vconst(type_of% @Or.rec) := rfl
+example : orChecked.generatedRules[0]? =
+    some (vdefeq(a b motive inl inr h =>
+      @Or.rec a b motive inl inr (@Or.inl a b h) ≡ inl h)) := rfl
+example : orChecked.generatedRules[1]? =
+    some (vdefeq(a b motive inl inr h =>
+      @Or.rec a b motive inl inr (@Or.inr a b h) ≡ inr h)) := rfl
 example : (VEnv.empty.addInduct orDecl).isSome = true := rfl
+
+/-- `And` is the canonical singleton-Prop exception: both constructor fields
+are proofs, so Lean legitimately gives it a large eliminator with one fresh
+universe parameter. -/
+def andType : VInductiveType where
+  name := ``And
+  uvars := 0
+  type := vconst(type_of% @And).type
+  ctors := [⟨vconst(type_of% @And.intro), ``And.intro⟩]
+
+def andDecl : VInductDecl := ⟨0, 2, [andType]⟩
+
+def andChecked : andDecl.Checked := andDecl.checked?.get (by decide)
+
+example : andDecl.stage3 = true := rfl
+example : andChecked.elimination = .large := rfl
+example : andChecked.recursor.uvars = 1 := rfl
+example : andChecked.recursor = vconst(type_of% @And.rec) := rfl
+example : andChecked.generatedRules[0]? =
+    some (vdefeq(a b motive intro left right =>
+      @And.rec a b motive intro (@And.intro a b left right) ≡
+        intro left right)) := rfl
+example : (VEnv.empty.addInduct andDecl).isSome = true := rfl
 
 /-! ## Conservativity: malformed declarations and name collisions refuse. -/
 

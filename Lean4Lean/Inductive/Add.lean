@@ -2447,15 +2447,27 @@ def isLargeEliminator (stats : InductiveStats) (indTypes : Array InductiveType) 
     loop ctor.type 0 #[] (← readThe Context).fuel.inductiveFuel
   | _ => return false
 
-partial -- TODO: remove
+/-- Search the kernel's elimination-universe name sequence (`u`, `u_1`, …)
+for its first entry not already used by the inductive declaration.  Among
+`lparams.length + 1` distinct candidates at least one is available; the
+zero-fuel branch is therefore only a totality fallback. -/
+def getFreshElimParam.loop (lparams : List Name) (u : Name) (i : Nat) :
+    Nat → Name
+  | 0 => u
+  | fuel + 1 =>
+      if lparams.contains u then
+        loop lparams ((`u).appendIndexAfter i) (i + 1) fuel
+      else
+        u
+
+def getFreshElimParam (lparams : List Name) : Name :=
+  getFreshElimParam.loop lparams `u 1 (lparams.length + 1)
+
 def getElimLevel (stats : InductiveStats) (indTypes : Array InductiveType) :
     M Level := do
   unless ← isLargeEliminator stats indTypes do return .zero
   let {lparams, ..} ← read
-  let rec loop u i := Id.run do
-    unless lparams.contains u do return .param u
-    loop ((`u).appendIndexAfter i) (i + 1)
-  return loop `u 1
+  return .param (getFreshElimParam lparams)
 
 def isKTarget (stats : InductiveStats) (indTypes : Array InductiveType) : M Bool := do
   let #[indType] := indTypes | return false
