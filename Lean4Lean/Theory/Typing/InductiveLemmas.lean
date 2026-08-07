@@ -10365,23 +10365,27 @@ theorem AddInductGenerationTrace.rule_mem {source : VInductDecl}
   simpa only [H.addRules] using
     (rulesFold_spec gen.generatedRules H.recEnv).2 df hdf
 
-/-- The normalized transaction preserves environment ordering from the
-semantic raw/view generation certificate. Stored constants are checked in
-their exact raw syntax; the mixed recursor and rules are checked only after
-all raw constants are present. -/
-theorem addInductGeneration_WF {source : VInductDecl}
+/-- Preserve ordering across the raw family insertion, the first generated
+component of an inductive transaction. -/
+private theorem addInductGeneration_family_ordered {source : VInductDecl}
     {gen : source.GenerationChecked}
-    (henv : env.Ordered) (hgen : gen.WF env)
-    (hadd : addInductGeneration env gen = some env') :
-    env'.Ordered := by
-  rcases addInductGeneration_trace hadd with ⟨H⟩
+    (H : AddInductGenerationTrace env env' gen)
+    (henv : env.Ordered) (hgen : gen.WF env) : H.typeEnv.Ordered := by
   have hfamilyWF : gen.block.sourceType.toVConstant.WF env := by
     show env.IsType gen.block.sourceType.uvars []
       gen.block.sourceType.type
     rw [gen.block.sourceType_uvars_eq]
     exact hgen.rawFamily_isType
-  have ordT : H.typeEnv.Ordered :=
-    .const henv hfamilyWF H.addType
+  exact .const henv hfamilyWF H.addType
+
+/-- Preserve ordering across the complete raw constructor fold. The proof is
+uniform in the source list, so the empty-constructor case is the ordinary
+zero-step fold rather than a separate preservation path. -/
+private theorem addInductGeneration_constructors_ordered
+    {source : VInductDecl} {gen : source.GenerationChecked}
+    (H : AddInductGenerationTrace env env' gen)
+    (hgen : gen.WF env) (ordT : H.typeEnv.Ordered) :
+    H.ctorEnv.Ordered := by
   have hctorWF :
       ∀ c ∈ gen.block.sourceType.ctors,
         c.toVConstant.WF H.typeEnv := by
@@ -10393,8 +10397,16 @@ theorem addInductGeneration_WF {source : VInductDecl}
     show H.typeEnv.IsType ctor.raw.uvars [] ctor.raw.type
     rw [gen.ctor_uvars_eq hctor]
     exact hgen.rawCtor_isType H.addType hctor
-  have ordC : H.ctorEnv.Ordered :=
-    constFold_ordered gen.block.sourceType.ctors ordT hctorWF H.addCtors
+  exact constFold_ordered gen.block.sourceType.ctors ordT hctorWF
+    H.addCtors
+
+/-- Assemble the mixed-generation invariant after the exact family and
+constructor components have been inserted. -/
+private theorem addInductGeneration_constructor_generationEnv
+    {source : VInductDecl} {gen : source.GenerationChecked}
+    (H : AddInductGenerationTrace env env' gen)
+    (hgen : gen.WF env) (ordC : H.ctorEnv.Ordered) :
+    GenerationEnv gen H.ctorEnv := by
   obtain ⟨hleTC, hctorLookup, -⟩ :=
     ctorFold_spec gen.block.sourceType.ctors H.addCtors
   have hlePreT := addConst_le H.addType
@@ -10411,16 +10423,48 @@ theorem addInductGeneration_WF {source : VInductDecl}
     apply hctorLookup ctor.raw
     rw [← gen.rawCtors_eq]
     exact List.mem_map.2 ⟨ctor, hctor, rfl⟩
+  exact hgen.toGenerationEnv H.addType hlePreC hleTC ordC hfamily
+    hctors
+
+/-- Preserve ordering across the single generated recursor component. -/
+private theorem addInductGeneration_recursor_ordered
+    {source : VInductDecl} {gen : source.GenerationChecked}
+    (H : AddInductGenerationTrace env env' gen)
+    (S : GenerationEnv gen H.ctorEnv) : H.recEnv.Ordered :=
+  .const S.ord S.recursor_wf H.addRec
+
+/-- Preserve ordering across the generated rule fold. Empty families supply
+no rules, so this is again the same zero-step component fold used generally. -/
+private theorem addInductGeneration_rules_ordered
+    {source : VInductDecl} {gen : source.GenerationChecked}
+    (H : AddInductGenerationTrace env env' gen)
+    (S : GenerationEnv gen H.recEnv) : env'.Ordered := by
+  have hout :=
+    S.generatedRulesFold_ordered (addConst_self H.addRec)
+  simpa only [H.addRules] using hout
+
+/-- The normalized transaction preserves environment ordering from the
+semantic raw/view generation certificate. Stored constants are checked in
+their exact raw syntax; the mixed recursor and rules are checked only after
+all raw constants are present. -/
+theorem addInductGeneration_WF {source : VInductDecl}
+    {gen : source.GenerationChecked}
+    (henv : env.Ordered) (hgen : gen.WF env)
+    (hadd : addInductGeneration env gen = some env') :
+    env'.Ordered := by
+  rcases addInductGeneration_trace hadd with ⟨H⟩
+  have ordT : H.typeEnv.Ordered :=
+    addInductGeneration_family_ordered H henv hgen
+  have ordC : H.ctorEnv.Ordered :=
+    addInductGeneration_constructors_ordered H hgen ordT
   have S : GenerationEnv gen H.ctorEnv :=
-    hgen.toGenerationEnv H.addType hlePreC hleTC ordC hfamily hctors
+    addInductGeneration_constructor_generationEnv H hgen ordC
   have ordR : H.recEnv.Ordered :=
-    .const ordC S.recursor_wf H.addRec
+    addInductGeneration_recursor_ordered H S
   have hleCR := addConst_le H.addRec
   have SR : GenerationEnv gen H.recEnv :=
     S.mono hleCR ordR
-  have hout :=
-    SR.generatedRulesFold_ordered (addConst_self H.addRec)
-  simpa only [H.addRules] using hout
+  exact addInductGeneration_rules_ordered H SR
 
 /-- Recover the ordinary normalized transaction trace from the
 proof-carrying public entry point.  The conclusion contains only Theory data;

@@ -121,6 +121,131 @@ example : (rules 0 ``Bool 0 boolType)[0]? =
 example : (rules 0 ``Bool 0 boolType)[1]? =
     some (vdefeq(motive f t => @Bool.rec motive f t .true ≡ t)) := rfl
 
+/-! ## Unit/Empty edge shapes
+
+`Unit` is a reducible alias for `PUnit` on this Lean revision, so the actual
+one-constructor kernel metadata is recorded under `PUnit`. Together with
+`Empty`, these fixtures exercise the one- and zero-constructor generation
+paths without inventing an alias-level recursor that the kernel does not
+declare. -/
+
+def punitType : VInductiveType where
+  name := ``PUnit
+  uvars := 1
+  type := vconst(type_of% @PUnit).type
+  ctors := [⟨vconst(type_of% @PUnit.unit), ``PUnit.unit⟩]
+
+def punitDecl : VInductDecl := ⟨1, 0, [punitType]⟩
+
+example : punitDecl.stage3 = true := rfl
+
+def punitChecked : punitDecl.Checked := punitDecl.checked?.get (by decide)
+
+def punitGenerationChecked : GenerationChecked punitDecl :=
+  (identityGeneration? punitDecl).get (by decide)
+
+example : punitChecked.params = [] := rfl
+example : punitChecked.indices = [] := rfl
+example : punitChecked.resultLevel = .param 0 := rfl
+example : punitChecked.elimination = .large := rfl
+example : punitChecked.kTarget = false := rfl
+example : punitChecked.constructors.length = 1 := rfl
+example : punitChecked.constructors[0].fields = [] := rfl
+example : punitChecked.constructors[0].recursive = [] := rfl
+example : punitGenerationChecked.block.ctorPairs.length = 1 := rfl
+example : punitGenerationChecked.minorTypes.length = 1 := rfl
+example : punitGenerationChecked.generatedRules.length = 1 := rfl
+
+/-- The one-constructor recursor retains the fresh elimination universe before
+the source universe, and its sole minor occurs before the major. -/
+example : punitGenerationChecked.recursor =
+    permC (vconst(type_of% @PUnit.rec)) [.param 1, .param 0] := rfl
+
+example : punitGenerationChecked.generatedRules[0]? =
+    some (permE
+      (vdefeq((motive : PUnit.{u} → Sort v) unit =>
+        @PUnit.rec.{v, u} motive unit @PUnit.unit.{u} ≡ unit))
+      [.param 1, .param 0]) := rfl
+
+theorem punitDecl_wf : punitDecl.WF VEnv.empty := by
+  refine ⟨rfl, ?_⟩
+  intro ty hty
+  have hty' : ty = punitType :=
+    List.mem_singleton.1 (by simpa [punitDecl] using hty)
+  subst ty
+  refine ⟨?_, ?_⟩
+  · change True
+    trivial
+  · intro c hc
+    have hc' := List.mem_singleton.1 hc
+    subst c
+    constructor
+    · change True
+      trivial
+    · change VExpr.sort (.param 0) = VExpr.sort (.param 0)
+      rfl
+
+def punitEnv : VEnv :=
+  (VEnv.empty.addInduct punitDecl).get (by decide)
+
+/-- The public checked transaction and the normalized generation core are the
+same computation for this identity-normalized edge fixture. -/
+example : VEnv.empty.addInduct punitDecl =
+    VEnv.empty.addInductGeneration punitGenerationChecked := rfl
+
+theorem punitEnv_ordered : punitEnv.Ordered :=
+  VEnv.addInduct_WF .empty punitDecl_wf rfl
+
+def emptyType : VInductiveType where
+  name := ``Empty
+  uvars := 0
+  type := vconst(type_of% @Empty).type
+  ctors := []
+
+def emptyDecl : VInductDecl := ⟨0, 0, [emptyType]⟩
+
+example : emptyDecl.stage3 = true := rfl
+
+def emptyChecked : emptyDecl.Checked := emptyDecl.checked?.get (by decide)
+
+def emptyGenerationChecked : GenerationChecked emptyDecl :=
+  (identityGeneration? emptyDecl).get (by decide)
+
+example : emptyChecked.params = [] := rfl
+example : emptyChecked.indices = [] := rfl
+example : emptyChecked.resultLevel = .succ .zero := rfl
+example : emptyChecked.elimination = .large := rfl
+example : emptyChecked.kTarget = false := rfl
+example : emptyChecked.constructors = [] := rfl
+example : emptyGenerationChecked.block.ctorPairs = [] := rfl
+example : emptyGenerationChecked.minorTypes = [] := rfl
+example : emptyGenerationChecked.generatedRules = [] := rfl
+
+/-- Empty elimination has a motive and major but no constructor minor. -/
+example : emptyGenerationChecked.recursor =
+    vconst(type_of% @Empty.rec) := rfl
+
+theorem emptyDecl_wf : emptyDecl.WF VEnv.empty := by
+  refine ⟨rfl, ?_⟩
+  intro ty hty
+  have hty' : ty = emptyType :=
+    List.mem_singleton.1 (by simpa [emptyDecl] using hty)
+  subst ty
+  refine ⟨?_, ?_⟩
+  · change True
+    trivial
+  · intro c hc
+    simp [emptyType] at hc
+
+def emptyEnv : VEnv :=
+  (VEnv.empty.addInduct emptyDecl).get (by decide)
+
+example : VEnv.empty.addInduct emptyDecl =
+    VEnv.empty.addInductGeneration emptyGenerationChecked := rfl
+
+theorem emptyEnv_ordered : emptyEnv.Ordered :=
+  VEnv.addInduct_WF .empty emptyDecl_wf rfl
+
 /-! ## List: one parameter, a dependent field, direct recursion -/
 
 def listType : VInductiveType where
