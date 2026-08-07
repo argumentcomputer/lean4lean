@@ -1,6 +1,6 @@
 import Lean4Lean.Verify.Environment.EliminationFixturesCommon
 
-/-! Exact L4L-06A source-universe small-elimination differential fixture. -/
+/-! Exact L4L-06B source-universe small-elimination differential fixture. -/
 
 namespace Lean4Lean.InductiveReplayFixtures
 open Lean Meta Elab Term
@@ -70,16 +70,20 @@ def smallSourceAlignment06 : AddInductive.CheckerEliminationRun
 example : smallSourceInfo06.levelParams = [`u] := rfl
 example : smallSourceExecution06.elimination.large.result = false := by
   native_decide
+example : smallSourceExecution06.kTarget.result = false := by native_decide
+example : smallSourceExecution06.kTarget.singleton = none := by native_decide
 example : smallSourceExecution06.elimination.level = .zero :=
   Level.isStructEq_eq (by native_decide)
 example : smallSourceExecution06.recLevelParams = [`u] := by native_decide
 example : smallSourceExecution06.recLevels = [.param `u] :=
   levelListStructEq06_eq (by native_decide)
 example : recursorShape06 smallSourceRecInfo06 =
-    ([`u], 1, 0, 1, 2,
+    ([`u], 1, 0, 1, 2, false,
       [(``L4L06SmallSource.left, 0), (``L4L06SmallSource.right, 0)]) := rfl
 example : smallSourceChecked06.elimination = .small :=
   smallSourceAlignment06.small_result_iff.mp (by native_decide)
+example : smallSourceGeneration06.kTarget = false :=
+  smallSourceAlignment06.kTarget_result_false_iff.mp (by native_decide)
 example : smallSourceGeneration06.recursor =
     vconst(type_of% @L4L06SmallSource.rec) := rfl
 example : smallSourceLeftRuleRhs06 =

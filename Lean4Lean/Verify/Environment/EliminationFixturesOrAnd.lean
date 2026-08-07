@@ -1,6 +1,6 @@
 import Lean4Lean.Verify.Environment.EliminationFixturesCommon
 
-/-! Exact L4L-06A Or/And differential fixtures. -/
+/-! Exact L4L-06B Or/And differential fixtures. -/
 
 namespace Lean4Lean.InductiveReplayFixtures
 open Lean Meta Elab Term
@@ -49,16 +49,20 @@ def orAlignment06 :
     (by native_decide)
 
 example : orExecution06.elimination.large.result = false := by native_decide
+example : orExecution06.kTarget.result = false := by native_decide
+example : orExecution06.kTarget.singleton = none := by native_decide
 example : orExecution06.elimination.level = .zero :=
   Level.isStructEq_eq (by native_decide)
 example : orExecution06.recLevelParams = [] := by native_decide
 example : orExecution06.recLevels = [] := by native_decide
 example : recursorShape06 orRecInfo06 =
-    ([], 2, 0, 1, 2, [(``Or.inl, 1), (``Or.inr, 1)]) := rfl
+    ([], 2, 0, 1, 2, false, [(``Or.inl, 1), (``Or.inr, 1)]) := rfl
 example : orInlKernelRuleRhs06 = orChecked.generatedRules[0].rhs := rfl
 example : orInrKernelRuleRhs06 = orChecked.generatedRules[1].rhs := rfl
 example : orGeneration06.elimination = .small :=
   orAlignment06.small_result_iff.mp (by native_decide)
+example : orGeneration06.kTarget = false :=
+  orAlignment06.kTarget_result_false_iff.mp (by native_decide)
 
 /-! ## And: singleton proof fields permit large elimination -/
 
@@ -101,19 +105,27 @@ def andAlignment06 :
 def andSingletonExecution06 :=
   andExecution06.elimination.large.singleton.get (by native_decide)
 
+def andKTargetSingleton06 :=
+  andExecution06.kTarget.singleton.get (by native_decide)
+
 example : andExecution06.elimination.large.result = true := by native_decide
+example : andExecution06.kTarget.result = false := by native_decide
+example : andKTargetSingleton06.trace.parameterCount = 2 := by native_decide
+example : andKTargetSingleton06.trace.fieldCount = 1 := by native_decide
 example : andExecution06.elimination.level = .param `u :=
   Level.isStructEq_eq (by native_decide)
 example : andExecution06.recLevelParams = [`u] := by native_decide
 example : andExecution06.recLevels = [.param `u] :=
   levelListStructEq06_eq (by native_decide)
 example : recursorShape06 andRecInfo06 =
-    ([`u], 2, 0, 1, 1, [(``And.intro, 2)]) := rfl
+    ([`u], 2, 0, 1, 1, false, [(``And.intro, 2)]) := rfl
 example : andSingletonExecution06.trace.parameterCount = 2 := by native_decide
 example : andSingletonExecution06.trace.proofFieldCount = 2 := by native_decide
 example : andSingletonExecution06.trace.dataFieldCount = 0 := by native_decide
 example : andKernelRuleRhs06 = andChecked.generatedRules[0].rhs := rfl
 example : andGeneration06.elimination = .large :=
   andAlignment06.large_result_iff.mp (by native_decide)
+example : andGeneration06.kTarget = false :=
+  andAlignment06.kTarget_result_false_iff.mp (by native_decide)
 
 end Lean4Lean.InductiveReplayFixtures

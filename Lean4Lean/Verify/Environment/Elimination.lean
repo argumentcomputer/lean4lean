@@ -126,12 +126,13 @@ theorem result_false_iff
 end CheckerKTargetRun
 
 /-- Executable alignment between an exact ordinary elimination run and the
-mode/universe layout consumed by one Theory generation artifact.
+mode/K-target/universe layout consumed by one Theory generation artifact.
 
 The operational side owns the real `ensureType` observations, selected fresh
-level name, recursive-call levels, and stored metadata parameter order.  The
-equations below are checked data, so a Theory generation whose mode or
-numeric universe layout disagrees with that run cannot inhabit this record. -/
+level name, K-target decision, recursive-call levels, and stored metadata
+parameter order. The equations below are checked data, so a Theory generation
+whose mode, K flag, or numeric universe layout disagrees with that run cannot
+inhabit this record. -/
 structure CheckerEliminationRun
     {source : VInductDecl} (generation : VInductDecl.GenerationChecked source)
     {nparams : Nat} {types : List InductiveType}

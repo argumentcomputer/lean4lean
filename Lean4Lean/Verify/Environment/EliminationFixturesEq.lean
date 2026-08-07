@@ -1,6 +1,6 @@
 import Lean4Lean.Verify.Environment.EliminationFixturesCommon
 
-/-! Exact L4L-06A Eq differential fixture. -/
+/-! Exact L4L-06B Eq differential fixture. -/
 
 namespace Lean4Lean.InductiveReplayFixtures
 open Lean Meta Elab Term
@@ -36,16 +36,24 @@ def eqAlignment06 :
   (AddInductive.CheckerEliminationRun.build? eqGenerationChecked eqExecution06).get
     (by native_decide)
 
+def eqKTargetSingleton06 :=
+  eqExecution06.kTarget.singleton.get (by native_decide)
+
 example : eqExecution06.elimination.large.result = true := by native_decide
+example : eqExecution06.kTarget.result = true := by native_decide
+example : eqKTargetSingleton06.trace.parameterCount = 2 := by native_decide
+example : eqKTargetSingleton06.trace.fieldCount = 0 := by native_decide
 example : eqExecution06.elimination.level = .param `u :=
   Level.isStructEq_eq (by native_decide)
 example : eqExecution06.recLevelParams = [`u, `u_1] := by native_decide
 example : eqExecution06.recLevels = [.param `u, .param `u_1] :=
   levelListStructEq06_eq (by native_decide)
 example : recursorShape06 eqRecInfo =
-    ([`u, `u_1], 2, 1, 1, 1, [(``Eq.refl, 0)]) := rfl
+    ([`u, `u_1], 2, 1, 1, 1, true, [(``Eq.refl, 0)]) := rfl
 example : eqReflKernelRuleRhs = eqChecked.generatedRules[0].rhs := rfl
 example : eqGenerationChecked.elimination = .large :=
   eqAlignment06.large_result_iff.mp (by native_decide)
+example : eqGenerationChecked.kTarget = true :=
+  eqAlignment06.kTarget_result_true_iff.mp (by native_decide)
 
 end Lean4Lean.InductiveReplayFixtures

@@ -1,6 +1,6 @@
 import Lean4Lean.Verify.Environment.EliminationFixturesCommon
 
-/-! Exact L4L-06A Nat never-zero elimination fixture. -/
+/-! Exact L4L-06B Nat never-zero elimination and non-K fixture. -/
 
 namespace Lean4Lean.InductiveReplayFixtures
 open Lean Meta Elab Term
@@ -52,11 +52,43 @@ def natElimAlignment06 : AddInductive.CheckerElimLevelRun
     natGenerationChecked natElimLevelExecution06 :=
   natElimAlignmentResult06.get natElimAlignmentResult06_isSome
 
+def natKTargetResult06 :=
+  AddInductive.KTargetExecution.buildExecution natNeverZeroStats06
+    #[natKernelType06] (l4l06Context [])
+
+theorem natKTargetResult06_isOk : natKTargetResult06.isOk = true := by
+  native_decide
+
+def natProducedKTarget06 :
+    { execution // natKTargetResult06 = .ok execution } :=
+  match h : natKTargetResult06 with
+  | .ok execution => ⟨execution, rfl⟩
+  | .error _ => by
+      have hOk := natKTargetResult06_isOk
+      rw [h] at hOk
+      contradiction
+
+def natKTargetExecution06 := natProducedKTarget06.val
+
+def natKTargetAlignmentResult06 :=
+  AddInductive.CheckerKTargetRun.build? natGenerationChecked
+    natKTargetExecution06
+
+theorem natKTargetAlignmentResult06_isSome :
+    natKTargetAlignmentResult06.isSome = true := by
+  native_decide
+
+def natKTargetAlignment06 : AddInductive.CheckerKTargetRun
+    natGenerationChecked natKTargetExecution06 :=
+  natKTargetAlignmentResult06.get natKTargetAlignmentResult06_isSome
+
 example : natNeverZeroStats06.isNotZero = true := rfl
 example : natNeverZeroStats06.resultLevel = .succ .zero := rfl
 example : natKernelType06.type = .sort (.succ .zero) := rfl
 example : natChecked.resultLevel = .succ .zero := rfl
 example : natElimLevelExecution06.large.result = true := by native_decide
+example : natKTargetExecution06.result = false := by native_decide
+example : natKTargetExecution06.singleton = none := by native_decide
 example : natElimLevelExecution06.level = .param `u :=
   Level.isStructEq_eq (by native_decide)
 example : AddInductive.getRecLevelParams natElimLevelExecution06.level [] =
@@ -64,10 +96,13 @@ example : AddInductive.getRecLevelParams natElimLevelExecution06.level [] =
 example : AddInductive.getRecLevels natElimLevelExecution06.level [] =
     [.param `u] := levelListStructEq06_eq (by native_decide)
 example : recursorShape06 natRecInfo =
-    ([`u], 0, 0, 1, 2, [(``Nat.zero, 0), (``Nat.succ, 1)]) := rfl
+    ([`u], 0, 0, 1, 2, false,
+      [(``Nat.zero, 0), (``Nat.succ, 1)]) := rfl
 example : natZeroKernelRuleRhs = natChecked.generatedRules[0].rhs := rfl
 example : natSuccKernelRuleRhs = natChecked.generatedRules[1].rhs := rfl
 example : natGenerationChecked.elimination = .large :=
   natElimAlignment06.large_result_iff.mp (by native_decide)
+example : natGenerationChecked.kTarget = false :=
+  natKTargetAlignment06.result_false_iff.mp (by native_decide)
 
 end Lean4Lean.InductiveReplayFixtures

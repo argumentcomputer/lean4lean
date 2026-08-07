@@ -367,6 +367,22 @@ inductive KTargetCtorTrace (nparams : Nat) :
 
 namespace KTargetCtorTrace
 
+def parameterCount
+    (trace : KTargetCtorTrace nparams source argIdx result) : Nat :=
+  match trace with
+  | .parameter (tail := tail) .. => tail.parameterCount + 1
+  | .field .. => 0
+  | .terminal .. => 0
+
+/-- The K-target walk stops at the first visible constructor field, so this
+count is either zero or one. -/
+def fieldCount
+    (trace : KTargetCtorTrace nparams source argIdx result) : Nat :=
+  match trace with
+  | .parameter (tail := tail) .. => tail.fieldCount
+  | .field .. => 1
+  | .terminal .. => 0
+
 /-- Erasing the retained constructor trace yields the exact Boolean consumed
 by `isKTarget`. -/
 theorem run
@@ -472,8 +488,7 @@ end KTargetExecution
 
 /-- The normalization/validation execution extended through constructor
 declaration and the exact elimination-level and K-target decisions used by
-`run`.  This is
-an operational refinement only: erasing the added fields leaves the existing
+`run`. This is an operational refinement only: erasing the added fields leaves the existing
 normalization candidate and checker equations unchanged. -/
 structure NormalizationEliminationExecution
     (nparams : Nat) (types : List InductiveType)
@@ -544,6 +559,18 @@ def recLevelParams
     execution.normalization.validationContext.lparams
 
 end NormalizationEliminationExecution
+
+/--
+info: 'Lean4Lean.AddInductive.KTargetCtorTrace.run' depends on axioms: [propext]
+-/
+#guard_msgs in
+#print axioms KTargetCtorTrace.run
+
+/--
+info: 'Lean4Lean.AddInductive.KTargetExecution.buildExecution' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms KTargetExecution.buildExecution
 
 /--
 info: 'Lean4Lean.AddInductive.LargeEliminatorLoopTrace.run' depends on axioms: [propext, Classical.choice, Quot.sound]

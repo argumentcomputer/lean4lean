@@ -64,6 +64,8 @@ example : natChecked.params = [] := rfl
 example : natChecked.indices = [] := rfl
 example : natChecked.resultLevel = .succ .zero := rfl
 example : natChecked.elimination = .large := rfl
+example : natChecked.kTarget = false := rfl
+example : natGenerationChecked.kTarget = false := rfl
 example : natChecked.constructors.length = 2 := rfl
 example : natChecked.constructors[1].recursive.length = 1 := rfl
 example : natChecked.constructors[1].recursive[0].fieldIndex = 0 := rfl
@@ -215,6 +217,8 @@ example : eqChecked.params = [.sort (.param 0), .bvar 0] := rfl
 example : eqChecked.indices = [.bvar 1] := rfl
 example : eqChecked.resultLevel = .zero := rfl
 example : eqChecked.elimination = .large := rfl
+example : eqChecked.kTarget = true := rfl
+example : eqGenerationChecked.kTarget = true := rfl
 example : eqChecked.constructors[0].resultIndices = [.bvar 0] := rfl
 example : eqChecked.recursor = recConst 1 ``Eq 2 eqType := rfl
 example : eqGenerationChecked.motiveType = eqChecked.motiveType := rfl
@@ -2805,6 +2809,7 @@ def orChecked : orDecl.Checked := orDecl.checked?.get (by decide)
 
 example : orDecl.stage3 = true := rfl
 example : orChecked.elimination = .small := rfl
+example : orChecked.kTarget = false := rfl
 example : orChecked.recursor.uvars = 0 := rfl
 example : orChecked.recursor = vconst(type_of% @Or.rec) := rfl
 example : orChecked.generatedRules[0]? =
@@ -2830,6 +2835,9 @@ def andChecked : andDecl.Checked := andDecl.checked?.get (by decide)
 
 example : andDecl.stage3 = true := rfl
 example : andChecked.elimination = .large := rfl
+/-- Large elimination and K eligibility are independent: `And` has the
+singleton-proof elimination exception, but its constructor has fields. -/
+example : andChecked.kTarget = false := rfl
 example : andChecked.recursor.uvars = 1 := rfl
 example : andChecked.recursor = vconst(type_of% @And.rec) := rfl
 example : andChecked.generatedRules[0]? =

@@ -14,12 +14,13 @@ inductive L4L06SmallSource (α : Sort u) : Prop where
   | right : L4L06SmallSource α
 
 def recursorShape06 (info : ConstantInfo) :
-    List Name × Nat × Nat × Nat × Nat × List (Name × Nat) :=
+    List Name × Nat × Nat × Nat × Nat × Bool × List (Name × Nat) :=
   match info with
   | .recInfo rec =>
       (rec.levelParams, rec.numParams, rec.numIndices, rec.numMotives,
-        rec.numMinors, rec.rules.map fun rule => (rule.ctor, rule.nfields))
-  | _ => ([], 0, 0, 0, 0, [])
+        rec.numMinors, rec.k,
+        rec.rules.map fun rule => (rule.ctor, rule.nfields))
+  | _ => ([], 0, 0, 0, 0, false, [])
 
 def l4l06KernelEnv : Kernel.Environment :=
   Kernel.Environment.ofConstants `_l4l06 {}
