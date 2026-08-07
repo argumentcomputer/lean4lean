@@ -314,6 +314,23 @@ theorem cvmFamilyEnsureSort :
       .ok (.sort (.succ (.param `u))) := by
   rfl
 
+theorem cvmFamilySpineCount :
+    2 ≤ cvmCandidate.families.singleton.familyType.type.trace.spineLength := by
+  rw [cvmFamilyIdentityEvidence.spineLength_eq,
+    cvmFamilyIdentityReplay_shape.1]
+  decide
+
+theorem cvmFamilySpineFuel :
+    cvmCandidate.families.singleton.familyType.type.trace.spineLength <
+      cvmCandidate.families.singleton.familyType.type.context.fuel.inductiveFuel := by
+  have contextFuel := congrArg (fun context : AddInductive.Context =>
+      context.fuel.inductiveFuel)
+    (AddInductive.CandidateExpr.context_eq_of_build cvmFamilyCandidateBuild)
+  rw [contextFuel]
+  rw [cvmFamilyIdentityEvidence.spineLength_eq,
+    cvmFamilyIdentityReplay_shape.1]
+  decide
+
 def cvmFamilyValidationRun :
     AddInductive.CandidateExprTrace.FamilyValidationRun
       constructorValidityMatrixKernelType
@@ -332,7 +349,7 @@ def cvmFamilyValidationRun :
       constructorValidityMatrixKernelType
       cvmCandidate.families.singleton.familyType.type.trace
       2 (.succ (.param `u)) k
-      cvmFamilyClosed (by native_decide) (by native_decide)
+      cvmFamilyClosed cvmFamilySpineCount cvmFamilySpineFuel
       cvmFamilyValidationAnnotations
       (cvmFamilyIdentityEvidence.terminalResult_eq.trans
         cvmFamilyIdentityReplay_shape.2)
@@ -1223,6 +1240,12 @@ def cvmCtorIdentityEvidence :
       cvmCandidate.families.singleton.constructors.singleton.type.trace :=
   cvmCtorIdentityReplay.evidence_of_build cvmCtorCandidateBuild
 
+theorem cvmCtorIdentityReplay_shape :
+    cvmCtorIdentityReplay.spineLength = 8 ∧
+      cvmCtorIdentityReplay.terminalSource = cvmCtorFamilyApp :=
+  ⟨cvmCtorIdentityShape.spineLength_eq,
+    cvmCtorIdentityShape.terminalSource_eq⟩
+
 theorem cvmTypeEnv_ordered : cvmTypeEnv.Ordered :=
   .const (n := constructorValidityMatrixType.name)
     (ci := constructorValidityMatrixType.toVConstant)
@@ -1584,6 +1607,23 @@ theorem prbFamilyEnsureSort :
       .ok (.sort .zero) := by
   rfl
 
+theorem prbFamilySpineCount :
+    1 ≤ prbCandidate.families.singleton.familyType.type.trace.spineLength := by
+  rw [prbFamilyIdentityEvidence.spineLength_eq,
+    prbFamilyIdentityReplay_shape.1]
+  decide
+
+theorem prbFamilySpineFuel :
+    prbCandidate.families.singleton.familyType.type.trace.spineLength <
+      prbCandidate.families.singleton.familyType.type.context.fuel.inductiveFuel := by
+  have contextFuel := congrArg (fun context : AddInductive.Context =>
+      context.fuel.inductiveFuel)
+    (AddInductive.CandidateExpr.context_eq_of_build prbFamilyCandidateBuild)
+  rw [contextFuel]
+  rw [prbFamilyIdentityEvidence.spineLength_eq,
+    prbFamilyIdentityReplay_shape.1]
+  decide
+
 def prbFamilyValidationRun :
     AddInductive.CandidateExprTrace.FamilyValidationRun
       propRecursiveBoundaryKernelType
@@ -1602,7 +1642,7 @@ def prbFamilyValidationRun :
       propRecursiveBoundaryKernelType
       prbCandidate.families.singleton.familyType.type.trace
       1 .zero k
-      prbFamilyClosed (by native_decide) (by native_decide)
+      prbFamilyClosed prbFamilySpineCount prbFamilySpineFuel
       prbFamilyValidationAnnotations
       (prbFamilyIdentityEvidence.terminalResult_eq.trans
         prbFamilyIdentityReplay_shape.2)
@@ -2209,6 +2249,16 @@ def prbCtorIdentityEvidence :
       prbCandidate.families.singleton.constructors.singleton.type.trace :=
   prbCtorIdentityReplay.evidence_of_build prbCtorCandidateBuild
 
+theorem prbCtorIdentityReplay_shape :
+    prbCtorIdentityReplay.spineLength = 3 ∧
+      prbCtorIdentityReplay.terminalSource =
+        (.app
+          (.app (.const propRecursiveBoundaryKernelType.name [.param `u])
+            (.fvar prbConstructorContext.freshFVarId))
+          (.fvar prbCtorAlphaContext.freshFVarId)) :=
+  ⟨prbCtorIdentityShape.spineLength_eq,
+    prbCtorIdentityShape.terminalSource_eq⟩
+
 theorem prbTypeEnv_ordered : prbTypeEnv.Ordered :=
   .const (n := propRecursiveBoundaryType.name)
     (ci := propRecursiveBoundaryType.toVConstant)
@@ -2485,7 +2535,20 @@ theorem cvmCandidate_generationShape :
     VInductDecl.normalizationCandidateGenerationShape
       constructorValidityMatrixDecl constructorValidityMatrixType
       cvmCanonicalCandidate = true := by
-  native_decide
+  rw [← cvmCandidate_eq_canonical]
+  unfold VInductDecl.normalizationCandidateGenerationShape
+  rw [AddInductive.CandidateList.singleton_eta
+    cvmCandidate.families.singleton.constructors]
+  have familyStored := cvmFamilyIdentityEvidence.identity.storedSpine
+  have familyLength := cvmFamilyIdentityEvidence.spineLength_eq.trans
+    cvmFamilyIdentityReplay_shape.1
+  have ctorStored := cvmCtorIdentityEvidence.identity.storedSpine
+  have ctorLength := cvmCtorIdentityEvidence.spineLength_eq.trans
+    cvmCtorIdentityReplay_shape.1
+  simp [VInductDecl.candidateConstructorSemanticGenerationShape,
+    constructorValidityMatrixDecl, constructorValidityMatrixType,
+    VExpr.telN, VExpr.dropN, VInductDecl.ctorFields,
+    familyStored, familyLength, ctorStored, ctorLength]
 
 abbrev cvmProducedGenerationShapeCandidate :
     VInductDecl.ProducedGenerationShapeCandidate constructorValidityMatrixDecl
@@ -2668,7 +2731,20 @@ theorem prbCandidate_generationShape :
       propRecursiveBoundaryDecl propRecursiveBoundaryType
         prbCanonicalCandidate =
         true := by
-  native_decide
+  rw [← prbCandidate_eq_canonical]
+  unfold VInductDecl.normalizationCandidateGenerationShape
+  rw [AddInductive.CandidateList.singleton_eta
+    prbCandidate.families.singleton.constructors]
+  have familyStored := prbFamilyIdentityEvidence.identity.storedSpine
+  have familyLength := prbFamilyIdentityEvidence.spineLength_eq.trans
+    prbFamilyIdentityReplay_shape.1
+  have ctorStored := prbCtorIdentityEvidence.identity.storedSpine
+  have ctorLength := prbCtorIdentityEvidence.spineLength_eq.trans
+    prbCtorIdentityReplay_shape.1
+  simp [VInductDecl.candidateConstructorSemanticGenerationShape,
+    propRecursiveBoundaryDecl, propRecursiveBoundaryType,
+    VExpr.telN, VExpr.dropN, VInductDecl.ctorFields,
+    familyStored, familyLength, ctorStored, ctorLength]
 
 abbrev prbProducedGenerationShapeCandidate :
     VInductDecl.ProducedGenerationShapeCandidate propRecursiveBoundaryDecl
