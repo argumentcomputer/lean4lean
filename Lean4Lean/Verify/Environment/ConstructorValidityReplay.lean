@@ -1333,94 +1333,8 @@ theorem cvmCheckConstructorsRun :
   rw [cvmExecutionStats_eq, cvmExecutionValidationContext_eq] at h
   simpa [cvmConstructorContext] using h
 
-theorem cvmUniverseRun :
-    AddInductive.checkConstructorUniverseListSemantics
-        cvmFamilyValidationRun.stats constructorValidityMatrixKernelType.ctors
-        { cvmCandidate.families.singleton.familyType.type.trace.terminalContext with
-          env := cvmConstructorContext.env } = .ok () := by
-  apply exceptUnit_eq_ok_of_isOk
-  native_decide
-
-def cvmConstructorValidationResult :=
-  AddInductive.ConstructorValidationRun.buildExecution
-    constructorValidityMatrixKernelType cvmFamilyValidationRun.stats false
-    { cvmCandidate.families.singleton.familyType.type.trace.terminalContext with
-      env := cvmConstructorContext.env }
-
-theorem cvmConstructorValidationResult_isOk :
-    cvmConstructorValidationResult.isOk = true := by
-  native_decide
-
-def cvmProducedConstructorValidation :
-    { validation // cvmConstructorValidationResult = .ok validation } :=
-  match h : cvmConstructorValidationResult with
-  | .ok validation => ⟨validation, rfl⟩
-  | .error _ => by
-      have hOk := cvmConstructorValidationResult_isOk
-      rw [h] at hOk
-      contradiction
-
-def cvmConstructorValidation := cvmProducedConstructorValidation.val
-
-def cvmStagedUniverseInput :
-    VInductDecl.StagedNormalizationCandidateUniverseInput
-      cvmFamilyContext cvmConstructorContext VEnv.empty [`u]
-      cvmCandidate constructorValidityMatrixDecl where
-  staged := {
-    raw := constructorValidityMatrixType
-    raw_types_eq := rfl
-    declaration_uvars_eq := rfl
-    preFamily := cvmPreFamilyStage
-    family := cvmFamilyStage
-    validation_nparams_eq := rfl
-    constructorValidation := cvmConstructorValidation
-    constructors := cvmConstructorsStage
-    familyTypesProduced := cvmFamilyTypesProduced
-    familiesProduced := cvmFamiliesProduced }
-  universeRun := cvmUniverseRun
-
-theorem cvmAlignmentRun :
-    cvmStagedUniverseInput.staged.constructorValidation.trace.checkCandidateAlignment
-        cvmCandidate.families.singleton.constructors
-        { cvmCandidate.families.singleton.familyType.type.trace.terminalContext with
-          env := cvmConstructorContext.env } = .ok () := by
-  apply exceptUnit_eq_ok_of_isOk
-  native_decide
-
-noncomputable def cvmStagedPostFamilyInput :
-    VInductDecl.StagedNormalizationCandidatePostFamilyInput
-      cvmFamilyContext cvmConstructorContext VEnv.empty [`u]
-      cvmCandidate constructorValidityMatrixDecl :=
-  VInductDecl.StagedNormalizationCandidatePostFamilyInput.ofRun
-    cvmStagedUniverseInput cvmAlignmentRun
-
-theorem cvmSafetyRunDirect :
-    AddInductive.checkConstructorPreFamilySafety
-        cvmStagedUniverseInput.staged.family.validation.stats
-        cvmCandidate.families.singleton.familyType.type.view
-        cvmCandidate.families.singleton.constructors
-        cvmCandidate.families.singleton.familyType.type.trace.terminalContext =
-      .ok () := by
-  apply exceptUnit_eq_ok_of_isOk
-  native_decide
-
-theorem cvmSafetyRun :
-    AddInductive.checkConstructorPreFamilySafety
-        cvmStagedPostFamilyInput.universeInput.staged.family.validation.stats
-        cvmCandidate.families.singleton.familyType.type.view
-        cvmCandidate.families.singleton.constructors
-        cvmCandidate.families.singleton.familyType.type.trace.terminalContext =
-      .ok () := by
-  simpa [cvmStagedPostFamilyInput,
-    VInductDecl.StagedNormalizationCandidatePostFamilyInput.ofRun] using
-    cvmSafetyRunDirect
-
-noncomputable def cvmStagedPreFamilyInput :
-    VInductDecl.StagedNormalizationCandidatePreFamilyInput
-      cvmFamilyContext cvmConstructorContext VEnv.empty [`u]
-      cvmCandidate constructorValidityMatrixDecl :=
-  VInductDecl.StagedNormalizationCandidatePreFamilyInput.ofRun
-    cvmStagedPostFamilyInput cvmSafetyRun
+/- The CVM D2--D4 stages are reconstructed structurally after the shared
+PRB replay helpers below. -/
 
 def prbExecutionResult :=
   AddInductive.buildNormalizationCandidateExecution 1
@@ -5549,6 +5463,5860 @@ noncomputable def prbStagedPreFamilyInput :
       prbCandidate propRecursiveBoundaryDecl :=
   VInductDecl.StagedNormalizationCandidatePreFamilyInput.ofRun
     prbStagedPostFamilyInput prbSafetyRun
+
+/-! ## Structural CVM constructor-validity replay -/
+
+def cvmValidationAlphaContextTest : AddInductive.Context :=
+  cvmFamilyContext.pushLocalDecl `α .default (.sort (.succ (.param `u)))
+
+def cvmValidationIndexNameTest : Name :=
+  constructorValidityMatrixKernelType.type.bindingBody!
+    |>.bindingDomain!.bindingName!
+
+def cvmValidationPDomainTest : Expr :=
+  .forallE cvmValidationIndexNameTest cvmFamilyContext.freshExpr
+    (.sort .zero) .default
+
+def cvmValidationFamilyContextTest : AddInductive.Context :=
+  cvmValidationAlphaContextTest.pushLocalDecl `P .default
+    cvmValidationPDomainTest
+
+theorem cvmFamilyTerminalContextTest_eq :
+    cvmCandidate.families.singleton.familyType.type.trace.terminalContext =
+      cvmValidationFamilyContextTest := by
+  have identity := cvmFamilyIdentityEvidence.identity
+  have spineLength := cvmFamilyIdentityEvidence.spineLength_eq
+  generalize htrace :
+    cvmCandidate.families.singleton.familyType.type.trace = trace at identity spineLength ⊢
+  cases identity with
+  | terminal result_eq =>
+      simp only [AddInductive.CandidateExprTrace.spineLength] at spineLength
+      rw [cvmFamilyIdentityReplay_shape.1] at spineLength
+      omega
+  | forallE domainCandidate bodyCandidate source_eq consumed_eq
+      domainIdentity bodyIdentity =>
+      simp only [AddInductive.CandidateExprTrace.spineLength,
+        AddInductive.CandidateExprTrace.terminalContext]
+      cases bodyIdentity with
+      | terminal result_eq =>
+          simp only [AddInductive.CandidateExprTrace.spineLength] at spineLength
+          rw [cvmFamilyIdentityReplay_shape.1] at spineLength
+          omega
+      | forallE domainCandidate' bodyCandidate' source_eq' consumed_eq'
+          domainIdentity' bodyIdentity' =>
+          cases bodyIdentity' with
+          | terminal result_eq =>
+              simp only [AddInductive.CandidateExprTrace.terminalContext]
+              simp [constructorValidityMatrixKernelType,
+                constructorValidityMatrixInfo, ConstantInfo.type,
+                ConstantInfo.toConstantVal] at source_eq
+              rcases source_eq with ⟨rfl, rfl, rfl, rfl⟩
+              simp [Expr.instantiate1_eq, Expr.instantiate1'] at source_eq'
+              rcases source_eq' with ⟨rfl, rfl, rfl, rfl⟩
+              rw [consumed_eq, consumed_eq', cvmFamilyCandidateContext_eq]
+              rfl
+          | forallE domainCandidate'' bodyCandidate'' source_eq'' consumed_eq''
+              domainIdentity'' bodyIdentity'' =>
+              simp only [AddInductive.CandidateExprTrace.spineLength] at spineLength
+              rw [cvmFamilyIdentityReplay_shape.1] at spineLength
+              omega
+
+def cvmConstructorValidationContextTest : AddInductive.Context :=
+  { cvmCandidate.families.singleton.familyType.type.trace.terminalContext with
+    env := cvmConstructorContext.env }
+
+theorem cvmConstructorValidationContextTest_eq :
+    cvmConstructorValidationContextTest =
+      { cvmValidationFamilyContextTest with env := cvmConstructorContext.env } := by
+  rw [cvmConstructorValidationContextTest, cvmFamilyTerminalContextTest_eq]
+
+def cvmValidationRootContextTest : AddInductive.Context :=
+  { cvmValidationFamilyContextTest with env := cvmConstructorContext.env }
+
+theorem cvmConstructorValidationContextTest_root :
+    cvmConstructorValidationContextTest = cvmValidationRootContextTest := by
+  rw [cvmConstructorValidationContextTest_eq]
+  rfl
+
+def cvmValidationAlphaLocalRunTest :
+    TypeChecker.CandidateLocalContextRun cvmValidationAlphaContextTest :=
+  (TypeChecker.CandidateLocalContextRun.empty cvmFamilyContext rfl).push
+    `α .default (.sort (.succ (.param `u)))
+
+def cvmValidationFamilyLocalRunTest :
+    TypeChecker.CandidateLocalContextRun cvmValidationFamilyContextTest :=
+  cvmValidationAlphaLocalRunTest.push `P .default cvmValidationPDomainTest
+
+def cvmValidationRootLocalRunTest :
+    TypeChecker.CandidateLocalContextRun cvmValidationRootContextTest where
+  wf := cvmValidationFamilyLocalRunTest.wf
+  reserves := cvmValidationFamilyLocalRunTest.reserves
+
+def cvmValidationAlphaIdTest : FVarId := cvmFamilyContext.freshFVarId
+
+def cvmValidationPIdTest : FVarId :=
+  cvmValidationAlphaContextTest.freshFVarId
+
+theorem cvmValidationPDomainShapeTest :
+    cvmValidationPDomainTest =
+      .forallE cvmValidationIndexNameTest
+        (.fvar cvmValidationAlphaIdTest) (.sort .zero) .default := by
+  rfl
+
+theorem cvmValidationAlphaFindTest :
+    cvmValidationRootContextTest.lctx.find? cvmValidationAlphaIdTest =
+      some (.cdecl 0 cvmValidationAlphaIdTest `α
+        (.sort (.succ (.param `u))) .default .default) := by
+  have first :=
+    (TypeChecker.CandidateLocalContextRun.empty cvmFamilyContext rfl).push_findNew
+      `α .default (.sort (.succ (.param `u)))
+  have old := cvmValidationAlphaLocalRunTest.push_findOld
+    `P .default cvmValidationPDomainTest first
+  simpa [cvmValidationRootContextTest, cvmValidationFamilyContextTest,
+    cvmValidationAlphaContextTest, cvmValidationAlphaIdTest,
+    cvmFamilyContext, constructorValidityMatrixContext,
+    AddInductive.Context.pushLocalDecl] using old
+
+theorem cvmValidationPFindTest :
+    cvmValidationRootContextTest.lctx.find? cvmValidationPIdTest =
+      some (.cdecl cvmValidationAlphaContextTest.lctx.decls.size
+        cvmValidationPIdTest `P cvmValidationPDomainTest
+        .default .default) := by
+  have found := cvmValidationAlphaLocalRunTest.push_findNew
+    `P .default cvmValidationPDomainTest
+  simpa [cvmValidationRootContextTest, cvmValidationFamilyContextTest,
+    cvmValidationPIdTest] using found
+
+theorem cvmValidationRootDepthTest :
+    cvmValidationRootContextTest.fuel.recDepth = 10000 := by
+  rw [← cvmConstructorValidationContextTest_root]
+  rw [cvmConstructorValidationContextTest,
+    cvmCandidate.families.singleton.familyType.type.trace.terminalContext_fuel,
+    cvmFamilyContext_eq]
+  rfl
+
+theorem cvmValidationRootLparamsTest :
+    cvmValidationRootContextTest.lparams = [`u] := by
+  rw [← cvmConstructorValidationContextTest_root]
+  rw [cvmConstructorValidationContextTest, cvmTerminalLparams_eq]
+  rfl
+
+theorem cvmStatsResultLevelTest :
+    cvmFamilyValidationRun.stats.resultLevel = .succ (.param `u) := by
+  rfl
+
+theorem cvmCtorXDomainValidationShapeTest :
+    cvmCtorXDomain = .fvar cvmValidationAlphaIdTest := by
+  simp_cvm_ctor_expr
+  rfl
+
+theorem cvmValidationXEnsureTest :
+    AddInductive.ConstructorEnsureTypeStep.Valid
+      ⟨cvmValidationRootContextTest, cvmCtorXDomain,
+        .sort (.succ (.param `u))⟩ := by
+  rw [cvmCtorXDomainValidationShapeTest]
+  exact prbPreFamilyFVarEnsureValidReplay
+    cvmValidationRootContextTest cvmValidationAlphaIdTest
+      (.succ (.param `u)) cvmValidationAlphaFindTest
+      cvmValidationRootDepthTest
+
+theorem cvmEnsureTypeResultEqTest
+    (actual : AddInductive.ConstructorEnsureTypeStep.Valid
+      ⟨context, source, result⟩)
+    (expected : AddInductive.ConstructorEnsureTypeStep.Valid
+      ⟨context, source, expectedResult⟩) :
+    result = expectedResult := by
+  change TypeChecker.M.run context.env context.safety context.lctx
+    context.lparams context.fuel (TypeChecker.ensureType source) =
+      .ok result at actual
+  change TypeChecker.M.run context.env context.safety context.lctx
+    context.lparams context.fuel (TypeChecker.ensureType source) =
+      .ok expectedResult at expected
+  rw [expected] at actual
+  exact (Except.ok.inj actual).symm
+
+def cvmValidationXContextTest : AddInductive.Context :=
+  cvmValidationRootContextTest.pushLocalDecl `x .default
+    (AddInductive.consumeTypeAnnotations cvmCtorXDomain)
+
+theorem cvmValidationRootFreshEqTest :
+    cvmValidationRootContextTest.freshExpr =
+      cvmCtorPContext.freshExpr := by
+  simp [cvmValidationRootContextTest, cvmValidationFamilyContextTest,
+    cvmValidationAlphaContextTest, cvmValidationPDomainTest,
+    cvmCtorPContext, cvmCtorAlphaContext, cvmCtorAlphaDomain,
+    cvmFamilyContext, cvmConstructorContext,
+    constructorValidityMatrixContext,
+    AddInductive.Context.pushLocalDecl, AddInductive.Context.freshExpr,
+    AddInductive.Context.freshFVarId]
+
+theorem cvmFirstFieldSourceTest :
+    cvmCtorAfterP.bindingBody!.instantiate1
+        cvmValidationRootContextTest.freshExpr = cvmCtorAfterX := by
+  unfold cvmCtorAfterX
+  rw [cvmValidationRootFreshEqTest]
+
+theorem cvmCtorAfterXForallTest :
+    cvmCtorAfterX = .forallE `proof cvmCtorProofDomain
+      cvmCtorAfterX.bindingBody! .default := by
+  simp_cvm_ctor_expr
+
+theorem cvmUniverseSemanticsCastSourceTest
+    {source source' : Expr}
+    (sourceEq : source = source')
+    (trace : AddInductive.ConstructorTypeValidationTrace
+      stats isUnsafe familyIdx ctor context source argIdx fuel) :
+    (sourceEq ▸ trace).universeSemantics = trace.universeSemantics := by
+  cases sourceEq
+  rfl
+
+theorem cvmConstructorValidationFuelTest :
+    cvmConstructorValidationContextTest.fuel.inductiveFuel = 1000 := by
+  rw [cvmConstructorValidationContextTest,
+    cvmCandidate.families.singleton.familyType.type.trace.terminalContext_fuel,
+    cvmFamilyContext_eq]
+  rfl
+
+theorem cvmStatsParamsTest :
+    cvmFamilyValidationRun.stats.params =
+      #[cvmFamilyContext.freshExpr,
+        (cvmFamilyContext.pushLocalDecl `α .default
+          (.sort (.succ (.param `u)))).freshExpr] := by
+  rw [cvmFamilyValidationRun.stats_eq]
+  change
+    (cvmCandidate.families.singleton.familyType.type.trace.parameterList 2).toArray = _
+  have identity := cvmFamilyIdentityEvidence.identity
+  have spineLength := cvmFamilyIdentityEvidence.spineLength_eq
+  generalize htrace :
+    cvmCandidate.families.singleton.familyType.type.trace = trace at identity spineLength ⊢
+  cases identity with
+  | terminal result_eq =>
+      simp only [AddInductive.CandidateExprTrace.spineLength] at spineLength
+      rw [cvmFamilyIdentityReplay_shape.1] at spineLength
+      omega
+  | forallE domainCandidate bodyCandidate source_eq consumed_eq
+      domainIdentity bodyIdentity =>
+      cases bodyIdentity with
+      | terminal result_eq =>
+          simp only [AddInductive.CandidateExprTrace.spineLength] at spineLength
+          rw [cvmFamilyIdentityReplay_shape.1] at spineLength
+          omega
+      | forallE domainCandidate' bodyCandidate' source_eq' consumed_eq'
+          domainIdentity' bodyIdentity' =>
+          simp only [AddInductive.CandidateExprTrace.parameterList]
+          rw [cvmFamilyCandidateContext_eq, consumed_eq]
+          rfl
+
+theorem cvmFirstParameterSourceTest :
+    constructorValidityMatrixKernelCtor.type.bindingBody!.instantiate1
+        cvmFamilyContext.freshExpr = cvmCtorAfterAlpha := by
+  simp_cvm_ctor_expr
+  rfl
+
+theorem cvmCtorAfterAlphaForallTest :
+    cvmCtorAfterAlpha =
+      .forallE `P cvmCtorPDomain cvmCtorAfterAlpha.bindingBody! .implicit := by
+  simp_cvm_ctor_expr
+
+theorem cvmSecondParameterSourceTest :
+    cvmCtorAfterAlpha.bindingBody!.instantiate1
+        cvmValidationAlphaContextTest.freshExpr = cvmCtorAfterP := by
+  simp_cvm_ctor_expr
+  rfl
+
+theorem cvmCtorAfterPForallTest :
+    cvmCtorAfterP =
+      .forallE `x cvmCtorXDomain cvmCtorAfterP.bindingBody! .default := by
+  simp_cvm_ctor_expr
+
+def cvmInferOnlyInsertTest
+    (state : TypeChecker.State) (source type : Expr) : TypeChecker.State :=
+  { state with inferTypeI := state.inferTypeI.insert source type }
+
+theorem cvmInferTypeFVarOnlyCoreTest
+    (fuel : Nat) (context : AddInductive.Context)
+    (state : TypeChecker.State) (id : FVarId) (type : Expr)
+    (hcache : state.inferTypeI[(.fvar id : Expr)]? = none)
+    (hfind : context.lctx.find? id =
+      some (.cdecl index id name type bi kind)) :
+    TypeChecker.Inner.inferType' (.fvar id) true
+      (TypeChecker.Methods.withFuel fuel) context.toTypeChecker state =
+        .ok (type, cvmInferOnlyInsertTest state (.fvar id) type) := by
+  unfold TypeChecker.Inner.inferType'
+  simp [Expr.hasLooseBVars, Expr.looseBVarRange', hcache,
+    TypeChecker.Inner.inferFVar, AddInductive.Context.toTypeChecker,
+    hfind, LocalDecl.type, cvmInferOnlyInsertTest,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+
+theorem cvmEnsureTypeOfInferOnlyTest
+    (context : AddInductive.Context) (source : Expr) (level : Level)
+    (finalState : TypeChecker.State)
+    (run : TypeChecker.Inner.inferType source true
+      (TypeChecker.Methods.withFuel context.fuel.recDepth)
+      context.toTypeChecker ({} : TypeChecker.State) =
+        .ok (.sort level, finalState)) :
+    AddInductive.ConstructorEnsureTypeStep.Valid
+      ⟨context, source, .sort level⟩ := by
+  unfold AddInductive.ConstructorEnsureTypeStep.Valid
+    TypeChecker.ensureType TypeChecker.inferType TypeChecker.ensureSort
+    TypeChecker.RecM.run TypeChecker.M.run
+  simp only [readThe, MonadReaderOf.read, ReaderT.read,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind,
+    Pure.pure, StateT.pure, Except.pure, StateT.run',
+    Functor.map, Except.map]
+  rw [show TypeChecker.Inner.inferType source true
+      (TypeChecker.Methods.withFuel context.fuel.recDepth)
+      { env := context.env, lctx := context.lctx,
+        safety := context.safety, lparams := context.lparams,
+        fuel := context.fuel }
+      ({} : TypeChecker.State) = .ok (.sort level, finalState) by
+    simpa [AddInductive.Context.toTypeChecker] using run]
+  rfl
+
+def cvmValidationXLocalRunTest :
+    TypeChecker.CandidateLocalContextRun cvmValidationXContextTest :=
+  cvmValidationRootLocalRunTest.push `x .default
+    (AddInductive.consumeTypeAnnotations cvmCtorXDomain)
+
+def cvmValidationXIdTest : FVarId :=
+  cvmValidationRootContextTest.freshFVarId
+
+theorem cvmValidationPFindInXTest :
+    cvmValidationXContextTest.lctx.find? cvmValidationPIdTest =
+      some (.cdecl cvmValidationAlphaContextTest.lctx.decls.size
+        cvmValidationPIdTest `P cvmValidationPDomainTest
+        .default .default) :=
+  cvmValidationRootLocalRunTest.push_findOld `x .default
+    (AddInductive.consumeTypeAnnotations cvmCtorXDomain)
+    cvmValidationPFindTest
+
+theorem cvmCtorProofDomainValidationShapeTest :
+    cvmCtorProofDomain =
+      .app (.fvar cvmValidationPIdTest) (.fvar cvmValidationXIdTest) := by
+  simp [cvmCtorProofDomain, cvmCtorAfterX, cvmCtorAfterP,
+    cvmCtorAfterAlpha, cvmValidationPIdTest, cvmValidationXIdTest,
+    cvmValidationRootContextTest, cvmValidationFamilyContextTest,
+    cvmValidationAlphaContextTest, cvmFamilyContext,
+    cvmCtorPContext, cvmCtorAlphaContext, cvmConstructorContext,
+    constructorValidityMatrixContext,
+    constructorValidityMatrixKernelCtor, constructorValidityMatrixMkInfo,
+    ConstantInfo.type, ConstantInfo.toConstantVal,
+    AddInductive.Context.pushLocalDecl, AddInductive.Context.freshExpr,
+    AddInductive.Context.freshFVarId, Expr.bindingDomain!, Expr.bindingBody!,
+    Expr.instantiate1_eq, Expr.instantiate1']
+
+def cvmValidationProofPStateTest : TypeChecker.State :=
+  cvmInferOnlyInsertTest ({} : TypeChecker.State)
+    (.fvar cvmValidationPIdTest) cvmValidationPDomainTest
+
+def cvmValidationProofFinalStateTest : TypeChecker.State :=
+  cvmInferOnlyInsertTest cvmValidationProofPStateTest cvmCtorProofDomain
+    (.sort .zero)
+
+theorem cvmValidationProofInferOnlyTest :
+    TypeChecker.Inner.inferType cvmCtorProofDomain true
+      (TypeChecker.Methods.withFuel cvmValidationXContextTest.fuel.recDepth)
+      cvmValidationXContextTest.toTypeChecker ({} : TypeChecker.State) =
+        .ok (.sort .zero, cvmValidationProofFinalStateTest) := by
+  rw [cvmCtorProofDomainValidationShapeTest]
+  change TypeChecker.Inner.inferType'
+    (.app (.fvar cvmValidationPIdTest) (.fvar cvmValidationXIdTest)) true
+    (TypeChecker.Methods.withFuel 9999)
+    cvmValidationXContextTest.toTypeChecker ({} : TypeChecker.State) = _
+  have pRun : TypeChecker.Inner.inferType'
+      (.fvar cvmValidationPIdTest) true
+      (TypeChecker.Methods.withFuel 9998)
+      cvmValidationXContextTest.toTypeChecker ({} : TypeChecker.State) =
+        .ok (cvmValidationPDomainTest, cvmValidationProofPStateTest) := by
+    simpa [cvmValidationProofPStateTest] using
+      cvmInferTypeFVarOnlyCoreTest 9998 cvmValidationXContextTest
+        ({} : TypeChecker.State) cvmValidationPIdTest
+        cvmValidationPDomainTest Std.HashMap.getElem?_empty
+        cvmValidationPFindInXTest
+  have appFn :
+      ((.app (.fvar cvmValidationPIdTest)
+        (.fvar cvmValidationXIdTest) : Expr).getAppFn) =
+          .fvar cvmValidationPIdTest := by
+    rfl
+  have appArgs :
+      ((.app (.fvar cvmValidationPIdTest)
+        (.fvar cvmValidationXIdTest) : Expr).getAppArgs) =
+          #[.fvar cvmValidationXIdTest] := by
+    rfl
+  unfold TypeChecker.Inner.inferType'
+  simp [Expr.hasLooseBVars, Expr.looseBVarRange',
+    TypeChecker.Inner.inferApp, TypeChecker.Inner.inferApp.loop,
+    appFn, appArgs, pRun, cvmValidationPDomainTest,
+    cvmValidationProofFinalStateTest,
+    cvmValidationProofPStateTest, cvmInferOnlyInsertTest,
+    cvmCtorProofDomainValidationShapeTest, Expr.instantiateRev_eq,
+    Expr.instantiate_eq, Expr.instantiate1_eq, Expr.instantiate1',
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+
+theorem cvmValidationProofEnsureTest :
+    AddInductive.ConstructorEnsureTypeStep.Valid
+      ⟨cvmValidationXContextTest, cvmCtorProofDomain, .sort .zero⟩ :=
+  cvmEnsureTypeOfInferOnlyTest cvmValidationXContextTest
+    cvmCtorProofDomain .zero cvmValidationProofFinalStateTest
+    cvmValidationProofInferOnlyTest
+
+def cvmValidationProofContextTest : AddInductive.Context :=
+  cvmValidationXContextTest.pushLocalDecl `proof .default
+    (AddInductive.consumeTypeAnnotations cvmCtorProofDomain)
+
+theorem cvmValidationXFreshEqTest :
+    cvmValidationXContextTest.freshExpr = cvmCtorXContext.freshExpr := by
+  simp [cvmValidationXContextTest, cvmValidationRootContextTest,
+    cvmValidationFamilyContextTest, cvmValidationAlphaContextTest,
+    cvmValidationPDomainTest, cvmCtorXContext, cvmCtorPContext,
+    cvmCtorAlphaContext, cvmCtorXDomain, cvmCtorAfterP,
+    cvmCtorAfterAlpha, cvmFamilyContext, cvmConstructorContext,
+    constructorValidityMatrixContext, constructorValidityMatrixKernelCtor,
+    constructorValidityMatrixMkInfo, ConstantInfo.type,
+    ConstantInfo.toConstantVal, AddInductive.Context.pushLocalDecl,
+    AddInductive.Context.freshExpr, AddInductive.Context.freshFVarId,
+    AddInductive.consumeTypeAnnotations, Expr.bindingDomain!,
+    Expr.bindingBody!, Expr.instantiate1_eq, Expr.instantiate1']
+
+theorem cvmSecondFieldSourceTest :
+    cvmCtorAfterX.bindingBody!.instantiate1
+        cvmValidationXContextTest.freshExpr = cvmCtorAfterProof := by
+  unfold cvmCtorAfterProof
+  rw [cvmValidationXFreshEqTest]
+
+theorem cvmCtorAfterProofForallTest :
+    cvmCtorAfterProof = .forallE `direct cvmCtorDirectDomain
+      cvmCtorAfterProof.bindingBody! .default := by
+  simp_cvm_ctor_expr
+
+@[simp] theorem cvmInferConstantFamilyOnlyTest
+    (context : AddInductive.Context)
+    (envEq : context.env = cvmConstructorContext.env) :
+    TypeChecker.Inner.inferConstant context.toTypeChecker
+        constructorValidityMatrixKernelType.name [.param `u] true =
+      .ok constructorValidityMatrixKernelType.type := by
+  have familyGet : cvmConstructorContext.env.get
+      constructorValidityMatrixKernelType.name = .ok cvmDeclaredInfo := by
+    unfold Kernel.Environment.get
+    rw [cvmCtorFamilyLookup]
+    rfl
+  unfold TypeChecker.Inner.inferConstant
+  simp only [AddInductive.Context.toTypeChecker]
+  rw [envEq, familyGet]
+  have terminalLparams :
+      cvmCandidate.families.singleton.familyType.type.trace.terminalContext.lparams =
+        [`u] := by
+    exact cvmTerminalLparams_eq
+  unfold cvmDeclaredInfo AddInductive.singletonDeclaredInfo
+  rw [terminalLparams]
+  simp [constructorValidityMatrixKernelType,
+    constructorValidityMatrixInfo, ConstantInfo.levelParams,
+    ConstantInfo.instantiateTypeLevelParams, ConstantInfo.toConstantVal,
+    ConstantVal.instantiateTypeLevelParams,
+    Expr.instantiateLevelParams_eq, Expr.instantiateLevelParamsCore',
+    Level.substParams', Bind.bind, Except.bind, Pure.pure, Except.pure]
+  simp [Expr.instantiateLevelParamsCore', Level.substParams',
+    constructorValidityMatrixKernelType, constructorValidityMatrixInfo,
+    ConstantInfo.type, ConstantInfo.toConstantVal]
+
+theorem cvmKernelFamilyTypeShapeTest :
+    constructorValidityMatrixKernelType.type =
+      .forallE `α (.sort (.succ (.param `u)))
+        (.forallE `P
+          (.forallE cvmValidationIndexNameTest (.bvar 0) (.sort .zero)
+            .default)
+          (.sort (.succ (.param `u))) .default)
+        .default := by
+  rfl
+
+open private mkLevelIMaxCore mkLevelMaxCore from Lean.Level in
+@[simp] theorem cvmMkLevelIMaxSuccParamSelfTest :
+    mkLevelIMax' (.succ (.param `u)) (.succ (.param `u)) =
+      .succ (.param `u) := by
+  simp [mkLevelIMax', mkLevelIMaxCore, mkLevelMax', mkLevelMaxCore]
+
+def cvmValidationFamilyOnlyStateTest : TypeChecker.State :=
+  cvmInferOnlyInsertTest ({} : TypeChecker.State)
+    (.const constructorValidityMatrixKernelType.name [.param `u])
+    constructorValidityMatrixKernelType.type
+
+theorem cvmInferTypeFamilyOnlyCoreTest
+    (fuel : Nat) (context : AddInductive.Context)
+    (state : TypeChecker.State)
+    (cacheMiss : state.inferTypeI[
+      (.const constructorValidityMatrixKernelType.name
+        [.param `u] : Expr)]? = none)
+    (envEq : context.env = cvmConstructorContext.env) :
+    TypeChecker.Inner.inferType'
+      (.const constructorValidityMatrixKernelType.name [.param `u]) true
+      (TypeChecker.Methods.withFuel fuel) context.toTypeChecker state =
+        .ok (constructorValidityMatrixKernelType.type,
+          cvmInferOnlyInsertTest state
+            (.const constructorValidityMatrixKernelType.name [.param `u])
+            constructorValidityMatrixKernelType.type) := by
+  unfold TypeChecker.Inner.inferType'
+  simp [Expr.hasLooseBVars, Expr.looseBVarRange', cacheMiss,
+    cvmInferConstantFamilyOnlyTest context envEq,
+    cvmInferOnlyInsertTest, Bind.bind, ReaderT.bind,
+    StateT.bind, Except.bind]
+
+def cvmValidationFamilyApplicationTest (alpha predicate : Expr) : Expr :=
+  .app
+    (.app (.const constructorValidityMatrixKernelType.name [.param `u]) alpha)
+    predicate
+
+def cvmValidationFamilyApplicationStateTest
+    (alpha predicate : Expr) : TypeChecker.State :=
+  cvmInferOnlyInsertTest cvmValidationFamilyOnlyStateTest
+    (cvmValidationFamilyApplicationTest alpha predicate)
+    (.sort (.succ (.param `u)))
+
+theorem cvmInferTypeFamilyApplicationOnlyTest
+    (context : AddInductive.Context) (alpha predicate : Expr)
+    (envEq : context.env = cvmConstructorContext.env)
+    (depth : context.fuel.recDepth = 10000)
+    (closed :
+      (cvmValidationFamilyApplicationTest alpha predicate).hasLooseBVars =
+        false) :
+    TypeChecker.Inner.inferType
+      (cvmValidationFamilyApplicationTest alpha predicate) true
+      (TypeChecker.Methods.withFuel context.fuel.recDepth)
+      context.toTypeChecker ({} : TypeChecker.State) =
+        .ok (.sort (.succ (.param `u)),
+          cvmValidationFamilyApplicationStateTest alpha predicate) := by
+  rw [depth]
+  unfold cvmValidationFamilyApplicationTest at closed ⊢
+  change TypeChecker.Inner.inferType'
+    (.app
+      (.app (.const constructorValidityMatrixKernelType.name [.param `u])
+        alpha) predicate) true
+    (TypeChecker.Methods.withFuel 9999) context.toTypeChecker
+    ({} : TypeChecker.State) = _
+  have familyRun : TypeChecker.Inner.inferType'
+      (.const constructorValidityMatrixKernelType.name [.param `u]) true
+      (TypeChecker.Methods.withFuel 9998) context.toTypeChecker
+      ({} : TypeChecker.State) =
+        .ok (constructorValidityMatrixKernelType.type,
+          cvmValidationFamilyOnlyStateTest) := by
+    simpa [cvmValidationFamilyOnlyStateTest] using
+      cvmInferTypeFamilyOnlyCoreTest 9998 context
+        ({} : TypeChecker.State) Std.HashMap.getElem?_empty envEq
+  have appFn :
+      ((.app
+        (.app (.const constructorValidityMatrixKernelType.name [.param `u])
+          alpha) predicate : Expr).getAppFn) =
+        .const constructorValidityMatrixKernelType.name [.param `u] := by
+    rfl
+  have appArgs :
+      ((.app
+        (.app (.const constructorValidityMatrixKernelType.name [.param `u])
+          alpha) predicate : Expr).getAppArgs) =
+        #[alpha, predicate] := by
+    rfl
+  unfold TypeChecker.Inner.inferType'
+  rw [closed]
+  simp [TypeChecker.Inner.inferApp, TypeChecker.Inner.inferApp.loop,
+    appFn, appArgs, familyRun,
+    cvmValidationFamilyApplicationTest,
+    cvmValidationFamilyApplicationStateTest,
+    cvmValidationFamilyOnlyStateTest, cvmInferOnlyInsertTest,
+    cvmKernelFamilyTypeShapeTest,
+    Expr.instantiateRev_eq, Expr.instantiate_eq,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+
+def cvmValidationFamilyOnlyStateFromTest
+    (state : TypeChecker.State) : TypeChecker.State :=
+  cvmInferOnlyInsertTest state
+    (.const constructorValidityMatrixKernelType.name [.param `u])
+    constructorValidityMatrixKernelType.type
+
+def cvmValidationFamilyApplicationStateFromTest
+    (state : TypeChecker.State) (alpha predicate : Expr) :
+    TypeChecker.State :=
+  cvmInferOnlyInsertTest (cvmValidationFamilyOnlyStateFromTest state)
+    (cvmValidationFamilyApplicationTest alpha predicate)
+    (.sort (.succ (.param `u)))
+
+theorem cvmInferTypeFamilyApplicationOnlyCoreTest
+    (fuel : Nat) (context : AddInductive.Context)
+    (state : TypeChecker.State) (alpha predicate : Expr)
+    (familyMiss : state.inferTypeI[
+      (.const constructorValidityMatrixKernelType.name
+        [.param `u] : Expr)]? = none)
+    (applicationMiss : state.inferTypeI[
+      cvmValidationFamilyApplicationTest alpha predicate]? = none)
+    (envEq : context.env = cvmConstructorContext.env)
+    (closed :
+      (cvmValidationFamilyApplicationTest alpha predicate).hasLooseBVars =
+        false) :
+    TypeChecker.Inner.inferType'
+      (cvmValidationFamilyApplicationTest alpha predicate) true
+      (TypeChecker.Methods.withFuel (fuel + 1)) context.toTypeChecker state =
+        .ok (.sort (.succ (.param `u)),
+          cvmValidationFamilyApplicationStateFromTest state alpha predicate) := by
+  have familyRun : TypeChecker.Inner.inferType'
+      (.const constructorValidityMatrixKernelType.name [.param `u]) true
+      (TypeChecker.Methods.withFuel fuel) context.toTypeChecker state =
+        .ok (constructorValidityMatrixKernelType.type,
+          cvmValidationFamilyOnlyStateFromTest state) := by
+    simpa [cvmValidationFamilyOnlyStateFromTest] using
+      cvmInferTypeFamilyOnlyCoreTest fuel context state familyMiss envEq
+  unfold cvmValidationFamilyApplicationTest at applicationMiss closed ⊢
+  have appFn :
+      ((.app
+        (.app (.const constructorValidityMatrixKernelType.name [.param `u])
+          alpha) predicate : Expr).getAppFn) =
+        .const constructorValidityMatrixKernelType.name [.param `u] := by
+    rfl
+  have appArgs :
+      ((.app
+        (.app (.const constructorValidityMatrixKernelType.name [.param `u])
+          alpha) predicate : Expr).getAppArgs) = #[alpha, predicate] := by
+    rfl
+  unfold TypeChecker.Inner.inferType'
+  rw [closed]
+  simp [applicationMiss, TypeChecker.Inner.inferApp,
+    TypeChecker.Inner.inferApp.loop, appFn, appArgs, familyRun,
+    cvmValidationFamilyApplicationTest,
+    cvmValidationFamilyApplicationStateFromTest,
+    cvmValidationFamilyOnlyStateFromTest, cvmInferOnlyInsertTest,
+    cvmKernelFamilyTypeShapeTest,
+    Expr.instantiateRev_eq, Expr.instantiate_eq,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+
+theorem cvmInferTypeForallOnlyCoreTest
+    (fuel : Nat) (context : TypeChecker.Context)
+    (state finalState : TypeChecker.State)
+    (name : Name) (domain body result : Expr) (bi : BinderInfo)
+    (closed : (.forallE name domain body bi : Expr).hasLooseBVars = false)
+    (cacheMiss : state.inferTypeI[
+      (.forallE name domain body bi : Expr)]? = none)
+    (forallRun : TypeChecker.Inner.inferForall
+      (.forallE name domain body bi) true
+      (TypeChecker.Methods.withFuel fuel) context state =
+        .ok (result, finalState)) :
+    TypeChecker.Inner.inferType'
+      (.forallE name domain body bi) true
+      (TypeChecker.Methods.withFuel fuel) context state =
+        .ok (result, cvmInferOnlyInsertTest finalState
+          (.forallE name domain body bi) result) := by
+  unfold TypeChecker.Inner.inferType'
+  simp [closed, cacheMiss, forallRun, cvmInferOnlyInsertTest,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+
+theorem cvmCtorDirectDomainValidationShapeTest :
+    cvmCtorDirectDomain = cvmValidationFamilyApplicationTest
+      (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest) := by
+  simp [cvmCtorDirectDomain, cvmCtorAfterProof, cvmCtorAfterX,
+    cvmCtorAfterP, cvmCtorAfterAlpha, cvmValidationFamilyApplicationTest,
+    cvmValidationAlphaIdTest, cvmValidationPIdTest,
+    cvmValidationAlphaContextTest, cvmFamilyContext,
+    cvmCtorXContext, cvmCtorPContext, cvmCtorAlphaContext,
+    cvmConstructorContext, constructorValidityMatrixContext,
+    constructorValidityMatrixKernelCtor, constructorValidityMatrixKernelType,
+    constructorValidityMatrixMkInfo, constructorValidityMatrixInfo,
+    ConstantInfo.name, ConstantInfo.type, ConstantInfo.toConstantVal,
+    AddInductive.Context.pushLocalDecl, AddInductive.Context.freshExpr,
+    AddInductive.Context.freshFVarId, Expr.bindingDomain!,
+    Expr.bindingBody!, Expr.instantiate1_eq, Expr.instantiate1']
+
+theorem cvmValidationProofEnvTest :
+    cvmValidationProofContextTest.env = cvmConstructorContext.env := by
+  rfl
+
+theorem cvmValidationProofDepthTest :
+    cvmValidationProofContextTest.fuel.recDepth = 10000 := by
+  rfl
+
+theorem cvmValidationDirectEnsureTest :
+    AddInductive.ConstructorEnsureTypeStep.Valid
+      ⟨cvmValidationProofContextTest, cvmCtorDirectDomain,
+        .sort (.succ (.param `u))⟩ := by
+  rw [cvmCtorDirectDomainValidationShapeTest]
+  exact cvmEnsureTypeOfInferOnlyTest cvmValidationProofContextTest
+    (cvmValidationFamilyApplicationTest (.fvar cvmValidationAlphaIdTest)
+      (.fvar cvmValidationPIdTest)) (.succ (.param `u))
+    (cvmValidationFamilyApplicationStateTest
+      (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest))
+    (cvmInferTypeFamilyApplicationOnlyTest cvmValidationProofContextTest
+      (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest)
+      cvmValidationProofEnvTest cvmValidationProofDepthTest
+      (by simp [cvmValidationFamilyApplicationTest,
+        Expr.hasLooseBVars, Expr.looseBVarRange']))
+
+def cvmValidationDirectContextTest : AddInductive.Context :=
+  cvmValidationProofContextTest.pushLocalDecl `direct .default
+    (AddInductive.consumeTypeAnnotations cvmCtorDirectDomain)
+
+theorem cvmValidationProofFreshEqTest :
+    cvmValidationProofContextTest.freshExpr =
+      cvmCtorProofContext.freshExpr := by
+  simp [cvmValidationProofContextTest, cvmValidationXContextTest,
+    cvmValidationRootContextTest, cvmValidationFamilyContextTest,
+    cvmValidationAlphaContextTest, cvmValidationPDomainTest,
+    cvmCtorProofContext, cvmCtorXContext, cvmCtorPContext,
+    cvmCtorAlphaContext, cvmCtorProofDomain, cvmCtorAfterX,
+    cvmCtorAfterP, cvmCtorAfterAlpha, cvmCtorXDomain,
+    cvmFamilyContext, cvmConstructorContext,
+    constructorValidityMatrixContext, constructorValidityMatrixKernelCtor,
+    constructorValidityMatrixMkInfo, ConstantInfo.type,
+    ConstantInfo.toConstantVal, AddInductive.Context.pushLocalDecl,
+    AddInductive.Context.freshExpr, AddInductive.Context.freshFVarId,
+    AddInductive.consumeTypeAnnotations, Expr.bindingDomain!,
+    Expr.bindingBody!, Expr.instantiate1_eq, Expr.instantiate1']
+
+theorem cvmThirdFieldSourceTest :
+    cvmCtorAfterProof.bindingBody!.instantiate1
+        cvmValidationProofContextTest.freshExpr = cvmCtorAfterDirect := by
+  unfold cvmCtorAfterDirect
+  rw [cvmValidationProofFreshEqTest]
+
+theorem cvmCtorAfterDirectForallTest :
+    cvmCtorAfterDirect = .forallE `function cvmCtorFunctionDomain
+      cvmCtorAfterDirect.bindingBody! .default := by
+  simp_cvm_ctor_expr
+
+def cvmValidationProofLocalRunTest :
+    TypeChecker.CandidateLocalContextRun cvmValidationProofContextTest :=
+  cvmValidationXLocalRunTest.push `proof .default
+    (AddInductive.consumeTypeAnnotations cvmCtorProofDomain)
+
+def cvmValidationDirectLocalRunTest :
+    TypeChecker.CandidateLocalContextRun cvmValidationDirectContextTest :=
+  cvmValidationProofLocalRunTest.push `direct .default
+    (AddInductive.consumeTypeAnnotations cvmCtorDirectDomain)
+
+theorem cvmValidationAlphaFindInXTest :
+    cvmValidationXContextTest.lctx.find? cvmValidationAlphaIdTest =
+      some (.cdecl 0 cvmValidationAlphaIdTest `α
+        (.sort (.succ (.param `u))) .default .default) :=
+  cvmValidationRootLocalRunTest.push_findOld `x .default
+    (AddInductive.consumeTypeAnnotations cvmCtorXDomain)
+    cvmValidationAlphaFindTest
+
+theorem cvmValidationAlphaFindInProofTest :
+    cvmValidationProofContextTest.lctx.find? cvmValidationAlphaIdTest =
+      some (.cdecl 0 cvmValidationAlphaIdTest `α
+        (.sort (.succ (.param `u))) .default .default) :=
+  cvmValidationXLocalRunTest.push_findOld `proof .default
+    (AddInductive.consumeTypeAnnotations cvmCtorProofDomain)
+    cvmValidationAlphaFindInXTest
+
+theorem cvmValidationAlphaFindInDirectTest :
+    cvmValidationDirectContextTest.lctx.find? cvmValidationAlphaIdTest =
+      some (.cdecl 0 cvmValidationAlphaIdTest `α
+        (.sort (.succ (.param `u))) .default .default) :=
+  cvmValidationProofLocalRunTest.push_findOld `direct .default
+    (AddInductive.consumeTypeAnnotations cvmCtorDirectDomain)
+    cvmValidationAlphaFindInProofTest
+
+theorem cvmCtorFunctionDomainValidationShapeTest :
+    cvmCtorFunctionDomain =
+      .forallE `y (.fvar cvmValidationAlphaIdTest)
+        (cvmValidationFamilyApplicationTest
+          (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest))
+        .default := by
+  simp [cvmCtorFunctionDomain, cvmCtorAfterDirect, cvmCtorAfterProof,
+    cvmCtorAfterX, cvmCtorAfterP, cvmCtorAfterAlpha,
+    cvmValidationFamilyApplicationTest, cvmValidationAlphaIdTest,
+    cvmValidationPIdTest, cvmValidationAlphaContextTest,
+    cvmFamilyContext, cvmCtorProofContext, cvmCtorXContext,
+    cvmCtorPContext, cvmCtorAlphaContext, cvmConstructorContext,
+    constructorValidityMatrixContext, constructorValidityMatrixKernelCtor,
+    constructorValidityMatrixKernelType, constructorValidityMatrixMkInfo,
+    constructorValidityMatrixInfo, ConstantInfo.name, ConstantInfo.type,
+    ConstantInfo.toConstantVal, AddInductive.Context.pushLocalDecl,
+    AddInductive.Context.freshExpr, AddInductive.Context.freshFVarId,
+    Expr.bindingDomain!, Expr.bindingBody!, Expr.instantiate1_eq,
+    Expr.instantiate1']
+
+def cvmValidationFunctionAlphaStateTest : TypeChecker.State :=
+  cvmInferOnlyInsertTest ({} : TypeChecker.State)
+    (.fvar cvmValidationAlphaIdTest) (.sort (.succ (.param `u)))
+
+def cvmValidationFunctionInternalIdTest : FVarId :=
+  ⟨cvmValidationFunctionAlphaStateTest.ngen.curr⟩
+
+def cvmValidationFunctionInternalStateTest : TypeChecker.State :=
+  { cvmValidationFunctionAlphaStateTest with
+    ngen := cvmValidationFunctionAlphaStateTest.ngen.next }
+
+def cvmValidationFunctionInternalContextTest : AddInductive.Context :=
+  { cvmValidationDirectContextTest with
+    lctx := cvmValidationDirectContextTest.lctx.mkLocalDecl
+      cvmValidationFunctionInternalIdTest `y
+      (.fvar cvmValidationAlphaIdTest) .default }
+
+def cvmValidationFunctionBodyFinalStateTest : TypeChecker.State :=
+  cvmValidationFamilyApplicationStateFromTest
+    cvmValidationFunctionInternalStateTest
+    (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest)
+
+def cvmValidationFunctionFinalStateTest : TypeChecker.State :=
+  cvmInferOnlyInsertTest cvmValidationFunctionBodyFinalStateTest
+    cvmCtorFunctionDomain (.sort (.succ (.param `u)))
+
+theorem cvmValidationFunctionInferOnlyTest :
+    TypeChecker.Inner.inferType cvmCtorFunctionDomain true
+      (TypeChecker.Methods.withFuel
+        cvmValidationDirectContextTest.fuel.recDepth)
+      cvmValidationDirectContextTest.toTypeChecker
+      ({} : TypeChecker.State) =
+        .ok (.sort (.succ (.param `u)),
+          cvmValidationFunctionFinalStateTest) := by
+  have domainRun : TypeChecker.Inner.inferType'
+      (.fvar cvmValidationAlphaIdTest) true
+      (TypeChecker.Methods.withFuel 9998)
+      cvmValidationDirectContextTest.toTypeChecker
+      ({} : TypeChecker.State) =
+        .ok (.sort (.succ (.param `u)),
+          cvmValidationFunctionAlphaStateTest) := by
+    simpa [cvmValidationFunctionAlphaStateTest] using
+      cvmInferTypeFVarOnlyCoreTest 9998 cvmValidationDirectContextTest
+        ({} : TypeChecker.State) cvmValidationAlphaIdTest
+        (.sort (.succ (.param `u))) Std.HashMap.getElem?_empty
+        cvmValidationAlphaFindInDirectTest
+  have familyMiss : cvmValidationFunctionInternalStateTest.inferTypeI[
+      (.const constructorValidityMatrixKernelType.name
+        [.param `u] : Expr)]? = none := by
+    simp [cvmValidationFunctionInternalStateTest,
+      cvmValidationFunctionAlphaStateTest, cvmInferOnlyInsertTest]
+  have applicationMiss :
+      cvmValidationFunctionInternalStateTest.inferTypeI[
+        cvmValidationFamilyApplicationTest
+          (.fvar cvmValidationAlphaIdTest)
+          (.fvar cvmValidationPIdTest)]? = none := by
+    simp [cvmValidationFunctionInternalStateTest,
+      cvmValidationFunctionAlphaStateTest, cvmInferOnlyInsertTest,
+      cvmValidationFamilyApplicationTest]
+  have bodyRun : TypeChecker.Inner.inferType'
+      (cvmValidationFamilyApplicationTest
+        (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest)) true
+      (TypeChecker.Methods.withFuel 9998)
+      cvmValidationFunctionInternalContextTest.toTypeChecker
+      cvmValidationFunctionInternalStateTest =
+        .ok (.sort (.succ (.param `u)),
+          cvmValidationFunctionBodyFinalStateTest) := by
+    simpa [cvmValidationFunctionBodyFinalStateTest] using
+      cvmInferTypeFamilyApplicationOnlyCoreTest 9997
+        cvmValidationFunctionInternalContextTest
+        cvmValidationFunctionInternalStateTest
+        (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest)
+        familyMiss applicationMiss (by rfl)
+        (by simp [cvmValidationFamilyApplicationTest,
+          Expr.hasLooseBVars, Expr.looseBVarRange'])
+  have forallRun : TypeChecker.Inner.inferForall
+      (.forallE `y (.fvar cvmValidationAlphaIdTest)
+        (cvmValidationFamilyApplicationTest
+          (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest))
+        .default) true
+      (TypeChecker.Methods.withFuel 9999)
+      cvmValidationDirectContextTest.toTypeChecker
+      ({} : TypeChecker.State) =
+        .ok (.sort (.succ (.param `u)),
+          cvmValidationFunctionBodyFinalStateTest) := by
+    unfold TypeChecker.Inner.inferForall
+    simp only [cvmValidationFamilyApplicationTest,
+      TypeChecker.Inner.inferForall.loop]
+    rw [show (.fvar cvmValidationAlphaIdTest : Expr).instantiateRev #[] =
+        .fvar cvmValidationAlphaIdTest by
+      simp [Expr.instantiateRev_eq, Expr.instantiate_eq]]
+    simp only [Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+    rw [show TypeChecker.Inner.inferType
+        (.fvar cvmValidationAlphaIdTest) true
+        (TypeChecker.Methods.withFuel 9999)
+        cvmValidationDirectContextTest.toTypeChecker
+        ({} : TypeChecker.State) =
+          TypeChecker.Inner.inferType'
+            (.fvar cvmValidationAlphaIdTest) true
+            (TypeChecker.Methods.withFuel 9998)
+            cvmValidationDirectContextTest.toTypeChecker
+            ({} : TypeChecker.State) by rfl]
+    rw [domainRun]
+    simp only [prbEnsureSortExact]
+    rw [prbWithLocalDeclEq]
+    change TypeChecker.Inner.inferForall.loop true
+      #[Expr.fvar cvmValidationFunctionInternalIdTest]
+      #[Level.succ (.param `u)]
+      (cvmValidationFamilyApplicationTest
+        (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest))
+      (TypeChecker.Methods.withFuel 9999)
+      cvmValidationFunctionInternalContextTest.toTypeChecker
+      cvmValidationFunctionInternalStateTest = _
+    simp only [cvmValidationFamilyApplicationTest,
+      TypeChecker.Inner.inferForall.loop]
+    rw [show (((.const constructorValidityMatrixKernelType.name
+          [.param `u] : Expr).app (.fvar cvmValidationAlphaIdTest)).app
+          (.fvar cvmValidationPIdTest)).instantiateRev
+          #[Expr.fvar cvmValidationFunctionInternalIdTest] =
+        ((.const constructorValidityMatrixKernelType.name
+          [.param `u] : Expr).app (.fvar cvmValidationAlphaIdTest)).app
+          (.fvar cvmValidationPIdTest) by
+      simp [Expr.instantiateRev_eq, Expr.instantiate_eq,
+        Expr.instantiate1_eq, Expr.instantiate1']]
+    simp only [Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+    have bodyRunExplicit : TypeChecker.Inner.inferType'
+        (((.const constructorValidityMatrixKernelType.name
+          [.param `u] : Expr).app (.fvar cvmValidationAlphaIdTest)).app
+          (.fvar cvmValidationPIdTest)) true
+        (TypeChecker.Methods.withFuel 9998)
+        cvmValidationFunctionInternalContextTest.toTypeChecker
+        cvmValidationFunctionInternalStateTest =
+          .ok (.sort (.succ (.param `u)),
+            cvmValidationFunctionBodyFinalStateTest) := by
+      simpa [cvmValidationFamilyApplicationTest] using bodyRun
+    rw [show TypeChecker.Inner.inferType
+        (((.const constructorValidityMatrixKernelType.name
+          [.param `u] : Expr).app (.fvar cvmValidationAlphaIdTest)).app
+          (.fvar cvmValidationPIdTest)) true
+        (TypeChecker.Methods.withFuel 9999)
+        cvmValidationFunctionInternalContextTest.toTypeChecker
+        cvmValidationFunctionInternalStateTest =
+          TypeChecker.Inner.inferType'
+            (((.const constructorValidityMatrixKernelType.name
+              [.param `u] : Expr).app
+              (.fvar cvmValidationAlphaIdTest)).app
+              (.fvar cvmValidationPIdTest)) true
+            (TypeChecker.Methods.withFuel 9998)
+            cvmValidationFunctionInternalContextTest.toTypeChecker
+            cvmValidationFunctionInternalStateTest by rfl]
+    rw [bodyRunExplicit]
+    simp [Expr.sortLevel!, Pure.pure, ReaderT.pure,
+      StateT.pure, Except.pure]
+  have outerRun := cvmInferTypeForallOnlyCoreTest 9999
+    cvmValidationDirectContextTest.toTypeChecker
+    ({} : TypeChecker.State) cvmValidationFunctionBodyFinalStateTest
+    `y (.fvar cvmValidationAlphaIdTest)
+    (cvmValidationFamilyApplicationTest
+      (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest))
+    (.sort (.succ (.param `u))) .default
+    (by simp [cvmValidationFamilyApplicationTest,
+      Expr.hasLooseBVars, Expr.looseBVarRange'])
+    Std.HashMap.getElem?_empty forallRun
+  change TypeChecker.Inner.inferType' cvmCtorFunctionDomain true
+    (TypeChecker.Methods.withFuel 9999)
+    cvmValidationDirectContextTest.toTypeChecker
+    ({} : TypeChecker.State) = _
+  simpa [cvmCtorFunctionDomainValidationShapeTest,
+    cvmValidationFunctionFinalStateTest] using outerRun
+
+theorem cvmValidationFunctionEnsureTest :
+    AddInductive.ConstructorEnsureTypeStep.Valid
+      ⟨cvmValidationDirectContextTest, cvmCtorFunctionDomain,
+        .sort (.succ (.param `u))⟩ :=
+  cvmEnsureTypeOfInferOnlyTest cvmValidationDirectContextTest
+    cvmCtorFunctionDomain (.succ (.param `u))
+    cvmValidationFunctionFinalStateTest
+    cvmValidationFunctionInferOnlyTest
+
+def cvmValidationFunctionContextTest : AddInductive.Context :=
+  cvmValidationDirectContextTest.pushLocalDecl `function .default
+    (AddInductive.consumeTypeAnnotations cvmCtorFunctionDomain)
+
+theorem cvmValidationDirectFreshEqTest :
+    cvmValidationDirectContextTest.freshExpr =
+      cvmCtorDirectContext.freshExpr := by
+  simp [cvmValidationDirectContextTest, cvmValidationProofContextTest,
+    cvmValidationXContextTest, cvmValidationRootContextTest,
+    cvmValidationFamilyContextTest, cvmValidationAlphaContextTest,
+    cvmValidationPDomainTest, cvmCtorDirectContext,
+    cvmCtorProofContext, cvmCtorXContext, cvmCtorPContext,
+    cvmCtorAlphaContext, cvmCtorDirectDomain, cvmCtorAfterProof,
+    cvmCtorProofDomain, cvmCtorAfterX, cvmCtorXDomain, cvmCtorAfterP,
+    cvmCtorAfterAlpha, cvmFamilyContext, cvmConstructorContext,
+    constructorValidityMatrixContext, constructorValidityMatrixKernelCtor,
+    constructorValidityMatrixMkInfo, ConstantInfo.type,
+    ConstantInfo.toConstantVal, AddInductive.Context.pushLocalDecl,
+    AddInductive.Context.freshExpr, AddInductive.Context.freshFVarId,
+    AddInductive.consumeTypeAnnotations, Expr.bindingDomain!,
+    Expr.bindingBody!, Expr.instantiate1_eq, Expr.instantiate1']
+
+theorem cvmFourthFieldSourceTest :
+    cvmCtorAfterDirect.bindingBody!.instantiate1
+        cvmValidationDirectContextTest.freshExpr = cvmCtorAfterFunction := by
+  unfold cvmCtorAfterFunction
+  rw [cvmValidationDirectFreshEqTest]
+
+theorem cvmCtorAfterFunctionForallTest :
+    cvmCtorAfterFunction = .forallE `later cvmCtorLaterDomain
+      cvmCtorAfterFunction.bindingBody! .default := by
+  simp_cvm_ctor_expr
+
+def cvmValidationFunctionLocalRunTest :
+    TypeChecker.CandidateLocalContextRun cvmValidationFunctionContextTest :=
+  cvmValidationDirectLocalRunTest.push `function .default
+    (AddInductive.consumeTypeAnnotations cvmCtorFunctionDomain)
+
+theorem cvmValidationAlphaFindInFunctionTest :
+    cvmValidationFunctionContextTest.lctx.find? cvmValidationAlphaIdTest =
+      some (.cdecl 0 cvmValidationAlphaIdTest `α
+        (.sort (.succ (.param `u))) .default .default) :=
+  cvmValidationDirectLocalRunTest.push_findOld `function .default
+    (AddInductive.consumeTypeAnnotations cvmCtorFunctionDomain)
+    cvmValidationAlphaFindInDirectTest
+
+theorem cvmCtorLaterDomainValidationShapeTest :
+    cvmCtorLaterDomain = .fvar cvmValidationAlphaIdTest := by
+  simp [cvmCtorLaterDomain, cvmCtorAfterFunction, cvmCtorAfterDirect,
+    cvmCtorAfterProof, cvmCtorAfterX, cvmCtorAfterP, cvmCtorAfterAlpha,
+    cvmValidationAlphaIdTest, cvmFamilyContext,
+    cvmCtorDirectContext, cvmCtorProofContext, cvmCtorXContext,
+    cvmCtorPContext, cvmCtorAlphaContext, cvmConstructorContext,
+    constructorValidityMatrixContext, constructorValidityMatrixKernelCtor,
+    constructorValidityMatrixMkInfo, ConstantInfo.type,
+    ConstantInfo.toConstantVal, AddInductive.Context.pushLocalDecl,
+    AddInductive.Context.freshExpr, AddInductive.Context.freshFVarId,
+    Expr.bindingDomain!, Expr.bindingBody!, Expr.instantiate1_eq,
+    Expr.instantiate1']
+
+theorem cvmValidationFunctionDepthTest :
+    cvmValidationFunctionContextTest.fuel.recDepth = 10000 := by
+  rfl
+
+theorem cvmValidationLaterEnsureTest :
+    AddInductive.ConstructorEnsureTypeStep.Valid
+      ⟨cvmValidationFunctionContextTest, cvmCtorLaterDomain,
+        .sort (.succ (.param `u))⟩ := by
+  rw [cvmCtorLaterDomainValidationShapeTest]
+  exact prbPreFamilyFVarEnsureValidReplay
+    cvmValidationFunctionContextTest cvmValidationAlphaIdTest
+    (.succ (.param `u)) cvmValidationAlphaFindInFunctionTest
+    cvmValidationFunctionDepthTest
+
+def cvmValidationLaterContextTest : AddInductive.Context :=
+  cvmValidationFunctionContextTest.pushLocalDecl `later .default
+    (AddInductive.consumeTypeAnnotations cvmCtorLaterDomain)
+
+theorem cvmValidationFunctionFreshEqTest :
+    cvmValidationFunctionContextTest.freshExpr =
+      cvmCtorFunctionContext.freshExpr := by
+  simp [cvmValidationFunctionContextTest, cvmValidationDirectContextTest,
+    cvmValidationProofContextTest, cvmValidationXContextTest,
+    cvmValidationRootContextTest, cvmValidationFamilyContextTest,
+    cvmValidationAlphaContextTest, cvmValidationPDomainTest,
+    cvmCtorFunctionContext, cvmCtorDirectContext,
+    cvmCtorProofContext, cvmCtorXContext, cvmCtorPContext,
+    cvmCtorAlphaContext, cvmCtorFunctionDomain, cvmCtorAfterDirect,
+    cvmCtorDirectDomain, cvmCtorAfterProof, cvmCtorProofDomain,
+    cvmCtorAfterX, cvmCtorXDomain, cvmCtorAfterP, cvmCtorAfterAlpha,
+    cvmFamilyContext, cvmConstructorContext,
+    constructorValidityMatrixContext, constructorValidityMatrixKernelCtor,
+    constructorValidityMatrixMkInfo, ConstantInfo.type,
+    ConstantInfo.toConstantVal, AddInductive.Context.pushLocalDecl,
+    AddInductive.Context.freshExpr, AddInductive.Context.freshFVarId,
+    AddInductive.consumeTypeAnnotations, Expr.bindingDomain!,
+    Expr.bindingBody!, Expr.instantiate1_eq, Expr.instantiate1']
+
+theorem cvmFifthFieldSourceTest :
+    cvmCtorAfterFunction.bindingBody!.instantiate1
+        cvmValidationFunctionContextTest.freshExpr = cvmCtorAfterLater := by
+  unfold cvmCtorAfterLater
+  rw [cvmValidationFunctionFreshEqTest]
+
+theorem cvmCtorAfterLaterForallTest :
+    cvmCtorAfterLater = .forallE `laterProof cvmCtorLaterProofDomain
+      cvmCtorAfterLater.bindingBody! .default := by
+  simp_cvm_ctor_expr
+
+def cvmValidationPredicateApplicationTest
+    (predicate : FVarId) (argument : Expr) : Expr :=
+  .app (.fvar predicate) argument
+
+def cvmValidationPredicateStateTest
+    (predicate : FVarId) : TypeChecker.State :=
+  cvmInferOnlyInsertTest ({} : TypeChecker.State) (.fvar predicate)
+    cvmValidationPDomainTest
+
+def cvmValidationPredicateApplicationStateTest
+    (predicate : FVarId) (argument : Expr) : TypeChecker.State :=
+  cvmInferOnlyInsertTest (cvmValidationPredicateStateTest predicate)
+    (cvmValidationPredicateApplicationTest predicate argument)
+    (.sort .zero)
+
+theorem cvmInferTypePredicateApplicationOnlyTest
+    (context : AddInductive.Context) (predicate : FVarId)
+    (argument : Expr)
+    (find : context.lctx.find? predicate =
+      some (.cdecl index predicate name cvmValidationPDomainTest bi kind))
+    (depth : context.fuel.recDepth = 10000)
+    (closed :
+      (cvmValidationPredicateApplicationTest predicate argument).hasLooseBVars =
+        false) :
+    TypeChecker.Inner.inferType
+      (cvmValidationPredicateApplicationTest predicate argument) true
+      (TypeChecker.Methods.withFuel context.fuel.recDepth)
+      context.toTypeChecker ({} : TypeChecker.State) =
+        .ok (.sort .zero,
+          cvmValidationPredicateApplicationStateTest predicate argument) := by
+  rw [depth]
+  unfold cvmValidationPredicateApplicationTest at closed ⊢
+  change TypeChecker.Inner.inferType'
+    (.app (.fvar predicate) argument) true
+    (TypeChecker.Methods.withFuel 9999) context.toTypeChecker
+    ({} : TypeChecker.State) = _
+  have predicateRun : TypeChecker.Inner.inferType'
+      (.fvar predicate) true (TypeChecker.Methods.withFuel 9998)
+      context.toTypeChecker ({} : TypeChecker.State) =
+        .ok (cvmValidationPDomainTest,
+          cvmValidationPredicateStateTest predicate) := by
+    simpa [cvmValidationPredicateStateTest] using
+      cvmInferTypeFVarOnlyCoreTest 9998 context
+        ({} : TypeChecker.State) predicate cvmValidationPDomainTest
+        Std.HashMap.getElem?_empty find
+  have appFn : ((.app (.fvar predicate) argument : Expr).getAppFn) =
+      .fvar predicate := by
+    rfl
+  have appArgs : ((.app (.fvar predicate) argument : Expr).getAppArgs) =
+      #[argument] := by
+    rfl
+  unfold TypeChecker.Inner.inferType'
+  rw [closed]
+  simp [TypeChecker.Inner.inferApp, TypeChecker.Inner.inferApp.loop,
+    appFn, appArgs, predicateRun, cvmValidationPDomainTest,
+    cvmValidationPredicateApplicationTest,
+    cvmValidationPredicateApplicationStateTest,
+    cvmValidationPredicateStateTest, cvmInferOnlyInsertTest,
+    Expr.instantiateRev_eq, Expr.instantiate_eq,
+    Expr.instantiate1_eq, Expr.instantiate1',
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+
+theorem cvmValidationPFindInProofTest :
+    cvmValidationProofContextTest.lctx.find? cvmValidationPIdTest =
+      some (.cdecl cvmValidationAlphaContextTest.lctx.decls.size
+        cvmValidationPIdTest `P cvmValidationPDomainTest
+        .default .default) :=
+  cvmValidationXLocalRunTest.push_findOld `proof .default
+    (AddInductive.consumeTypeAnnotations cvmCtorProofDomain)
+    cvmValidationPFindInXTest
+
+theorem cvmValidationPFindInDirectTest :
+    cvmValidationDirectContextTest.lctx.find? cvmValidationPIdTest =
+      some (.cdecl cvmValidationAlphaContextTest.lctx.decls.size
+        cvmValidationPIdTest `P cvmValidationPDomainTest
+        .default .default) :=
+  cvmValidationProofLocalRunTest.push_findOld `direct .default
+    (AddInductive.consumeTypeAnnotations cvmCtorDirectDomain)
+    cvmValidationPFindInProofTest
+
+theorem cvmValidationPFindInFunctionTest :
+    cvmValidationFunctionContextTest.lctx.find? cvmValidationPIdTest =
+      some (.cdecl cvmValidationAlphaContextTest.lctx.decls.size
+        cvmValidationPIdTest `P cvmValidationPDomainTest
+        .default .default) :=
+  cvmValidationDirectLocalRunTest.push_findOld `function .default
+    (AddInductive.consumeTypeAnnotations cvmCtorFunctionDomain)
+    cvmValidationPFindInDirectTest
+
+def cvmValidationLaterLocalRunTest :
+    TypeChecker.CandidateLocalContextRun cvmValidationLaterContextTest :=
+  cvmValidationFunctionLocalRunTest.push `later .default
+    (AddInductive.consumeTypeAnnotations cvmCtorLaterDomain)
+
+theorem cvmValidationPFindInLaterTest :
+    cvmValidationLaterContextTest.lctx.find? cvmValidationPIdTest =
+      some (.cdecl cvmValidationAlphaContextTest.lctx.decls.size
+        cvmValidationPIdTest `P cvmValidationPDomainTest
+        .default .default) :=
+  cvmValidationFunctionLocalRunTest.push_findOld `later .default
+    (AddInductive.consumeTypeAnnotations cvmCtorLaterDomain)
+    cvmValidationPFindInFunctionTest
+
+def cvmValidationLaterIdTest : FVarId :=
+  cvmValidationFunctionContextTest.freshFVarId
+
+theorem cvmCtorLaterProofDomainValidationShapeTest :
+    cvmCtorLaterProofDomain = cvmValidationPredicateApplicationTest
+      cvmValidationPIdTest (.fvar cvmValidationLaterIdTest) := by
+  simp [cvmCtorLaterProofDomain, cvmCtorAfterLater,
+    cvmCtorAfterFunction, cvmCtorAfterDirect, cvmCtorAfterProof,
+    cvmCtorAfterX, cvmCtorAfterP, cvmCtorAfterAlpha,
+    cvmValidationPredicateApplicationTest, cvmValidationPIdTest,
+    cvmValidationLaterIdTest, cvmValidationFunctionContextTest,
+    cvmValidationDirectContextTest, cvmValidationProofContextTest,
+    cvmValidationXContextTest, cvmValidationRootContextTest,
+    cvmValidationFamilyContextTest, cvmValidationAlphaContextTest,
+    cvmValidationPDomainTest, cvmFamilyContext,
+    cvmCtorFunctionContext, cvmCtorDirectContext,
+    cvmCtorProofContext, cvmCtorXContext, cvmCtorPContext,
+    cvmCtorAlphaContext, cvmConstructorContext,
+    constructorValidityMatrixContext, constructorValidityMatrixKernelCtor,
+    constructorValidityMatrixMkInfo, ConstantInfo.type,
+    ConstantInfo.toConstantVal, AddInductive.Context.pushLocalDecl,
+    AddInductive.Context.freshExpr, AddInductive.Context.freshFVarId,
+    AddInductive.consumeTypeAnnotations, Expr.bindingDomain!,
+    Expr.bindingBody!, Expr.instantiate1_eq, Expr.instantiate1']
+
+theorem cvmValidationLaterDepthTest :
+    cvmValidationLaterContextTest.fuel.recDepth = 10000 := by
+  rfl
+
+theorem cvmValidationLaterProofEnsureTest :
+    AddInductive.ConstructorEnsureTypeStep.Valid
+      ⟨cvmValidationLaterContextTest, cvmCtorLaterProofDomain,
+        .sort .zero⟩ := by
+  rw [cvmCtorLaterProofDomainValidationShapeTest]
+  exact cvmEnsureTypeOfInferOnlyTest cvmValidationLaterContextTest
+    (cvmValidationPredicateApplicationTest cvmValidationPIdTest
+      (.fvar cvmValidationLaterIdTest)) .zero
+    (cvmValidationPredicateApplicationStateTest cvmValidationPIdTest
+      (.fvar cvmValidationLaterIdTest))
+    (cvmInferTypePredicateApplicationOnlyTest cvmValidationLaterContextTest
+      cvmValidationPIdTest (.fvar cvmValidationLaterIdTest)
+      cvmValidationPFindInLaterTest cvmValidationLaterDepthTest
+      (by simp [cvmValidationPredicateApplicationTest,
+        Expr.hasLooseBVars, Expr.looseBVarRange']))
+
+def cvmValidationLaterProofContextTest : AddInductive.Context :=
+  cvmValidationLaterContextTest.pushLocalDecl `laterProof .default
+    (AddInductive.consumeTypeAnnotations cvmCtorLaterProofDomain)
+
+theorem cvmValidationLaterFreshEqTest :
+    cvmValidationLaterContextTest.freshExpr =
+      cvmCtorLaterContext.freshExpr := by
+  simp [cvmValidationLaterContextTest, cvmValidationFunctionContextTest,
+    cvmValidationDirectContextTest, cvmValidationProofContextTest,
+    cvmValidationXContextTest, cvmValidationRootContextTest,
+    cvmValidationFamilyContextTest, cvmValidationAlphaContextTest,
+    cvmValidationPDomainTest, cvmCtorLaterContext,
+    cvmCtorFunctionContext, cvmCtorDirectContext,
+    cvmCtorProofContext, cvmCtorXContext, cvmCtorPContext,
+    cvmCtorAlphaContext, cvmCtorLaterDomain, cvmCtorAfterFunction,
+    cvmCtorFunctionDomain, cvmCtorAfterDirect, cvmCtorDirectDomain,
+    cvmCtorAfterProof, cvmCtorProofDomain, cvmCtorAfterX,
+    cvmCtorXDomain, cvmCtorAfterP, cvmCtorAfterAlpha,
+    cvmFamilyContext, cvmConstructorContext,
+    constructorValidityMatrixContext, constructorValidityMatrixKernelCtor,
+    constructorValidityMatrixMkInfo, ConstantInfo.type,
+    ConstantInfo.toConstantVal, AddInductive.Context.pushLocalDecl,
+    AddInductive.Context.freshExpr, AddInductive.Context.freshFVarId,
+    AddInductive.consumeTypeAnnotations, Expr.bindingDomain!,
+    Expr.bindingBody!, Expr.instantiate1_eq, Expr.instantiate1']
+
+theorem cvmSixthFieldSourceTest :
+    cvmCtorAfterLater.bindingBody!.instantiate1
+        cvmValidationLaterContextTest.freshExpr = cvmCtorTerminal := by
+  unfold cvmCtorTerminal
+  rw [cvmValidationLaterFreshEqTest]
+
+theorem cvmCtorTerminalValidationShapeTest :
+    cvmCtorTerminal = cvmValidationFamilyApplicationTest
+      (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest) := by
+  simp [cvmCtorTerminal, cvmCtorAfterLater, cvmCtorAfterFunction,
+    cvmCtorAfterDirect, cvmCtorAfterProof, cvmCtorAfterX,
+    cvmCtorAfterP, cvmCtorAfterAlpha,
+    cvmValidationFamilyApplicationTest, cvmValidationAlphaIdTest,
+    cvmValidationPIdTest, cvmValidationAlphaContextTest,
+    cvmFamilyContext, cvmCtorLaterContext, cvmCtorFunctionContext,
+    cvmCtorDirectContext, cvmCtorProofContext, cvmCtorXContext,
+    cvmCtorPContext, cvmCtorAlphaContext, cvmConstructorContext,
+    constructorValidityMatrixContext, constructorValidityMatrixKernelCtor,
+    constructorValidityMatrixKernelType, constructorValidityMatrixMkInfo,
+    constructorValidityMatrixInfo, ConstantInfo.name, ConstantInfo.type,
+    ConstantInfo.toConstantVal, AddInductive.Context.pushLocalDecl,
+    AddInductive.Context.freshExpr, AddInductive.Context.freshFVarId,
+    Expr.bindingBody!, Expr.instantiate1_eq, Expr.instantiate1']
+
+noncomputable def cvmConstructorValidationTest :
+    AddInductive.ConstructorValidationRun
+      constructorValidityMatrixKernelType cvmFamilyValidationRun.stats false
+      cvmValidationRootContextTest :=
+  AddInductive.ConstructorValidationRun.of_run (by
+    have run : AddInductive.checkConstructors
+        #[constructorValidityMatrixKernelType]
+        cvmFamilyValidationRun.stats false
+        cvmConstructorValidationContextTest = .ok () := by
+      simpa [cvmConstructorValidationContextTest] using cvmCheckConstructorsRun
+    rw [cvmConstructorValidationContextTest_root] at run
+    exact run)
+
+theorem cvmUniverseSemanticsTest :
+    cvmConstructorValidationTest.trace.universeSemantics = true := by
+  generalize htrace : cvmConstructorValidationTest.trace = trace
+  cases trace with
+  | cons seen head tail freshName closed rootCheck typeTrace tailTrace =>
+      cases tailTrace with
+      | nil finalSeen =>
+          simp only [AddInductive.ConstructorListValidationTrace.universeSemantics,
+            Bool.and_true]
+          cases typeTrace with
+          | parameter context fuel argIdx name domain body binderInfo parameter
+              parameterType parameterAt parameterTypeRun defeq tail =>
+              rw [cvmStatsParamsTest] at parameterAt
+              simp at parameterAt
+              cases parameterAt
+              simp only [AddInductive.ConstructorTypeValidationTrace.universeSemantics]
+              change AddInductive.ConstructorTypeValidationTrace
+                cvmFamilyValidationRun.stats false 0
+                constructorValidityMatrixKernelCtor.name
+                cvmValidationRootContextTest
+                (constructorValidityMatrixKernelCtor.type.bindingBody!.instantiate1
+                  cvmFamilyContext.freshExpr) 1 999 at tail
+              let sourceEq := cvmFirstParameterSourceTest.trans
+                cvmCtorAfterAlphaForallTest
+              let tail' := sourceEq ▸ tail
+              refine (cvmUniverseSemanticsCastSourceTest sourceEq tail).symm.trans ?_
+              change tail'.universeSemantics = true
+              cases tail' with
+              | parameter context fuel argIdx name domain body binderInfo parameter
+                  parameterType parameterAt parameterTypeRun defeq tail =>
+                  rw [cvmStatsParamsTest] at parameterAt
+                  simp at parameterAt
+                  cases parameterAt
+                  simp only [AddInductive.ConstructorTypeValidationTrace.universeSemantics]
+                  change AddInductive.ConstructorTypeValidationTrace
+                    cvmFamilyValidationRun.stats false 0
+                    constructorValidityMatrixKernelCtor.name
+                    cvmValidationRootContextTest
+                    (cvmCtorAfterAlpha.bindingBody!.instantiate1
+                      cvmValidationAlphaContextTest.freshExpr) 2 998 at tail
+                  let sourceEq := cvmSecondParameterSourceTest.trans
+                    cvmCtorAfterPForallTest
+                  let tail' := sourceEq ▸ tail
+                  refine (cvmUniverseSemanticsCastSourceTest sourceEq tail).symm.trans ?_
+                  change tail'.universeSemantics = true
+                  cases tail' with
+                  | parameter context fuel argIdx name domain body binderInfo parameter
+                      parameterType parameterAt parameterTypeRun defeq tail =>
+                      rw [cvmStatsParamsTest] at parameterAt
+                      simp at parameterAt
+                  | ordinary context fuel argIdx name domain body binderInfo sortResult
+                      noParameter ensureType universeTrace positivity tail =>
+                      have ensureTypeRoot :
+                          AddInductive.ConstructorEnsureTypeStep.Valid
+                            ⟨cvmValidationRootContextTest, cvmCtorXDomain,
+                              sortResult⟩ := by
+                        exact ensureType
+                      have sortResultEq :
+                          sortResult = .sort (.succ (.param `u)) :=
+                        cvmEnsureTypeResultEqTest ensureTypeRoot
+                          cvmValidationXEnsureTest
+                      subst sortResult
+                      simp only [AddInductive.ConstructorTypeValidationTrace.universeSemantics]
+                      have universeSemantic : universeTrace.semantic = true := by
+                        unfold AddInductive.ConstructorUniverseTrace.semantic
+                        rw [cvmStatsResultLevelTest]
+                        simp [Expr.sortLevel!,
+                          AddInductive.ConstructorUniverseTrace.semantic,
+                          AddInductive.constructorUniverseSemanticGe,
+                          AddInductive.levelStructGe,
+                          AddInductive.levelStructEq]
+                      rw [universeSemantic]
+                      simp only [Bool.true_and]
+                      let sourceEq := cvmFirstFieldSourceTest.trans
+                        cvmCtorAfterXForallTest
+                      let tail' := sourceEq ▸ tail
+                      refine (cvmUniverseSemanticsCastSourceTest sourceEq tail).symm.trans ?_
+                      change tail'.universeSemantics = true
+                      cases tail' with
+                      | parameter context fuel argIdx name domain body binderInfo parameter
+                          parameterType parameterAt parameterTypeRun defeq tail =>
+                          rw [cvmStatsParamsTest] at parameterAt
+                          simp at parameterAt
+                      | ordinary context fuel argIdx name domain body binderInfo sortResult
+                          noParameter ensureType universeTrace positivity tail =>
+                          have ensureTypeProof :
+                              AddInductive.ConstructorEnsureTypeStep.Valid
+                                ⟨cvmValidationXContextTest,
+                                  cvmCtorProofDomain, sortResult⟩ := by
+                            exact ensureType
+                          have sortResultEq : sortResult = .sort .zero :=
+                            cvmEnsureTypeResultEqTest ensureTypeProof
+                              cvmValidationProofEnsureTest
+                          subst sortResult
+                          simp only [AddInductive.ConstructorTypeValidationTrace.universeSemantics]
+                          have universeSemantic : universeTrace.semantic = true := by
+                            unfold AddInductive.ConstructorUniverseTrace.semantic
+                            rw [cvmStatsResultLevelTest]
+                            simp [Expr.sortLevel!,
+                              AddInductive.constructorUniverseSemanticGe,
+                              AddInductive.levelStructGe,
+                              AddInductive.levelStructEq]
+                          rw [universeSemantic]
+                          simp only [Bool.true_and]
+                          let sourceEq := cvmSecondFieldSourceTest.trans
+                            cvmCtorAfterProofForallTest
+                          let tail' := sourceEq ▸ tail
+                          refine (cvmUniverseSemanticsCastSourceTest
+                            sourceEq tail).symm.trans ?_
+                          change tail'.universeSemantics = true
+                          cases tail' with
+                          | parameter context fuel argIdx name domain body binderInfo
+                              parameter parameterType parameterAt parameterTypeRun defeq tail =>
+                              rw [cvmStatsParamsTest] at parameterAt
+                              simp at parameterAt
+                          | ordinary context fuel argIdx name domain body binderInfo
+                              sortResult noParameter ensureType universeTrace positivity tail =>
+                              have ensureTypeDirect :
+                                  AddInductive.ConstructorEnsureTypeStep.Valid
+                                    ⟨cvmValidationProofContextTest,
+                                      cvmCtorDirectDomain, sortResult⟩ := by
+                                exact ensureType
+                              have sortResultEq :
+                                  sortResult = .sort (.succ (.param `u)) :=
+                                cvmEnsureTypeResultEqTest ensureTypeDirect
+                                  cvmValidationDirectEnsureTest
+                              subst sortResult
+                              simp only [AddInductive.ConstructorTypeValidationTrace.universeSemantics]
+                              have universeSemantic : universeTrace.semantic = true := by
+                                unfold AddInductive.ConstructorUniverseTrace.semantic
+                                rw [cvmStatsResultLevelTest]
+                                simp [Expr.sortLevel!,
+                                  AddInductive.constructorUniverseSemanticGe,
+                                  AddInductive.levelStructGe,
+                                  AddInductive.levelStructEq]
+                              rw [universeSemantic]
+                              simp only [Bool.true_and]
+                              let sourceEq := cvmThirdFieldSourceTest.trans
+                                cvmCtorAfterDirectForallTest
+                              let tail' := sourceEq ▸ tail
+                              refine (cvmUniverseSemanticsCastSourceTest
+                                sourceEq tail).symm.trans ?_
+                              change tail'.universeSemantics = true
+                              cases tail' with
+                              | parameter context fuel argIdx name domain body binderInfo
+                                  parameter parameterType parameterAt parameterTypeRun defeq tail =>
+                                  rw [cvmStatsParamsTest] at parameterAt
+                                  simp at parameterAt
+                              | ordinary context fuel argIdx name domain body binderInfo
+                                  sortResult noParameter ensureType universeTrace positivity tail =>
+                                  have ensureTypeFunction :
+                                      AddInductive.ConstructorEnsureTypeStep.Valid
+                                        ⟨cvmValidationDirectContextTest,
+                                          cvmCtorFunctionDomain, sortResult⟩ := by
+                                    exact ensureType
+                                  have sortResultEq :
+                                      sortResult = .sort (.succ (.param `u)) :=
+                                    cvmEnsureTypeResultEqTest ensureTypeFunction
+                                      cvmValidationFunctionEnsureTest
+                                  subst sortResult
+                                  simp only [AddInductive.ConstructorTypeValidationTrace.universeSemantics]
+                                  have universeSemantic : universeTrace.semantic = true := by
+                                    unfold AddInductive.ConstructorUniverseTrace.semantic
+                                    rw [cvmStatsResultLevelTest]
+                                    simp [Expr.sortLevel!,
+                                      AddInductive.constructorUniverseSemanticGe,
+                                      AddInductive.levelStructGe,
+                                      AddInductive.levelStructEq]
+                                  rw [universeSemantic]
+                                  simp only [Bool.true_and]
+                                  let sourceEq := cvmFourthFieldSourceTest.trans
+                                    cvmCtorAfterFunctionForallTest
+                                  let tail' := sourceEq ▸ tail
+                                  refine (cvmUniverseSemanticsCastSourceTest
+                                    sourceEq tail).symm.trans ?_
+                                  change tail'.universeSemantics = true
+                                  cases tail' with
+                                  | parameter context fuel argIdx name domain body binderInfo
+                                      parameter parameterType parameterAt parameterTypeRun defeq tail =>
+                                      rw [cvmStatsParamsTest] at parameterAt
+                                      simp at parameterAt
+                                  | ordinary context fuel argIdx name domain body binderInfo
+                                      sortResult noParameter ensureType universeTrace positivity tail =>
+                                      have ensureTypeLater :
+                                          AddInductive.ConstructorEnsureTypeStep.Valid
+                                            ⟨cvmValidationFunctionContextTest,
+                                              cvmCtorLaterDomain, sortResult⟩ := by
+                                        exact ensureType
+                                      have sortResultEq :
+                                          sortResult = .sort (.succ (.param `u)) :=
+                                        cvmEnsureTypeResultEqTest ensureTypeLater
+                                          cvmValidationLaterEnsureTest
+                                      subst sortResult
+                                      simp only [AddInductive.ConstructorTypeValidationTrace.universeSemantics]
+                                      have universeSemantic : universeTrace.semantic = true := by
+                                        unfold AddInductive.ConstructorUniverseTrace.semantic
+                                        rw [cvmStatsResultLevelTest]
+                                        simp [Expr.sortLevel!,
+                                          AddInductive.constructorUniverseSemanticGe,
+                                          AddInductive.levelStructGe,
+                                          AddInductive.levelStructEq]
+                                      rw [universeSemantic]
+                                      simp only [Bool.true_and]
+                                      let sourceEq := cvmFifthFieldSourceTest.trans
+                                        cvmCtorAfterLaterForallTest
+                                      let tail' := sourceEq ▸ tail
+                                      refine (cvmUniverseSemanticsCastSourceTest
+                                        sourceEq tail).symm.trans ?_
+                                      change tail'.universeSemantics = true
+                                      cases tail' with
+                                      | parameter context fuel argIdx name domain body binderInfo
+                                          parameter parameterType parameterAt parameterTypeRun defeq tail =>
+                                          rw [cvmStatsParamsTest] at parameterAt
+                                          simp at parameterAt
+                                      | ordinary context fuel argIdx name domain body binderInfo
+                                          sortResult noParameter ensureType universeTrace positivity tail =>
+                                          have ensureTypeLaterProof :
+                                              AddInductive.ConstructorEnsureTypeStep.Valid
+                                                ⟨cvmValidationLaterContextTest,
+                                                  cvmCtorLaterProofDomain, sortResult⟩ := by
+                                            exact ensureType
+                                          have sortResultEq :
+                                              sortResult = .sort .zero :=
+                                            cvmEnsureTypeResultEqTest
+                                              ensureTypeLaterProof
+                                              cvmValidationLaterProofEnsureTest
+                                          subst sortResult
+                                          simp only [AddInductive.ConstructorTypeValidationTrace.universeSemantics]
+                                          have universeSemantic : universeTrace.semantic = true := by
+                                            unfold AddInductive.ConstructorUniverseTrace.semantic
+                                            rw [cvmStatsResultLevelTest]
+                                            simp [Expr.sortLevel!,
+                                              AddInductive.constructorUniverseSemanticGe,
+                                              AddInductive.levelStructGe,
+                                              AddInductive.levelStructEq]
+                                          rw [universeSemantic]
+                                          simp only [Bool.true_and]
+                                          let sourceEq := cvmSixthFieldSourceTest.trans
+                                            cvmCtorTerminalValidationShapeTest
+                                          let tail' := sourceEq ▸ tail
+                                          refine (cvmUniverseSemanticsCastSourceTest
+                                            sourceEq tail).symm.trans ?_
+                                          change tail'.universeSemantics = true
+                                          cases tail' with
+                                          | terminal context source fuel argIdx terminal valid =>
+                                              rfl
+                                      | terminal context source fuel argIdx terminal valid =>
+                                          simp [Expr.isForall] at terminal
+                                  | terminal context source fuel argIdx terminal valid =>
+                                      simp [Expr.isForall] at terminal
+                              | terminal context source fuel argIdx terminal valid =>
+                                  simp [Expr.isForall] at terminal
+                          | terminal context source fuel argIdx terminal valid =>
+                              simp [Expr.isForall] at terminal
+                      | terminal context source fuel argIdx terminal valid =>
+                          simp [Expr.isForall] at terminal
+                  | terminal context source fuel argIdx terminal valid =>
+                      simp [Expr.isForall] at terminal
+              | ordinary context fuel argIdx name domain body binderInfo sortResult
+                  noParameter ensureType universeTrace positivity tail =>
+                  rw [cvmStatsParamsTest] at noParameter
+                  simp at noParameter
+              | terminal context source fuel argIdx terminal valid =>
+                  simp [Expr.isForall] at terminal
+          | ordinary context fuel argIdx name domain body binderInfo sortResult
+              noParameter ensureType universeTrace positivity tail =>
+              rw [cvmStatsParamsTest] at noParameter
+              contradiction
+          | terminal context source fuel argIdx terminal valid =>
+              simp [constructorValidityMatrixKernelCtor,
+                constructorValidityMatrixMkInfo, ConstantInfo.type,
+                ConstantInfo.toConstantVal, Expr.isForall] at terminal
+
+theorem cvmUniverseRunTest :
+    AddInductive.checkConstructorUniverseListSemantics
+        cvmFamilyValidationRun.stats constructorValidityMatrixKernelType.ctors
+        cvmValidationRootContextTest = .ok () :=
+  cvmConstructorValidationTest.trace.universeRun_of_semantics
+    cvmUniverseSemanticsTest
+
+theorem cvmValidationGetTypeAlphaTest :
+    AddInductive.getType (.fvar cvmValidationAlphaIdTest)
+      cvmValidationRootContextTest =
+        .ok (.sort (.succ (.param `u))) := by
+  unfold AddInductive.getType
+  simp only [getLCtx, ReaderT.bind, Bind.bind, ReaderT.pure, Pure.pure,
+    Except.bind, Except.pure]
+  change Except.ok ((cvmValidationRootContextTest.lctx.get!
+    cvmValidationAlphaIdTest).type) = _
+  simp [LocalContext.get!, cvmValidationAlphaFindTest, LocalDecl.type]
+
+theorem cvmValidationGetTypePTest :
+    AddInductive.getType (.fvar cvmValidationPIdTest)
+      cvmValidationRootContextTest = .ok cvmValidationPDomainTest := by
+  unfold AddInductive.getType
+  simp only [getLCtx, ReaderT.bind, Bind.bind, ReaderT.pure, Pure.pure,
+    Except.bind, Except.pure]
+  change Except.ok ((cvmValidationRootContextTest.lctx.get!
+    cvmValidationPIdTest).type) = _
+  simp [LocalContext.get!, cvmValidationPFindTest, LocalDecl.type]
+
+theorem cvmValidationRootSortCheckTest :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨cvmValidationRootContextTest, .sort (.succ (.param `u)),
+        .sort (.succ (.succ (.param `u)))⟩ :=
+  prbPreFamilySortCheckValidReplay cvmValidationRootContextTest
+    cvmValidationRootLparamsTest cvmValidationRootDepthTest
+
+def cvmValidationPDomainAlphaStateTest : TypeChecker.State :=
+  prbReplayInsert ({} : TypeChecker.State)
+    (.fvar cvmValidationAlphaIdTest) (.sort (.succ (.param `u)))
+
+def cvmValidationPDomainInternalIdTest : FVarId :=
+  ⟨cvmValidationPDomainAlphaStateTest.ngen.curr⟩
+
+def cvmValidationPDomainInternalStateTest : TypeChecker.State :=
+  { cvmValidationPDomainAlphaStateTest with
+    ngen := cvmValidationPDomainAlphaStateTest.ngen.next }
+
+def cvmValidationPDomainFinalStateTest : TypeChecker.State :=
+  prbReplayInsert cvmValidationPDomainInternalStateTest
+    (.sort .zero) (.sort (.succ .zero))
+
+theorem cvmValidationAlphaToPropCheckTest (indexName : Name) :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨cvmValidationRootContextTest,
+        .forallE indexName (.fvar cvmValidationAlphaIdTest)
+          (.sort .zero) .default,
+        .sort (mkLevelIMax' (.succ (.param `u)) (.succ .zero))⟩ := by
+  have domainRun : TypeChecker.Inner.inferType'
+      (.fvar cvmValidationAlphaIdTest) false
+      (TypeChecker.Methods.withFuel 9998)
+      cvmValidationRootContextTest.toTypeChecker
+      ({} : TypeChecker.State) =
+        .ok (.sort (.succ (.param `u)),
+          cvmValidationPDomainAlphaStateTest) := by
+    simpa [cvmValidationPDomainAlphaStateTest] using
+      prbValidationInferTypeFVarCore 9998 cvmValidationRootContextTest
+        ({} : TypeChecker.State) cvmValidationAlphaIdTest
+        (.sort (.succ (.param `u))) Std.HashMap.getElem?_empty
+        cvmValidationAlphaFindTest
+  have bodyMiss : cvmValidationPDomainInternalStateTest.inferTypeC[
+      (.sort .zero : Expr)]? = none := by
+    simp [cvmValidationPDomainInternalStateTest,
+      cvmValidationPDomainAlphaStateTest, prbReplayInsert]
+  have bodyRun : TypeChecker.Inner.inferType'
+      (.sort .zero) false (TypeChecker.Methods.withFuel 9998)
+      { cvmValidationRootContextTest.toTypeChecker with
+        lctx := cvmValidationRootContextTest.lctx.mkLocalDecl
+          cvmValidationPDomainInternalIdTest indexName
+          (.fvar cvmValidationAlphaIdTest) .default }
+      cvmValidationPDomainInternalStateTest =
+        .ok (.sort (.succ .zero), cvmValidationPDomainFinalStateTest) := by
+    simpa [cvmValidationPDomainFinalStateTest] using
+      prbPreFamilyInferSortZeroCoreReplay 9998 _
+        cvmValidationPDomainInternalStateTest bodyMiss
+  have forallRun : TypeChecker.Inner.inferForall
+      (.forallE indexName
+        (.fvar cvmValidationAlphaIdTest) (.sort .zero) .default) false
+      (TypeChecker.Methods.withFuel 9999)
+      cvmValidationRootContextTest.toTypeChecker
+      ({} : TypeChecker.State) =
+        .ok (.sort
+          (mkLevelIMax' (.succ (.param `u)) (.succ .zero)),
+          cvmValidationPDomainFinalStateTest) := by
+    unfold TypeChecker.Inner.inferForall
+    simp only [TypeChecker.Inner.inferForall.loop]
+    rw [show (.fvar cvmValidationAlphaIdTest : Expr).instantiateRev #[] =
+        .fvar cvmValidationAlphaIdTest by
+      simp [Expr.instantiateRev_eq, Expr.instantiate_eq]]
+    simp only [Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+    rw [show TypeChecker.Inner.inferType
+        (.fvar cvmValidationAlphaIdTest) false
+        (TypeChecker.Methods.withFuel 9999)
+        cvmValidationRootContextTest.toTypeChecker
+        ({} : TypeChecker.State) =
+          TypeChecker.Inner.inferType'
+            (.fvar cvmValidationAlphaIdTest) false
+            (TypeChecker.Methods.withFuel 9998)
+            cvmValidationRootContextTest.toTypeChecker
+            ({} : TypeChecker.State) by rfl]
+    rw [domainRun]
+    simp only [prbEnsureSortExact]
+    rw [prbWithLocalDeclEq]
+    change TypeChecker.Inner.inferForall.loop false
+      #[Expr.fvar cvmValidationPDomainInternalIdTest]
+      #[Level.succ (.param `u)] (.sort .zero)
+      (TypeChecker.Methods.withFuel 9999)
+      { cvmValidationRootContextTest.toTypeChecker with
+        lctx := cvmValidationRootContextTest.lctx.mkLocalDecl
+          cvmValidationPDomainInternalIdTest indexName
+          (.fvar cvmValidationAlphaIdTest) .default }
+      cvmValidationPDomainInternalStateTest = _
+    simp only [TypeChecker.Inner.inferForall.loop]
+    rw [show (.sort .zero : Expr).instantiateRev
+        #[Expr.fvar cvmValidationPDomainInternalIdTest] = .sort .zero by
+      simp [Expr.instantiateRev_eq, Expr.instantiate_eq]]
+    simp only [Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+    rw [show TypeChecker.Inner.inferType (.sort .zero) false
+        (TypeChecker.Methods.withFuel 9999) _
+        cvmValidationPDomainInternalStateTest =
+          TypeChecker.Inner.inferType' (.sort .zero) false
+            (TypeChecker.Methods.withFuel 9998) _
+            cvmValidationPDomainInternalStateTest by rfl]
+    rw [bodyRun]
+    simp [Expr.sortLevel!, Pure.pure, ReaderT.pure,
+      StateT.pure, Except.pure]
+  have outerRun := prbInferTypeForallCore 9999
+    cvmValidationRootContextTest.toTypeChecker ({} : TypeChecker.State)
+    cvmValidationPDomainFinalStateTest indexName
+    (.fvar cvmValidationAlphaIdTest) (.sort .zero)
+    (.sort (mkLevelIMax' (.succ (.param `u)) (.succ .zero))) .default
+    (by simp [Expr.hasLooseBVars,
+      Expr.looseBVarRange']) Std.HashMap.getElem?_empty
+    forallRun
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  change TypeChecker.M.run cvmValidationRootContextTest.env
+    cvmValidationRootContextTest.safety cvmValidationRootContextTest.lctx
+    cvmValidationRootContextTest.lparams cvmValidationRootContextTest.fuel
+    (TypeChecker.checkType (.forallE indexName
+      (.fvar cvmValidationAlphaIdTest) (.sort .zero) .default)) = _
+  unfold TypeChecker.M.run TypeChecker.checkType TypeChecker.RecM.run
+  simp [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    StateT.pure, Except.pure, Pure.pure,
+    StateT.run', Functor.map, Except.map]
+  rw [cvmValidationRootDepthTest]
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+    (TypeChecker.Inner.inferType' (.forallE indexName
+      (.fvar cvmValidationAlphaIdTest) (.sort .zero) .default) false
+      (TypeChecker.Methods.withFuel 9999)
+      cvmValidationRootContextTest.toTypeChecker
+      ({} : TypeChecker.State)) = _
+  simpa [Functor.map, Except.map] using
+    congrArg (Except.map (fun x : Expr × TypeChecker.State => x.1))
+      outerRun
+
+theorem cvmValidationPDomainCheckTest :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨cvmValidationRootContextTest, cvmValidationPDomainTest,
+        .sort (mkLevelIMax' (.succ (.param `u)) (.succ .zero))⟩ := by
+  rw [cvmValidationPDomainShapeTest]
+  exact cvmValidationAlphaToPropCheckTest cvmValidationIndexNameTest
+
+theorem cvmValidationFamilyGetTest :
+    cvmConstructorContext.env.get
+        constructorValidityMatrixKernelType.name =
+      .ok cvmDeclaredInfo := by
+  unfold Kernel.Environment.get
+  rw [cvmCtorFamilyLookup]
+  rfl
+
+@[simp] theorem cvmValidationCheckLevelParamTest
+    (context : AddInductive.Context)
+    (lparams : context.lparams = [`u]) :
+    TypeChecker.Inner.checkLevel context.toTypeChecker (.param `u) =
+      .ok () := by
+  simp [TypeChecker.Inner.checkLevel, AddInductive.Context.toTypeChecker,
+    lparams, Level.getUndefParam, Level.forEach,
+    Level.hasParam_eq, Level.hasParam']
+  rfl
+
+@[simp] theorem cvmInferConstantFamilyFullTest
+    (context : AddInductive.Context)
+    (envEq : context.env = cvmConstructorContext.env)
+    (lparams : context.lparams = [`u])
+    (safety : context.safety = .safe) :
+    TypeChecker.Inner.inferConstant context.toTypeChecker
+        constructorValidityMatrixKernelType.name [.param `u] false =
+      .ok constructorValidityMatrixKernelType.type := by
+  unfold TypeChecker.Inner.inferConstant
+  simp only [AddInductive.Context.toTypeChecker]
+  rw [envEq, cvmValidationFamilyGetTest]
+  have terminalLparams :
+      cvmCandidate.families.singleton.familyType.type.trace.terminalContext.lparams =
+        [`u] := cvmTerminalLparams_eq
+  unfold cvmDeclaredInfo AddInductive.singletonDeclaredInfo
+  rw [terminalLparams]
+  have levelCheck : TypeChecker.Inner.checkLevel
+      ({ env := cvmConstructorContext.env
+         lctx := context.lctx
+         safety := .safe
+         lparams := [`u]
+         fuel := context.fuel } : TypeChecker.Context)
+      (.param `u) = .ok () := by
+    simp [TypeChecker.Inner.checkLevel,
+      Level.getUndefParam, Level.forEach,
+      Level.hasParam_eq, Level.hasParam']
+    rfl
+  simp [constructorValidityMatrixKernelType,
+    constructorValidityMatrixInfo, ConstantInfo.levelParams,
+    ConstantInfo.isUnsafe, ConstantInfo.instantiateTypeLevelParams,
+    ConstantInfo.toConstantVal, ConstantVal.instantiateTypeLevelParams,
+    Expr.instantiateLevelParams_eq, Expr.instantiateLevelParamsCore',
+    Syntax.structEq_eq, Level.substParams', safety, lparams,
+    levelCheck, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  simp [Expr.instantiateLevelParamsCore', Level.substParams',
+    constructorValidityMatrixKernelType, constructorValidityMatrixInfo,
+    ConstantInfo.type, ConstantInfo.toConstantVal]
+
+def cvmValidationFamilyConstStateTest
+    (state : TypeChecker.State) : TypeChecker.State :=
+  prbReplayInsert state
+    (.const constructorValidityMatrixKernelType.name [.param `u])
+    constructorValidityMatrixKernelType.type
+
+theorem cvmValidationInferTypeFamilyCoreTest
+    (fuel : Nat) (context : AddInductive.Context)
+    (state : TypeChecker.State)
+    (cacheMiss : state.inferTypeC[
+      (.const constructorValidityMatrixKernelType.name
+        [.param `u] : Expr)]? = none)
+    (envEq : context.env = cvmConstructorContext.env)
+    (lparams : context.lparams = [`u])
+    (safety : context.safety = .safe) :
+    TypeChecker.Inner.inferType'
+        (.const constructorValidityMatrixKernelType.name [.param `u]) false
+        (TypeChecker.Methods.withFuel fuel) context.toTypeChecker state =
+      .ok (constructorValidityMatrixKernelType.type,
+        cvmValidationFamilyConstStateTest state) := by
+  unfold TypeChecker.Inner.inferType'
+  simp [Expr.hasLooseBVars, Expr.looseBVarRange', cacheMiss,
+    cvmValidationFamilyConstStateTest, prbReplayInsert,
+    cvmInferConstantFamilyFullTest context envEq lparams safety,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+
+def cvmValidationFamilyTailFullTest (alpha : Expr) : Expr :=
+  .forallE `P
+    (.forallE cvmValidationIndexNameTest alpha (.sort .zero) .default)
+    (.sort (.succ (.param `u))) .default
+
+def cvmValidationFirstAppFullTest (alpha : Expr) : Expr :=
+  .app (.const constructorValidityMatrixKernelType.name [.param `u]) alpha
+
+def cvmValidationFamilyAlphaStateTest
+    (state : TypeChecker.State) (alphaId : FVarId) : TypeChecker.State :=
+  prbReplayInsert (cvmValidationFamilyConstStateTest state)
+    (.fvar alphaId) (.sort (.succ (.param `u)))
+
+def cvmValidationFamilyFirstAppStateTest
+    (state : TypeChecker.State) (alphaId : FVarId) : TypeChecker.State :=
+  prbReplayInsert (cvmValidationFamilyAlphaStateTest state alphaId)
+    (cvmValidationFirstAppFullTest (.fvar alphaId))
+    (cvmValidationFamilyTailFullTest (.fvar alphaId))
+
+def cvmValidationFamilyPredicateStateTest
+    (state : TypeChecker.State) (alphaId predicateId : FVarId) :
+    TypeChecker.State :=
+  prbReplayInsert (cvmValidationFamilyFirstAppStateTest state alphaId)
+    (.fvar predicateId)
+    (.forallE cvmValidationIndexNameTest (.fvar alphaId)
+      (.sort .zero) .default)
+
+def cvmValidationFamilyFullAppStateTest
+    (state : TypeChecker.State) (alphaId predicateId : FVarId) :
+    TypeChecker.State :=
+  prbReplayInsert
+    (cvmValidationFamilyPredicateStateTest state alphaId predicateId)
+    (cvmValidationFamilyApplicationTest
+      (.fvar alphaId) (.fvar predicateId))
+    (.sort (.succ (.param `u)))
+
+theorem cvmValidationFamilyApplicationCheckTest
+    (context : AddInductive.Context) (alphaId predicateId : FVarId)
+    (alphaEq : alphaId = cvmValidationAlphaIdTest)
+    (idsNe : alphaId ≠ predicateId)
+    (alphaFind : context.lctx.find? alphaId =
+      some (.cdecl alphaIndex alphaId alphaName
+        (.sort (.succ (.param `u))) alphaBi alphaKind))
+    (predicateFind : context.lctx.find? predicateId =
+      some (.cdecl predicateIndex predicateId predicateName
+        cvmValidationPDomainTest predicateBi predicateKind))
+    (envEq : context.env = cvmConstructorContext.env)
+    (lparams : context.lparams = [`u])
+    (safety : context.safety = .safe)
+    (depth : context.fuel.recDepth = 10000) :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨context, cvmValidationFamilyApplicationTest
+        (.fvar alphaId) (.fvar predicateId),
+        .sort (.succ (.param `u))⟩ := by
+  let initial := ({} : TypeChecker.State)
+  have familyRun : TypeChecker.Inner.inferType'
+      (.const constructorValidityMatrixKernelType.name [.param `u]) false
+      (TypeChecker.Methods.withFuel 9999) context.toTypeChecker initial =
+        .ok (constructorValidityMatrixKernelType.type,
+          cvmValidationFamilyConstStateTest initial) := by
+    apply cvmValidationInferTypeFamilyCoreTest
+    · simp [initial]
+    · exact envEq
+    · exact lparams
+    · exact safety
+  have alphaMiss :
+      (cvmValidationFamilyConstStateTest initial).inferTypeC[
+        (.fvar alphaId : Expr)]? = none := by
+    simp [cvmValidationFamilyConstStateTest, prbReplayInsert, initial]
+  have alphaRun : TypeChecker.Inner.inferType' (.fvar alphaId) false
+      (TypeChecker.Methods.withFuel 9999) context.toTypeChecker
+      (cvmValidationFamilyConstStateTest initial) =
+        .ok (.sort (.succ (.param `u)),
+          cvmValidationFamilyAlphaStateTest initial alphaId) := by
+    simpa [cvmValidationFamilyAlphaStateTest] using
+      prbValidationInferTypeFVarCore 9999 context
+        (cvmValidationFamilyConstStateTest initial) alphaId
+        (.sort (.succ (.param `u))) alphaMiss alphaFind
+  have firstRun := prbInferAppCoreOf 9999 context.toTypeChecker initial
+    (cvmValidationFamilyConstStateTest initial)
+    (cvmValidationFamilyAlphaStateTest initial alphaId)
+    (.const constructorValidityMatrixKernelType.name [.param `u])
+    (.fvar alphaId) (.sort (.succ (.param `u)))
+    (.forallE `P
+      (.forallE cvmValidationIndexNameTest (.bvar 0)
+        (.sort .zero) .default)
+      (.sort (.succ (.param `u))) .default)
+    `α .default
+    (by simp [Expr.hasLooseBVars, Expr.looseBVarRange'])
+    (by simp [initial, cvmValidationFirstAppFullTest])
+    (by simpa [cvmKernelFamilyTypeShapeTest] using familyRun)
+    alphaRun (by rfl)
+  have firstRun' : TypeChecker.Inner.inferType'
+      (cvmValidationFirstAppFullTest (.fvar alphaId)) false
+      (TypeChecker.Methods.withFuel 9999) context.toTypeChecker initial =
+        .ok (cvmValidationFamilyTailFullTest (.fvar alphaId),
+          cvmValidationFamilyFirstAppStateTest initial alphaId) := by
+    simpa [cvmValidationFirstAppFullTest,
+      cvmValidationFamilyTailFullTest,
+      cvmValidationFamilyFirstAppStateTest,
+      cvmValidationFamilyAlphaStateTest, prbReplayInsert,
+      Expr.instantiate1_eq, Expr.instantiate1'] using firstRun
+  have predicateMiss :
+      (cvmValidationFamilyFirstAppStateTest initial alphaId).inferTypeC[
+        (.fvar predicateId : Expr)]? = none := by
+    have idsBeq : ((.fvar alphaId : Expr) == .fvar predicateId) = false := by
+      change Expr.eqv (.fvar alphaId) (.fvar predicateId) = false
+      rw [Expr.eqv_eq]
+      simp [Expr.eqv', idsNe]
+    simp [cvmValidationFamilyFirstAppStateTest,
+      cvmValidationFamilyAlphaStateTest,
+      cvmValidationFamilyConstStateTest,
+      cvmValidationFirstAppFullTest, prbReplayInsert, initial, idsBeq]
+  have predicateRun : TypeChecker.Inner.inferType' (.fvar predicateId) false
+      (TypeChecker.Methods.withFuel 9999) context.toTypeChecker
+      (cvmValidationFamilyFirstAppStateTest initial alphaId) =
+        .ok (.forallE cvmValidationIndexNameTest (.fvar alphaId)
+            (.sort .zero) .default,
+          cvmValidationFamilyPredicateStateTest initial alphaId predicateId) := by
+    simpa [cvmValidationFamilyPredicateStateTest,
+      cvmValidationPDomainShapeTest, alphaEq] using
+      prbValidationInferTypeFVarCore 9999 context
+        (cvmValidationFamilyFirstAppStateTest initial alphaId)
+        predicateId cvmValidationPDomainTest predicateMiss predicateFind
+  have fullRun := prbInferAppCoreOf 9999 context.toTypeChecker initial
+    (cvmValidationFamilyFirstAppStateTest initial alphaId)
+    (cvmValidationFamilyPredicateStateTest initial alphaId predicateId)
+    (cvmValidationFirstAppFullTest (.fvar alphaId))
+    (.fvar predicateId)
+    (.forallE cvmValidationIndexNameTest (.fvar alphaId)
+      (.sort .zero) .default)
+    (.sort (.succ (.param `u))) `P .default
+    (by simp [cvmValidationFamilyApplicationTest,
+      cvmValidationFirstAppFullTest, Expr.hasLooseBVars,
+      Expr.looseBVarRange'])
+    (by simp [initial, cvmValidationFamilyApplicationTest])
+    firstRun' predicateRun (by rfl)
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  change TypeChecker.M.run context.env context.safety context.lctx
+    context.lparams context.fuel
+      (TypeChecker.checkType (cvmValidationFamilyApplicationTest
+        (.fvar alphaId) (.fvar predicateId))) =
+      .ok (.sort (.succ (.param `u)))
+  unfold TypeChecker.M.run TypeChecker.checkType TypeChecker.RecM.run
+  simp [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    StateT.pure, Except.pure, Pure.pure,
+    StateT.run', Functor.map, Except.map]
+  rw [depth]
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+    (TypeChecker.Inner.inferType'
+      (cvmValidationFamilyApplicationTest
+        (.fvar alphaId) (.fvar predicateId)) false
+      (TypeChecker.Methods.withFuel 9999) context.toTypeChecker initial) = _
+  simpa [cvmValidationFamilyApplicationTest,
+    cvmValidationFirstAppFullTest,
+    cvmValidationFamilyFullAppStateTest,
+    cvmValidationFamilyPredicateStateTest, prbReplayInsert,
+    Expr.instantiate1_eq, Expr.instantiate1', Functor.map, Except.map] using
+    congrArg (Except.map (fun x : Expr × TypeChecker.State => x.1))
+      fullRun
+
+def cvmValidationPredicateFullStateTest
+    (state : TypeChecker.State) (predicateId : FVarId) :
+    TypeChecker.State :=
+  prbReplayInsert state (.fvar predicateId) cvmValidationPDomainTest
+
+def cvmValidationPredicateArgumentStateTest
+    (state : TypeChecker.State) (predicateId argumentId : FVarId) :
+    TypeChecker.State :=
+  prbReplayInsert (cvmValidationPredicateFullStateTest state predicateId)
+    (.fvar argumentId) (.fvar cvmValidationAlphaIdTest)
+
+def cvmValidationPredicateFullAppStateTest
+    (state : TypeChecker.State) (predicateId argumentId : FVarId) :
+    TypeChecker.State :=
+  prbReplayInsert
+    (cvmValidationPredicateArgumentStateTest state predicateId argumentId)
+    (cvmValidationPredicateApplicationTest predicateId (.fvar argumentId))
+    (.sort .zero)
+
+theorem cvmValidationPredicateApplicationCheckTest
+    (context : AddInductive.Context) (predicateId argumentId : FVarId)
+    (idsNe : predicateId ≠ argumentId)
+    (predicateFind : context.lctx.find? predicateId =
+      some (.cdecl predicateIndex predicateId predicateName
+        cvmValidationPDomainTest predicateBi predicateKind))
+    (argumentFind : context.lctx.find? argumentId =
+      some (.cdecl argumentIndex argumentId argumentName
+        (.fvar cvmValidationAlphaIdTest) argumentBi argumentKind))
+    (depth : context.fuel.recDepth = 10000) :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨context,
+        cvmValidationPredicateApplicationTest predicateId (.fvar argumentId),
+        .sort .zero⟩ := by
+  let initial := ({} : TypeChecker.State)
+  have predicateRun : TypeChecker.Inner.inferType'
+      (.fvar predicateId) false (TypeChecker.Methods.withFuel 9999)
+      context.toTypeChecker initial =
+        .ok (.forallE cvmValidationIndexNameTest
+            (.fvar cvmValidationAlphaIdTest) (.sort .zero) .default,
+          cvmValidationPredicateFullStateTest initial predicateId) := by
+    simpa [cvmValidationPredicateFullStateTest,
+      cvmValidationPDomainShapeTest] using
+      prbValidationInferTypeFVarCore 9999 context initial predicateId
+        cvmValidationPDomainTest (by simp [initial]) predicateFind
+  have argumentMiss :
+      (cvmValidationPredicateFullStateTest initial predicateId).inferTypeC[
+        (.fvar argumentId : Expr)]? = none := by
+    have idsBeq : ((.fvar predicateId : Expr) == .fvar argumentId) = false := by
+      change Expr.eqv (.fvar predicateId) (.fvar argumentId) = false
+      rw [Expr.eqv_eq]
+      simp [Expr.eqv', idsNe]
+    simp [cvmValidationPredicateFullStateTest, prbReplayInsert,
+      initial, idsBeq]
+  have argumentRun : TypeChecker.Inner.inferType'
+      (.fvar argumentId) false (TypeChecker.Methods.withFuel 9999)
+      context.toTypeChecker
+      (cvmValidationPredicateFullStateTest initial predicateId) =
+        .ok (.fvar cvmValidationAlphaIdTest,
+          cvmValidationPredicateArgumentStateTest
+            initial predicateId argumentId) := by
+    simpa [cvmValidationPredicateArgumentStateTest] using
+      prbValidationInferTypeFVarCore 9999 context
+        (cvmValidationPredicateFullStateTest initial predicateId)
+        argumentId (.fvar cvmValidationAlphaIdTest)
+        argumentMiss argumentFind
+  have appRun := prbInferAppCoreOf 9999 context.toTypeChecker initial
+    (cvmValidationPredicateFullStateTest initial predicateId)
+    (cvmValidationPredicateArgumentStateTest initial predicateId argumentId)
+    (.fvar predicateId) (.fvar argumentId)
+    (.fvar cvmValidationAlphaIdTest) (.sort .zero)
+    cvmValidationIndexNameTest .default
+    (by simp [cvmValidationPredicateApplicationTest,
+      Expr.hasLooseBVars, Expr.looseBVarRange'])
+    (by simp [initial, cvmValidationPredicateApplicationTest])
+    predicateRun argumentRun (by rfl)
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  change TypeChecker.M.run context.env context.safety context.lctx
+    context.lparams context.fuel
+      (TypeChecker.checkType
+        (cvmValidationPredicateApplicationTest predicateId
+          (.fvar argumentId))) = .ok (.sort .zero)
+  unfold TypeChecker.M.run TypeChecker.checkType TypeChecker.RecM.run
+  simp [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    StateT.pure, Except.pure, Pure.pure,
+    StateT.run', Functor.map, Except.map]
+  rw [depth]
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+    (TypeChecker.Inner.inferType'
+      (cvmValidationPredicateApplicationTest predicateId
+        (.fvar argumentId)) false
+      (TypeChecker.Methods.withFuel 9999) context.toTypeChecker initial) = _
+  simpa [cvmValidationPredicateApplicationTest,
+    cvmValidationPredicateFullAppStateTest,
+    cvmValidationPredicateArgumentStateTest, prbReplayInsert,
+    Expr.instantiate1_eq, Expr.instantiate1', Functor.map, Except.map] using
+    congrArg (Except.map (fun x : Expr × TypeChecker.State => x.1))
+      appRun
+
+theorem cvmValidationRootFreshTest :
+    cvmValidationRootContextTest.lctx.find?
+      cvmValidationRootContextTest.freshFVarId = none :=
+  cvmValidationRootLocalRunTest.fresh
+
+theorem cvmValidationFunctionFreshTest :
+    cvmValidationFunctionContextTest.lctx.find?
+      cvmValidationFunctionContextTest.freshFVarId = none :=
+  cvmValidationFunctionLocalRunTest.fresh
+
+theorem cvmValidationAlphaFindInAlphaTest :
+    cvmValidationAlphaContextTest.lctx.find? cvmValidationAlphaIdTest =
+      some (.cdecl 0 cvmValidationAlphaIdTest `α
+        (.sort (.succ (.param `u))) .default .default) := by
+  simpa [cvmValidationAlphaIdTest, cvmValidationAlphaContextTest,
+    cvmFamilyContext] using
+    (TypeChecker.CandidateLocalContextRun.empty cvmFamilyContext rfl
+      |>.push_findNew `α .default (.sort (.succ (.param `u))))
+
+theorem cvmValidationAlphaNePTest :
+    cvmValidationAlphaIdTest ≠ cvmValidationPIdTest := by
+  intro equal
+  have fresh := cvmValidationAlphaLocalRunTest.fresh
+  change cvmValidationAlphaContextTest.lctx.find?
+    cvmValidationPIdTest = none at fresh
+  rw [← equal, cvmValidationAlphaFindInAlphaTest] at fresh
+  contradiction
+
+theorem cvmValidationXFindTest :
+    cvmValidationXContextTest.lctx.find? cvmValidationXIdTest =
+      some (.cdecl cvmValidationRootContextTest.lctx.decls.size
+        cvmValidationXIdTest `x (.fvar cvmValidationAlphaIdTest)
+        .default .default) := by
+  have found := cvmValidationRootLocalRunTest.push_findNew `x .default
+    (AddInductive.consumeTypeAnnotations cvmCtorXDomain)
+  simpa [cvmValidationXContextTest, cvmValidationXIdTest,
+    cvmCtorXDomainValidationShapeTest,
+    AddInductive.consumeTypeAnnotations] using found
+
+theorem cvmValidationPNeXTest :
+    cvmValidationPIdTest ≠ cvmValidationXIdTest := by
+  intro equal
+  have fresh := cvmValidationRootFreshTest
+  change cvmValidationRootContextTest.lctx.find?
+    cvmValidationXIdTest = none at fresh
+  rw [← equal, cvmValidationPFindTest] at fresh
+  contradiction
+
+theorem cvmValidationLaterFindTest :
+    cvmValidationLaterContextTest.lctx.find? cvmValidationLaterIdTest =
+      some (.cdecl cvmValidationFunctionContextTest.lctx.decls.size
+        cvmValidationLaterIdTest `later (.fvar cvmValidationAlphaIdTest)
+        .default .default) := by
+  have found := cvmValidationFunctionLocalRunTest.push_findNew `later .default
+    (AddInductive.consumeTypeAnnotations cvmCtorLaterDomain)
+  simpa [cvmValidationLaterContextTest, cvmValidationLaterIdTest,
+    cvmCtorLaterDomainValidationShapeTest,
+    AddInductive.consumeTypeAnnotations] using found
+
+theorem cvmValidationPNeLaterTest :
+    cvmValidationPIdTest ≠ cvmValidationLaterIdTest := by
+  intro equal
+  have fresh := cvmValidationFunctionFreshTest
+  change cvmValidationFunctionContextTest.lctx.find?
+    cvmValidationLaterIdTest = none at fresh
+  rw [← equal, cvmValidationPFindInFunctionTest] at fresh
+  contradiction
+
+theorem cvmValidationProofCheckTest :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨cvmValidationXContextTest, cvmCtorProofDomain, .sort .zero⟩ := by
+  rw [cvmCtorProofDomainValidationShapeTest]
+  exact cvmValidationPredicateApplicationCheckTest
+    cvmValidationXContextTest cvmValidationPIdTest
+    cvmValidationXIdTest cvmValidationPNeXTest
+    cvmValidationPFindInXTest cvmValidationXFindTest (by rfl)
+
+theorem cvmValidationLaterProofCheckTest :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨cvmValidationLaterContextTest, cvmCtorLaterProofDomain,
+        .sort .zero⟩ := by
+  rw [cvmCtorLaterProofDomainValidationShapeTest]
+  exact cvmValidationPredicateApplicationCheckTest
+    cvmValidationLaterContextTest cvmValidationPIdTest
+    cvmValidationLaterIdTest cvmValidationPNeLaterTest
+    cvmValidationPFindInLaterTest cvmValidationLaterFindTest (by rfl)
+
+theorem cvmValidationDirectCheckTest :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨cvmValidationProofContextTest, cvmCtorDirectDomain,
+        .sort (.succ (.param `u))⟩ := by
+  rw [cvmCtorDirectDomainValidationShapeTest]
+  exact cvmValidationFamilyApplicationCheckTest
+    cvmValidationProofContextTest cvmValidationAlphaIdTest
+    cvmValidationPIdTest rfl cvmValidationAlphaNePTest
+    cvmValidationAlphaFindInProofTest cvmValidationPFindInProofTest
+    (by rfl) (by rfl) (by rfl) (by rfl)
+
+def cvmValidationLaterProofLocalRunTest :
+    TypeChecker.CandidateLocalContextRun cvmValidationLaterProofContextTest :=
+  cvmValidationLaterLocalRunTest.push `laterProof .default
+    (AddInductive.consumeTypeAnnotations cvmCtorLaterProofDomain)
+
+theorem cvmValidationAlphaFindInLaterTest :
+    cvmValidationLaterContextTest.lctx.find? cvmValidationAlphaIdTest =
+      some (.cdecl 0 cvmValidationAlphaIdTest `α
+        (.sort (.succ (.param `u))) .default .default) :=
+  cvmValidationFunctionLocalRunTest.push_findOld `later .default
+    (AddInductive.consumeTypeAnnotations cvmCtorLaterDomain)
+    cvmValidationAlphaFindInFunctionTest
+
+theorem cvmValidationAlphaFindInLaterProofTest :
+    cvmValidationLaterProofContextTest.lctx.find?
+        cvmValidationAlphaIdTest =
+      some (.cdecl 0 cvmValidationAlphaIdTest `α
+        (.sort (.succ (.param `u))) .default .default) :=
+  cvmValidationLaterLocalRunTest.push_findOld `laterProof .default
+    (AddInductive.consumeTypeAnnotations cvmCtorLaterProofDomain)
+    cvmValidationAlphaFindInLaterTest
+
+theorem cvmValidationPFindInLaterProofTest :
+    cvmValidationLaterProofContextTest.lctx.find? cvmValidationPIdTest =
+      some (.cdecl cvmValidationAlphaContextTest.lctx.decls.size
+        cvmValidationPIdTest `P cvmValidationPDomainTest
+        .default .default) :=
+  cvmValidationLaterLocalRunTest.push_findOld `laterProof .default
+    (AddInductive.consumeTypeAnnotations cvmCtorLaterProofDomain)
+    cvmValidationPFindInLaterTest
+
+theorem cvmValidationTerminalCheckTest :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨cvmValidationLaterProofContextTest, cvmCtorTerminal,
+        .sort (.succ (.param `u))⟩ := by
+  rw [cvmCtorTerminalValidationShapeTest]
+  exact cvmValidationFamilyApplicationCheckTest
+    cvmValidationLaterProofContextTest cvmValidationAlphaIdTest
+    cvmValidationPIdTest rfl cvmValidationAlphaNePTest
+    cvmValidationAlphaFindInLaterProofTest
+    cvmValidationPFindInLaterProofTest
+    (by rfl) (by rfl) (by rfl) (by rfl)
+
+def cvmValidationFamilyCachedFirstAppStateTest
+    (state : TypeChecker.State) (alphaId : FVarId) : TypeChecker.State :=
+  prbReplayInsert (cvmValidationFamilyConstStateTest state)
+    (cvmValidationFirstAppFullTest (.fvar alphaId))
+    (cvmValidationFamilyTailFullTest (.fvar alphaId))
+
+def cvmValidationFamilyCachedPredicateStateTest
+    (state : TypeChecker.State) (alphaId predicateId : FVarId) :
+    TypeChecker.State :=
+  prbReplayInsert (cvmValidationFamilyCachedFirstAppStateTest state alphaId)
+    (.fvar predicateId)
+    (.forallE cvmValidationIndexNameTest (.fvar alphaId)
+      (.sort .zero) .default)
+
+def cvmValidationFamilyCachedFullAppStateTest
+    (state : TypeChecker.State) (alphaId predicateId : FVarId) :
+    TypeChecker.State :=
+  prbReplayInsert
+    (cvmValidationFamilyCachedPredicateStateTest state alphaId predicateId)
+    (cvmValidationFamilyApplicationTest
+      (.fvar alphaId) (.fvar predicateId))
+    (.sort (.succ (.param `u)))
+
+theorem cvmValidationInferFirstAppAlphaCachedCoreTest
+    (fuel : Nat) (context : AddInductive.Context)
+    (state : TypeChecker.State) (alphaId : FVarId)
+    (alphaCache : state.inferTypeC[(.fvar alphaId : Expr)]? =
+      some (.sort (.succ (.param `u))))
+    (constMiss : state.inferTypeC[
+      (.const constructorValidityMatrixKernelType.name
+        [.param `u] : Expr)]? = none)
+    (firstMiss : state.inferTypeC[
+      cvmValidationFirstAppFullTest (.fvar alphaId)]? = none)
+    (envEq : context.env = cvmConstructorContext.env)
+    (lparams : context.lparams = [`u])
+    (safety : context.safety = .safe) :
+    TypeChecker.Inner.inferType'
+      (cvmValidationFirstAppFullTest (.fvar alphaId)) false
+      (TypeChecker.Methods.withFuel fuel) context.toTypeChecker state =
+        .ok (cvmValidationFamilyTailFullTest (.fvar alphaId),
+          cvmValidationFamilyCachedFirstAppStateTest state alphaId) := by
+  have familyRun := cvmValidationInferTypeFamilyCoreTest fuel context state
+    constMiss envEq lparams safety
+  have alphaCache' :
+      (cvmValidationFamilyConstStateTest state).inferTypeC[
+        (.fvar alphaId : Expr)]? =
+          some (.sort (.succ (.param `u))) := by
+    simp only [cvmValidationFamilyConstStateTest, prbReplayInsert,
+      Std.HashMap.getElem?_insert]
+    rw [prbConstBeqFVar]
+    exact alphaCache
+  have alphaRun := prbValidationInferTypeCachedCore fuel context
+    (cvmValidationFamilyConstStateTest state) (.fvar alphaId)
+    (.sort (.succ (.param `u)))
+    (by simp [Expr.hasLooseBVars, Expr.looseBVarRange']) alphaCache'
+  have appRun := prbInferAppCoreOf fuel context.toTypeChecker state
+    (cvmValidationFamilyConstStateTest state)
+    (cvmValidationFamilyConstStateTest state)
+    (.const constructorValidityMatrixKernelType.name [.param `u])
+    (.fvar alphaId) (.sort (.succ (.param `u)))
+    (.forallE `P
+      (.forallE cvmValidationIndexNameTest (.bvar 0)
+        (.sort .zero) .default)
+      (.sort (.succ (.param `u))) .default)
+    `α .default
+    (by simp [cvmValidationFirstAppFullTest,
+      Expr.hasLooseBVars, Expr.looseBVarRange'])
+    firstMiss
+    (by simpa [cvmKernelFamilyTypeShapeTest] using familyRun)
+    alphaRun (by rfl)
+  simpa [cvmValidationFirstAppFullTest,
+    cvmValidationFamilyTailFullTest,
+    cvmValidationFamilyCachedFirstAppStateTest, prbReplayInsert,
+    Expr.instantiate1_eq, Expr.instantiate1'] using appRun
+
+theorem cvmValidationFamilyApplicationAlphaCachedCoreTest
+    (fuel : Nat) (context : AddInductive.Context)
+    (state : TypeChecker.State) (alphaId predicateId : FVarId)
+    (alphaEq : alphaId = cvmValidationAlphaIdTest)
+    (alphaCache : state.inferTypeC[(.fvar alphaId : Expr)]? =
+      some (.sort (.succ (.param `u))))
+    (constMiss : state.inferTypeC[
+      (.const constructorValidityMatrixKernelType.name
+        [.param `u] : Expr)]? = none)
+    (firstMiss : state.inferTypeC[
+      cvmValidationFirstAppFullTest (.fvar alphaId)]? = none)
+    (predicateMiss :
+      (cvmValidationFamilyCachedFirstAppStateTest state alphaId).inferTypeC[
+        (.fvar predicateId : Expr)]? = none)
+    (applicationMiss : state.inferTypeC[
+      cvmValidationFamilyApplicationTest
+        (.fvar alphaId) (.fvar predicateId)]? = none)
+    (predicateFind : context.lctx.find? predicateId =
+      some (.cdecl predicateIndex predicateId predicateName
+        cvmValidationPDomainTest predicateBi predicateKind))
+    (envEq : context.env = cvmConstructorContext.env)
+    (lparams : context.lparams = [`u])
+    (safety : context.safety = .safe) :
+    TypeChecker.Inner.inferType'
+      (cvmValidationFamilyApplicationTest
+        (.fvar alphaId) (.fvar predicateId)) false
+      (TypeChecker.Methods.withFuel fuel) context.toTypeChecker state =
+        .ok (.sort (.succ (.param `u)),
+          cvmValidationFamilyCachedFullAppStateTest
+            state alphaId predicateId) := by
+  have firstRun := cvmValidationInferFirstAppAlphaCachedCoreTest
+    fuel context state alphaId alphaCache constMiss firstMiss
+    envEq lparams safety
+  have predicateRun : TypeChecker.Inner.inferType' (.fvar predicateId) false
+      (TypeChecker.Methods.withFuel fuel) context.toTypeChecker
+      (cvmValidationFamilyCachedFirstAppStateTest state alphaId) =
+        .ok (.forallE cvmValidationIndexNameTest (.fvar alphaId)
+            (.sort .zero) .default,
+          cvmValidationFamilyCachedPredicateStateTest
+            state alphaId predicateId) := by
+    simpa [cvmValidationFamilyCachedPredicateStateTest,
+      cvmValidationPDomainShapeTest, alphaEq] using
+      prbValidationInferTypeFVarCore fuel context
+        (cvmValidationFamilyCachedFirstAppStateTest state alphaId)
+        predicateId cvmValidationPDomainTest predicateMiss predicateFind
+  have appRun := prbInferAppCoreOf fuel context.toTypeChecker state
+    (cvmValidationFamilyCachedFirstAppStateTest state alphaId)
+    (cvmValidationFamilyCachedPredicateStateTest state alphaId predicateId)
+    (cvmValidationFirstAppFullTest (.fvar alphaId))
+    (.fvar predicateId)
+    (.forallE cvmValidationIndexNameTest (.fvar alphaId)
+      (.sort .zero) .default)
+    (.sort (.succ (.param `u))) `P .default
+    (by simp [cvmValidationFamilyApplicationTest,
+      cvmValidationFirstAppFullTest,
+      Expr.hasLooseBVars, Expr.looseBVarRange'])
+    applicationMiss firstRun predicateRun (by rfl)
+  simpa [cvmValidationFamilyApplicationTest,
+    cvmValidationFirstAppFullTest,
+    cvmValidationFamilyCachedFullAppStateTest,
+    cvmValidationFamilyCachedPredicateStateTest, prbReplayInsert,
+    Expr.instantiate1_eq, Expr.instantiate1'] using appRun
+
+def cvmValidationFunctionFullAlphaStateTest : TypeChecker.State :=
+  prbReplayInsert ({} : TypeChecker.State)
+    (.fvar cvmValidationAlphaIdTest) (.sort (.succ (.param `u)))
+
+def cvmValidationFunctionFullInternalIdTest : FVarId :=
+  ⟨cvmValidationFunctionFullAlphaStateTest.ngen.curr⟩
+
+def cvmValidationFunctionFullInternalStateTest : TypeChecker.State :=
+  { cvmValidationFunctionFullAlphaStateTest with
+    ngen := cvmValidationFunctionFullAlphaStateTest.ngen.next }
+
+def cvmValidationFunctionFullInternalContextTest : AddInductive.Context :=
+  { cvmValidationDirectContextTest with
+    lctx := cvmValidationDirectContextTest.lctx.mkLocalDecl
+      cvmValidationFunctionFullInternalIdTest `y
+      (.fvar cvmValidationAlphaIdTest) .default }
+
+def cvmValidationFunctionFullBodyStateTest : TypeChecker.State :=
+  cvmValidationFamilyCachedFullAppStateTest
+    cvmValidationFunctionFullInternalStateTest
+    cvmValidationAlphaIdTest cvmValidationPIdTest
+
+def cvmValidationFunctionFullFinalStateTest : TypeChecker.State :=
+  prbReplayInsert cvmValidationFunctionFullBodyStateTest
+    (.forallE `y (.fvar cvmValidationAlphaIdTest)
+      (cvmValidationFamilyApplicationTest
+        (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest))
+      .default)
+    (.sort (.succ (.param `u)))
+
+theorem cvmValidationFunctionFullInternalFreshTest :
+    cvmValidationDirectContextTest.lctx.find?
+      cvmValidationFunctionFullInternalIdTest = none := by
+  rw [cvmValidationDirectLocalRunTest.wf.find?_eq_find?_toList,
+    List.find?_eq_none]
+  intro decl membership equal
+  simp only [cvmValidationDirectContextTest,
+    cvmValidationProofContextTest, cvmValidationXContextTest,
+    cvmValidationRootContextTest, cvmValidationFamilyContextTest,
+    cvmValidationAlphaContextTest, AddInductive.Context.pushLocalDecl,
+    LocalContext.mkLocalDecl_toList, List.mem_cons] at membership
+  rw [show cvmFamilyContext.lctx.toList = [] by rfl] at membership
+  simp only [List.not_mem_nil, or_false] at membership
+  rcases membership with rfl | rfl | rfl | rfl | rfl
+  all_goals
+    simp [LocalDecl.fvarId, cvmValidationFunctionFullInternalIdTest,
+      cvmValidationFunctionFullAlphaStateTest, prbReplayInsert,
+      cvmValidationXIdTest, cvmValidationPIdTest,
+      cvmValidationAlphaIdTest, cvmValidationRootContextTest,
+      cvmValidationFamilyContextTest, cvmValidationAlphaContextTest,
+      cvmFamilyContext, constructorValidityMatrixContext,
+      AddInductive.Context.freshExpr, AddInductive.Context.freshFVarId]
+      at equal
+  all_goals injection equal
+  all_goals simp [NameGenerator.next] at *
+
+@[simp] theorem cvmValidationAlphaPBeqFalseTest :
+    ((.fvar cvmValidationAlphaIdTest : Expr) ==
+      .fvar cvmValidationPIdTest) = false := by
+  change Expr.eqv (.fvar cvmValidationAlphaIdTest)
+    (.fvar cvmValidationPIdTest) = false
+  rw [Expr.eqv_eq]
+  simp [Expr.eqv', cvmValidationAlphaNePTest]
+
+theorem cvmValidationPFindInFunctionFullInternalTest :
+    cvmValidationFunctionFullInternalContextTest.lctx.find?
+        cvmValidationPIdTest =
+      some (.cdecl cvmValidationAlphaContextTest.lctx.decls.size
+        cvmValidationPIdTest `P cvmValidationPDomainTest
+        .default .default) := by
+  exact TypeChecker.localContextFindOld
+    cvmValidationDirectContextTest.lctx cvmValidationPIdTest
+    cvmValidationFunctionFullInternalIdTest `y
+    (.fvar cvmValidationAlphaIdTest) .default .default _
+    cvmValidationDirectLocalRunTest.wf
+    cvmValidationFunctionFullInternalFreshTest
+    cvmValidationPFindInDirectTest
+
+theorem cvmValidationFunctionCheckTest :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨cvmValidationDirectContextTest, cvmCtorFunctionDomain,
+        .sort (.succ (.param `u))⟩ := by
+  have domainRun : TypeChecker.Inner.inferType'
+      (.fvar cvmValidationAlphaIdTest) false
+      (TypeChecker.Methods.withFuel 9998)
+      cvmValidationDirectContextTest.toTypeChecker
+      ({} : TypeChecker.State) =
+        .ok (.sort (.succ (.param `u)),
+          cvmValidationFunctionFullAlphaStateTest) := by
+    simpa [cvmValidationFunctionFullAlphaStateTest] using
+      prbValidationInferTypeFVarCore 9998 cvmValidationDirectContextTest
+        ({} : TypeChecker.State) cvmValidationAlphaIdTest
+        (.sort (.succ (.param `u))) Std.HashMap.getElem?_empty
+        cvmValidationAlphaFindInDirectTest
+  have bodyRun : TypeChecker.Inner.inferType'
+      (cvmValidationFamilyApplicationTest
+        (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest)) false
+      (TypeChecker.Methods.withFuel 9998)
+      cvmValidationFunctionFullInternalContextTest.toTypeChecker
+      cvmValidationFunctionFullInternalStateTest =
+        .ok (.sort (.succ (.param `u)),
+          cvmValidationFunctionFullBodyStateTest) := by
+    apply cvmValidationFamilyApplicationAlphaCachedCoreTest
+    · rfl
+    · simp [cvmValidationFunctionFullInternalStateTest,
+        cvmValidationFunctionFullAlphaStateTest, prbReplayInsert]
+    · simp [cvmValidationFunctionFullInternalStateTest,
+        cvmValidationFunctionFullAlphaStateTest, prbReplayInsert]
+    · simp [cvmValidationFunctionFullInternalStateTest,
+        cvmValidationFunctionFullAlphaStateTest,
+        cvmValidationFirstAppFullTest, prbReplayInsert]
+    · simp [cvmValidationFamilyCachedFirstAppStateTest,
+        cvmValidationFamilyConstStateTest,
+        cvmValidationFunctionFullInternalStateTest,
+        cvmValidationFunctionFullAlphaStateTest,
+        cvmValidationFirstAppFullTest, prbReplayInsert,
+        cvmValidationAlphaNePTest]
+    · simp [cvmValidationFunctionFullInternalStateTest,
+        cvmValidationFunctionFullAlphaStateTest,
+        cvmValidationFamilyApplicationTest, prbReplayInsert]
+    · exact cvmValidationPFindInFunctionFullInternalTest
+    · rfl
+    · rfl
+    · rfl
+  have forallRun : TypeChecker.Inner.inferForall
+      (.forallE `y (.fvar cvmValidationAlphaIdTest)
+        (cvmValidationFamilyApplicationTest
+          (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest))
+        .default) false
+      (TypeChecker.Methods.withFuel 9999)
+      cvmValidationDirectContextTest.toTypeChecker
+      ({} : TypeChecker.State) =
+        .ok (.sort (.succ (.param `u)),
+          cvmValidationFunctionFullBodyStateTest) := by
+    unfold TypeChecker.Inner.inferForall
+    simp only [cvmValidationFamilyApplicationTest,
+      TypeChecker.Inner.inferForall.loop]
+    rw [show (.fvar cvmValidationAlphaIdTest : Expr).instantiateRev #[] =
+        .fvar cvmValidationAlphaIdTest by
+      simp [Expr.instantiateRev_eq, Expr.instantiate_eq]]
+    simp only [Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+    rw [show TypeChecker.Inner.inferType
+        (.fvar cvmValidationAlphaIdTest) false
+        (TypeChecker.Methods.withFuel 9999)
+        cvmValidationDirectContextTest.toTypeChecker
+        ({} : TypeChecker.State) =
+          TypeChecker.Inner.inferType'
+            (.fvar cvmValidationAlphaIdTest) false
+            (TypeChecker.Methods.withFuel 9998)
+            cvmValidationDirectContextTest.toTypeChecker
+            ({} : TypeChecker.State) by rfl]
+    rw [domainRun]
+    simp only [prbEnsureSortExact]
+    rw [prbWithLocalDeclEq]
+    change TypeChecker.Inner.inferForall.loop false
+      #[Expr.fvar cvmValidationFunctionFullInternalIdTest]
+      #[Level.succ (.param `u)]
+      (cvmValidationFamilyApplicationTest
+        (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest))
+      (TypeChecker.Methods.withFuel 9999)
+      cvmValidationFunctionFullInternalContextTest.toTypeChecker
+      cvmValidationFunctionFullInternalStateTest = _
+    simp only [cvmValidationFamilyApplicationTest,
+      TypeChecker.Inner.inferForall.loop]
+    rw [show (((.const constructorValidityMatrixKernelType.name
+          [.param `u] : Expr).app (.fvar cvmValidationAlphaIdTest)).app
+          (.fvar cvmValidationPIdTest)).instantiateRev
+          #[Expr.fvar cvmValidationFunctionFullInternalIdTest] =
+        ((.const constructorValidityMatrixKernelType.name
+          [.param `u] : Expr).app (.fvar cvmValidationAlphaIdTest)).app
+          (.fvar cvmValidationPIdTest) by
+      simp [Expr.instantiateRev_eq, Expr.instantiate_eq,
+        Expr.instantiate1_eq, Expr.instantiate1']]
+    simp only [Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+    have bodyRunExplicit : TypeChecker.Inner.inferType'
+        (((.const constructorValidityMatrixKernelType.name
+          [.param `u] : Expr).app (.fvar cvmValidationAlphaIdTest)).app
+          (.fvar cvmValidationPIdTest)) false
+        (TypeChecker.Methods.withFuel 9998)
+        cvmValidationFunctionFullInternalContextTest.toTypeChecker
+        cvmValidationFunctionFullInternalStateTest =
+          .ok (.sort (.succ (.param `u)),
+            cvmValidationFunctionFullBodyStateTest) := by
+      simpa [cvmValidationFamilyApplicationTest] using bodyRun
+    rw [show TypeChecker.Inner.inferType
+        (((.const constructorValidityMatrixKernelType.name
+          [.param `u] : Expr).app (.fvar cvmValidationAlphaIdTest)).app
+          (.fvar cvmValidationPIdTest)) false
+        (TypeChecker.Methods.withFuel 9999)
+        cvmValidationFunctionFullInternalContextTest.toTypeChecker
+        cvmValidationFunctionFullInternalStateTest =
+          TypeChecker.Inner.inferType'
+            (((.const constructorValidityMatrixKernelType.name
+              [.param `u] : Expr).app
+              (.fvar cvmValidationAlphaIdTest)).app
+              (.fvar cvmValidationPIdTest)) false
+            (TypeChecker.Methods.withFuel 9998)
+            cvmValidationFunctionFullInternalContextTest.toTypeChecker
+            cvmValidationFunctionFullInternalStateTest by rfl]
+    rw [bodyRunExplicit]
+    simp [Expr.sortLevel!, Pure.pure, ReaderT.pure,
+      StateT.pure, Except.pure]
+  have outerRun := prbInferTypeForallCore 9999
+    cvmValidationDirectContextTest.toTypeChecker
+    ({} : TypeChecker.State) cvmValidationFunctionFullBodyStateTest
+    `y (.fvar cvmValidationAlphaIdTest)
+    (cvmValidationFamilyApplicationTest
+      (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest))
+    (.sort (.succ (.param `u))) .default
+    (by simp [cvmValidationFamilyApplicationTest,
+      Expr.hasLooseBVars, Expr.looseBVarRange'])
+    Std.HashMap.getElem?_empty forallRun
+  rw [cvmCtorFunctionDomainValidationShapeTest]
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  change TypeChecker.M.run cvmValidationDirectContextTest.env
+    cvmValidationDirectContextTest.safety cvmValidationDirectContextTest.lctx
+    cvmValidationDirectContextTest.lparams cvmValidationDirectContextTest.fuel
+      (TypeChecker.checkType (.forallE `y
+        (.fvar cvmValidationAlphaIdTest)
+        (cvmValidationFamilyApplicationTest
+          (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest))
+        .default)) = .ok (.sort (.succ (.param `u)))
+  unfold TypeChecker.M.run TypeChecker.checkType TypeChecker.RecM.run
+  simp [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    StateT.pure, Except.pure, Pure.pure,
+    StateT.run', Functor.map, Except.map]
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+    (TypeChecker.Inner.inferType'
+      (.forallE `y (.fvar cvmValidationAlphaIdTest)
+        (cvmValidationFamilyApplicationTest
+          (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest))
+        .default) false
+      (TypeChecker.Methods.withFuel 9999)
+      cvmValidationDirectContextTest.toTypeChecker
+      ({} : TypeChecker.State)) = _
+  simpa [cvmValidationFunctionFullFinalStateTest,
+    prbReplayInsert, Functor.map, Except.map] using
+    congrArg (Except.map (fun x : Expr × TypeChecker.State => x.1))
+      outerRun
+
+theorem cvmValidationAlphaRootCheckTest :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨cvmValidationRootContextTest, .fvar cvmValidationAlphaIdTest,
+        .sort (.succ (.param `u))⟩ :=
+  prbCandidateCheckTypeFVar cvmValidationRootContextTest
+    cvmValidationAlphaIdTest (.sort (.succ (.param `u)))
+    cvmValidationRootDepthTest cvmValidationAlphaFindTest
+
+theorem cvmValidationAlphaFunctionCheckTest :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨cvmValidationFunctionContextTest, .fvar cvmValidationAlphaIdTest,
+        .sort (.succ (.param `u))⟩ :=
+  prbCandidateCheckTypeFVar cvmValidationFunctionContextTest
+    cvmValidationAlphaIdTest (.sort (.succ (.param `u)))
+    cvmValidationFunctionDepthTest cvmValidationAlphaFindInFunctionTest
+
+def cvmCheckedOfValidTest
+    (context : AddInductive.Context) (source inferred : Expr)
+    (fvars : source.FVarsIn
+      (fun fv => (context.lctx.find? fv).isSome = true))
+    (valid : AddInductive.CandidateCheckTypeStep.Valid
+      ⟨context, source, inferred⟩) :
+    AddInductive.ConstructorCheckedExpr context source :=
+  .ofRun fvars valid
+
+def cvmValidationSortCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationRootContextTest
+      (.sort (.succ (.param `u))) :=
+  cvmCheckedOfValidTest _ _ _
+    (by simp [FVarsIn, Level.hasMVar']) cvmValidationRootSortCheckTest
+
+def cvmValidationPDomainCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationRootContextTest
+      cvmValidationPDomainTest :=
+  cvmCheckedOfValidTest _ _ _ (by
+    rw [cvmValidationPDomainShapeTest]
+    simp [FVarsIn, Level.hasMVar']
+    change (cvmValidationRootContextTest.lctx.find?
+      cvmValidationAlphaIdTest).isSome = true
+    rw [cvmValidationAlphaFindTest]
+    rfl) cvmValidationPDomainCheckTest
+
+def cvmValidationAlphaRootCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationRootContextTest
+      (.fvar cvmValidationAlphaIdTest) :=
+  cvmCheckedOfValidTest _ _ _ (by
+    change (cvmValidationRootContextTest.lctx.find?
+      cvmValidationAlphaIdTest).isSome = true
+    rw [cvmValidationAlphaFindTest]
+    rfl) cvmValidationAlphaRootCheckTest
+
+def cvmValidationProofCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationXContextTest
+      cvmCtorProofDomain :=
+  cvmCheckedOfValidTest _ _ _ (by
+    rw [cvmCtorProofDomainValidationShapeTest]
+    simp [cvmValidationPredicateApplicationTest, FVarsIn, Level.hasMVar']
+    constructor
+    · change (cvmValidationXContextTest.lctx.find?
+        cvmValidationPIdTest).isSome = true
+      rw [cvmValidationPFindInXTest]
+      rfl
+    · change (cvmValidationXContextTest.lctx.find?
+        cvmValidationXIdTest).isSome = true
+      rw [cvmValidationXFindTest]
+      rfl) cvmValidationProofCheckTest
+
+def cvmValidationDirectCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationProofContextTest
+      cvmCtorDirectDomain :=
+  cvmCheckedOfValidTest _ _ _ (by
+    rw [cvmCtorDirectDomainValidationShapeTest]
+    simp [cvmValidationFamilyApplicationTest, FVarsIn, Level.hasMVar']
+    constructor
+    · change (cvmValidationProofContextTest.lctx.find?
+        cvmValidationAlphaIdTest).isSome = true
+      rw [cvmValidationAlphaFindInProofTest]
+      rfl
+    · change (cvmValidationProofContextTest.lctx.find?
+        cvmValidationPIdTest).isSome = true
+      rw [cvmValidationPFindInProofTest]
+      rfl) cvmValidationDirectCheckTest
+
+def cvmValidationFunctionCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationDirectContextTest
+      cvmCtorFunctionDomain :=
+  cvmCheckedOfValidTest _ _ _ (by
+    rw [cvmCtorFunctionDomainValidationShapeTest]
+    simp [cvmValidationFamilyApplicationTest, FVarsIn, Level.hasMVar']
+    constructor
+    · change (cvmValidationDirectContextTest.lctx.find?
+        cvmValidationAlphaIdTest).isSome = true
+      rw [cvmValidationAlphaFindInDirectTest]
+      rfl
+    · change (cvmValidationDirectContextTest.lctx.find?
+        cvmValidationPIdTest).isSome = true
+      rw [cvmValidationPFindInDirectTest]
+      rfl) cvmValidationFunctionCheckTest
+
+def cvmValidationAlphaFunctionCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationFunctionContextTest
+      (.fvar cvmValidationAlphaIdTest) :=
+  cvmCheckedOfValidTest _ _ _ (by
+    change (cvmValidationFunctionContextTest.lctx.find?
+      cvmValidationAlphaIdTest).isSome = true
+    rw [cvmValidationAlphaFindInFunctionTest]
+    rfl) cvmValidationAlphaFunctionCheckTest
+
+def cvmValidationLaterProofCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationLaterContextTest
+      cvmCtorLaterProofDomain :=
+  cvmCheckedOfValidTest _ _ _ (by
+    rw [cvmCtorLaterProofDomainValidationShapeTest]
+    simp [cvmValidationPredicateApplicationTest, FVarsIn, Level.hasMVar']
+    constructor
+    · change (cvmValidationLaterContextTest.lctx.find?
+        cvmValidationPIdTest).isSome = true
+      rw [cvmValidationPFindInLaterTest]
+      rfl
+    · change (cvmValidationLaterContextTest.lctx.find?
+        cvmValidationLaterIdTest).isSome = true
+      rw [cvmValidationLaterFindTest]
+      rfl) cvmValidationLaterProofCheckTest
+
+def cvmValidationTerminalCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationLaterProofContextTest
+      cvmCtorTerminal :=
+  cvmCheckedOfValidTest _ _ _ (by
+    rw [cvmCtorTerminalValidationShapeTest]
+    simp [cvmValidationFamilyApplicationTest, FVarsIn, Level.hasMVar']
+    constructor
+    · change (cvmValidationLaterProofContextTest.lctx.find?
+        cvmValidationAlphaIdTest).isSome = true
+      rw [cvmValidationAlphaFindInLaterProofTest]
+      rfl
+    · change (cvmValidationLaterProofContextTest.lctx.find?
+        cvmValidationPIdTest).isSome = true
+      rw [cvmValidationPFindInLaterProofTest]
+      rfl) cvmValidationTerminalCheckTest
+
+@[simp] theorem cvmValidationConsumeXTest :
+    AddInductive.consumeTypeAnnotations cvmCtorXDomain =
+      cvmCtorXDomain := by
+  rw [cvmCtorXDomainValidationShapeTest]
+  simp [AddInductive.consumeTypeAnnotations]
+
+@[simp] theorem cvmValidationConsumeProofTest :
+    AddInductive.consumeTypeAnnotations cvmCtorProofDomain =
+      cvmCtorProofDomain := by
+  rw [cvmCtorProofDomainValidationShapeTest]
+  simp [cvmValidationPredicateApplicationTest,
+    AddInductive.consumeTypeAnnotations]
+
+@[simp] theorem cvmValidationConsumeDirectTest :
+    AddInductive.consumeTypeAnnotations cvmCtorDirectDomain =
+      cvmCtorDirectDomain := by
+  rw [cvmCtorDirectDomainValidationShapeTest]
+  simp [cvmValidationFamilyApplicationTest,
+    AddInductive.consumeTypeAnnotations,
+    constructorValidityMatrixKernelType,
+    constructorValidityMatrixInfo, ConstantInfo.name,
+    ConstantInfo.toConstantVal]
+
+@[simp] theorem cvmValidationConsumeFunctionTest :
+    AddInductive.consumeTypeAnnotations cvmCtorFunctionDomain =
+      cvmCtorFunctionDomain := by
+  rw [cvmCtorFunctionDomainValidationShapeTest]
+  simp [AddInductive.consumeTypeAnnotations]
+
+@[simp] theorem cvmValidationConsumeLaterTest :
+    AddInductive.consumeTypeAnnotations cvmCtorLaterDomain =
+      cvmCtorLaterDomain := by
+  rw [cvmCtorLaterDomainValidationShapeTest]
+  simp [AddInductive.consumeTypeAnnotations]
+
+@[simp] theorem cvmValidationConsumeLaterProofTest :
+    AddInductive.consumeTypeAnnotations cvmCtorLaterProofDomain =
+      cvmCtorLaterProofDomain := by
+  rw [cvmCtorLaterProofDomainValidationShapeTest]
+  simp [cvmValidationPredicateApplicationTest,
+    AddInductive.consumeTypeAnnotations]
+
+theorem cvmCtorPDomainValidationShapeTest :
+    cvmCtorPDomain = .forallE cvmCtorPDomain.bindingName!
+      (.fvar cvmValidationAlphaIdTest) (.sort .zero) .default := by
+  simp_cvm_ctor_expr
+  simp [cvmValidationAlphaIdTest, cvmFamilyContext,
+    cvmConstructorContext, constructorValidityMatrixContext,
+    AddInductive.Context.freshFVarId]
+
+theorem cvmValidationCtorPDomainCheckTest :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨cvmValidationRootContextTest, cvmCtorPDomain,
+        .sort (mkLevelIMax' (.succ (.param `u)) (.succ .zero))⟩ := by
+  rw [cvmCtorPDomainValidationShapeTest]
+  exact cvmValidationAlphaToPropCheckTest cvmCtorPDomain.bindingName!
+
+def cvmValidationXCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationRootContextTest
+      cvmCtorXDomain := by
+  rw [cvmCtorXDomainValidationShapeTest]
+  exact cvmValidationAlphaRootCheckedTest
+
+def cvmValidationXConsumedCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationRootContextTest
+      (AddInductive.consumeTypeAnnotations cvmCtorXDomain) := by
+  rw [cvmValidationConsumeXTest]
+  exact cvmValidationXCheckedTest
+
+def cvmValidationProofConsumedCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationXContextTest
+      (AddInductive.consumeTypeAnnotations cvmCtorProofDomain) := by
+  rw [cvmValidationConsumeProofTest]
+  exact cvmValidationProofCheckedTest
+
+def cvmValidationDirectConsumedCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationProofContextTest
+      (AddInductive.consumeTypeAnnotations cvmCtorDirectDomain) := by
+  rw [cvmValidationConsumeDirectTest]
+  exact cvmValidationDirectCheckedTest
+
+def cvmValidationFunctionConsumedCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationDirectContextTest
+      (AddInductive.consumeTypeAnnotations cvmCtorFunctionDomain) := by
+  rw [cvmValidationConsumeFunctionTest]
+  exact cvmValidationFunctionCheckedTest
+
+def cvmValidationLaterCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationFunctionContextTest
+      cvmCtorLaterDomain := by
+  rw [cvmCtorLaterDomainValidationShapeTest]
+  exact cvmValidationAlphaFunctionCheckedTest
+
+def cvmValidationLaterConsumedCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationFunctionContextTest
+      (AddInductive.consumeTypeAnnotations cvmCtorLaterDomain) := by
+  rw [cvmValidationConsumeLaterTest]
+  exact cvmValidationLaterCheckedTest
+
+def cvmValidationLaterProofConsumedCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationLaterContextTest
+      (AddInductive.consumeTypeAnnotations cvmCtorLaterProofDomain) := by
+  rw [cvmValidationConsumeLaterProofTest]
+  exact cvmValidationLaterProofCheckedTest
+
+def cvmValidationReflObservationTest
+    (context : AddInductive.Context) (source : Expr) :
+    AddInductive.CandidateIsDefEqObservation context source source :=
+  ⟨AddInductive.candidateIsDefEqRefl context source⟩
+
+def cvmValidationXAnnotationsTest :
+    AddInductive.CandidateIsDefEqObservation cvmValidationRootContextTest
+      cvmCtorXDomain
+      (AddInductive.consumeTypeAnnotations cvmCtorXDomain) := by
+  rw [cvmValidationConsumeXTest]
+  exact cvmValidationReflObservationTest _ _
+
+def cvmValidationProofAnnotationsTest :
+    AddInductive.CandidateIsDefEqObservation cvmValidationXContextTest
+      cvmCtorProofDomain
+      (AddInductive.consumeTypeAnnotations cvmCtorProofDomain) := by
+  rw [cvmValidationConsumeProofTest]
+  exact cvmValidationReflObservationTest _ _
+
+def cvmValidationDirectAnnotationsTest :
+    AddInductive.CandidateIsDefEqObservation cvmValidationProofContextTest
+      cvmCtorDirectDomain
+      (AddInductive.consumeTypeAnnotations cvmCtorDirectDomain) := by
+  rw [cvmValidationConsumeDirectTest]
+  exact cvmValidationReflObservationTest _ _
+
+def cvmValidationFunctionAnnotationsTest :
+    AddInductive.CandidateIsDefEqObservation cvmValidationDirectContextTest
+      cvmCtorFunctionDomain
+      (AddInductive.consumeTypeAnnotations cvmCtorFunctionDomain) := by
+  rw [cvmValidationConsumeFunctionTest]
+  exact cvmValidationReflObservationTest _ _
+
+def cvmValidationLaterAnnotationsTest :
+    AddInductive.CandidateIsDefEqObservation cvmValidationFunctionContextTest
+      cvmCtorLaterDomain
+      (AddInductive.consumeTypeAnnotations cvmCtorLaterDomain) := by
+  rw [cvmValidationConsumeLaterTest]
+  exact cvmValidationReflObservationTest _ _
+
+def cvmValidationLaterProofAnnotationsTest :
+    AddInductive.CandidateIsDefEqObservation cvmValidationLaterContextTest
+      cvmCtorLaterProofDomain
+      (AddInductive.consumeTypeAnnotations cvmCtorLaterProofDomain) := by
+  rw [cvmValidationConsumeLaterProofTest]
+  exact cvmValidationReflObservationTest _ _
+
+theorem cvmValidationXFreshTest :
+    cvmValidationXContextTest.lctx.find?
+      cvmValidationXContextTest.freshFVarId = none :=
+  cvmValidationXLocalRunTest.fresh
+
+theorem cvmValidationProofFreshTest :
+    cvmValidationProofContextTest.lctx.find?
+      cvmValidationProofContextTest.freshFVarId = none :=
+  cvmValidationProofLocalRunTest.fresh
+
+theorem cvmValidationDirectFreshTest :
+    cvmValidationDirectContextTest.lctx.find?
+      cvmValidationDirectContextTest.freshFVarId = none :=
+  cvmValidationDirectLocalRunTest.fresh
+
+theorem cvmValidationLaterFreshTest :
+    cvmValidationLaterContextTest.lctx.find?
+      cvmValidationLaterContextTest.freshFVarId = none :=
+  cvmValidationLaterLocalRunTest.fresh
+
+def cvmValidationFunctionPosContextTest : AddInductive.Context :=
+  cvmValidationDirectContextTest.pushLocalDecl `y .default
+    (.fvar cvmValidationAlphaIdTest)
+
+def cvmValidationFunctionPosLocalRunTest :
+    TypeChecker.CandidateLocalContextRun cvmValidationFunctionPosContextTest :=
+  cvmValidationDirectLocalRunTest.push `y .default
+    (.fvar cvmValidationAlphaIdTest)
+
+theorem cvmValidationAlphaFindInFunctionPosTest :
+    cvmValidationFunctionPosContextTest.lctx.find?
+        cvmValidationAlphaIdTest =
+      some (.cdecl 0 cvmValidationAlphaIdTest `α
+        (.sort (.succ (.param `u))) .default .default) :=
+  cvmValidationDirectLocalRunTest.push_findOld `y .default
+    (.fvar cvmValidationAlphaIdTest) cvmValidationAlphaFindInDirectTest
+
+theorem cvmValidationPFindInFunctionPosTest :
+    cvmValidationFunctionPosContextTest.lctx.find? cvmValidationPIdTest =
+      some (.cdecl cvmValidationAlphaContextTest.lctx.decls.size
+        cvmValidationPIdTest `P cvmValidationPDomainTest
+        .default .default) :=
+  cvmValidationDirectLocalRunTest.push_findOld `y .default
+    (.fvar cvmValidationAlphaIdTest) cvmValidationPFindInDirectTest
+
+theorem cvmValidationFunctionPosBodyCheckTest :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨cvmValidationFunctionPosContextTest,
+        cvmValidationFamilyApplicationTest
+          (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest),
+        .sort (.succ (.param `u))⟩ :=
+  cvmValidationFamilyApplicationCheckTest
+    cvmValidationFunctionPosContextTest cvmValidationAlphaIdTest
+    cvmValidationPIdTest rfl cvmValidationAlphaNePTest
+    cvmValidationAlphaFindInFunctionPosTest
+    cvmValidationPFindInFunctionPosTest
+    (by rfl) (by rfl) (by rfl) (by rfl)
+
+def cvmValidationFunctionPosBodyCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationFunctionPosContextTest
+      (cvmValidationFamilyApplicationTest
+        (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest)) :=
+  cvmCheckedOfValidTest _ _ _ (by
+    simp [cvmValidationFamilyApplicationTest, FVarsIn, Level.hasMVar']
+    constructor
+    · change (cvmValidationFunctionPosContextTest.lctx.find?
+        cvmValidationAlphaIdTest).isSome = true
+      rw [cvmValidationAlphaFindInFunctionPosTest]
+      rfl
+    · change (cvmValidationFunctionPosContextTest.lctx.find?
+        cvmValidationPIdTest).isSome = true
+      rw [cvmValidationPFindInFunctionPosTest]
+      rfl) cvmValidationFunctionPosBodyCheckTest
+
+noncomputable def cvmStagedUniverseInputTest :
+    VInductDecl.StagedNormalizationCandidateUniverseInput
+      cvmFamilyContext cvmConstructorContext VEnv.empty [`u]
+      cvmCandidate constructorValidityMatrixDecl where
+  staged := {
+    raw := constructorValidityMatrixType
+    raw_types_eq := rfl
+    declaration_uvars_eq := rfl
+    preFamily := cvmPreFamilyStage
+    family := cvmFamilyStage
+    validation_nparams_eq := rfl
+    constructorValidation := by
+      simpa [cvmFamilyStage, cvmConstructorValidationContextTest,
+        cvmValidationRootContextTest, cvmFamilyTerminalContextTest_eq] using
+        cvmConstructorValidationTest
+    constructors := cvmConstructorsStage
+    familyTypesProduced := cvmFamilyTypesProduced
+    familiesProduced := cvmFamiliesProduced }
+  universeRun := by
+    simpa [cvmFamilyStage, cvmConstructorValidationContextTest,
+      cvmValidationRootContextTest, cvmFamilyTerminalContextTest_eq] using
+      cvmUniverseRunTest
+
+theorem cvmStagedStatsTest_eq :
+    cvmStagedUniverseInputTest.staged.family.validation.stats =
+      cvmFamilyValidationRun.stats := by
+  rfl
+
+theorem cvmStagedIndConstsTest_eq :
+    cvmStagedUniverseInputTest.staged.family.validation.stats.indConsts =
+      #[.const constructorValidityMatrixKernelType.name [.param `u]] := by
+  rw [cvmStagedStatsTest_eq, cvmFamilyValidationRun.stats_eq]
+  simp only [cvmFamilyValidationRun,
+    AddInductive.CandidateExprTrace.singletonCandidateInductiveStats]
+  rw [show
+    cvmCandidate.families.singleton.familyType.type.context.lparams = [`u] by
+      rw [cvmFamilyCandidateContext_eq]
+      rfl]
+  rfl
+
+theorem cvmValidationAlphaHasNoIndOccTest :
+    AddInductive.hasIndOcc
+      cvmStagedUniverseInputTest.staged.family.validation.stats.indConsts
+      (.fvar cvmValidationAlphaIdTest) = false := by
+  rw [cvmStagedIndConstsTest_eq]
+  simp [AddInductive.hasIndOcc]
+
+theorem cvmValidationProofHasNoIndOccTest :
+    AddInductive.hasIndOcc
+      cvmStagedUniverseInputTest.staged.family.validation.stats.indConsts
+      cvmCtorProofDomain = false := by
+  rw [cvmStagedIndConstsTest_eq,
+    cvmCtorProofDomainValidationShapeTest]
+  simp [AddInductive.hasIndOcc,
+    cvmValidationPredicateApplicationTest]
+
+theorem cvmValidationDirectHasIndOccTest :
+    AddInductive.hasIndOcc
+      cvmStagedUniverseInputTest.staged.family.validation.stats.indConsts
+      cvmCtorDirectDomain = true := by
+  rw [cvmStagedIndConstsTest_eq,
+    cvmCtorDirectDomainValidationShapeTest]
+  simp [AddInductive.hasIndOcc,
+    cvmValidationFamilyApplicationTest, Expr.constName!]
+
+theorem cvmValidationFunctionHasIndOccTest :
+    AddInductive.hasIndOcc
+      cvmStagedUniverseInputTest.staged.family.validation.stats.indConsts
+      cvmCtorFunctionDomain = true := by
+  rw [cvmStagedIndConstsTest_eq,
+    cvmCtorFunctionDomainValidationShapeTest]
+  simp [AddInductive.hasIndOcc,
+    cvmValidationFamilyApplicationTest, Expr.constName!]
+
+theorem cvmValidationLaterProofHasNoIndOccTest :
+    AddInductive.hasIndOcc
+      cvmStagedUniverseInputTest.staged.family.validation.stats.indConsts
+      cvmCtorLaterProofDomain = false := by
+  rw [cvmStagedIndConstsTest_eq,
+    cvmCtorLaterProofDomainValidationShapeTest]
+  simp [AddInductive.hasIndOcc,
+    cvmValidationPredicateApplicationTest]
+
+theorem cvmValidationFunctionPosBodyHasIndOccTest :
+    AddInductive.hasIndOcc
+      cvmStagedUniverseInputTest.staged.family.validation.stats.indConsts
+      (cvmValidationFamilyApplicationTest
+        (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest)) =
+      true := by
+  rw [cvmStagedIndConstsTest_eq]
+  simp [AddInductive.hasIndOcc,
+    cvmValidationFamilyApplicationTest, Expr.constName!]
+
+theorem cvmCandidateWhnfResultEqTest
+    (self : AddInductive.CandidateWhnfStep.Valid
+      ⟨context, source, source⟩)
+    (other : AddInductive.CandidateWhnfStep.Valid
+      ⟨context, source, result⟩) :
+    result = source := by
+  unfold AddInductive.CandidateWhnfStep.Valid at self other
+  rw [self] at other
+  exact (Except.ok.inj other).symm
+
+theorem cvmValidationAlphaRootWhnfSelfTest :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨cvmValidationRootContextTest, .fvar cvmValidationAlphaIdTest,
+        .fvar cvmValidationAlphaIdTest⟩ := by
+  apply TypeChecker.candidateWhnfFVar_refl _ _ 9999
+  · rfl
+  · unfold TypeChecker.Inner.isLetFVar
+    rw [cvmValidationAlphaFindTest]
+
+theorem cvmValidationProofWhnfSelfTest :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨cvmValidationXContextTest, cvmCtorProofDomain,
+        cvmCtorProofDomain⟩ := by
+  rw [cvmCtorProofDomainValidationShapeTest]
+  apply TypeChecker.candidateWhnfFVarAppFVar_refl
+    cvmValidationXContextTest cvmValidationPIdTest cvmValidationXIdTest
+  · rfl
+  · rfl
+  · rw [show cvmValidationXContextTest.env =
+        cvmConstructorContext.env by rfl]
+    exact cvmCtorQuotInit
+  · unfold TypeChecker.Inner.isLetFVar
+    rw [cvmValidationPFindInXTest]
+
+theorem cvmValidationDirectWhnfSelfTest :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨cvmValidationProofContextTest, cvmCtorDirectDomain,
+        cvmCtorDirectDomain⟩ := by
+  rw [cvmCtorDirectDomainValidationShapeTest]
+  unfold cvmValidationFamilyApplicationTest
+  apply cvmCtorFamilyWhnf cvmValidationProofContextTest
+    cvmValidationAlphaIdTest cvmValidationPIdTest
+    (by rfl) (by rfl) (by rfl)
+  rw [show cvmValidationProofContextTest.env =
+    cvmConstructorContext.env by rfl]
+  exact cvmCtorQuotInit
+
+theorem cvmValidationFunctionWhnfSelfTest :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨cvmValidationDirectContextTest, cvmCtorFunctionDomain,
+        cvmCtorFunctionDomain⟩ := by
+  apply TypeChecker.CandidateExprIdentityReplay.Shaped.candidateWhnfForallSource_refl
+    _ _ 9999
+  · rfl
+  · rw [cvmCtorFunctionDomainValidationShapeTest]
+    rfl
+
+theorem cvmValidationAlphaFunctionWhnfSelfTest :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨cvmValidationFunctionContextTest,
+        .fvar cvmValidationAlphaIdTest,
+        .fvar cvmValidationAlphaIdTest⟩ := by
+  apply TypeChecker.candidateWhnfFVar_refl _ _ 9999
+  · rfl
+  · unfold TypeChecker.Inner.isLetFVar
+    rw [cvmValidationAlphaFindInFunctionTest]
+
+theorem cvmValidationLaterProofWhnfSelfTest :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨cvmValidationLaterContextTest, cvmCtorLaterProofDomain,
+        cvmCtorLaterProofDomain⟩ := by
+  rw [cvmCtorLaterProofDomainValidationShapeTest]
+  unfold cvmValidationPredicateApplicationTest
+  apply TypeChecker.candidateWhnfFVarAppFVar_refl
+    cvmValidationLaterContextTest cvmValidationPIdTest
+    cvmValidationLaterIdTest
+  · rfl
+  · rfl
+  · rw [show cvmValidationLaterContextTest.env =
+        cvmConstructorContext.env by rfl]
+    exact cvmCtorQuotInit
+  · unfold TypeChecker.Inner.isLetFVar
+    rw [cvmValidationPFindInLaterTest]
+
+theorem cvmValidationFunctionPosBodyWhnfSelfTest :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨cvmValidationFunctionPosContextTest,
+        cvmValidationFamilyApplicationTest
+          (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest),
+        cvmValidationFamilyApplicationTest
+          (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest)⟩ := by
+  unfold cvmValidationFamilyApplicationTest
+  apply cvmCtorFamilyWhnf cvmValidationFunctionPosContextTest
+    cvmValidationAlphaIdTest cvmValidationPIdTest
+    (by rfl) (by rfl) (by rfl)
+  rw [show cvmValidationFunctionPosContextTest.env =
+    cvmConstructorContext.env by rfl]
+  exact cvmCtorQuotInit
+
+theorem cvmValidationAlphaDirectCheckTest :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨cvmValidationDirectContextTest, .fvar cvmValidationAlphaIdTest,
+        .sort (.succ (.param `u))⟩ :=
+  prbCandidateCheckTypeFVar cvmValidationDirectContextTest
+    cvmValidationAlphaIdTest (.sort (.succ (.param `u)))
+    (by rfl) cvmValidationAlphaFindInDirectTest
+
+def cvmValidationAlphaDirectCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationDirectContextTest
+      (.fvar cvmValidationAlphaIdTest) :=
+  cvmCheckedOfValidTest _ _ _ (by
+    change (cvmValidationDirectContextTest.lctx.find?
+      cvmValidationAlphaIdTest).isSome = true
+    rw [cvmValidationAlphaFindInDirectTest]
+    rfl) cvmValidationAlphaDirectCheckTest
+
+def cvmValidationAlphaDirectConsumedCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationDirectContextTest
+      (AddInductive.consumeTypeAnnotations
+        (.fvar cvmValidationAlphaIdTest)) := by
+  simp [AddInductive.consumeTypeAnnotations]
+  exact cvmValidationAlphaDirectCheckedTest
+
+def cvmValidationAlphaDirectAnnotationsTest :
+    AddInductive.CandidateIsDefEqObservation cvmValidationDirectContextTest
+      (.fvar cvmValidationAlphaIdTest)
+      (AddInductive.consumeTypeAnnotations
+        (.fvar cvmValidationAlphaIdTest)) := by
+  simp [AddInductive.consumeTypeAnnotations]
+  exact cvmValidationReflObservationTest _ _
+
+theorem cvmValidationXWhnfSelfTest :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨cvmValidationRootContextTest, cvmCtorXDomain,
+        cvmCtorXDomain⟩ := by
+  simpa [cvmCtorXDomainValidationShapeTest] using
+    cvmValidationAlphaRootWhnfSelfTest
+
+theorem cvmValidationLaterWhnfSelfTest :
+    AddInductive.CandidateWhnfStep.Valid
+      ⟨cvmValidationFunctionContextTest, cvmCtorLaterDomain,
+        cvmCtorLaterDomain⟩ := by
+  simpa [cvmCtorLaterDomainValidationShapeTest] using
+    cvmValidationAlphaFunctionWhnfSelfTest
+
+theorem cvmValidationXHasNoIndOccTest :
+    AddInductive.hasIndOcc
+      cvmStagedUniverseInputTest.staged.family.validation.stats.indConsts
+      cvmCtorXDomain = false := by
+  rw [cvmCtorXDomainValidationShapeTest]
+  exact cvmValidationAlphaHasNoIndOccTest
+
+theorem cvmValidationLaterHasNoIndOccTest :
+    AddInductive.hasIndOcc
+      cvmStagedUniverseInputTest.staged.family.validation.stats.indConsts
+      cvmCtorLaterDomain = false := by
+  rw [cvmCtorLaterDomainValidationShapeTest]
+  exact cvmValidationAlphaHasNoIndOccTest
+
+def cvmTransportPositivityFuelTraceTest
+    {fuel fuel' : Nat} (fuelEq : fuel = fuel')
+    (trace : AddInductive.ConstructorPositivityTrace stats ctor argIdx
+      context source fuel) :
+    AddInductive.ConstructorPositivityTrace stats ctor argIdx
+      context source fuel' := by
+  subst fuel'
+  exact trace
+
+def cvmTransportPositivityFuelAlignmentTest
+    {fuel fuel' : Nat} (fuelEq : fuel = fuel')
+    (trace : AddInductive.ConstructorPositivityTrace stats ctor argIdx
+      context source fuel)
+    (alignment : AddInductive.ConstructorPositivityAlignmentTrace
+      (cvmTransportPositivityFuelTraceTest fuelEq trace)) :
+    AddInductive.ConstructorPositivityAlignmentTrace trace := by
+  subst fuel'
+  exact alignment
+
+noncomputable def cvmAbsentPositivityAlignmentCoreTest
+    (self : AddInductive.CandidateWhnfStep.Valid
+      ⟨context, source, source⟩)
+    (notForall : source.isForall = false)
+    (noOccurrence : AddInductive.hasIndOcc stats.indConsts source = false)
+    (checked : AddInductive.ConstructorCheckedExpr context source)
+    (trace : AddInductive.ConstructorPositivityTrace stats ctor argIdx
+      context source 1000) :
+    AddInductive.ConstructorPositivityAlignmentTrace trace := by
+  cases trace with
+  | absent context source result fuel whnf occurs =>
+      have resultEq := cvmCandidateWhnfResultEqTest self whnf
+      subst result
+      exact .absent checked
+  | forallE context source fuel name domain body binderInfo whnf occurs
+      domainFree tail =>
+      have resultEq := cvmCandidateWhnfResultEqTest self whnf
+      have impossible := congrArg Expr.isForall resultEq
+      have forallEq : true = source.isForall := by
+        simpa only [Expr.isForall] using impossible
+      have : true = false := forallEq.trans notForall
+      contradiction
+  | target context source result fuel targetIdx whnf occurs terminal valid =>
+      have resultEq := cvmCandidateWhnfResultEqTest self whnf
+      subst result
+      rw [noOccurrence] at occurs
+      contradiction
+
+noncomputable def cvmTargetPositivityAlignmentCoreTest
+    (self : AddInductive.CandidateWhnfStep.Valid
+      ⟨context, source, source⟩)
+    (notForall : source.isForall = false)
+    (hasOccurrence : AddInductive.hasIndOcc stats.indConsts source = true)
+    (checked : AddInductive.ConstructorCheckedExpr context source)
+    (trace : AddInductive.ConstructorPositivityTrace stats ctor argIdx
+      context source 1000) :
+    AddInductive.ConstructorPositivityAlignmentTrace trace := by
+  cases trace with
+  | absent context source result fuel whnf occurs =>
+      have resultEq := cvmCandidateWhnfResultEqTest self whnf
+      subst result
+      rw [hasOccurrence] at occurs
+      contradiction
+  | forallE context source fuel name domain body binderInfo whnf occurs
+      domainFree tail =>
+      have resultEq := cvmCandidateWhnfResultEqTest self whnf
+      have impossible := congrArg Expr.isForall resultEq
+      have forallEq : true = source.isForall := by
+        simpa only [Expr.isForall] using impossible
+      have : true = false := forallEq.trans notForall
+      contradiction
+  | target context source result fuel targetIdx whnf occurs terminal valid =>
+      have resultEq := cvmCandidateWhnfResultEqTest self whnf
+      subst result
+      exact .target checked
+
+noncomputable def cvmAbsentPositivityModeAlignmentTest
+    (self : AddInductive.CandidateWhnfStep.Valid
+      ⟨context, source, source⟩)
+    (notForall : source.isForall = false)
+    (noOccurrence : AddInductive.hasIndOcc stats.indConsts source = false)
+    (checked : AddInductive.ConstructorCheckedExpr context source)
+    (inductiveFuel : context.fuel.inductiveFuel = 1000)
+    (trace : AddInductive.ConstructorPositivityModeTrace stats false ctor
+      argIdx context source) :
+    AddInductive.ConstructorPositivityModeAlignmentTrace trace := by
+  cases trace with
+  | skipped unsafeEq => contradiction
+  | safe unsafeEq positivityTrace =>
+      apply AddInductive.ConstructorPositivityModeAlignmentTrace.safe
+      let normalized := cvmTransportPositivityFuelTraceTest
+        inductiveFuel positivityTrace
+      have normalizedAlignment := cvmAbsentPositivityAlignmentCoreTest
+        self notForall noOccurrence checked normalized
+      exact cvmTransportPositivityFuelAlignmentTest
+        inductiveFuel positivityTrace normalizedAlignment
+
+noncomputable def cvmTargetPositivityModeAlignmentTest
+    (self : AddInductive.CandidateWhnfStep.Valid
+      ⟨context, source, source⟩)
+    (notForall : source.isForall = false)
+    (hasOccurrence : AddInductive.hasIndOcc stats.indConsts source = true)
+    (checked : AddInductive.ConstructorCheckedExpr context source)
+    (inductiveFuel : context.fuel.inductiveFuel = 1000)
+    (trace : AddInductive.ConstructorPositivityModeTrace stats false ctor
+      argIdx context source) :
+    AddInductive.ConstructorPositivityModeAlignmentTrace trace := by
+  cases trace with
+  | skipped unsafeEq => contradiction
+  | safe unsafeEq positivityTrace =>
+      apply AddInductive.ConstructorPositivityModeAlignmentTrace.safe
+      let normalized := cvmTransportPositivityFuelTraceTest
+        inductiveFuel positivityTrace
+      have normalizedAlignment := cvmTargetPositivityAlignmentCoreTest
+        self notForall hasOccurrence checked normalized
+      exact cvmTransportPositivityFuelAlignmentTest
+        inductiveFuel positivityTrace normalizedAlignment
+
+noncomputable def cvmValidationXPositivityAlignmentTest
+    (trace : AddInductive.ConstructorPositivityModeTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats false
+      constructorValidityMatrixKernelCtor.name 2
+      cvmValidationRootContextTest cvmCtorXDomain) :
+    AddInductive.ConstructorPositivityModeAlignmentTrace trace :=
+  cvmAbsentPositivityModeAlignmentTest cvmValidationXWhnfSelfTest
+    (by rw [cvmCtorXDomainValidationShapeTest]; rfl)
+    cvmValidationXHasNoIndOccTest cvmValidationXCheckedTest (by rfl) trace
+
+noncomputable def cvmValidationProofPositivityAlignmentTest
+    (trace : AddInductive.ConstructorPositivityModeTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats false
+      constructorValidityMatrixKernelCtor.name 3
+      cvmValidationXContextTest cvmCtorProofDomain) :
+    AddInductive.ConstructorPositivityModeAlignmentTrace trace :=
+  cvmAbsentPositivityModeAlignmentTest cvmValidationProofWhnfSelfTest
+    (by rw [cvmCtorProofDomainValidationShapeTest]; rfl)
+    cvmValidationProofHasNoIndOccTest cvmValidationProofCheckedTest
+    (by rfl) trace
+
+noncomputable def cvmValidationDirectPositivityAlignmentTest
+    (trace : AddInductive.ConstructorPositivityModeTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats false
+      constructorValidityMatrixKernelCtor.name 4
+      cvmValidationProofContextTest cvmCtorDirectDomain) :
+    AddInductive.ConstructorPositivityModeAlignmentTrace trace :=
+  cvmTargetPositivityModeAlignmentTest cvmValidationDirectWhnfSelfTest
+    (by rw [cvmCtorDirectDomainValidationShapeTest]; rfl)
+    cvmValidationDirectHasIndOccTest cvmValidationDirectCheckedTest
+    (by rfl) trace
+
+noncomputable def cvmValidationLaterPositivityAlignmentTest
+    (trace : AddInductive.ConstructorPositivityModeTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats false
+      constructorValidityMatrixKernelCtor.name 6
+      cvmValidationFunctionContextTest cvmCtorLaterDomain) :
+    AddInductive.ConstructorPositivityModeAlignmentTrace trace :=
+  cvmAbsentPositivityModeAlignmentTest cvmValidationLaterWhnfSelfTest
+    (by rw [cvmCtorLaterDomainValidationShapeTest]; rfl)
+    cvmValidationLaterHasNoIndOccTest cvmValidationLaterCheckedTest
+    (by rfl) trace
+
+noncomputable def cvmValidationLaterProofPositivityAlignmentTest
+    (trace : AddInductive.ConstructorPositivityModeTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats false
+      constructorValidityMatrixKernelCtor.name 7
+      cvmValidationLaterContextTest cvmCtorLaterProofDomain) :
+    AddInductive.ConstructorPositivityModeAlignmentTrace trace :=
+  cvmAbsentPositivityModeAlignmentTest cvmValidationLaterProofWhnfSelfTest
+    (by rw [cvmCtorLaterProofDomainValidationShapeTest]; rfl)
+    cvmValidationLaterProofHasNoIndOccTest
+    cvmValidationLaterProofCheckedTest (by rfl) trace
+
+def cvmTransportPositivityTraceTest
+    {context context' : AddInductive.Context}
+    (contextEq : context = context')
+    {source source' : Expr} (sourceEq : source = source')
+    (trace : AddInductive.ConstructorPositivityTrace stats ctor argIdx
+      context source fuel) :
+    AddInductive.ConstructorPositivityTrace stats ctor argIdx
+      context' source' fuel := by
+  subst context'
+  subst source'
+  exact trace
+
+def cvmTransportPositivityAlignmentTest
+    {context context' : AddInductive.Context}
+    (contextEq : context = context')
+    {source source' : Expr} (sourceEq : source = source')
+    (trace : AddInductive.ConstructorPositivityTrace stats ctor argIdx
+      context source fuel)
+    (alignment : AddInductive.ConstructorPositivityAlignmentTrace
+      (cvmTransportPositivityTraceTest contextEq sourceEq trace)) :
+    AddInductive.ConstructorPositivityAlignmentTrace trace := by
+  subst context'
+  subst source'
+  exact alignment
+
+noncomputable def cvmValidationFunctionPositivityAlignmentTest
+    (trace : AddInductive.ConstructorPositivityModeTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats false
+      constructorValidityMatrixKernelCtor.name 5
+      cvmValidationDirectContextTest cvmCtorFunctionDomain) :
+    AddInductive.ConstructorPositivityModeAlignmentTrace trace := by
+  cases trace with
+  | skipped unsafeEq => contradiction
+  | safe unsafeEq positivityTrace =>
+      apply AddInductive.ConstructorPositivityModeAlignmentTrace.safe
+      cases positivityTrace with
+      | absent context source result fuel whnf occurs =>
+          have resultEq := cvmCandidateWhnfResultEqTest
+            cvmValidationFunctionWhnfSelfTest whnf
+          subst result
+          rw [cvmValidationFunctionHasIndOccTest] at occurs
+          contradiction
+      | forallE context source fuel name domain body binderInfo whnf occurs
+          domainFree tail =>
+          have resultEq := cvmCandidateWhnfResultEqTest
+            cvmValidationFunctionWhnfSelfTest whnf
+          rw [cvmCtorFunctionDomainValidationShapeTest] at resultEq
+          injection resultEq with nameEq domainEq bodyEq binderInfoEq
+          subst name
+          subst domain
+          subst body
+          subst binderInfo
+          have tailContextEq :
+              cvmValidationDirectContextTest.pushLocalDecl `y .default
+                  (AddInductive.consumeTypeAnnotations
+                    (.fvar cvmValidationAlphaIdTest)) =
+                cvmValidationFunctionPosContextTest := by
+            simp [cvmValidationFunctionPosContextTest,
+              AddInductive.consumeTypeAnnotations]
+          have tailSourceEq :
+              (cvmValidationFamilyApplicationTest
+                (.fvar cvmValidationAlphaIdTest)
+                (.fvar cvmValidationPIdTest)).instantiate1
+                  cvmValidationDirectContextTest.freshExpr =
+                cvmValidationFamilyApplicationTest
+                  (.fvar cvmValidationAlphaIdTest)
+                  (.fvar cvmValidationPIdTest) := by
+            simp [cvmValidationFamilyApplicationTest,
+              Expr.instantiate1_eq, Expr.instantiate1']
+          let tailNormalized := cvmTransportPositivityTraceTest
+            tailContextEq tailSourceEq tail
+          have tailNormalizedAlignment :
+              AddInductive.ConstructorPositivityAlignmentTrace
+                tailNormalized := by
+            cases htail : tailNormalized with
+            | absent context source result fuel whnf occurs =>
+                have resultEq := cvmCandidateWhnfResultEqTest
+                  cvmValidationFunctionPosBodyWhnfSelfTest whnf
+                subst result
+                rw [cvmValidationFunctionPosBodyHasIndOccTest] at occurs
+                contradiction
+            | forallE context source fuel name domain body binderInfo whnf
+                occurs domainFree tail =>
+                have resultEq := cvmCandidateWhnfResultEqTest
+                  cvmValidationFunctionPosBodyWhnfSelfTest whnf
+                have impossible := congrArg Expr.isForall resultEq
+                simp [cvmValidationFamilyApplicationTest,
+                  Expr.isForall] at impossible
+            | target context source result fuel targetIdx whnf occurs
+                terminal valid =>
+                have resultEq := cvmCandidateWhnfResultEqTest
+                  cvmValidationFunctionPosBodyWhnfSelfTest whnf
+                subst result
+                exact .target cvmValidationFunctionPosBodyCheckedTest
+          have tailAlignment := cvmTransportPositivityAlignmentTest
+            tailContextEq tailSourceEq tail tailNormalizedAlignment
+          exact .forallE cvmValidationFunctionCheckedTest
+            cvmValidationAlphaDirectCheckedTest
+            cvmValidationAlphaDirectConsumedCheckedTest
+            (.succ (.param `u))
+            (cvmValidationAlphaDirectConsumedCheckedTest.inferred_eq_of_run
+              (by
+                simpa [AddInductive.consumeTypeAnnotations] using
+                  cvmValidationAlphaDirectCheckTest))
+            cvmValidationDirectFreshTest
+            cvmValidationAlphaDirectAnnotationsTest tail tailAlignment
+      | target context source result fuel targetIdx whnf occurs terminal valid =>
+          have resultEq := cvmCandidateWhnfResultEqTest
+            cvmValidationFunctionWhnfSelfTest whnf
+          subst result
+          rw [cvmCtorFunctionDomainValidationShapeTest] at terminal
+          simp [Expr.isForall] at terminal
+
+def cvmValidationCtorPDomainCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationRootContextTest
+      cvmCtorPDomain :=
+  cvmCheckedOfValidTest _ _ _ (by
+    rw [cvmCtorPDomainValidationShapeTest]
+    simp [FVarsIn, Level.hasMVar']
+    change (cvmValidationRootContextTest.lctx.find?
+      cvmValidationAlphaIdTest).isSome = true
+    rw [cvmValidationAlphaFindTest]
+    rfl) cvmValidationCtorPDomainCheckTest
+
+def cvmValidationTerminalShapeCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmValidationLaterProofContextTest
+      (cvmValidationFamilyApplicationTest
+        (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest)) := by
+  rw [← cvmCtorTerminalValidationShapeTest]
+  exact cvmValidationTerminalCheckedTest
+
+theorem cvmCtorViewTest_eq :
+    cvmCandidate.families.singleton.constructors.singleton.type.view =
+      constructorValidityMatrixKernelCtor.type := by
+  apply cvmCtorIdentityEvidence.identity.view_eq_source
+  · apply TypeChecker.CandidateLocalContextRun.empty
+    rw [cvmConstructorCandidateContext_eq]
+    rfl
+  · rw [cvmConstructorCandidateContext_eq]
+    simp [constructorValidityMatrixKernelCtor,
+      constructorValidityMatrixMkInfo, ConstantInfo.type,
+      ConstantInfo.toConstantVal, FVarsIn, Level.hasMVar']
+
+def cvmTransportValidationTraceTest
+    {context context' : AddInductive.Context}
+    (contextEq : context = context')
+    {source source' : Expr} (sourceEq : source = source')
+    (trace : AddInductive.ConstructorTypeValidationTrace stats isUnsafe
+      familyIdx ctor context source argIdx fuel) :
+    AddInductive.ConstructorTypeValidationTrace stats isUnsafe familyIdx ctor
+      context' source' argIdx fuel := by
+  subst context'
+  subst source'
+  exact trace
+
+def cvmTransportViewAlignmentTest
+    {context context' : AddInductive.Context}
+    (contextEq : context = context')
+    {source source' view view' : Expr}
+    (sourceEq : source = source') (viewEq : view = view')
+    (trace : AddInductive.ConstructorTypeValidationTrace stats isUnsafe
+      familyIdx ctor context source argIdx fuel)
+    (alignment : AddInductive.ConstructorViewAlignmentTrace
+      (cvmTransportValidationTraceTest contextEq sourceEq trace) view') :
+    AddInductive.ConstructorViewAlignmentTrace trace view := by
+  subst context'
+  subst source'
+  subst view'
+  exact alignment
+
+@[simp] theorem cvmTransportValidationTraceSpineLengthTest
+    {context context' : AddInductive.Context}
+    (contextEq : context = context')
+    {source source' : Expr} (sourceEq : source = source')
+    (trace : AddInductive.ConstructorTypeValidationTrace stats isUnsafe
+      familyIdx ctor context source argIdx fuel) :
+    (cvmTransportValidationTraceTest contextEq sourceEq trace).spineLength =
+      trace.spineLength := by
+  subst context'
+  subst source'
+  rfl
+
+def cvmTransportValidationTraceIndexedTest
+    {context context' : AddInductive.Context}
+    (contextEq : context = context')
+    {source source' : Expr} (sourceEq : source = source')
+    {argIdx argIdx' : Nat} (argIdxEq : argIdx = argIdx')
+    {fuel fuel' : Nat} (fuelEq : fuel = fuel')
+    (trace : AddInductive.ConstructorTypeValidationTrace stats isUnsafe
+      familyIdx ctor context source argIdx fuel) :
+    AddInductive.ConstructorTypeValidationTrace stats isUnsafe familyIdx ctor
+      context' source' argIdx' fuel' := by
+  subst context'
+  subst source'
+  subst argIdx'
+  subst fuel'
+  exact trace
+
+def cvmTransportViewAlignmentIndexedTest
+    {context context' : AddInductive.Context}
+    (contextEq : context = context')
+    {source source' view view' : Expr}
+    (sourceEq : source = source') (viewEq : view = view')
+    {argIdx argIdx' : Nat} (argIdxEq : argIdx = argIdx')
+    {fuel fuel' : Nat} (fuelEq : fuel = fuel')
+    (trace : AddInductive.ConstructorTypeValidationTrace stats isUnsafe
+      familyIdx ctor context source argIdx fuel)
+    (alignment : AddInductive.ConstructorViewAlignmentTrace
+      (cvmTransportValidationTraceIndexedTest contextEq sourceEq argIdxEq
+        fuelEq trace) view') :
+    AddInductive.ConstructorViewAlignmentTrace trace view := by
+  subst context'
+  subst source'
+  subst view'
+  subst argIdx'
+  subst fuel'
+  exact alignment
+
+@[simp] theorem cvmTransportValidationTraceIndexedSpineLengthTest
+    {context context' : AddInductive.Context}
+    (contextEq : context = context')
+    {source source' : Expr} (sourceEq : source = source')
+    {argIdx argIdx' : Nat} (argIdxEq : argIdx = argIdx')
+    {fuel fuel' : Nat} (fuelEq : fuel = fuel')
+    (trace : AddInductive.ConstructorTypeValidationTrace stats isUnsafe
+      familyIdx ctor context source argIdx fuel) :
+    (cvmTransportValidationTraceIndexedTest contextEq sourceEq argIdxEq
+      fuelEq trace).spineLength = trace.spineLength := by
+  subst context'
+  subst source'
+  subst argIdx'
+  subst fuel'
+  rfl
+
+set_option pp.universes false in
+set_option pp.all false in
+noncomputable def cvmStagedPostFamilyInputTest :
+    VInductDecl.StagedNormalizationCandidatePostFamilyInput
+      cvmFamilyContext cvmConstructorContext VEnv.empty [`u]
+      cvmCandidate constructorValidityMatrixDecl where
+  universeInput := cvmStagedUniverseInputTest
+  alignment := by
+    rw [AddInductive.CandidateList.singleton_eta
+      cvmCandidate.families.singleton.constructors]
+    change AddInductive.ConstructorCandidateAlignmentTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats false 0
+      { cvmCandidate.families.singleton.familyType.type.trace.terminalContext with
+        env := cvmConstructorContext.env }
+      cvmStagedUniverseInputTest.staged.constructorValidation.trace
+      (.cons cvmCandidate.families.singleton.constructors.singleton .nil)
+    generalize htrace :
+      cvmStagedUniverseInputTest.staged.constructorValidation.trace = trace
+    cases trace with
+    | cons seen head constructors fresh closed rootCheck typeTrace tailTrace =>
+      clear htrace
+      have rootContextEq :
+          { cvmCandidate.families.singleton.familyType.type.trace.terminalContext with
+              env := cvmConstructorContext.env } =
+            cvmValidationRootContextTest := by
+        rw [cvmFamilyTerminalContextTest_eq]
+        rfl
+      have rootFuelEq :
+          { cvmCandidate.families.singleton.familyType.type.trace.terminalContext with
+              env := cvmConstructorContext.env }.fuel.inductiveFuel = 1000 := by
+        rw [cvmFamilyTerminalContextTest_eq]
+        rfl
+      let rootNormalized := cvmTransportValidationTraceIndexedTest
+        rootContextEq (by rfl) (by rfl) rootFuelEq typeTrace
+      let rootNormalizedTrace := rootNormalized
+      have rootSpine : typeTrace.spineLength =
+          rootNormalizedTrace.spineLength :=
+        (cvmTransportValidationTraceIndexedSpineLengthTest rootContextEq
+          (by rfl) (by rfl) rootFuelEq typeTrace).symm
+      cases hroot : rootNormalizedTrace with
+      | parameter context fuel argIdx name domain body binderInfo parameter
+          parameterType parameterAt parameterTypeRun defeq afterAlphaTrace =>
+        simp [hroot,
+          AddInductive.ConstructorTypeValidationTrace.spineLength] at rootSpine
+        rw [cvmStagedStatsTest_eq, cvmStatsParamsTest] at parameterAt
+        simp at parameterAt
+        subst parameter
+        change AddInductive.getType (.fvar cvmValidationAlphaIdTest)
+          cvmValidationRootContextTest = .ok parameterType at parameterTypeRun
+        rw [cvmValidationGetTypeAlphaTest] at parameterTypeRun
+        injection parameterTypeRun with parameterTypeEq
+        subst parameterType
+        let afterAlphaSourceEq := cvmFirstParameterSourceTest.trans
+          cvmCtorAfterAlphaForallTest
+        let afterAlphaNormalized := cvmTransportValidationTraceTest (by rfl)
+          afterAlphaSourceEq afterAlphaTrace
+        let afterAlphaNormalizedTrace := afterAlphaNormalized
+        have afterAlphaSpine : afterAlphaTrace.spineLength =
+            afterAlphaNormalizedTrace.spineLength :=
+          (cvmTransportValidationTraceSpineLengthTest (by rfl)
+            afterAlphaSourceEq afterAlphaTrace).symm
+        cases hafterAlpha : afterAlphaNormalizedTrace with
+        | parameter context fuel argIdx name domain body binderInfo parameter
+            parameterType parameterAt parameterTypeRun defeq afterPTrace =>
+          simp [hafterAlpha,
+            AddInductive.ConstructorTypeValidationTrace.spineLength]
+            at afterAlphaSpine
+          rw [cvmStagedStatsTest_eq, cvmStatsParamsTest] at parameterAt
+          simp at parameterAt
+          subst parameter
+          change AddInductive.getType (.fvar cvmValidationPIdTest)
+            cvmValidationRootContextTest = .ok parameterType at parameterTypeRun
+          rw [cvmValidationGetTypePTest] at parameterTypeRun
+          injection parameterTypeRun with parameterTypeEq
+          subst parameterType
+          let afterPSourceEq := cvmSecondParameterSourceTest.trans
+            cvmCtorAfterPForallTest
+          let afterPNormalized := cvmTransportValidationTraceTest (by rfl)
+            afterPSourceEq afterPTrace
+          let afterPNormalizedTrace := afterPNormalized
+          have afterPSpine : afterPTrace.spineLength =
+              afterPNormalizedTrace.spineLength :=
+            (cvmTransportValidationTraceSpineLengthTest (by rfl)
+              afterPSourceEq afterPTrace).symm
+          cases hafterP : afterPNormalizedTrace with
+          | parameter context fuel argIdx name domain body binderInfo parameter
+              parameterType parameterAt parameterTypeRun defeq tail =>
+            rw [cvmStagedStatsTest_eq, cvmStatsParamsTest] at parameterAt
+            simp at parameterAt
+          | ordinary context fuel argIdx name domain body binderInfo sortResult
+              noParameter ensureType universeTrace xPositivity afterXTrace =>
+            simp [hafterP,
+              AddInductive.ConstructorTypeValidationTrace.spineLength]
+              at afterPSpine
+            have xContextEq :
+                cvmValidationRootContextTest.pushLocalDecl `x .default
+                    (AddInductive.consumeTypeAnnotations cvmCtorXDomain) =
+                  cvmValidationXContextTest := by rfl
+            let afterXSourceEq := cvmFirstFieldSourceTest.trans
+              cvmCtorAfterXForallTest
+            let afterXNormalized := cvmTransportValidationTraceTest xContextEq
+              afterXSourceEq afterXTrace
+            let afterXNormalizedTrace := afterXNormalized
+            have afterXSpine : afterXTrace.spineLength =
+                afterXNormalizedTrace.spineLength :=
+              (cvmTransportValidationTraceSpineLengthTest xContextEq
+                afterXSourceEq afterXTrace).symm
+            cases hafterX : afterXNormalizedTrace with
+            | parameter context fuel argIdx name domain body binderInfo parameter
+                parameterType parameterAt parameterTypeRun defeq tail =>
+              rw [cvmStagedStatsTest_eq, cvmStatsParamsTest] at parameterAt
+              simp at parameterAt
+            | ordinary context fuel argIdx name domain body binderInfo sortResult
+                noParameter ensureType universeTrace proofPositivity
+                afterProofTrace =>
+              simp [hafterX,
+                AddInductive.ConstructorTypeValidationTrace.spineLength]
+                at afterXSpine
+              have proofContextEq :
+                  cvmValidationXContextTest.pushLocalDecl `proof .default
+                      (AddInductive.consumeTypeAnnotations cvmCtorProofDomain) =
+                    cvmValidationProofContextTest := by rfl
+              let afterProofSourceEq := cvmSecondFieldSourceTest.trans
+                cvmCtorAfterProofForallTest
+              let afterProofNormalized := cvmTransportValidationTraceTest
+                proofContextEq afterProofSourceEq afterProofTrace
+              let afterProofNormalizedTrace := afterProofNormalized
+              have afterProofSpine : afterProofTrace.spineLength =
+                  afterProofNormalizedTrace.spineLength :=
+                (cvmTransportValidationTraceSpineLengthTest proofContextEq
+                  afterProofSourceEq afterProofTrace).symm
+              cases hafterProof : afterProofNormalizedTrace with
+              | parameter context fuel argIdx name domain body binderInfo parameter
+                  parameterType parameterAt parameterTypeRun defeq tail =>
+                rw [cvmStagedStatsTest_eq, cvmStatsParamsTest] at parameterAt
+                simp at parameterAt
+              | ordinary context fuel argIdx name domain body binderInfo sortResult
+                  noParameter ensureType universeTrace directPositivity
+                  afterDirectTrace =>
+                simp [hafterProof,
+                  AddInductive.ConstructorTypeValidationTrace.spineLength]
+                  at afterProofSpine
+                have directContextEq :
+                    cvmValidationProofContextTest.pushLocalDecl `direct .default
+                        (AddInductive.consumeTypeAnnotations cvmCtorDirectDomain) =
+                      cvmValidationDirectContextTest := by rfl
+                let afterDirectSourceEq := cvmThirdFieldSourceTest.trans
+                  cvmCtorAfterDirectForallTest
+                let afterDirectNormalized := cvmTransportValidationTraceTest
+                  directContextEq afterDirectSourceEq afterDirectTrace
+                let afterDirectNormalizedTrace := afterDirectNormalized
+                have afterDirectSpine : afterDirectTrace.spineLength =
+                    afterDirectNormalizedTrace.spineLength :=
+                  (cvmTransportValidationTraceSpineLengthTest directContextEq
+                    afterDirectSourceEq afterDirectTrace).symm
+                cases hafterDirect : afterDirectNormalizedTrace with
+                | parameter context fuel argIdx name domain body binderInfo
+                    parameter parameterType parameterAt parameterTypeRun defeq tail =>
+                  rw [cvmStagedStatsTest_eq, cvmStatsParamsTest] at parameterAt
+                  simp at parameterAt
+                | ordinary context fuel argIdx name domain body binderInfo sortResult
+                    noParameter ensureType universeTrace functionPositivity
+                    afterFunctionTrace =>
+                  simp [hafterDirect,
+                    AddInductive.ConstructorTypeValidationTrace.spineLength]
+                    at afterDirectSpine
+                  have functionContextEq :
+                      cvmValidationDirectContextTest.pushLocalDecl `function .default
+                          (AddInductive.consumeTypeAnnotations
+                            cvmCtorFunctionDomain) =
+                        cvmValidationFunctionContextTest := by rfl
+                  let afterFunctionSourceEq := cvmFourthFieldSourceTest.trans
+                    cvmCtorAfterFunctionForallTest
+                  let afterFunctionNormalized := cvmTransportValidationTraceTest
+                    functionContextEq afterFunctionSourceEq afterFunctionTrace
+                  let afterFunctionNormalizedTrace := afterFunctionNormalized
+                  have afterFunctionSpine : afterFunctionTrace.spineLength =
+                      afterFunctionNormalizedTrace.spineLength :=
+                    (cvmTransportValidationTraceSpineLengthTest
+                      functionContextEq afterFunctionSourceEq
+                      afterFunctionTrace).symm
+                  cases hafterFunction : afterFunctionNormalizedTrace with
+                  | parameter context fuel argIdx name domain body binderInfo
+                      parameter parameterType parameterAt parameterTypeRun defeq tail =>
+                    rw [cvmStagedStatsTest_eq, cvmStatsParamsTest] at parameterAt
+                    simp at parameterAt
+                  | ordinary context fuel argIdx name domain body binderInfo sortResult
+                      noParameter ensureType universeTrace laterPositivity
+                      afterLaterTrace =>
+                    simp [hafterFunction,
+                      AddInductive.ConstructorTypeValidationTrace.spineLength]
+                      at afterFunctionSpine
+                    have laterContextEq :
+                        cvmValidationFunctionContextTest.pushLocalDecl `later .default
+                            (AddInductive.consumeTypeAnnotations
+                              cvmCtorLaterDomain) =
+                          cvmValidationLaterContextTest := by rfl
+                    let afterLaterSourceEq := cvmFifthFieldSourceTest.trans
+                      cvmCtorAfterLaterForallTest
+                    let afterLaterNormalized := cvmTransportValidationTraceTest
+                      laterContextEq afterLaterSourceEq afterLaterTrace
+                    let afterLaterNormalizedTrace := afterLaterNormalized
+                    have afterLaterSpine : afterLaterTrace.spineLength =
+                        afterLaterNormalizedTrace.spineLength :=
+                      (cvmTransportValidationTraceSpineLengthTest laterContextEq
+                        afterLaterSourceEq afterLaterTrace).symm
+                    cases hafterLater : afterLaterNormalizedTrace with
+                    | parameter context fuel argIdx name domain body binderInfo
+                        parameter parameterType parameterAt parameterTypeRun defeq tail =>
+                      rw [cvmStagedStatsTest_eq, cvmStatsParamsTest] at parameterAt
+                      simp at parameterAt
+                    | ordinary context fuel argIdx name domain body binderInfo sortResult
+                        noParameter ensureType universeTrace laterProofPositivity
+                        terminalTrace =>
+                      simp [hafterLater,
+                        AddInductive.ConstructorTypeValidationTrace.spineLength]
+                        at afterLaterSpine
+                      have laterProofContextEq :
+                          cvmValidationLaterContextTest.pushLocalDecl
+                              `laterProof .default
+                              (AddInductive.consumeTypeAnnotations
+                                cvmCtorLaterProofDomain) =
+                            cvmValidationLaterProofContextTest := by rfl
+                      let terminalSourceEq := cvmSixthFieldSourceTest.trans
+                        cvmCtorTerminalValidationShapeTest
+                      let terminalNormalized := cvmTransportValidationTraceTest
+                        laterProofContextEq terminalSourceEq terminalTrace
+                      let terminalNormalizedTrace := terminalNormalized
+                      have terminalSpine : terminalTrace.spineLength =
+                          terminalNormalizedTrace.spineLength :=
+                        (cvmTransportValidationTraceSpineLengthTest
+                          laterProofContextEq terminalSourceEq
+                          terminalTrace).symm
+                      cases hterminal : terminalNormalizedTrace with
+                      | terminal context source fuel argIdx terminal valid =>
+                        simp [hterminal,
+                          AddInductive.ConstructorTypeValidationTrace.spineLength]
+                          at terminalSpine
+                        have terminalNormalizedAlignment :
+                            AddInductive.ConstructorViewAlignmentTrace
+                              terminalNormalizedTrace
+                              (cvmValidationFamilyApplicationTest
+                                (.fvar cvmValidationAlphaIdTest)
+                                (.fvar cvmValidationPIdTest)) := by
+                          rw [hterminal]
+                          exact .terminal cvmValidationTerminalShapeCheckedTest
+                            cvmValidationTerminalShapeCheckedTest terminal valid
+                        have terminalAlignment := cvmTransportViewAlignmentTest
+                          laterProofContextEq terminalSourceEq terminalSourceEq
+                          terminalTrace terminalNormalizedAlignment
+                        have afterLaterNormalizedAlignment :
+                            AddInductive.ConstructorViewAlignmentTrace
+                              afterLaterNormalizedTrace
+                              (.forallE `laterProof cvmCtorLaterProofDomain
+                                cvmCtorAfterLater.bindingBody! .default) := by
+                          rw [hafterLater]
+                          exact .ordinary cvmValidationLaterProofCheckedTest
+                            cvmValidationLaterProofCheckedTest
+                            (cvmValidationReflObservationTest _ _)
+                            cvmValidationLaterProofConsumedCheckedTest
+                            laterProofPositivity
+                            (cvmValidationLaterProofPositivityAlignmentTest
+                              laterProofPositivity)
+                            cvmValidationLaterFreshTest
+                            cvmValidationLaterProofAnnotationsTest
+                            terminalTrace terminalAlignment
+                        have afterLaterAlignment := cvmTransportViewAlignmentTest
+                          laterContextEq afterLaterSourceEq afterLaterSourceEq
+                          afterLaterTrace afterLaterNormalizedAlignment
+                        have afterFunctionNormalizedAlignment :
+                            AddInductive.ConstructorViewAlignmentTrace
+                              afterFunctionNormalizedTrace
+                              (.forallE `later cvmCtorLaterDomain
+                                cvmCtorAfterFunction.bindingBody! .default) := by
+                          rw [hafterFunction]
+                          exact .ordinary cvmValidationLaterCheckedTest
+                            cvmValidationLaterCheckedTest
+                            (cvmValidationReflObservationTest _ _)
+                            cvmValidationLaterConsumedCheckedTest laterPositivity
+                            (cvmValidationLaterPositivityAlignmentTest
+                              laterPositivity)
+                            cvmValidationFunctionFreshTest
+                            cvmValidationLaterAnnotationsTest
+                            afterLaterTrace afterLaterAlignment
+                        have afterFunctionAlignment :=
+                          cvmTransportViewAlignmentTest functionContextEq
+                            afterFunctionSourceEq afterFunctionSourceEq
+                            afterFunctionTrace afterFunctionNormalizedAlignment
+                        have afterDirectNormalizedAlignment :
+                            AddInductive.ConstructorViewAlignmentTrace
+                              afterDirectNormalizedTrace
+                              (.forallE `function cvmCtorFunctionDomain
+                                cvmCtorAfterDirect.bindingBody! .default) := by
+                          rw [hafterDirect]
+                          exact .ordinary cvmValidationFunctionCheckedTest
+                            cvmValidationFunctionCheckedTest
+                            (cvmValidationReflObservationTest _ _)
+                            cvmValidationFunctionConsumedCheckedTest
+                            functionPositivity
+                            (cvmValidationFunctionPositivityAlignmentTest
+                              functionPositivity)
+                            cvmValidationDirectFreshTest
+                            cvmValidationFunctionAnnotationsTest
+                            afterFunctionTrace afterFunctionAlignment
+                        have afterDirectAlignment :=
+                          cvmTransportViewAlignmentTest directContextEq
+                            afterDirectSourceEq afterDirectSourceEq
+                            afterDirectTrace afterDirectNormalizedAlignment
+                        have afterProofNormalizedAlignment :
+                            AddInductive.ConstructorViewAlignmentTrace
+                              afterProofNormalizedTrace
+                              (.forallE `direct cvmCtorDirectDomain
+                                cvmCtorAfterProof.bindingBody! .default) := by
+                          rw [hafterProof]
+                          exact .ordinary cvmValidationDirectCheckedTest
+                            cvmValidationDirectCheckedTest
+                            (cvmValidationReflObservationTest _ _)
+                            cvmValidationDirectConsumedCheckedTest
+                            directPositivity
+                            (cvmValidationDirectPositivityAlignmentTest
+                              directPositivity)
+                            cvmValidationProofFreshTest
+                            cvmValidationDirectAnnotationsTest
+                            afterDirectTrace afterDirectAlignment
+                        have afterProofAlignment :=
+                          cvmTransportViewAlignmentTest proofContextEq
+                            afterProofSourceEq afterProofSourceEq
+                            afterProofTrace afterProofNormalizedAlignment
+                        have afterXNormalizedAlignment :
+                            AddInductive.ConstructorViewAlignmentTrace
+                              afterXNormalizedTrace
+                              (.forallE `proof cvmCtorProofDomain
+                                cvmCtorAfterX.bindingBody! .default) := by
+                          rw [hafterX]
+                          exact .ordinary cvmValidationProofCheckedTest
+                            cvmValidationProofCheckedTest
+                            (cvmValidationReflObservationTest _ _)
+                            cvmValidationProofConsumedCheckedTest
+                            proofPositivity
+                            (cvmValidationProofPositivityAlignmentTest
+                              proofPositivity)
+                            cvmValidationXFreshTest
+                            cvmValidationProofAnnotationsTest
+                            afterProofTrace afterProofAlignment
+                        have afterXAlignment := cvmTransportViewAlignmentTest
+                          xContextEq afterXSourceEq afterXSourceEq
+                          afterXTrace afterXNormalizedAlignment
+                        have afterPNormalizedAlignment :
+                            AddInductive.ConstructorViewAlignmentTrace
+                              afterPNormalizedTrace
+                              (.forallE `x cvmCtorXDomain
+                                cvmCtorAfterP.bindingBody! .default) := by
+                          rw [hafterP]
+                          exact .ordinary cvmValidationXCheckedTest
+                            cvmValidationXCheckedTest
+                            (cvmValidationReflObservationTest _ _)
+                            cvmValidationXConsumedCheckedTest xPositivity
+                            (cvmValidationXPositivityAlignmentTest xPositivity)
+                            cvmValidationRootFreshTest
+                            cvmValidationXAnnotationsTest
+                            afterXTrace afterXAlignment
+                        have afterPAlignment := cvmTransportViewAlignmentTest
+                          (by rfl) afterPSourceEq afterPSourceEq afterPTrace
+                          afterPNormalizedAlignment
+                        have afterAlphaNormalizedAlignment :
+                            AddInductive.ConstructorViewAlignmentTrace
+                              afterAlphaNormalizedTrace
+                              (.forallE `P cvmCtorPDomain
+                                cvmCtorAfterAlpha.bindingBody! .implicit) := by
+                          rw [hafterAlpha]
+                          exact .parameter cvmValidationCtorPDomainCheckedTest
+                            cvmValidationCtorPDomainCheckedTest
+                            cvmValidationPDomainCheckedTest rfl
+                            (by
+                              change (cvmValidationRootContextTest.lctx.find?
+                                cvmValidationPIdTest).isSome = true
+                              rw [cvmValidationPFindTest]
+                              rfl)
+                            afterPTrace afterPAlignment
+                        have afterAlphaAlignment :=
+                          cvmTransportViewAlignmentTest (by rfl)
+                            afterAlphaSourceEq afterAlphaSourceEq
+                            afterAlphaTrace afterAlphaNormalizedAlignment
+                        have rootNormalizedAlignment :
+                            AddInductive.ConstructorViewAlignmentTrace
+                              rootNormalizedTrace
+                              constructorValidityMatrixKernelCtor.type := by
+                          rw [hroot]
+                          exact .parameter cvmValidationSortCheckedTest
+                            cvmValidationSortCheckedTest
+                            cvmValidationSortCheckedTest rfl
+                            (by
+                              change (cvmValidationRootContextTest.lctx.find?
+                                cvmValidationAlphaIdTest).isSome = true
+                              rw [cvmValidationAlphaFindTest]
+                              rfl)
+                            afterAlphaTrace afterAlphaAlignment
+                        have headAlignment :=
+                          cvmTransportViewAlignmentIndexedTest rootContextEq
+                            (by rfl) cvmCtorViewTest_eq (by rfl) rootFuelEq
+                            typeTrace rootNormalizedAlignment
+                        let rootScope : AddInductive.ConstructorCheckedExpr
+                            ({ cvmCandidate.families.singleton.familyType.type.trace.terminalContext with
+                              env := cvmConstructorContext.env }).withEmptyLocalContext
+                            constructorValidityMatrixKernelCtor.type :=
+                          AddInductive.ConstructorCheckedExpr.ofClosedRoot
+                            closed rootCheck
+                        cases tailTrace with
+                        | nil finalSeen =>
+                          exact AddInductive.ConstructorCandidateAlignmentTrace.cons
+                            rootScope
+                            (by
+                              change
+                                cvmCandidate.families.singleton.constructors.singleton.type.trace.storedSpine =
+                                  true
+                              exact cvmCtorIdentityEvidence.identity.storedSpine)
+                            (by
+                              change
+                                cvmCandidate.families.singleton.constructors.singleton.type.trace.spineLength =
+                                  typeTrace.spineLength
+                              have candidateSpine :=
+                                cvmCtorIdentityEvidence.spineLength_eq.trans
+                                  cvmCtorIdentityReplay_shape.1
+                              omega)
+                            (by
+                              rw [cvmCtorWhnfDepth, rootContextEq]
+                              rfl)
+                            headAlignment
+                            (AddInductive.ConstructorCandidateAlignmentTrace.nil
+                              ((∅ : NameSet).insert
+                                constructorValidityMatrixKernelCtor.name))
+                    | terminal context source fuel argIdx terminal valid =>
+                      simp [Expr.isForall] at terminal
+                  | terminal context source fuel argIdx terminal valid =>
+                    simp [Expr.isForall] at terminal
+                | terminal context source fuel argIdx terminal valid =>
+                  simp [Expr.isForall] at terminal
+              | terminal context source fuel argIdx terminal valid =>
+                simp [Expr.isForall] at terminal
+            | terminal context source fuel argIdx terminal valid =>
+              simp [Expr.isForall] at terminal
+          | terminal context source fuel argIdx terminal valid =>
+            simp [Expr.isForall] at terminal
+        | ordinary context fuel argIdx name domain body binderInfo sortResult
+            noParameter ensureType universeTrace positivity tail =>
+          rw [cvmStagedStatsTest_eq, cvmStatsParamsTest] at noParameter
+          simp at noParameter
+        | terminal context source fuel argIdx terminal valid =>
+          simp [Expr.isForall] at terminal
+      | ordinary context fuel argIdx name domain body binderInfo sortResult
+          noParameter ensureType universeTrace positivity tail =>
+        rw [cvmStagedStatsTest_eq, cvmStatsParamsTest] at noParameter
+        simp at noParameter
+      | terminal context source fuel argIdx terminal valid =>
+        simp [constructorValidityMatrixKernelCtor,
+          constructorValidityMatrixMkInfo, ConstantInfo.type,
+          ConstantInfo.toConstantVal, Expr.isForall] at terminal
+
+def cvmPreFamilyContextTest : AddInductive.Context :=
+  cvmValidationFamilyContextTest
+
+def cvmPreFamilyXContextTest : AddInductive.Context :=
+  cvmPreFamilyContextTest.pushLocalDecl `x .default
+    (AddInductive.consumeTypeAnnotations cvmCtorXDomain)
+
+def cvmPreFamilyProofContextTest : AddInductive.Context :=
+  cvmPreFamilyXContextTest.pushLocalDecl `proof .default
+    (AddInductive.consumeTypeAnnotations cvmCtorProofDomain)
+
+def cvmPreFamilyAfterDirectContextTest : AddInductive.Context :=
+  cvmPreFamilyProofContextTest.advanceFresh
+
+def cvmPreFamilyAfterFunctionContextTest : AddInductive.Context :=
+  cvmPreFamilyAfterDirectContextTest.advanceFresh
+
+def cvmPreFamilyLaterContextTest : AddInductive.Context :=
+  cvmPreFamilyAfterFunctionContextTest.pushLocalDecl `later .default
+    (AddInductive.consumeTypeAnnotations cvmCtorLaterDomain)
+
+def cvmPreFamilyLaterProofContextTest : AddInductive.Context :=
+  cvmPreFamilyLaterContextTest.pushLocalDecl `laterProof .default
+    (AddInductive.consumeTypeAnnotations cvmCtorLaterProofDomain)
+
+def cvmPreFamilyFunctionInnerContextTest : AddInductive.Context :=
+  cvmPreFamilyAfterDirectContextTest.pushLocalDecl `y .default
+    (.fvar cvmValidationAlphaIdTest)
+
+def cvmAdvanceLocalRunTest
+    (run : TypeChecker.CandidateLocalContextRun context) :
+    TypeChecker.CandidateLocalContextRun context.advanceFresh where
+  wf := run.wf
+  reserves := by
+    intro decl membership
+    exact NameGenerator.Reserves.mono NameGenerator.LE.next
+      (run.reserves decl membership)
+
+def cvmPreFamilyRootLocalRunTest :
+    TypeChecker.CandidateLocalContextRun cvmPreFamilyContextTest :=
+  cvmValidationFamilyLocalRunTest
+
+def cvmPreFamilyXLocalRunTest :
+    TypeChecker.CandidateLocalContextRun cvmPreFamilyXContextTest :=
+  cvmPreFamilyRootLocalRunTest.push `x .default
+    (AddInductive.consumeTypeAnnotations cvmCtorXDomain)
+
+def cvmPreFamilyProofLocalRunTest :
+    TypeChecker.CandidateLocalContextRun cvmPreFamilyProofContextTest :=
+  cvmPreFamilyXLocalRunTest.push `proof .default
+    (AddInductive.consumeTypeAnnotations cvmCtorProofDomain)
+
+def cvmPreFamilyAfterDirectLocalRunTest :
+    TypeChecker.CandidateLocalContextRun
+      cvmPreFamilyAfterDirectContextTest :=
+  cvmAdvanceLocalRunTest cvmPreFamilyProofLocalRunTest
+
+def cvmPreFamilyAfterFunctionLocalRunTest :
+    TypeChecker.CandidateLocalContextRun
+      cvmPreFamilyAfterFunctionContextTest :=
+  cvmAdvanceLocalRunTest cvmPreFamilyAfterDirectLocalRunTest
+
+def cvmPreFamilyLaterLocalRunTest :
+    TypeChecker.CandidateLocalContextRun cvmPreFamilyLaterContextTest :=
+  cvmPreFamilyAfterFunctionLocalRunTest.push `later .default
+    (AddInductive.consumeTypeAnnotations cvmCtorLaterDomain)
+
+def cvmPreFamilyLaterProofLocalRunTest :
+    TypeChecker.CandidateLocalContextRun cvmPreFamilyLaterProofContextTest :=
+  cvmPreFamilyLaterLocalRunTest.push `laterProof .default
+    (AddInductive.consumeTypeAnnotations cvmCtorLaterProofDomain)
+
+def cvmPreFamilyFunctionInnerLocalRunTest :
+    TypeChecker.CandidateLocalContextRun
+      cvmPreFamilyFunctionInnerContextTest :=
+  cvmPreFamilyAfterDirectLocalRunTest.push `y .default
+    (.fvar cvmValidationAlphaIdTest)
+
+theorem cvmPreFamilyAlphaFindRootTest :
+    cvmPreFamilyContextTest.lctx.find? cvmValidationAlphaIdTest =
+      some (.cdecl 0 cvmValidationAlphaIdTest `α
+        (.sort (.succ (.param `u))) .default .default) := by
+  simpa [cvmPreFamilyContextTest, cvmValidationRootContextTest] using
+    cvmValidationAlphaFindTest
+
+theorem cvmPreFamilyPFindRootTest :
+    cvmPreFamilyContextTest.lctx.find? cvmValidationPIdTest =
+      some (.cdecl cvmValidationAlphaContextTest.lctx.decls.size
+        cvmValidationPIdTest `P cvmValidationPDomainTest
+        .default .default) := by
+  simpa [cvmPreFamilyContextTest, cvmValidationRootContextTest] using
+    cvmValidationPFindTest
+
+theorem cvmPreFamilyAlphaFindXTest :
+    cvmPreFamilyXContextTest.lctx.find? cvmValidationAlphaIdTest =
+      some (.cdecl 0 cvmValidationAlphaIdTest `α
+        (.sort (.succ (.param `u))) .default .default) :=
+  cvmPreFamilyRootLocalRunTest.push_findOld `x .default
+    (AddInductive.consumeTypeAnnotations cvmCtorXDomain)
+    cvmPreFamilyAlphaFindRootTest
+
+theorem cvmPreFamilyPFindXTest :
+    cvmPreFamilyXContextTest.lctx.find? cvmValidationPIdTest =
+      some (.cdecl cvmValidationAlphaContextTest.lctx.decls.size
+        cvmValidationPIdTest `P cvmValidationPDomainTest
+        .default .default) :=
+  cvmPreFamilyRootLocalRunTest.push_findOld `x .default
+    (AddInductive.consumeTypeAnnotations cvmCtorXDomain)
+    cvmPreFamilyPFindRootTest
+
+theorem cvmPreFamilyRootFreshIdTest :
+    cvmPreFamilyContextTest.freshFVarId = cvmValidationXIdTest := by
+  rfl
+
+theorem cvmPreFamilyXFindTest :
+    cvmPreFamilyXContextTest.lctx.find? cvmValidationXIdTest =
+      some (.cdecl cvmPreFamilyContextTest.lctx.decls.size
+        cvmValidationXIdTest `x (.fvar cvmValidationAlphaIdTest)
+        .default .default) := by
+  have found := cvmPreFamilyRootLocalRunTest.push_findNew `x .default
+    (AddInductive.consumeTypeAnnotations cvmCtorXDomain)
+  rw [← cvmPreFamilyRootFreshIdTest]
+  simpa [cvmPreFamilyXContextTest, cvmValidationXIdTest,
+    cvmPreFamilyContextTest,
+    cvmValidationRootContextTest, cvmCtorXDomainValidationShapeTest,
+    AddInductive.consumeTypeAnnotations] using found
+
+theorem cvmPreFamilyAlphaFindProofTest :
+    cvmPreFamilyProofContextTest.lctx.find? cvmValidationAlphaIdTest =
+      some (.cdecl 0 cvmValidationAlphaIdTest `α
+        (.sort (.succ (.param `u))) .default .default) :=
+  cvmPreFamilyXLocalRunTest.push_findOld `proof .default
+    (AddInductive.consumeTypeAnnotations cvmCtorProofDomain)
+    cvmPreFamilyAlphaFindXTest
+
+theorem cvmPreFamilyPFindProofTest :
+    cvmPreFamilyProofContextTest.lctx.find? cvmValidationPIdTest =
+      some (.cdecl cvmValidationAlphaContextTest.lctx.decls.size
+        cvmValidationPIdTest `P cvmValidationPDomainTest
+        .default .default) :=
+  cvmPreFamilyXLocalRunTest.push_findOld `proof .default
+    (AddInductive.consumeTypeAnnotations cvmCtorProofDomain)
+    cvmPreFamilyPFindXTest
+
+theorem cvmPreFamilyAlphaFindAfterDirectTest :
+    cvmPreFamilyAfterDirectContextTest.lctx.find?
+        cvmValidationAlphaIdTest =
+      some (.cdecl 0 cvmValidationAlphaIdTest `α
+        (.sort (.succ (.param `u))) .default .default) := by
+  simpa [cvmPreFamilyAfterDirectContextTest,
+    AddInductive.Context.advanceFresh] using cvmPreFamilyAlphaFindProofTest
+
+theorem cvmPreFamilyPFindAfterDirectTest :
+    cvmPreFamilyAfterDirectContextTest.lctx.find? cvmValidationPIdTest =
+      some (.cdecl cvmValidationAlphaContextTest.lctx.decls.size
+        cvmValidationPIdTest `P cvmValidationPDomainTest
+        .default .default) := by
+  simpa [cvmPreFamilyAfterDirectContextTest,
+    AddInductive.Context.advanceFresh] using cvmPreFamilyPFindProofTest
+
+theorem cvmPreFamilyAlphaFindAfterFunctionTest :
+    cvmPreFamilyAfterFunctionContextTest.lctx.find?
+        cvmValidationAlphaIdTest =
+      some (.cdecl 0 cvmValidationAlphaIdTest `α
+        (.sort (.succ (.param `u))) .default .default) := by
+  simpa [cvmPreFamilyAfterFunctionContextTest,
+    AddInductive.Context.advanceFresh] using
+    cvmPreFamilyAlphaFindAfterDirectTest
+
+theorem cvmPreFamilyPFindAfterFunctionTest :
+    cvmPreFamilyAfterFunctionContextTest.lctx.find?
+        cvmValidationPIdTest =
+      some (.cdecl cvmValidationAlphaContextTest.lctx.decls.size
+        cvmValidationPIdTest `P cvmValidationPDomainTest
+        .default .default) := by
+  simpa [cvmPreFamilyAfterFunctionContextTest,
+    AddInductive.Context.advanceFresh] using cvmPreFamilyPFindAfterDirectTest
+
+theorem cvmPreFamilyAlphaFindLaterTest :
+    cvmPreFamilyLaterContextTest.lctx.find? cvmValidationAlphaIdTest =
+      some (.cdecl 0 cvmValidationAlphaIdTest `α
+        (.sort (.succ (.param `u))) .default .default) :=
+  cvmPreFamilyAfterFunctionLocalRunTest.push_findOld `later .default
+    (AddInductive.consumeTypeAnnotations cvmCtorLaterDomain)
+    cvmPreFamilyAlphaFindAfterFunctionTest
+
+theorem cvmPreFamilyPFindLaterTest :
+    cvmPreFamilyLaterContextTest.lctx.find? cvmValidationPIdTest =
+      some (.cdecl cvmValidationAlphaContextTest.lctx.decls.size
+        cvmValidationPIdTest `P cvmValidationPDomainTest
+        .default .default) :=
+  cvmPreFamilyAfterFunctionLocalRunTest.push_findOld `later .default
+    (AddInductive.consumeTypeAnnotations cvmCtorLaterDomain)
+    cvmPreFamilyPFindAfterFunctionTest
+
+theorem cvmPreFamilyAfterFunctionFreshIdTest :
+    cvmPreFamilyAfterFunctionContextTest.freshFVarId =
+      cvmValidationLaterIdTest := by
+  rfl
+
+theorem cvmPreFamilyLaterFindTest :
+    cvmPreFamilyLaterContextTest.lctx.find? cvmValidationLaterIdTest =
+      some (.cdecl cvmPreFamilyAfterFunctionContextTest.lctx.decls.size
+        cvmValidationLaterIdTest `later (.fvar cvmValidationAlphaIdTest)
+        .default .default) := by
+  have found := cvmPreFamilyAfterFunctionLocalRunTest.push_findNew
+    `later .default (AddInductive.consumeTypeAnnotations cvmCtorLaterDomain)
+  rw [← cvmPreFamilyAfterFunctionFreshIdTest]
+  simpa [cvmPreFamilyLaterContextTest, cvmValidationLaterIdTest,
+    cvmPreFamilyAfterFunctionContextTest, cvmPreFamilyAfterDirectContextTest,
+    cvmPreFamilyProofContextTest, cvmPreFamilyXContextTest,
+    cvmPreFamilyContextTest, cvmValidationFunctionContextTest,
+    cvmValidationDirectContextTest, cvmValidationProofContextTest,
+    cvmValidationXContextTest, cvmValidationRootContextTest,
+    cvmCtorLaterDomainValidationShapeTest,
+    AddInductive.Context.advanceFresh,
+    AddInductive.consumeTypeAnnotations] using found
+
+theorem cvmPreFamilyAlphaFindLaterProofTest :
+    cvmPreFamilyLaterProofContextTest.lctx.find?
+        cvmValidationAlphaIdTest =
+      some (.cdecl 0 cvmValidationAlphaIdTest `α
+        (.sort (.succ (.param `u))) .default .default) :=
+  cvmPreFamilyLaterLocalRunTest.push_findOld `laterProof .default
+    (AddInductive.consumeTypeAnnotations cvmCtorLaterProofDomain)
+    cvmPreFamilyAlphaFindLaterTest
+
+theorem cvmPreFamilyPFindLaterProofTest :
+    cvmPreFamilyLaterProofContextTest.lctx.find? cvmValidationPIdTest =
+      some (.cdecl cvmValidationAlphaContextTest.lctx.decls.size
+        cvmValidationPIdTest `P cvmValidationPDomainTest
+        .default .default) :=
+  cvmPreFamilyLaterLocalRunTest.push_findOld `laterProof .default
+    (AddInductive.consumeTypeAnnotations cvmCtorLaterProofDomain)
+    cvmPreFamilyPFindLaterTest
+
+theorem cvmPreFamilyPFindFunctionInnerTest :
+    cvmPreFamilyFunctionInnerContextTest.lctx.find?
+        cvmValidationPIdTest =
+      some (.cdecl cvmValidationAlphaContextTest.lctx.decls.size
+        cvmValidationPIdTest `P cvmValidationPDomainTest
+        .default .default) :=
+  cvmPreFamilyAfterDirectLocalRunTest.push_findOld `y .default
+    (.fvar cvmValidationAlphaIdTest) cvmPreFamilyPFindAfterDirectTest
+
+theorem cvmPreFamilyRootFreshTest :
+    cvmPreFamilyContextTest.lctx.find?
+      cvmPreFamilyContextTest.freshFVarId = none :=
+  cvmPreFamilyRootLocalRunTest.fresh
+
+theorem cvmPreFamilyXFreshTest :
+    cvmPreFamilyXContextTest.lctx.find?
+      cvmPreFamilyXContextTest.freshFVarId = none :=
+  cvmPreFamilyXLocalRunTest.fresh
+
+theorem cvmPreFamilyProofFreshTest :
+    cvmPreFamilyProofContextTest.lctx.find?
+      cvmPreFamilyProofContextTest.freshFVarId = none :=
+  cvmPreFamilyProofLocalRunTest.fresh
+
+theorem cvmPreFamilyAfterDirectFreshTest :
+    cvmPreFamilyAfterDirectContextTest.lctx.find?
+      cvmPreFamilyAfterDirectContextTest.freshFVarId = none :=
+  cvmPreFamilyAfterDirectLocalRunTest.fresh
+
+theorem cvmPreFamilyAfterFunctionFreshTest :
+    cvmPreFamilyAfterFunctionContextTest.lctx.find?
+      cvmPreFamilyAfterFunctionContextTest.freshFVarId = none :=
+  cvmPreFamilyAfterFunctionLocalRunTest.fresh
+
+theorem cvmPreFamilyLaterFreshTest :
+    cvmPreFamilyLaterContextTest.lctx.find?
+      cvmPreFamilyLaterContextTest.freshFVarId = none :=
+  cvmPreFamilyLaterLocalRunTest.fresh
+
+theorem cvmPreFamilyFunctionInnerFreshTest :
+    cvmPreFamilyFunctionInnerContextTest.lctx.find?
+      cvmPreFamilyFunctionInnerContextTest.freshFVarId = none :=
+  cvmPreFamilyFunctionInnerLocalRunTest.fresh
+
+theorem cvmPreFamilyDepthTest (context : AddInductive.Context)
+    (contextEq : context = cvmPreFamilyContextTest ∨
+      context = cvmPreFamilyXContextTest ∨
+      context = cvmPreFamilyProofContextTest ∨
+      context = cvmPreFamilyAfterDirectContextTest ∨
+      context = cvmPreFamilyAfterFunctionContextTest ∨
+      context = cvmPreFamilyLaterContextTest ∨
+      context = cvmPreFamilyLaterProofContextTest ∨
+      context = cvmPreFamilyFunctionInnerContextTest) :
+    context.fuel.recDepth = 10000 := by
+  rcases contextEq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+    rfl
+
+theorem cvmPreFamilyInductiveFuelTest (context : AddInductive.Context)
+    (contextEq : context = cvmPreFamilyContextTest ∨
+      context = cvmPreFamilyProofContextTest ∨
+      context = cvmPreFamilyAfterDirectContextTest) :
+    context.fuel.inductiveFuel = 1000 := by
+  rcases contextEq with rfl | rfl | rfl <;> rfl
+
+theorem cvmFamilyViewPreFamilyTest_eq :
+    cvmCandidate.families.singleton.familyType.type.view =
+      constructorValidityMatrixKernelType.type := by
+  apply cvmFamilyIdentityEvidence.identity.view_eq_source
+  · apply TypeChecker.CandidateLocalContextRun.empty
+    rw [cvmFamilyCandidateContext_eq]
+    rfl
+  · rw [cvmFamilyCandidateContext_eq]
+    simp [constructorValidityMatrixKernelType,
+      constructorValidityMatrixInfo, ConstantInfo.type,
+      ConstantInfo.toConstantVal, FVarsIn, Level.hasMVar']
+
+theorem cvmStagedParamsPreFamilyTest_eq :
+    cvmStagedUniverseInputTest.staged.family.validation.stats.params =
+      #[.fvar cvmValidationAlphaIdTest, .fvar cvmValidationPIdTest] := by
+  rw [cvmStagedStatsTest_eq, cvmStatsParamsTest]
+  rfl
+
+theorem cvmStagedNindicesPreFamilyTest_eq :
+    cvmStagedUniverseInputTest.staged.family.validation.stats.nindices =
+      #[0] := by
+  rw [cvmStagedStatsTest_eq, cvmStatsNindices_eq]
+
+def cvmPreFamilyIndicesTest : Expr :=
+  .sort (.succ (.param `u))
+
+theorem cvmPreFamilyParametersRunTest :
+    AddInductive.instantiateFamilyParameters
+      constructorValidityMatrixKernelType.type
+      cvmStagedUniverseInputTest.staged.family.validation.stats.params.toList =
+        .ok cvmPreFamilyIndicesTest := by
+  rw [cvmStagedParamsPreFamilyTest_eq]
+  simp [constructorValidityMatrixKernelType,
+    constructorValidityMatrixInfo, ConstantInfo.type,
+    ConstantInfo.toConstantVal,
+    AddInductive.instantiateFamilyParameters,
+    cvmPreFamilyIndicesTest, cvmValidationAlphaIdTest,
+    cvmValidationPIdTest, cvmValidationAlphaContextTest,
+    cvmFamilyContext, Expr.instantiate1_eq, Expr.instantiate1',
+    Pure.pure, Except.pure]
+
+@[simp] theorem cvmPreFamilyFamilyAppGetAppFnTest
+    (alpha predicate : Expr) :
+    (cvmValidationFamilyApplicationTest alpha predicate).getAppFn =
+      .const constructorValidityMatrixKernelType.name [.param `u] := by
+  rfl
+
+@[simp] theorem cvmPreFamilyFamilyAppGetAppArgsTest
+    (alpha predicate : Expr) :
+    (cvmValidationFamilyApplicationTest alpha predicate).getAppArgs =
+      #[alpha, predicate] := by
+  rfl
+
+theorem cvmPreFamilyFamilyAppValidTest :
+    AddInductive.isValidIndAppIdx
+      cvmStagedUniverseInputTest.staged.family.validation.stats
+      (cvmValidationFamilyApplicationTest
+        (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest)) 0 =
+      true := by
+  simp +decide [AddInductive.isValidIndAppIdx,
+    cvmStagedParamsPreFamilyTest_eq,
+    cvmStagedNindicesPreFamilyTest_eq,
+    cvmStagedIndConstsTest_eq,
+    cvmPreFamilyFamilyAppGetAppFnTest,
+    cvmPreFamilyFamilyAppGetAppArgsTest,
+    prbExprBneSelfReplay]
+
+def cvmPreFamilyIndicesCheckedTest
+    (context : AddInductive.Context)
+    (lparams : context.lparams = [`u])
+    (depth : context.fuel.recDepth = 10000) :
+    AddInductive.ConstructorCheckedExpr context cvmPreFamilyIndicesTest :=
+  .ofRun (by simp [cvmPreFamilyIndicesTest, FVarsIn, Level.hasMVar'])
+    (by
+      unfold cvmPreFamilyIndicesTest
+      exact prbPreFamilySortCheckValidReplay context lparams depth)
+
+def cvmPreFamilyNilSpineTest
+    (context : AddInductive.Context)
+    (lparams : context.lparams = [`u])
+    (depth : context.fuel.recDepth = 10000) :
+    AddInductive.ConstructorPreFamilyIndexSpineTrace context
+      cvmPreFamilyIndicesTest [] :=
+  .nil context cvmPreFamilyIndicesTest
+    (cvmPreFamilyIndicesCheckedTest context lparams depth) rfl
+
+def cvmPreFamilyFVarCheckedTest
+    (context : AddInductive.Context) (id : FVarId) (type : Expr)
+    (find : context.lctx.find? id =
+      some (.cdecl index id name type bi kind))
+    (depth : context.fuel.recDepth = 10000) :
+    AddInductive.ConstructorCheckedExpr context (.fvar id) :=
+  .ofRun (by
+      change (context.lctx.find? id).isSome = true
+      rw [find]
+      rfl)
+    (prbCandidateCheckTypeFVar context id type depth find)
+
+def cvmPreFamilyFVarEnsureTest
+    (context : AddInductive.Context) (id : FVarId) (level : Level)
+    (find : context.lctx.find? id =
+      some (.cdecl index id name (.sort level) bi kind))
+    (depth : context.fuel.recDepth = 10000) :
+    AddInductive.ConstructorEnsureTypeObservation context (.fvar id) :=
+  ⟨.sort level,
+    prbPreFamilyFVarEnsureValidReplay context id level find depth⟩
+
+def cvmPreFamilyPredicateCheckedTest
+    (context : AddInductive.Context) (argumentId : FVarId)
+    (idsNe : cvmValidationPIdTest ≠ argumentId)
+    (predicateFind : context.lctx.find? cvmValidationPIdTest =
+      some (.cdecl predicateIndex cvmValidationPIdTest predicateName
+        cvmValidationPDomainTest predicateBi predicateKind))
+    (argumentFind : context.lctx.find? argumentId =
+      some (.cdecl argumentIndex argumentId argumentName
+        (.fvar cvmValidationAlphaIdTest) argumentBi argumentKind))
+    (depth : context.fuel.recDepth = 10000) :
+    AddInductive.ConstructorCheckedExpr context
+      (cvmValidationPredicateApplicationTest cvmValidationPIdTest
+        (.fvar argumentId)) :=
+  .ofRun (by
+      simp [cvmValidationPredicateApplicationTest, FVarsIn, Level.hasMVar']
+      constructor
+      · change (context.lctx.find? cvmValidationPIdTest).isSome = true
+        rw [predicateFind]
+        rfl
+      · change (context.lctx.find? argumentId).isSome = true
+        rw [argumentFind]
+        rfl)
+    (cvmValidationPredicateApplicationCheckTest context
+      cvmValidationPIdTest argumentId idsNe predicateFind argumentFind depth)
+
+def cvmPreFamilyPredicateEnsureTest
+    (context : AddInductive.Context) (argumentId : FVarId)
+    (predicateFind : context.lctx.find? cvmValidationPIdTest =
+      some (.cdecl predicateIndex cvmValidationPIdTest predicateName
+        cvmValidationPDomainTest predicateBi predicateKind))
+    (depth : context.fuel.recDepth = 10000) :
+    AddInductive.ConstructorEnsureTypeObservation context
+      (cvmValidationPredicateApplicationTest cvmValidationPIdTest
+        (.fvar argumentId)) :=
+  ⟨.sort .zero,
+    cvmEnsureTypeOfInferOnlyTest context
+      (cvmValidationPredicateApplicationTest cvmValidationPIdTest
+        (.fvar argumentId)) .zero
+      (cvmValidationPredicateApplicationStateTest cvmValidationPIdTest
+        (.fvar argumentId))
+      (cvmInferTypePredicateApplicationOnlyTest context
+        cvmValidationPIdTest (.fvar argumentId) predicateFind depth
+        (by simp [cvmValidationPredicateApplicationTest,
+          Expr.hasLooseBVars, Expr.looseBVarRange']))⟩
+
+def cvmPreFamilyReflAnnotationsTest
+    (context : AddInductive.Context) (source : Expr) :
+    AddInductive.CandidateIsDefEqObservation context source source :=
+  ⟨AddInductive.candidateIsDefEqRefl context source⟩
+
+def cvmPreFamilyXCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmPreFamilyContextTest
+      cvmCtorXDomain := by
+  rw [cvmCtorXDomainValidationShapeTest]
+  exact cvmPreFamilyFVarCheckedTest _ _ _ cvmPreFamilyAlphaFindRootTest
+    (cvmPreFamilyDepthTest _ (Or.inl rfl))
+
+def cvmPreFamilyXEnsureTest :
+    AddInductive.ConstructorEnsureTypeObservation cvmPreFamilyContextTest
+      cvmCtorXDomain := by
+  rw [cvmCtorXDomainValidationShapeTest]
+  exact cvmPreFamilyFVarEnsureTest _ _ _ cvmPreFamilyAlphaFindRootTest
+    (cvmPreFamilyDepthTest _ (Or.inl rfl))
+
+def cvmPreFamilyXConsumedTest :
+    AddInductive.ConstructorCheckedExpr cvmPreFamilyContextTest
+      (AddInductive.consumeTypeAnnotations cvmCtorXDomain) := by
+  rw [cvmValidationConsumeXTest]
+  exact cvmPreFamilyXCheckedTest
+
+def cvmPreFamilyXAnnotationsTest :
+    AddInductive.CandidateIsDefEqObservation cvmPreFamilyContextTest
+      cvmCtorXDomain (AddInductive.consumeTypeAnnotations cvmCtorXDomain) := by
+  rw [cvmValidationConsumeXTest]
+  exact cvmPreFamilyReflAnnotationsTest _ _
+
+def cvmPreFamilyProofCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmPreFamilyXContextTest
+      cvmCtorProofDomain := by
+  rw [cvmCtorProofDomainValidationShapeTest]
+  exact cvmPreFamilyPredicateCheckedTest _ cvmValidationXIdTest
+    cvmValidationPNeXTest cvmPreFamilyPFindXTest cvmPreFamilyXFindTest
+    (cvmPreFamilyDepthTest _ (Or.inr (Or.inl rfl)))
+
+def cvmPreFamilyProofEnsureTest :
+    AddInductive.ConstructorEnsureTypeObservation cvmPreFamilyXContextTest
+      cvmCtorProofDomain := by
+  rw [cvmCtorProofDomainValidationShapeTest]
+  exact cvmPreFamilyPredicateEnsureTest _ cvmValidationXIdTest
+    cvmPreFamilyPFindXTest
+    (cvmPreFamilyDepthTest _ (Or.inr (Or.inl rfl)))
+
+def cvmPreFamilyProofConsumedTest :
+    AddInductive.ConstructorCheckedExpr cvmPreFamilyXContextTest
+      (AddInductive.consumeTypeAnnotations cvmCtorProofDomain) := by
+  rw [cvmValidationConsumeProofTest]
+  exact cvmPreFamilyProofCheckedTest
+
+def cvmPreFamilyProofAnnotationsTest :
+    AddInductive.CandidateIsDefEqObservation cvmPreFamilyXContextTest
+      cvmCtorProofDomain
+      (AddInductive.consumeTypeAnnotations cvmCtorProofDomain) := by
+  rw [cvmValidationConsumeProofTest]
+  exact cvmPreFamilyReflAnnotationsTest _ _
+
+def cvmPreFamilyFunctionAlphaCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmPreFamilyAfterDirectContextTest
+      (.fvar cvmValidationAlphaIdTest) :=
+  cvmPreFamilyFVarCheckedTest _ _ _ cvmPreFamilyAlphaFindAfterDirectTest
+    (cvmPreFamilyDepthTest _ (Or.inr (Or.inr (Or.inr (Or.inl rfl)))))
+
+def cvmPreFamilyFunctionAlphaEnsureTest :
+    AddInductive.ConstructorEnsureTypeObservation
+      cvmPreFamilyAfterDirectContextTest
+      (.fvar cvmValidationAlphaIdTest) :=
+  cvmPreFamilyFVarEnsureTest _ _ _ cvmPreFamilyAlphaFindAfterDirectTest
+    (cvmPreFamilyDepthTest _ (Or.inr (Or.inr (Or.inr (Or.inl rfl)))))
+
+def cvmPreFamilyFunctionAlphaConsumedTest :
+    AddInductive.ConstructorCheckedExpr cvmPreFamilyAfterDirectContextTest
+      (AddInductive.consumeTypeAnnotations
+        (.fvar cvmValidationAlphaIdTest)) := by
+  simp [AddInductive.consumeTypeAnnotations]
+  exact cvmPreFamilyFunctionAlphaCheckedTest
+
+def cvmPreFamilyFunctionAlphaAnnotationsTest :
+    AddInductive.CandidateIsDefEqObservation
+      cvmPreFamilyAfterDirectContextTest (.fvar cvmValidationAlphaIdTest)
+      (AddInductive.consumeTypeAnnotations
+        (.fvar cvmValidationAlphaIdTest)) := by
+  simp [AddInductive.consumeTypeAnnotations]
+  exact cvmPreFamilyReflAnnotationsTest _ _
+
+def cvmPreFamilyLaterCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmPreFamilyAfterFunctionContextTest
+      cvmCtorLaterDomain := by
+  rw [cvmCtorLaterDomainValidationShapeTest]
+  exact cvmPreFamilyFVarCheckedTest _ _ _
+    cvmPreFamilyAlphaFindAfterFunctionTest
+    (cvmPreFamilyDepthTest _
+      (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl rfl))))))
+
+def cvmPreFamilyLaterEnsureTest :
+    AddInductive.ConstructorEnsureTypeObservation
+      cvmPreFamilyAfterFunctionContextTest cvmCtorLaterDomain := by
+  rw [cvmCtorLaterDomainValidationShapeTest]
+  exact cvmPreFamilyFVarEnsureTest _ _ _
+    cvmPreFamilyAlphaFindAfterFunctionTest
+    (cvmPreFamilyDepthTest _
+      (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl rfl))))))
+
+def cvmPreFamilyLaterConsumedTest :
+    AddInductive.ConstructorCheckedExpr cvmPreFamilyAfterFunctionContextTest
+      (AddInductive.consumeTypeAnnotations cvmCtorLaterDomain) := by
+  rw [cvmValidationConsumeLaterTest]
+  exact cvmPreFamilyLaterCheckedTest
+
+def cvmPreFamilyLaterAnnotationsTest :
+    AddInductive.CandidateIsDefEqObservation
+      cvmPreFamilyAfterFunctionContextTest cvmCtorLaterDomain
+      (AddInductive.consumeTypeAnnotations cvmCtorLaterDomain) := by
+  rw [cvmValidationConsumeLaterTest]
+  exact cvmPreFamilyReflAnnotationsTest _ _
+
+def cvmPreFamilyLaterProofCheckedTest :
+    AddInductive.ConstructorCheckedExpr cvmPreFamilyLaterContextTest
+      cvmCtorLaterProofDomain := by
+  rw [cvmCtorLaterProofDomainValidationShapeTest]
+  exact cvmPreFamilyPredicateCheckedTest _ cvmValidationLaterIdTest
+    cvmValidationPNeLaterTest cvmPreFamilyPFindLaterTest
+    cvmPreFamilyLaterFindTest
+    (cvmPreFamilyDepthTest _
+      (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl rfl)))))))
+
+def cvmPreFamilyLaterProofEnsureTest :
+    AddInductive.ConstructorEnsureTypeObservation cvmPreFamilyLaterContextTest
+      cvmCtorLaterProofDomain := by
+  rw [cvmCtorLaterProofDomainValidationShapeTest]
+  exact cvmPreFamilyPredicateEnsureTest _ cvmValidationLaterIdTest
+    cvmPreFamilyPFindLaterTest
+    (cvmPreFamilyDepthTest _
+      (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl rfl)))))))
+
+def cvmPreFamilyLaterProofConsumedTest :
+    AddInductive.ConstructorCheckedExpr cvmPreFamilyLaterContextTest
+      (AddInductive.consumeTypeAnnotations cvmCtorLaterProofDomain) := by
+  rw [cvmValidationConsumeLaterProofTest]
+  exact cvmPreFamilyLaterProofCheckedTest
+
+def cvmPreFamilyLaterProofAnnotationsTest :
+    AddInductive.CandidateIsDefEqObservation cvmPreFamilyLaterContextTest
+      cvmCtorLaterProofDomain
+      (AddInductive.consumeTypeAnnotations cvmCtorLaterProofDomain) := by
+  rw [cvmValidationConsumeLaterProofTest]
+  exact cvmPreFamilyReflAnnotationsTest _ _
+
+theorem cvmPreFamilyFamilyArgsTest :
+    (cvmValidationFamilyApplicationTest
+      (.fvar cvmValidationAlphaIdTest)
+      (.fvar cvmValidationPIdTest)).getAppArgs.toList.drop
+        cvmStagedUniverseInputTest.staged.family.validation.stats.params.size =
+      [] := by
+  rw [cvmStagedParamsPreFamilyTest_eq]
+  simp [cvmPreFamilyFamilyAppGetAppArgsTest]
+
+def cvmPreFamilyFamilySpineTest
+    (context : AddInductive.Context)
+    (lparams : context.lparams = [`u])
+    (depth : context.fuel.recDepth = 10000) :
+    AddInductive.ConstructorPreFamilyIndexSpineTrace context
+      cvmPreFamilyIndicesTest
+      ((cvmValidationFamilyApplicationTest
+        (.fvar cvmValidationAlphaIdTest)
+        (.fvar cvmValidationPIdTest)).getAppArgs.toList.drop
+          cvmStagedUniverseInputTest.staged.family.validation.stats.params.size) := by
+  rw [cvmPreFamilyFamilyArgsTest]
+  exact cvmPreFamilyNilSpineTest context lparams depth
+
+def cvmPreFamilyTargetTraceTest
+    (context : AddInductive.Context)
+    (lparams : context.lparams = [`u])
+    (depth : context.fuel.recDepth = 10000)
+    (fuel : Nat) :
+    AddInductive.ConstructorPreFamilyRecursiveTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest context
+      (cvmValidationFamilyApplicationTest
+        (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest))
+      (fuel + 1) :=
+  .target context _ cvmPreFamilyFamilyAppValidTest
+    (cvmPreFamilyFamilySpineTest context lparams depth)
+
+theorem cvmPreFamilyTargetRunTest
+    (context : AddInductive.Context)
+    (lparams : context.lparams = [`u])
+    (depth : context.fuel.recDepth = 10000)
+    (fuel : Nat) :
+    AddInductive.ConstructorPreFamilyRecursiveTrace.build
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest context
+      (cvmValidationFamilyApplicationTest
+        (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest))
+      (fuel + 1) =
+        .ok (cvmPreFamilyTargetTraceTest context lparams depth fuel) :=
+  AddInductive.ConstructorPreFamilyRecursiveTrace.target_build_eq
+    rfl cvmPreFamilyFamilyAppValidTest
+      (cvmPreFamilyFamilySpineTest context lparams depth)
+
+theorem cvmPreFamilyRecursiveTraceBuildEqTest
+    (trace : AddInductive.ConstructorPreFamilyRecursiveTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest context source fuel) :
+    AddInductive.ConstructorPreFamilyRecursiveTrace.build
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest context source fuel = .ok trace := by
+  induction trace with
+  | forallE context name domain body binderInfo domainCheck ensureType
+      consumedCheck annotations fresh tail ih =>
+    exact AddInductive.ConstructorPreFamilyRecursiveTrace.forallE_build_eq
+      domainCheck ensureType consumedCheck annotations fresh tail ih
+  | target context source valid spine =>
+    cases source <;> try
+      { exact AddInductive.ConstructorPreFamilyRecursiveTrace.target_build_eq
+          rfl valid spine }
+    rename_i binderName binderType body binderInfo
+    unfold AddInductive.isValidIndAppIdx at valid
+    rw [cvmStagedIndConstsTest_eq] at valid
+    have mismatch :
+        (((.forallE binderName binderType body binderInfo : Expr).getAppFn ==
+          .const constructorValidityMatrixKernelType.name [.param `u])) =
+          false := by
+      change Expr.eqv (.forallE binderName binderType body binderInfo)
+        (.const constructorValidityMatrixKernelType.name [.param `u]) = false
+      rw [Expr.eqv_eq]
+      rfl
+    simp [mismatch] at valid
+
+def cvmPreFamilyDirectFieldTraceTest :
+    AddInductive.ConstructorPreFamilyRecursiveTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyProofContextTest
+      cvmCtorDirectDomain 1000 := by
+  rw [cvmCtorDirectDomainValidationShapeTest]
+  exact cvmPreFamilyTargetTraceTest cvmPreFamilyProofContextTest rfl
+    (cvmPreFamilyDepthTest _
+      (Or.inr (Or.inr (Or.inl rfl)))) 999
+
+theorem cvmPreFamilyDirectFieldRunTest :
+    AddInductive.ConstructorPreFamilyRecursiveTrace.build
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyProofContextTest
+      cvmCtorDirectDomain 1000 =
+        .ok cvmPreFamilyDirectFieldTraceTest := by
+  exact cvmPreFamilyRecursiveTraceBuildEqTest
+    cvmPreFamilyDirectFieldTraceTest
+
+def cvmPreFamilyDirectFieldTraceAtFuelTest :
+    AddInductive.ConstructorPreFamilyRecursiveTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyProofContextTest
+      cvmCtorDirectDomain
+      cvmPreFamilyProofContextTest.fuel.inductiveFuel := by
+  rw [cvmPreFamilyInductiveFuelTest _ (Or.inr (Or.inl rfl))]
+  exact cvmPreFamilyDirectFieldTraceTest
+
+theorem cvmPreFamilyDirectFieldRunAtFuelTest :
+    AddInductive.ConstructorPreFamilyRecursiveTrace.build
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyProofContextTest
+      cvmCtorDirectDomain
+      cvmPreFamilyProofContextTest.fuel.inductiveFuel =
+        .ok cvmPreFamilyDirectFieldTraceAtFuelTest := by
+  exact cvmPreFamilyRecursiveTraceBuildEqTest
+    cvmPreFamilyDirectFieldTraceAtFuelTest
+
+def cvmPreFamilyFunctionFieldTraceTest :
+    AddInductive.ConstructorPreFamilyRecursiveTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyAfterDirectContextTest
+      cvmCtorFunctionDomain 1000 := by
+  rw [cvmCtorFunctionDomainValidationShapeTest]
+  exact .forallE cvmPreFamilyAfterDirectContextTest `y
+    (.fvar cvmValidationAlphaIdTest)
+    (cvmValidationFamilyApplicationTest
+      (.fvar cvmValidationAlphaIdTest) (.fvar cvmValidationPIdTest))
+    .default cvmPreFamilyFunctionAlphaCheckedTest
+    cvmPreFamilyFunctionAlphaEnsureTest
+    cvmPreFamilyFunctionAlphaConsumedTest
+    cvmPreFamilyFunctionAlphaAnnotationsTest
+    cvmPreFamilyAfterDirectFreshTest
+    (by
+      simpa [cvmPreFamilyFunctionInnerContextTest,
+        AddInductive.consumeTypeAnnotations,
+        cvmValidationFamilyApplicationTest,
+        Expr.instantiate1_eq, Expr.instantiate1'] using
+        (cvmPreFamilyTargetTraceTest cvmPreFamilyFunctionInnerContextTest rfl
+          (cvmPreFamilyDepthTest _
+            (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+              (Or.inr (Or.inr rfl)))))))) 998))
+
+theorem cvmPreFamilyFunctionFieldRunTest :
+    AddInductive.ConstructorPreFamilyRecursiveTrace.build
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyAfterDirectContextTest
+      cvmCtorFunctionDomain 1000 =
+        .ok cvmPreFamilyFunctionFieldTraceTest := by
+  exact cvmPreFamilyRecursiveTraceBuildEqTest
+    cvmPreFamilyFunctionFieldTraceTest
+
+def cvmPreFamilyFunctionFieldTraceAtFuelTest :
+    AddInductive.ConstructorPreFamilyRecursiveTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyAfterDirectContextTest
+      cvmCtorFunctionDomain
+      cvmPreFamilyAfterDirectContextTest.fuel.inductiveFuel := by
+  rw [cvmPreFamilyInductiveFuelTest _
+    (Or.inr (Or.inr rfl))]
+  exact cvmPreFamilyFunctionFieldTraceTest
+
+theorem cvmPreFamilyFunctionFieldRunAtFuelTest :
+    AddInductive.ConstructorPreFamilyRecursiveTrace.build
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyAfterDirectContextTest
+      cvmCtorFunctionDomain
+      cvmPreFamilyAfterDirectContextTest.fuel.inductiveFuel =
+        .ok cvmPreFamilyFunctionFieldTraceAtFuelTest := by
+  exact cvmPreFamilyRecursiveTraceBuildEqTest
+    cvmPreFamilyFunctionFieldTraceAtFuelTest
+
+theorem cvmPreFamilyParameterBuildEqTest
+    (parameterAt : stats.params[argIdx]? = some parameter)
+    (tail : AddInductive.ConstructorPreFamilyViewTrace stats familyIdx
+      familyIndices context (body.instantiate1 parameter) (argIdx + 1)
+      removed recursiveStarted)
+    (tailRun : AddInductive.ConstructorPreFamilyViewTrace.build stats
+      familyIdx familyIndices context (body.instantiate1 parameter)
+      (argIdx + 1) removed recursiveStarted fuel = .ok tail) :
+    AddInductive.ConstructorPreFamilyViewTrace.build stats familyIdx
+      familyIndices context (.forallE name domain body binderInfo) argIdx
+      removed recursiveStarted (fuel + 1) =
+        .ok (.parameter context argIdx removed recursiveStarted name domain
+          body binderInfo parameter parameterAt tail) := by
+  simp only [AddInductive.ConstructorPreFamilyViewTrace.build]
+  split
+  · rename_i observed observedAt
+    rw [parameterAt] at observedAt
+    cases observedAt
+    rw [tailRun]
+    rfl
+  · rename_i noParameter
+    rw [parameterAt] at noParameter
+    contradiction
+
+theorem cvmPreFamilyOrdinaryBuildEqTest
+    (noParameter : stats.params[argIdx]? = none)
+    (nonrecursive : AddInductive.hasIndOcc stats.indConsts domain = false)
+    (independent : AddInductive.constructorIndependentOf domain removed = true)
+    (domainCheck : AddInductive.ConstructorCheckedExpr context domain)
+    (ensureType : AddInductive.ConstructorEnsureTypeObservation context domain)
+    (consumedCheck : AddInductive.ConstructorCheckedExpr context
+      (AddInductive.consumeTypeAnnotations domain))
+    (annotations : AddInductive.CandidateIsDefEqObservation context domain
+      (AddInductive.consumeTypeAnnotations domain))
+    (fresh : context.lctx.find? context.freshFVarId = none)
+    (tail : AddInductive.ConstructorPreFamilyViewTrace stats familyIdx
+      familyIndices
+      (context.pushLocalDecl name binderInfo
+        (AddInductive.consumeTypeAnnotations domain))
+      (body.instantiate1 context.freshExpr) (argIdx + 1) removed
+      recursiveStarted)
+    (tailRun : AddInductive.ConstructorPreFamilyViewTrace.build stats
+      familyIdx familyIndices
+      (context.pushLocalDecl name binderInfo
+        (AddInductive.consumeTypeAnnotations domain))
+      (body.instantiate1 context.freshExpr) (argIdx + 1) removed
+      recursiveStarted fuel = .ok tail) :
+    AddInductive.ConstructorPreFamilyViewTrace.build stats familyIdx
+      familyIndices context (.forallE name domain body binderInfo) argIdx
+      removed recursiveStarted (fuel + 1) =
+        .ok (.ordinary context argIdx removed recursiveStarted name domain
+          body binderInfo noParameter nonrecursive independent domainCheck
+          ensureType consumedCheck annotations fresh tail) := by
+  simp only [AddInductive.ConstructorPreFamilyViewTrace.build]
+  split
+  · rename_i parameter parameterAt
+    rw [noParameter] at parameterAt
+    contradiction
+  · split
+    · rw [dif_pos independent]
+      rw [domainCheck.check_eq, ensureType.observe_eq,
+        consumedCheck.check_eq]
+      simp only [Bind.bind, Except.bind]
+      rw [annotations.observe_eq]
+      simp only [Bind.bind, Except.bind]
+      rw [dif_pos fresh, tailRun]
+      rfl
+    · rename_i recursive
+      rw [nonrecursive] at recursive
+      contradiction
+
+theorem cvmPreFamilyRecursiveBuildEqTest
+    (noParameter : stats.params[argIdx]? = none)
+    (isRecursive : AddInductive.hasIndOcc stats.indConsts domain = true)
+    (independent : AddInductive.constructorIndependentOf domain removed = true)
+    (field : AddInductive.ConstructorPreFamilyRecursiveTrace stats familyIdx
+      familyIndices context domain context.fuel.inductiveFuel)
+    (fieldRun : AddInductive.ConstructorPreFamilyRecursiveTrace.build stats
+      familyIdx familyIndices context domain context.fuel.inductiveFuel =
+        .ok field)
+    (fresh : context.lctx.find? context.freshFVarId = none)
+    (tail : AddInductive.ConstructorPreFamilyViewTrace stats familyIdx
+      familyIndices context.advanceFresh
+      (body.instantiate1 context.freshExpr) (argIdx + 1)
+      (context.freshFVarId :: removed) true)
+    (tailRun : AddInductive.ConstructorPreFamilyViewTrace.build stats
+      familyIdx familyIndices context.advanceFresh
+      (body.instantiate1 context.freshExpr) (argIdx + 1)
+      (context.freshFVarId :: removed) true fuel = .ok tail) :
+    AddInductive.ConstructorPreFamilyViewTrace.build stats familyIdx
+      familyIndices context (.forallE name domain body binderInfo) argIdx
+      removed recursiveStarted (fuel + 1) =
+        .ok (.recursive context argIdx removed recursiveStarted name domain
+          body binderInfo noParameter isRecursive independent field fresh
+          tail) := by
+  simp only [AddInductive.ConstructorPreFamilyViewTrace.build]
+  split
+  · rename_i parameter parameterAt
+    rw [noParameter] at parameterAt
+    contradiction
+  · split
+    · rename_i nonrecursive
+      rw [isRecursive] at nonrecursive
+      contradiction
+    · rw [dif_pos independent, fieldRun]
+      simp only [Bind.bind, Except.bind]
+      rw [dif_pos fresh, tailRun]
+      rfl
+
+theorem cvmPreFamilyParameterAtZeroTest :
+    cvmStagedUniverseInputTest.staged.family.validation.stats.params[0]? =
+      some (.fvar cvmValidationAlphaIdTest) := by
+  rw [cvmStagedParamsPreFamilyTest_eq]
+  rfl
+
+theorem cvmPreFamilyParameterAtOneTest :
+    cvmStagedUniverseInputTest.staged.family.validation.stats.params[1]? =
+      some (.fvar cvmValidationPIdTest) := by
+  rw [cvmStagedParamsPreFamilyTest_eq]
+  rfl
+
+theorem cvmPreFamilyNoParameterTwoTest :
+    cvmStagedUniverseInputTest.staged.family.validation.stats.params[2]? =
+      none := by
+  rw [cvmStagedParamsPreFamilyTest_eq]
+  rfl
+
+theorem cvmPreFamilyNoParameterThreeTest :
+    cvmStagedUniverseInputTest.staged.family.validation.stats.params[3]? =
+      none := by
+  rw [cvmStagedParamsPreFamilyTest_eq]
+  rfl
+
+theorem cvmPreFamilyNoParameterFourTest :
+    cvmStagedUniverseInputTest.staged.family.validation.stats.params[4]? =
+      none := by
+  rw [cvmStagedParamsPreFamilyTest_eq]
+  rfl
+
+theorem cvmPreFamilyNoParameterFiveTest :
+    cvmStagedUniverseInputTest.staged.family.validation.stats.params[5]? =
+      none := by
+  rw [cvmStagedParamsPreFamilyTest_eq]
+  rfl
+
+theorem cvmPreFamilyNoParameterSixTest :
+    cvmStagedUniverseInputTest.staged.family.validation.stats.params[6]? =
+      none := by
+  rw [cvmStagedParamsPreFamilyTest_eq]
+  rfl
+
+theorem cvmPreFamilyNoParameterSevenTest :
+    cvmStagedUniverseInputTest.staged.family.validation.stats.params[7]? =
+      none := by
+  rw [cvmStagedParamsPreFamilyTest_eq]
+  rfl
+
+theorem cvmPreFamilyLaterHasNoIndOccTest :
+    AddInductive.hasIndOcc
+      cvmStagedUniverseInputTest.staged.family.validation.stats.indConsts
+      cvmCtorLaterDomain = false := by
+  rw [cvmCtorLaterDomainValidationShapeTest]
+  exact cvmValidationAlphaHasNoIndOccTest
+
+theorem cvmPreFamilyNeFreshOfFindTest
+    {context : AddInductive.Context} {id : FVarId} {decl : LocalDecl}
+    (fresh : context.lctx.find? context.freshFVarId = none)
+    (find : context.lctx.find? id = some decl) :
+    id ≠ context.freshFVarId := by
+  intro equality
+  rw [← equality, find] at fresh
+  contradiction
+
+theorem cvmPreFamilyAlphaNeDirectRemovedTest :
+    cvmValidationAlphaIdTest ≠
+      cvmPreFamilyProofContextTest.freshFVarId :=
+  cvmPreFamilyNeFreshOfFindTest cvmPreFamilyProofFreshTest
+    cvmPreFamilyAlphaFindProofTest
+
+theorem cvmPreFamilyPNeDirectRemovedTest :
+    cvmValidationPIdTest ≠
+      cvmPreFamilyProofContextTest.freshFVarId :=
+  cvmPreFamilyNeFreshOfFindTest cvmPreFamilyProofFreshTest
+    cvmPreFamilyPFindProofTest
+
+theorem cvmPreFamilyAlphaNeFunctionRemovedTest :
+    cvmValidationAlphaIdTest ≠
+      cvmPreFamilyAfterDirectContextTest.freshFVarId :=
+  cvmPreFamilyNeFreshOfFindTest cvmPreFamilyAfterDirectFreshTest
+    cvmPreFamilyAlphaFindAfterDirectTest
+
+theorem cvmPreFamilyPNeFunctionRemovedTest :
+    cvmValidationPIdTest ≠
+      cvmPreFamilyAfterDirectContextTest.freshFVarId :=
+  cvmPreFamilyNeFreshOfFindTest cvmPreFamilyAfterDirectFreshTest
+    cvmPreFamilyPFindAfterDirectTest
+
+theorem cvmPreFamilyNeFreshOfReservesTest
+    {context : AddInductive.Context} {id : FVarId}
+    (reserved : context.ngen.Reserves id) :
+    id ≠ context.freshFVarId := by
+  intro equality
+  apply NameGenerator.not_reserves_self (ngen := context.ngen)
+  change context.ngen.Reserves context.freshFVarId
+  rw [← equality]
+  exact reserved
+
+theorem cvmPreFamilyDirectReservedAfterFunctionTest :
+    cvmPreFamilyAfterFunctionContextTest.ngen.Reserves
+      cvmPreFamilyProofContextTest.freshFVarId := by
+  have first : cvmPreFamilyAfterDirectContextTest.ngen.Reserves
+      cvmPreFamilyProofContextTest.freshFVarId := by
+    simpa [cvmPreFamilyAfterDirectContextTest,
+      AddInductive.Context.advanceFresh,
+      AddInductive.Context.freshFVarId] using
+      (NameGenerator.next_reserves_self
+        (ngen := cvmPreFamilyProofContextTest.ngen))
+  have second := NameGenerator.Reserves.mono NameGenerator.LE.next first
+  simpa [cvmPreFamilyAfterFunctionContextTest,
+    AddInductive.Context.advanceFresh] using second
+
+theorem cvmPreFamilyFunctionReservedAfterFunctionTest :
+    cvmPreFamilyAfterFunctionContextTest.ngen.Reserves
+      cvmPreFamilyAfterDirectContextTest.freshFVarId := by
+  simpa [cvmPreFamilyAfterFunctionContextTest,
+    AddInductive.Context.advanceFresh,
+    AddInductive.Context.freshFVarId] using
+    (NameGenerator.next_reserves_self
+      (ngen := cvmPreFamilyAfterDirectContextTest.ngen))
+
+theorem cvmPreFamilyLaterNeDirectRemovedTest :
+    cvmValidationLaterIdTest ≠
+      cvmPreFamilyProofContextTest.freshFVarId := by
+  apply Ne.symm
+  rw [← cvmPreFamilyAfterFunctionFreshIdTest]
+  exact cvmPreFamilyNeFreshOfReservesTest
+    cvmPreFamilyDirectReservedAfterFunctionTest
+
+theorem cvmPreFamilyLaterNeFunctionRemovedTest :
+    cvmValidationLaterIdTest ≠
+      cvmPreFamilyAfterDirectContextTest.freshFVarId := by
+  apply Ne.symm
+  rw [← cvmPreFamilyAfterFunctionFreshIdTest]
+  exact cvmPreFamilyNeFreshOfReservesTest
+    cvmPreFamilyFunctionReservedAfterFunctionTest
+
+theorem cvmPreFamilyFunctionIndependentTest :
+    AddInductive.constructorIndependentOf cvmCtorFunctionDomain
+      [cvmPreFamilyProofContextTest.freshFVarId] = true := by
+  rw [cvmCtorFunctionDomainValidationShapeTest]
+  simp [AddInductive.constructorIndependentOf,
+    cvmValidationFamilyApplicationTest, Expr.fvarsList,
+    cvmPreFamilyAlphaNeDirectRemovedTest,
+    cvmPreFamilyPNeDirectRemovedTest]
+
+theorem cvmPreFamilyLaterIndependentTest :
+    AddInductive.constructorIndependentOf cvmCtorLaterDomain
+      [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+        cvmPreFamilyProofContextTest.freshFVarId] = true := by
+  rw [cvmCtorLaterDomainValidationShapeTest]
+  simp [AddInductive.constructorIndependentOf, Expr.fvarsList,
+    cvmPreFamilyAlphaNeFunctionRemovedTest,
+    cvmPreFamilyAlphaNeDirectRemovedTest]
+
+theorem cvmPreFamilyLaterProofIndependentTest :
+    AddInductive.constructorIndependentOf cvmCtorLaterProofDomain
+      [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+        cvmPreFamilyProofContextTest.freshFVarId] = true := by
+  rw [cvmCtorLaterProofDomainValidationShapeTest]
+  simp [AddInductive.constructorIndependentOf,
+    cvmValidationPredicateApplicationTest, Expr.fvarsList,
+    cvmPreFamilyPNeFunctionRemovedTest,
+    cvmPreFamilyPNeDirectRemovedTest,
+    cvmPreFamilyLaterNeFunctionRemovedTest,
+    cvmPreFamilyLaterNeDirectRemovedTest]
+
+theorem cvmPreFamilyTerminalIndependentTest :
+    AddInductive.constructorIndependentOf cvmCtorTerminal
+      [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+        cvmPreFamilyProofContextTest.freshFVarId] = true := by
+  rw [cvmCtorTerminalValidationShapeTest]
+  simp [AddInductive.constructorIndependentOf,
+    cvmValidationFamilyApplicationTest, Expr.fvarsList,
+    cvmPreFamilyAlphaNeFunctionRemovedTest,
+    cvmPreFamilyAlphaNeDirectRemovedTest,
+    cvmPreFamilyPNeFunctionRemovedTest,
+    cvmPreFamilyPNeDirectRemovedTest]
+
+theorem cvmPreFamilyTerminalValidTest :
+    AddInductive.isValidIndAppIdx
+      cvmStagedUniverseInputTest.staged.family.validation.stats
+      cvmCtorTerminal 0 = true := by
+  rw [cvmCtorTerminalValidationShapeTest]
+  exact cvmPreFamilyFamilyAppValidTest
+
+def cvmPreFamilyTerminalSpineTest :
+    AddInductive.ConstructorPreFamilyIndexSpineTrace
+      cvmPreFamilyLaterProofContextTest cvmPreFamilyIndicesTest
+      (cvmCtorTerminal.getAppArgs.toList.drop
+        cvmStagedUniverseInputTest.staged.family.validation.stats.params.size) := by
+  rw [cvmCtorTerminalValidationShapeTest]
+  exact cvmPreFamilyFamilySpineTest cvmPreFamilyLaterProofContextTest rfl
+    (cvmPreFamilyDepthTest _
+      (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+        (Or.inr (Or.inl rfl))))))))
+
+def cvmPreFamilyTerminalTraceTest :
+    AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyLaterProofContextTest
+      cvmCtorTerminal 8
+      [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+        cvmPreFamilyProofContextTest.freshFVarId] true :=
+  .terminal cvmPreFamilyLaterProofContextTest cvmCtorTerminal 8
+    [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+      cvmPreFamilyProofContextTest.freshFVarId] true
+    cvmPreFamilyTerminalValidTest cvmPreFamilyTerminalIndependentTest
+    cvmPreFamilyTerminalSpineTest
+
+theorem cvmPreFamilyTerminalRunTest :
+    AddInductive.ConstructorPreFamilyViewTrace.build
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyLaterProofContextTest
+      cvmCtorTerminal 8
+      [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+        cvmPreFamilyProofContextTest.freshFVarId] true 992 =
+        .ok cvmPreFamilyTerminalTraceTest := by
+  exact AddInductive.ConstructorPreFamilyViewTrace.terminal_build_eq
+    (fuel := 991) (by rw [cvmCtorTerminalValidationShapeTest]; rfl)
+    cvmPreFamilyTerminalValidTest cvmPreFamilyTerminalIndependentTest
+    cvmPreFamilyTerminalSpineTest
+
+theorem cvmPreFamilyLaterFreshExprValidationTest :
+    cvmPreFamilyLaterContextTest.freshExpr =
+      cvmValidationLaterContextTest.freshExpr := by
+  rfl
+
+theorem cvmPreFamilyLaterProofTailSourceTest :
+    cvmCtorAfterLater.bindingBody!.instantiate1
+      cvmPreFamilyLaterContextTest.freshExpr = cvmCtorTerminal := by
+  rw [cvmPreFamilyLaterFreshExprValidationTest]
+  exact cvmSixthFieldSourceTest
+
+theorem cvmPreFamilyLaterProofTraceRunTest :
+    ∃ trace : AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyLaterContextTest
+      cvmCtorAfterLater 7
+      [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+        cvmPreFamilyProofContextTest.freshFVarId] true,
+    AddInductive.ConstructorPreFamilyViewTrace.build
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyLaterContextTest
+      cvmCtorAfterLater 7
+      [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+        cvmPreFamilyProofContextTest.freshFVarId] true 993 = .ok trace := by
+  have tailContext : cvmPreFamilyLaterContextTest.pushLocalDecl
+      `laterProof .default
+        (AddInductive.consumeTypeAnnotations cvmCtorLaterProofDomain) =
+      cvmPreFamilyLaterProofContextTest := by
+    rfl
+  obtain ⟨tailTrace, tailRun⟩ :
+      ∃ tailTrace : AddInductive.ConstructorPreFamilyViewTrace
+        cvmStagedUniverseInputTest.staged.family.validation.stats 0
+        cvmPreFamilyIndicesTest
+        (cvmPreFamilyLaterContextTest.pushLocalDecl `laterProof .default
+          (AddInductive.consumeTypeAnnotations cvmCtorLaterProofDomain))
+        (cvmCtorAfterLater.bindingBody!.instantiate1
+          cvmPreFamilyLaterContextTest.freshExpr) 8
+        [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+          cvmPreFamilyProofContextTest.freshFVarId] true,
+      AddInductive.ConstructorPreFamilyViewTrace.build
+        cvmStagedUniverseInputTest.staged.family.validation.stats 0
+        cvmPreFamilyIndicesTest
+        (cvmPreFamilyLaterContextTest.pushLocalDecl `laterProof .default
+          (AddInductive.consumeTypeAnnotations cvmCtorLaterProofDomain))
+        (cvmCtorAfterLater.bindingBody!.instantiate1
+          cvmPreFamilyLaterContextTest.freshExpr) 8
+        [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+          cvmPreFamilyProofContextTest.freshFVarId] true 992 =
+        .ok tailTrace := by
+    rw [tailContext, cvmPreFamilyLaterProofTailSourceTest]
+    exact ⟨cvmPreFamilyTerminalTraceTest, cvmPreFamilyTerminalRunTest⟩
+  rw [cvmCtorAfterLaterForallTest]
+  let trace : AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyLaterContextTest
+      (.forallE `laterProof cvmCtorLaterProofDomain
+        cvmCtorAfterLater.bindingBody! .default) 7
+      [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+        cvmPreFamilyProofContextTest.freshFVarId] true :=
+    .ordinary cvmPreFamilyLaterContextTest 7
+      [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+        cvmPreFamilyProofContextTest.freshFVarId] true
+      `laterProof cvmCtorLaterProofDomain cvmCtorAfterLater.bindingBody!
+      .default cvmPreFamilyNoParameterSevenTest
+      cvmValidationLaterProofHasNoIndOccTest
+      cvmPreFamilyLaterProofIndependentTest
+      cvmPreFamilyLaterProofCheckedTest cvmPreFamilyLaterProofEnsureTest
+      cvmPreFamilyLaterProofConsumedTest
+      cvmPreFamilyLaterProofAnnotationsTest cvmPreFamilyLaterFreshTest
+      tailTrace
+  refine ⟨trace, ?_⟩
+  exact cvmPreFamilyOrdinaryBuildEqTest
+    cvmPreFamilyNoParameterSevenTest
+    cvmValidationLaterProofHasNoIndOccTest
+    cvmPreFamilyLaterProofIndependentTest
+    cvmPreFamilyLaterProofCheckedTest cvmPreFamilyLaterProofEnsureTest
+    cvmPreFamilyLaterProofConsumedTest
+    cvmPreFamilyLaterProofAnnotationsTest cvmPreFamilyLaterFreshTest
+    tailTrace tailRun
+
+theorem cvmPreFamilyAfterFunctionFreshExprValidationTest :
+    cvmPreFamilyAfterFunctionContextTest.freshExpr =
+      cvmValidationFunctionContextTest.freshExpr := by
+  rfl
+
+theorem cvmPreFamilyLaterTailSourceTest :
+    cvmCtorAfterFunction.bindingBody!.instantiate1
+      cvmPreFamilyAfterFunctionContextTest.freshExpr =
+      cvmCtorAfterLater := by
+  rw [cvmPreFamilyAfterFunctionFreshExprValidationTest]
+  exact cvmFifthFieldSourceTest
+
+theorem cvmPreFamilyLaterTraceRunTest :
+    ∃ trace : AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyAfterFunctionContextTest
+      cvmCtorAfterFunction 6
+      [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+        cvmPreFamilyProofContextTest.freshFVarId] true,
+    AddInductive.ConstructorPreFamilyViewTrace.build
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyAfterFunctionContextTest
+      cvmCtorAfterFunction 6
+      [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+        cvmPreFamilyProofContextTest.freshFVarId] true 994 = .ok trace := by
+  obtain ⟨laterProofTrace, laterProofRun⟩ :=
+    cvmPreFamilyLaterProofTraceRunTest
+  have tailContext : cvmPreFamilyAfterFunctionContextTest.pushLocalDecl
+      `later .default
+        (AddInductive.consumeTypeAnnotations cvmCtorLaterDomain) =
+      cvmPreFamilyLaterContextTest := by
+    rfl
+  obtain ⟨tailTrace, tailRun⟩ :
+      ∃ tailTrace : AddInductive.ConstructorPreFamilyViewTrace
+        cvmStagedUniverseInputTest.staged.family.validation.stats 0
+        cvmPreFamilyIndicesTest
+        (cvmPreFamilyAfterFunctionContextTest.pushLocalDecl `later .default
+          (AddInductive.consumeTypeAnnotations cvmCtorLaterDomain))
+        (cvmCtorAfterFunction.bindingBody!.instantiate1
+          cvmPreFamilyAfterFunctionContextTest.freshExpr) 7
+        [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+          cvmPreFamilyProofContextTest.freshFVarId] true,
+      AddInductive.ConstructorPreFamilyViewTrace.build
+        cvmStagedUniverseInputTest.staged.family.validation.stats 0
+        cvmPreFamilyIndicesTest
+        (cvmPreFamilyAfterFunctionContextTest.pushLocalDecl `later .default
+          (AddInductive.consumeTypeAnnotations cvmCtorLaterDomain))
+        (cvmCtorAfterFunction.bindingBody!.instantiate1
+          cvmPreFamilyAfterFunctionContextTest.freshExpr) 7
+        [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+          cvmPreFamilyProofContextTest.freshFVarId] true 993 =
+        .ok tailTrace := by
+    rw [tailContext, cvmPreFamilyLaterTailSourceTest]
+    exact ⟨laterProofTrace, laterProofRun⟩
+  rw [cvmCtorAfterFunctionForallTest]
+  let trace : AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyAfterFunctionContextTest
+      (.forallE `later cvmCtorLaterDomain
+        cvmCtorAfterFunction.bindingBody! .default) 6
+      [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+        cvmPreFamilyProofContextTest.freshFVarId] true :=
+    .ordinary cvmPreFamilyAfterFunctionContextTest 6
+      [cvmPreFamilyAfterDirectContextTest.freshFVarId,
+        cvmPreFamilyProofContextTest.freshFVarId] true
+      `later cvmCtorLaterDomain cvmCtorAfterFunction.bindingBody!
+      .default cvmPreFamilyNoParameterSixTest
+      cvmPreFamilyLaterHasNoIndOccTest cvmPreFamilyLaterIndependentTest
+      cvmPreFamilyLaterCheckedTest cvmPreFamilyLaterEnsureTest
+      cvmPreFamilyLaterConsumedTest cvmPreFamilyLaterAnnotationsTest
+      cvmPreFamilyAfterFunctionFreshTest tailTrace
+  refine ⟨trace, ?_⟩
+  exact cvmPreFamilyOrdinaryBuildEqTest cvmPreFamilyNoParameterSixTest
+    cvmPreFamilyLaterHasNoIndOccTest cvmPreFamilyLaterIndependentTest
+    cvmPreFamilyLaterCheckedTest cvmPreFamilyLaterEnsureTest
+    cvmPreFamilyLaterConsumedTest cvmPreFamilyLaterAnnotationsTest
+    cvmPreFamilyAfterFunctionFreshTest tailTrace tailRun
+
+theorem cvmPreFamilyAfterDirectFreshExprValidationTest :
+    cvmPreFamilyAfterDirectContextTest.freshExpr =
+      cvmValidationDirectContextTest.freshExpr := by
+  rfl
+
+theorem cvmPreFamilyFunctionTailSourceTest :
+    cvmCtorAfterDirect.bindingBody!.instantiate1
+      cvmPreFamilyAfterDirectContextTest.freshExpr =
+      cvmCtorAfterFunction := by
+  rw [cvmPreFamilyAfterDirectFreshExprValidationTest]
+  exact cvmFourthFieldSourceTest
+
+theorem cvmPreFamilyFunctionTraceRunTest :
+    ∃ trace : AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyAfterDirectContextTest
+      cvmCtorAfterDirect 5
+      [cvmPreFamilyProofContextTest.freshFVarId] true,
+    AddInductive.ConstructorPreFamilyViewTrace.build
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyAfterDirectContextTest
+      cvmCtorAfterDirect 5
+      [cvmPreFamilyProofContextTest.freshFVarId] true 995 = .ok trace := by
+  obtain ⟨laterTrace, laterRun⟩ := cvmPreFamilyLaterTraceRunTest
+  obtain ⟨tailTrace, tailRun⟩ :
+      ∃ tailTrace : AddInductive.ConstructorPreFamilyViewTrace
+        cvmStagedUniverseInputTest.staged.family.validation.stats 0
+        cvmPreFamilyIndicesTest
+        cvmPreFamilyAfterDirectContextTest.advanceFresh
+        (cvmCtorAfterDirect.bindingBody!.instantiate1
+          cvmPreFamilyAfterDirectContextTest.freshExpr) 6
+        (cvmPreFamilyAfterDirectContextTest.freshFVarId ::
+          [cvmPreFamilyProofContextTest.freshFVarId]) true,
+      AddInductive.ConstructorPreFamilyViewTrace.build
+        cvmStagedUniverseInputTest.staged.family.validation.stats 0
+        cvmPreFamilyIndicesTest
+        cvmPreFamilyAfterDirectContextTest.advanceFresh
+        (cvmCtorAfterDirect.bindingBody!.instantiate1
+          cvmPreFamilyAfterDirectContextTest.freshExpr) 6
+        (cvmPreFamilyAfterDirectContextTest.freshFVarId ::
+          [cvmPreFamilyProofContextTest.freshFVarId]) true 994 =
+        .ok tailTrace := by
+    rw [show cvmPreFamilyAfterDirectContextTest.advanceFresh =
+      cvmPreFamilyAfterFunctionContextTest by rfl]
+    rw [cvmPreFamilyFunctionTailSourceTest]
+    exact ⟨laterTrace, laterRun⟩
+  rw [cvmCtorAfterDirectForallTest]
+  let trace : AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyAfterDirectContextTest
+      (.forallE `function cvmCtorFunctionDomain
+        cvmCtorAfterDirect.bindingBody! .default) 5
+      [cvmPreFamilyProofContextTest.freshFVarId] true :=
+    .recursive cvmPreFamilyAfterDirectContextTest 5
+      [cvmPreFamilyProofContextTest.freshFVarId] true
+      `function cvmCtorFunctionDomain cvmCtorAfterDirect.bindingBody!
+      .default cvmPreFamilyNoParameterFiveTest
+      cvmValidationFunctionHasIndOccTest
+      cvmPreFamilyFunctionIndependentTest
+      cvmPreFamilyFunctionFieldTraceAtFuelTest
+      cvmPreFamilyAfterDirectFreshTest tailTrace
+  refine ⟨trace, ?_⟩
+  exact cvmPreFamilyRecursiveBuildEqTest cvmPreFamilyNoParameterFiveTest
+    cvmValidationFunctionHasIndOccTest cvmPreFamilyFunctionIndependentTest
+    cvmPreFamilyFunctionFieldTraceAtFuelTest
+    cvmPreFamilyFunctionFieldRunAtFuelTest
+    cvmPreFamilyAfterDirectFreshTest tailTrace tailRun
+
+theorem cvmPreFamilyProofFreshExprValidationTest :
+    cvmPreFamilyProofContextTest.freshExpr =
+      cvmValidationProofContextTest.freshExpr := by
+  rfl
+
+theorem cvmPreFamilyDirectTailSourceTest :
+    cvmCtorAfterProof.bindingBody!.instantiate1
+      cvmPreFamilyProofContextTest.freshExpr = cvmCtorAfterDirect := by
+  rw [cvmPreFamilyProofFreshExprValidationTest]
+  exact cvmThirdFieldSourceTest
+
+theorem cvmPreFamilyDirectIndependentTest :
+    AddInductive.constructorIndependentOf cvmCtorDirectDomain [] = true := by
+  simp [AddInductive.constructorIndependentOf]
+
+theorem cvmPreFamilyDirectTraceRunTest :
+    ∃ trace : AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyProofContextTest
+      cvmCtorAfterProof 4 [] false,
+    AddInductive.ConstructorPreFamilyViewTrace.build
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyProofContextTest
+      cvmCtorAfterProof 4 [] false 996 = .ok trace := by
+  obtain ⟨functionTrace, functionRun⟩ := cvmPreFamilyFunctionTraceRunTest
+  obtain ⟨tailTrace, tailRun⟩ :
+      ∃ tailTrace : AddInductive.ConstructorPreFamilyViewTrace
+        cvmStagedUniverseInputTest.staged.family.validation.stats 0
+        cvmPreFamilyIndicesTest cvmPreFamilyProofContextTest.advanceFresh
+        (cvmCtorAfterProof.bindingBody!.instantiate1
+          cvmPreFamilyProofContextTest.freshExpr) 5
+        [cvmPreFamilyProofContextTest.freshFVarId] true,
+      AddInductive.ConstructorPreFamilyViewTrace.build
+        cvmStagedUniverseInputTest.staged.family.validation.stats 0
+        cvmPreFamilyIndicesTest cvmPreFamilyProofContextTest.advanceFresh
+        (cvmCtorAfterProof.bindingBody!.instantiate1
+          cvmPreFamilyProofContextTest.freshExpr) 5
+        [cvmPreFamilyProofContextTest.freshFVarId] true 995 =
+        .ok tailTrace := by
+    rw [show cvmPreFamilyProofContextTest.advanceFresh =
+      cvmPreFamilyAfterDirectContextTest by rfl]
+    rw [cvmPreFamilyDirectTailSourceTest]
+    exact ⟨functionTrace, functionRun⟩
+  rw [cvmCtorAfterProofForallTest]
+  let trace : AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyProofContextTest
+      (.forallE `direct cvmCtorDirectDomain
+        cvmCtorAfterProof.bindingBody! .default) 4 [] false :=
+    .recursive cvmPreFamilyProofContextTest 4 [] false
+      `direct cvmCtorDirectDomain cvmCtorAfterProof.bindingBody!
+      .default cvmPreFamilyNoParameterFourTest
+      cvmValidationDirectHasIndOccTest cvmPreFamilyDirectIndependentTest
+      cvmPreFamilyDirectFieldTraceAtFuelTest
+      cvmPreFamilyProofFreshTest tailTrace
+  refine ⟨trace, ?_⟩
+  exact cvmPreFamilyRecursiveBuildEqTest cvmPreFamilyNoParameterFourTest
+    cvmValidationDirectHasIndOccTest cvmPreFamilyDirectIndependentTest
+    cvmPreFamilyDirectFieldTraceAtFuelTest
+    cvmPreFamilyDirectFieldRunAtFuelTest cvmPreFamilyProofFreshTest
+    tailTrace tailRun
+
+theorem cvmPreFamilyXFreshExprValidationTest :
+    cvmPreFamilyXContextTest.freshExpr =
+      cvmValidationXContextTest.freshExpr := by
+  rfl
+
+theorem cvmPreFamilyProofTailSourceTest :
+    cvmCtorAfterX.bindingBody!.instantiate1
+      cvmPreFamilyXContextTest.freshExpr = cvmCtorAfterProof := by
+  rw [cvmPreFamilyXFreshExprValidationTest]
+  exact cvmSecondFieldSourceTest
+
+theorem cvmPreFamilyProofIndependentTest :
+    AddInductive.constructorIndependentOf cvmCtorProofDomain [] = true := by
+  simp [AddInductive.constructorIndependentOf]
+
+theorem cvmPreFamilyProofTraceRunTest :
+    ∃ trace : AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyXContextTest
+      cvmCtorAfterX 3 [] false,
+    AddInductive.ConstructorPreFamilyViewTrace.build
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyXContextTest
+      cvmCtorAfterX 3 [] false 997 = .ok trace := by
+  obtain ⟨directTrace, directRun⟩ := cvmPreFamilyDirectTraceRunTest
+  obtain ⟨tailTrace, tailRun⟩ :
+      ∃ tailTrace : AddInductive.ConstructorPreFamilyViewTrace
+        cvmStagedUniverseInputTest.staged.family.validation.stats 0
+        cvmPreFamilyIndicesTest
+        (cvmPreFamilyXContextTest.pushLocalDecl `proof .default
+          (AddInductive.consumeTypeAnnotations cvmCtorProofDomain))
+        (cvmCtorAfterX.bindingBody!.instantiate1
+          cvmPreFamilyXContextTest.freshExpr) 4 [] false,
+      AddInductive.ConstructorPreFamilyViewTrace.build
+        cvmStagedUniverseInputTest.staged.family.validation.stats 0
+        cvmPreFamilyIndicesTest
+        (cvmPreFamilyXContextTest.pushLocalDecl `proof .default
+          (AddInductive.consumeTypeAnnotations cvmCtorProofDomain))
+        (cvmCtorAfterX.bindingBody!.instantiate1
+          cvmPreFamilyXContextTest.freshExpr) 4 [] false 996 =
+        .ok tailTrace := by
+    rw [show cvmPreFamilyXContextTest.pushLocalDecl `proof .default
+      (AddInductive.consumeTypeAnnotations cvmCtorProofDomain) =
+      cvmPreFamilyProofContextTest by rfl]
+    rw [cvmPreFamilyProofTailSourceTest]
+    exact ⟨directTrace, directRun⟩
+  rw [cvmCtorAfterXForallTest]
+  let trace : AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyXContextTest
+      (.forallE `proof cvmCtorProofDomain
+        cvmCtorAfterX.bindingBody! .default) 3 [] false :=
+    .ordinary cvmPreFamilyXContextTest 3 [] false
+      `proof cvmCtorProofDomain cvmCtorAfterX.bindingBody! .default
+      cvmPreFamilyNoParameterThreeTest
+      cvmValidationProofHasNoIndOccTest cvmPreFamilyProofIndependentTest
+      cvmPreFamilyProofCheckedTest cvmPreFamilyProofEnsureTest
+      cvmPreFamilyProofConsumedTest cvmPreFamilyProofAnnotationsTest
+      cvmPreFamilyXFreshTest tailTrace
+  refine ⟨trace, ?_⟩
+  exact cvmPreFamilyOrdinaryBuildEqTest cvmPreFamilyNoParameterThreeTest
+    cvmValidationProofHasNoIndOccTest cvmPreFamilyProofIndependentTest
+    cvmPreFamilyProofCheckedTest cvmPreFamilyProofEnsureTest
+    cvmPreFamilyProofConsumedTest cvmPreFamilyProofAnnotationsTest
+    cvmPreFamilyXFreshTest tailTrace tailRun
+
+theorem cvmPreFamilyRootFreshExprValidationTest :
+    cvmPreFamilyContextTest.freshExpr =
+      cvmValidationRootContextTest.freshExpr := by
+  rfl
+
+theorem cvmPreFamilyXTailSourceTest :
+    cvmCtorAfterP.bindingBody!.instantiate1
+      cvmPreFamilyContextTest.freshExpr = cvmCtorAfterX := by
+  rw [cvmPreFamilyRootFreshExprValidationTest]
+  exact cvmFirstFieldSourceTest
+
+theorem cvmPreFamilyXIndependentTest :
+    AddInductive.constructorIndependentOf cvmCtorXDomain [] = true := by
+  simp [AddInductive.constructorIndependentOf]
+
+theorem cvmPreFamilyXTraceRunTest :
+    ∃ trace : AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+      cvmCtorAfterP 2 [] false,
+    AddInductive.ConstructorPreFamilyViewTrace.build
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+      cvmCtorAfterP 2 [] false 998 = .ok trace := by
+  obtain ⟨proofTrace, proofRun⟩ := cvmPreFamilyProofTraceRunTest
+  obtain ⟨tailTrace, tailRun⟩ :
+      ∃ tailTrace : AddInductive.ConstructorPreFamilyViewTrace
+        cvmStagedUniverseInputTest.staged.family.validation.stats 0
+        cvmPreFamilyIndicesTest
+        (cvmPreFamilyContextTest.pushLocalDecl `x .default
+          (AddInductive.consumeTypeAnnotations cvmCtorXDomain))
+        (cvmCtorAfterP.bindingBody!.instantiate1
+          cvmPreFamilyContextTest.freshExpr) 3 [] false,
+      AddInductive.ConstructorPreFamilyViewTrace.build
+        cvmStagedUniverseInputTest.staged.family.validation.stats 0
+        cvmPreFamilyIndicesTest
+        (cvmPreFamilyContextTest.pushLocalDecl `x .default
+          (AddInductive.consumeTypeAnnotations cvmCtorXDomain))
+        (cvmCtorAfterP.bindingBody!.instantiate1
+          cvmPreFamilyContextTest.freshExpr) 3 [] false 997 =
+        .ok tailTrace := by
+    rw [show cvmPreFamilyContextTest.pushLocalDecl `x .default
+      (AddInductive.consumeTypeAnnotations cvmCtorXDomain) =
+      cvmPreFamilyXContextTest by rfl]
+    rw [cvmPreFamilyXTailSourceTest]
+    exact ⟨proofTrace, proofRun⟩
+  rw [cvmCtorAfterPForallTest]
+  let trace : AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+      (.forallE `x cvmCtorXDomain cvmCtorAfterP.bindingBody! .default)
+      2 [] false :=
+    .ordinary cvmPreFamilyContextTest 2 [] false `x cvmCtorXDomain
+      cvmCtorAfterP.bindingBody! .default cvmPreFamilyNoParameterTwoTest
+      (by
+        rw [cvmCtorXDomainValidationShapeTest]
+        exact cvmValidationAlphaHasNoIndOccTest)
+      cvmPreFamilyXIndependentTest cvmPreFamilyXCheckedTest
+      cvmPreFamilyXEnsureTest cvmPreFamilyXConsumedTest
+      cvmPreFamilyXAnnotationsTest cvmPreFamilyRootFreshTest tailTrace
+  refine ⟨trace, ?_⟩
+  exact cvmPreFamilyOrdinaryBuildEqTest cvmPreFamilyNoParameterTwoTest
+    (by
+      rw [cvmCtorXDomainValidationShapeTest]
+      exact cvmValidationAlphaHasNoIndOccTest)
+    cvmPreFamilyXIndependentTest cvmPreFamilyXCheckedTest
+    cvmPreFamilyXEnsureTest cvmPreFamilyXConsumedTest
+    cvmPreFamilyXAnnotationsTest cvmPreFamilyRootFreshTest tailTrace tailRun
+
+theorem cvmPreFamilyPTailSourceTest :
+    cvmCtorAfterAlpha.bindingBody!.instantiate1
+      (.fvar cvmValidationPIdTest) = cvmCtorAfterP := by
+  exact cvmSecondParameterSourceTest
+
+theorem cvmPreFamilyPTraceRunTest :
+    ∃ trace : AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+      cvmCtorAfterAlpha 1 [] false,
+    AddInductive.ConstructorPreFamilyViewTrace.build
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+      cvmCtorAfterAlpha 1 [] false 999 = .ok trace := by
+  obtain ⟨xTrace, xRun⟩ := cvmPreFamilyXTraceRunTest
+  obtain ⟨tailTrace, tailRun⟩ :
+      ∃ tailTrace : AddInductive.ConstructorPreFamilyViewTrace
+        cvmStagedUniverseInputTest.staged.family.validation.stats 0
+        cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+        (cvmCtorAfterAlpha.bindingBody!.instantiate1
+          (.fvar cvmValidationPIdTest)) 2 [] false,
+      AddInductive.ConstructorPreFamilyViewTrace.build
+        cvmStagedUniverseInputTest.staged.family.validation.stats 0
+        cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+        (cvmCtorAfterAlpha.bindingBody!.instantiate1
+          (.fvar cvmValidationPIdTest)) 2 [] false 998 =
+        .ok tailTrace := by
+    rw [cvmPreFamilyPTailSourceTest]
+    exact ⟨xTrace, xRun⟩
+  rw [cvmCtorAfterAlphaForallTest]
+  let trace : AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+      (.forallE `P cvmCtorPDomain cvmCtorAfterAlpha.bindingBody! .implicit)
+      1 [] false :=
+    .parameter cvmPreFamilyContextTest 1 [] false `P cvmCtorPDomain
+      cvmCtorAfterAlpha.bindingBody! .implicit
+      (.fvar cvmValidationPIdTest) cvmPreFamilyParameterAtOneTest tailTrace
+  refine ⟨trace, ?_⟩
+  exact cvmPreFamilyParameterBuildEqTest
+    cvmPreFamilyParameterAtOneTest tailTrace tailRun
+
+theorem cvmPreFamilyAlphaTailSourceTest :
+    constructorValidityMatrixKernelCtor.type.bindingBody!.instantiate1
+      (.fvar cvmValidationAlphaIdTest) = cvmCtorAfterAlpha := by
+  exact cvmFirstParameterSourceTest
+
+theorem cvmCtorRootForallTest :
+    constructorValidityMatrixKernelCtor.type =
+      .forallE `α (.sort (.succ (.param `u)))
+        constructorValidityMatrixKernelCtor.type.bindingBody! .implicit := by
+  simp_cvm_ctor_expr
+
+theorem cvmPreFamilyRawTraceRunTest :
+    ∃ trace : AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+      constructorValidityMatrixKernelCtor.type 0 [] false,
+    AddInductive.ConstructorPreFamilyViewTrace.build
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+      constructorValidityMatrixKernelCtor.type 0 [] false 1000 =
+        .ok trace := by
+  obtain ⟨pTrace, pRun⟩ := cvmPreFamilyPTraceRunTest
+  obtain ⟨tailTrace, tailRun⟩ :
+      ∃ tailTrace : AddInductive.ConstructorPreFamilyViewTrace
+        cvmStagedUniverseInputTest.staged.family.validation.stats 0
+        cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+        (constructorValidityMatrixKernelCtor.type.bindingBody!.instantiate1
+          (.fvar cvmValidationAlphaIdTest)) 1 [] false,
+      AddInductive.ConstructorPreFamilyViewTrace.build
+        cvmStagedUniverseInputTest.staged.family.validation.stats 0
+        cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+        (constructorValidityMatrixKernelCtor.type.bindingBody!.instantiate1
+          (.fvar cvmValidationAlphaIdTest)) 1 [] false 999 =
+        .ok tailTrace := by
+    rw [cvmPreFamilyAlphaTailSourceTest]
+    exact ⟨pTrace, pRun⟩
+  rw [cvmCtorRootForallTest]
+  let trace : AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+      (.forallE `α (.sort (.succ (.param `u)))
+        constructorValidityMatrixKernelCtor.type.bindingBody! .implicit)
+      0 [] false :=
+    .parameter cvmPreFamilyContextTest 0 [] false `α
+      (.sort (.succ (.param `u)))
+      constructorValidityMatrixKernelCtor.type.bindingBody! .implicit
+      (.fvar cvmValidationAlphaIdTest) cvmPreFamilyParameterAtZeroTest
+      tailTrace
+  refine ⟨trace, ?_⟩
+  exact cvmPreFamilyParameterBuildEqTest
+    cvmPreFamilyParameterAtZeroTest tailTrace tailRun
+
+theorem cvmPreFamilyCandidateTraceRunTest :
+    ∃ trace : AddInductive.ConstructorPreFamilyViewTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+      cvmCandidate.families.singleton.constructors.singleton.type.view
+      0 [] false,
+    AddInductive.ConstructorPreFamilyViewTrace.build
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+      cvmCandidate.families.singleton.constructors.singleton.type.view
+      0 [] false 1000 = .ok trace := by
+  rw [cvmCtorViewTest_eq]
+  exact cvmPreFamilyRawTraceRunTest
+
+theorem cvmSafetyRunDirectTest :
+    AddInductive.checkConstructorPreFamilySafety
+      cvmStagedUniverseInputTest.staged.family.validation.stats
+      cvmCandidate.families.singleton.familyType.type.view
+      cvmCandidate.families.singleton.constructors
+      cvmCandidate.families.singleton.familyType.type.trace.terminalContext =
+        .ok () := by
+  rw [cvmFamilyViewPreFamilyTest_eq]
+  rw [AddInductive.CandidateList.singleton_eta
+    cvmCandidate.families.singleton.constructors]
+  rw [cvmFamilyTerminalContextTest_eq]
+  change AddInductive.checkConstructorPreFamilySafety
+    cvmStagedUniverseInputTest.staged.family.validation.stats
+    constructorValidityMatrixKernelType.type
+    (.cons cvmCandidate.families.singleton.constructors.singleton .nil)
+    cvmPreFamilyContextTest = .ok ()
+  obtain ⟨headTrace, headRun⟩ := cvmPreFamilyCandidateTraceRunTest
+  let listTrace : AddInductive.ConstructorPreFamilyListTrace
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+      (.cons cvmCandidate.families.singleton.constructors.singleton .nil) :=
+    .cons headTrace .nil
+  have headRunAtFuel :
+      AddInductive.ConstructorPreFamilyViewTrace.build
+        cvmStagedUniverseInputTest.staged.family.validation.stats 0
+        cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+        cvmCandidate.families.singleton.constructors.singleton.type.view
+        0 [] false cvmPreFamilyContextTest.fuel.inductiveFuel =
+          .ok headTrace := by
+    rw [cvmPreFamilyInductiveFuelTest _ (Or.inl rfl)]
+    exact headRun
+  have listRun : AddInductive.ConstructorPreFamilyListTrace.build
+      cvmStagedUniverseInputTest.staged.family.validation.stats 0
+      cvmPreFamilyIndicesTest cvmPreFamilyContextTest
+      (.cons cvmCandidate.families.singleton.constructors.singleton .nil) =
+        .ok listTrace :=
+    AddInductive.ConstructorPreFamilyListTrace.cons_build_eq headTrace
+      headRunAtFuel .nil rfl
+  have translationUnique :
+      (AddInductive.theoryTranslationUnique
+          constructorValidityMatrixKernelType.type &&
+        (AddInductive.CandidateList.cons
+          cvmCandidate.families.singleton.constructors.singleton
+          (AddInductive.CandidateList.nil : AddInductive.CandidateList
+            AddInductive.CandidateConstructor [])).viewTranslationUnique) =
+        true := by
+    change (AddInductive.theoryTranslationUnique
+      constructorValidityMatrixKernelType.type &&
+      (cvmCandidate.families.singleton.constructors.singleton.type.trace.viewTranslationUnique &&
+        true)) = true
+    rw [cvmCandidate.families.singleton.constructors.singleton.type.trace.viewTranslationUnique_eq]
+    change (AddInductive.theoryTranslationUnique
+      constructorValidityMatrixKernelType.type &&
+      (AddInductive.theoryTranslationUnique
+        cvmCandidate.families.singleton.constructors.singleton.type.view &&
+        true)) = true
+    rw [cvmCtorViewTest_eq]
+    simp [AddInductive.theoryTranslationUnique,
+      constructorValidityMatrixKernelType,
+      constructorValidityMatrixKernelCtor,
+      constructorValidityMatrixInfo, constructorValidityMatrixMkInfo,
+      ConstantInfo.type, ConstantInfo.toConstantVal]
+  unfold AddInductive.checkConstructorPreFamilySafety
+  rw [if_pos translationUnique]
+  rw [cvmPreFamilyParametersRunTest]
+  simp only [Bind.bind, Except.bind]
+  rw [listRun]
+  rfl
+
+theorem cvmSafetyRunTest :
+    AddInductive.checkConstructorPreFamilySafety
+      cvmStagedPostFamilyInputTest.universeInput.staged.family.validation.stats
+      cvmCandidate.families.singleton.familyType.type.view
+      cvmCandidate.families.singleton.constructors
+      cvmCandidate.families.singleton.familyType.type.trace.terminalContext =
+        .ok () := by
+  simpa [cvmStagedPostFamilyInputTest] using cvmSafetyRunDirectTest
+
+noncomputable def cvmStagedPreFamilyInputTest :
+    VInductDecl.StagedNormalizationCandidatePreFamilyInput
+      cvmFamilyContext cvmConstructorContext VEnv.empty [`u]
+      cvmCandidate constructorValidityMatrixDecl :=
+  VInductDecl.StagedNormalizationCandidatePreFamilyInput.ofRun
+    cvmStagedPostFamilyInputTest cvmSafetyRunTest
+
+/- Public CVM stage names now expose the structural D2--D4 replay above. -/
+theorem cvmUniverseRun :
+    AddInductive.checkConstructorUniverseListSemantics
+      cvmFamilyValidationRun.stats constructorValidityMatrixKernelType.ctors
+      { cvmCandidate.families.singleton.familyType.type.trace.terminalContext with
+        env := cvmConstructorContext.env } = .ok () :=
+  by
+    change AddInductive.checkConstructorUniverseListSemantics
+      cvmFamilyValidationRun.stats constructorValidityMatrixKernelType.ctors
+      cvmConstructorValidationContextTest = .ok ()
+    rw [cvmConstructorValidationContextTest_root]
+    exact cvmUniverseRunTest
+
+noncomputable def cvmConstructorValidation := cvmConstructorValidationTest
+
+noncomputable def cvmStagedUniverseInput := cvmStagedUniverseInputTest
+
+noncomputable def cvmStagedPostFamilyInput := cvmStagedPostFamilyInputTest
+
+theorem cvmSafetyRunDirect :
+    AddInductive.checkConstructorPreFamilySafety
+      cvmStagedUniverseInput.staged.family.validation.stats
+      cvmCandidate.families.singleton.familyType.type.view
+      cvmCandidate.families.singleton.constructors
+      cvmCandidate.families.singleton.familyType.type.trace.terminalContext =
+        .ok () :=
+  cvmSafetyRunDirectTest
+
+theorem cvmSafetyRun :
+    AddInductive.checkConstructorPreFamilySafety
+      cvmStagedPostFamilyInput.universeInput.staged.family.validation.stats
+      cvmCandidate.families.singleton.familyType.type.view
+      cvmCandidate.families.singleton.constructors
+      cvmCandidate.families.singleton.familyType.type.trace.terminalContext =
+        .ok () :=
+  cvmSafetyRunTest
+
+noncomputable def cvmStagedPreFamilyInput := cvmStagedPreFamilyInputTest
+
+/- The accepted CVM package may inherit the ordinary verified-checker
+transition frontier and the one exact L4L-01E execution witness, but no
+stage-local native decision may re-enter constructor validation, universe
+checking, alignment, or pre-family safety. -/
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.cvmStagedPreFamilyInput' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ ptrEqConstantInfo_eq,
+ ptrEqExpr_eq,
+ Quot.sound,
+ Expr.abstractRange_eq,
+ Expr.abstract_eq,
+ Expr.eqv_eq,
+ Expr.hasLooseBVar_eq,
+ Expr.instantiate1_eq,
+ Expr.instantiateRange_eq,
+ Expr.instantiateRevRange_eq,
+ Expr.instantiateRev_eq,
+ Expr.instantiate_eq,
+ Expr.looseBVarRange_eq,
+ Expr.lowerLooseBVars_eq,
+ Expr.mkAppData_eq,
+ Expr.mkData_eq,
+ Expr.replace_eq,
+ Level.hasMVar_eq,
+ Level.hasParam_eq,
+ Level.instLawfulBEqLevel,
+ PersistentArray.toList'_push,
+ PersistentHashMap.findAux_isSome,
+ Syntax.structEq_eq,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert,
+ cvmExecutionResult_isOk._native.native_decide.ax_1_1]
+-/
+#guard_msgs in
+#print axioms cvmStagedPreFamilyInput
 
 /-! ## Exact produced generation packages -/
 

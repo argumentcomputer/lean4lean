@@ -66,12 +66,12 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-05 active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
-| Current formalization source | L4L-04 closure at the current `jcb/formalization` checkpoint, built on Theory checkpoint `a5a010790b81`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
+| Ladder position | **L4L-06A active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
+| Current formalization source | L4L-05 closure at the current `jcb/formalization` checkpoint, built on Theory checkpoint `a5a010790b81`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 20 live sorries and 29 custom-axiom declarations, both pinned by exact audits |
-| Gates | the full §6 gate list is green on the current L4L-04 closure source, including the 120-job Theory/Verify build, 157-job default build, Nix build/check suite, trust audits, and formatter |
+| Gates | the full §6 gate list is green on the current L4L-05 closure source, including the Theory/Verify and default Lake builds, Nix build/check suite, trust audits, and formatter |
 
 ### 2.1 What is green
 
@@ -157,9 +157,21 @@ context. Ordinary fields are rechecked and retained; recursive outer locals
 are omitted while nested Pi binders and recursive/result index spines receive
 verified semantic interpretations and proved prefix weakening. Independent
 ordinary fields may now follow an omitted recursive outer field and continue
-through the generalized semantic replay. A later field that actually depends
-on an omitted recursive local is still rejected; that remaining dependency
-breadth is explicitly assigned to L4L-05.
+through the generalized semantic replay. The actual `ConstructorValidityMatrix`
+metadata now closes this path structurally across its two parameters and six
+fields: dependent data/proof fields, direct recursion, recursive-function
+recursion, and an independent dependent data/proof suffix after both omitted
+recursive locals. The proof derives the retained constructor-validation trace,
+universe run, post-family alignment, exact fresh-name independence, zero-index
+terminal spine, and final pre-family safety result without a stage-local
+decision oracle. Its guarded axiom closure contains only the pre-existing
+verified-checker frontier and the single exact L4L-01E producer-execution
+witness. `PropRecursiveBoundary` separately pins the impredicative-Prop branch
+with recursive-function and index structure. Nearest-kernel negatives reject
+nested negativity, family occurrences in nonrecursive and proof fields,
+dependency on an omitted recursive local, and an excessive constructor
+universe with the exact ordinary-producer errors; the omitted-local case also
+reaches and pins the strengthened pre-family rejection.
 
 **Three positive regressions, end to end.** AliasFormer (terminal alias),
 AnnotatedPi (nested recursive-Π with retained `outParam Prop`, generated
@@ -203,9 +215,10 @@ indices as `Nat.zero`/`Nat.succ`, deliberately excluding notation's
 replay. `AliasRec` remains the compositional constructor-normalization
 specification until its candidate list is migrated.
 
-**Not claimed.** The complete normalization differential matrix, full
-positivity/constructor breadth, small elimination, K behavior, mutual/nested
-blocks, patterns, projections, and the remaining metatheory/checker roots.
+**Not claimed.** The complete normalization differential matrix, constructor
+parity beyond the singleton-family scope, small elimination, K behavior,
+mutual/nested blocks, patterns, projections, and the remaining
+metatheory/checker roots.
 Bare producer success is never generation-shape authority or Theory semantics.
 
 ### 2.2 Live debt
@@ -395,20 +408,9 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Singleton kernel parity (L4L-05–L4L-07)
+### Singleton kernel parity (L4L-06A–L4L-07)
 
-**L4L-05 — positivity and constructor-validity parity (active).** Extend
-acceptance/rejection to the kernel matrix for nested-negative occurrences,
-family mentions in nonrecursive/dependent/proof fields, recursive functions,
-dependencies on omitted recursive outer locals after a recursive field, and
-remaining constructor dependency/universe-bound breadth. The universe
-obligation is already represented semantically in `Checked.WF`; this connects
-it to kernel acceptance and differential tests.
-*Exit:* each branch has the nearest-kernel differential; all accepted cases
-use L4L-01E and replay; no proof-only premise or oracle broadens acceptance.
-This is breadth/completeness, distinct from L4L-01D1-D4 soundness.
-
-**L4L-06A — elimination mode and recursor levels.** Implement
+**L4L-06A — elimination mode and recursor levels (active).** Implement
 `isLargeEliminator`, `getElimLevel`, `getRecLevels`, and `getRecLevelParams`
 faithfully; make `ElimMode.small` constructible and drive motive/recursor
 generation by it.
