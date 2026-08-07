@@ -669,20 +669,39 @@ theorem stage3Ctor_eq {U T np ni} : ∀ {j₀ : Nat} {e : VExpr},
     exact ⟨(isRecField_eq h).1, (isRecField_eq h).2.1, (isRecField_eq h).2.2,
       fun q B h' => by simp [ctorFields] at h'⟩
 
-/-- Failure of the public acceptance predicate is exactly failure to produce
-the shared checked descriptor. -/
+/-- Failure of the legacy singleton predicate is exactly failure to produce
+the one-family checked descriptor. -/
 theorem checked?_eq_none_iff {decl : VInductDecl} :
-    decl.checked? = none ↔ decl.stage3 = false := by
-  unfold stage3
+    decl.checked? = none ↔ decl.singletonStage3 = false := by
+  unfold singletonStage3
   cases decl.checked? <;> simp
 
-/-- Successful acceptance retains the descriptor rather than discarding it. -/
-theorem exists_checked_of_stage3 {decl : VInductDecl} (h : decl.stage3 = true) :
+/-- Successful singleton acceptance retains the descriptor rather than
+discarding it. -/
+theorem exists_checked_of_singletonStage3 {decl : VInductDecl}
+    (h : decl.singletonStage3 = true) :
     ∃ checked, decl.checked? = some checked := by
-  unfold stage3 at h
+  unfold singletonStage3 at h
   cases hc : decl.checked? with
   | none => simp [hc] at h
   | some checked => exact ⟨checked, rfl⟩
+
+/-- Public Stage-3 rejection is exactly failure to retain a complete mutual
+generation descriptor. -/
+theorem identityBlockGeneration?_eq_none_iff {decl : VInductDecl} :
+    decl.identityBlockGeneration? = none ↔ decl.stage3 = false := by
+  unfold stage3
+  cases decl.identityBlockGeneration? <;> simp
+
+/-- Public Stage-3 acceptance retains the exact block descriptor used by the
+transaction. -/
+theorem exists_blockGeneration_of_stage3 {decl : VInductDecl}
+    (h : decl.stage3 = true) :
+    ∃ generation, decl.identityBlockGeneration? = some generation := by
+  unfold stage3 at h
+  cases hgeneration : decl.identityBlockGeneration? with
+  | none => simp [hgeneration] at h
+  | some generation => exact ⟨generation, rfl⟩
 
 /-- Proof-level constructor-header coherence exported from the computational
 normalization-shape check. -/
@@ -1346,7 +1365,7 @@ theorem Checked.wf_of_decl {decl : VInductDecl} (checked : decl.Checked)
 to `Checked.WF`. -/
 theorem Checked.to_declWF {decl : VInductDecl} (checked : decl.Checked)
     (hchecked : decl.checked? = some checked) (hwf : checked.WF env) : decl.WF env := by
-  refine ⟨by simp [stage3, hchecked], ?_⟩
+  refine ⟨by simp [singletonStage3, hchecked], ?_⟩
   intro ty hty
   rw [checked.types_eq] at hty
   obtain rfl := List.mem_singleton.1 hty
@@ -1361,7 +1380,7 @@ theorem wf_iff_exists_checked {decl : VInductDecl} :
     decl.WF env ↔ ∃ checked, decl.checked? = some checked ∧ checked.WF env := by
   constructor
   · intro hdecl
-    obtain ⟨checked, hchecked⟩ := exists_checked_of_stage3 hdecl.1
+    obtain ⟨checked, hchecked⟩ := exists_checked_of_singletonStage3 hdecl.1
     exact ⟨checked, hchecked, checked.wf_of_decl hdecl⟩
   · rintro ⟨checked, hchecked, hwf⟩
     exact checked.to_declWF hchecked hwf
@@ -1430,7 +1449,8 @@ info: 'Lean4Lean.VInductDecl.wf_iff_exists_checked' depends on axioms: [propext,
 
 /-- Unpack `stage3` for a declaration already known (from `addInduct`
 success) to have a singleton type list. -/
-theorem stage3_anatomy {U np ty} (h : stage3 ⟨U, np, [ty]⟩ = true) :
+theorem singletonStage3_anatomy {U np ty}
+    (h : singletonStage3 ⟨U, np, [ty]⟩ = true) :
     ty.uvars = U ∧ (VExpr.telN np ty.type).length = np ∧
     (∃ l, VExpr.resultOf (VExpr.dropN np ty.type) = .sort l ∧ l.WF U) ∧
     (∀ I ∈ ctorFields (VExpr.dropN np ty.type), I.hasConst ty.name = false) ∧
@@ -1438,7 +1458,7 @@ theorem stage3_anatomy {U np ty} (h : stage3 ⟨U, np, [ty]⟩ = true) :
       VExpr.telN np c.type = VExpr.telN np ty.type ∧
       stage3Ctor U ty.name np (ctorFields (VExpr.dropN np ty.type)).length 0
         (VExpr.dropN np c.type) = true := by
-  obtain ⟨checked, -⟩ := exists_checked_of_stage3 h
+  obtain ⟨checked, -⟩ := exists_checked_of_singletonStage3 h
   have hcore := checked.accepted
   simp only [stage3Core, Bool.and_eq_true] at hcore
   have hdirect := hcore.1
@@ -14544,23 +14564,22 @@ info: 'Lean4Lean.VEnv.addInductCertified_WF' depends on axioms: [propext, Classi
 #print axioms addInductCertified_WF
 
 /--
-info: 'Lean4Lean.VEnv.addInduct_eq_addInductGeneration' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: 'Lean4Lean.VEnv.addInduct_eq_addInductBlockGeneration' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
-#print axioms addInduct_eq_addInductGeneration
+#print axioms addInduct_eq_addInductBlockGeneration
 
 /-- Elimination of a successful `addInduct` transaction into its stable
 consumer-facing postcondition. -/
 theorem addInduct_success (hadd : addInduct env decl = some env') :
     AddInductSuccess env env' decl := by
   unfold addInduct at hadd
-  obtain ⟨checked, hchecked, hgen⟩ :=
+  obtain ⟨generation, hgeneration, hgen⟩ :=
     Option.bind_eq_some_iff.1 hadd
-  rcases addInductGeneration_trace hgen with ⟨H⟩
+  rcases addInductBlockGeneration_trace hgen with ⟨H⟩
   refine {
-    checked := ⟨checked, hchecked⟩
-    accepted := by simp [stage3, hchecked]
-    singleton := ⟨checked.type, checked.types_eq⟩
+    generation := ⟨generation, hgeneration⟩
+    accepted := by simp [stage3, hgeneration]
     le := H.le
     type_fresh := ?_
     type_lookup := ?_
@@ -14571,52 +14590,39 @@ theorem addInduct_success (hadd : addInduct env decl = some env') :
     rule_mem := ?_
   }
   · intro ty hty
-    rw [checked.types_eq] at hty
-    obtain rfl := List.mem_singleton.1 hty
-    exact H.family_fresh
+    exact H.family_fresh hty
   · intro ty hty
-    rw [checked.types_eq] at hty
-    obtain rfl := List.mem_singleton.1 hty
-    exact H.family_lookup
+    exact H.family_lookup hty
   · intro ty hty c hc
-    rw [checked.types_eq] at hty
-    obtain rfl := List.mem_singleton.1 hty
-    exact H.ctor_fresh hc
+    apply H.ctor_fresh
+    simp only [VInductDecl.blockConstructorConstants, List.mem_flatMap]
+    exact ⟨ty, hty, hc⟩
   · intro ty hty c hc
-    rw [checked.types_eq] at hty
-    obtain rfl := List.mem_singleton.1 hty
-    exact H.ctor_lookup hc
-  · intro ty hty
-    rw [checked.types_eq] at hty
-    obtain rfl := List.mem_singleton.1 hty
-    exact H.rec_fresh
-  · intro ty hty
-    rw [checked.types_eq] at hty
-    obtain rfl := List.mem_singleton.1 hty
-    have hout := H.rec_lookup
-    change env'.constants (.str checked.type.name "rec") =
-      some checked.recursor at hout
-    rw [checked.recursor_eq_legacy] at hout
-    rw [checked.elimination_eq, checked.indices_eq] at hout
-    exact hout
-  · intro ty hty df hdf
-    rw [checked.types_eq] at hty
-    obtain rfl := List.mem_singleton.1 hty
-    apply H.rule_mem
-    change df ∈ checked.generatedRules
-    rw [checked.generatedRules_eq_legacy]
-    rw [checked.elimination_eq, checked.indices_eq]
-    exact hdf
+    apply H.ctor_lookup
+    simp only [VInductDecl.blockConstructorConstants, List.mem_flatMap]
+    exact ⟨ty, hty, hc⟩
+  · intro generation' hgeneration' recursor hrecursor
+    have heq : generation = generation' :=
+      Option.some.inj (hgeneration.symm.trans hgeneration')
+    exact H.rec_fresh (by simpa [heq] using hrecursor)
+  · intro generation' hgeneration' recursor hrecursor
+    have heq : generation = generation' :=
+      Option.some.inj (hgeneration.symm.trans hgeneration')
+    exact H.rec_lookup (by simpa [heq] using hrecursor)
+  · intro generation' hgeneration' df hdf
+    have heq : generation = generation' :=
+      Option.some.inj (hgeneration.symm.trans hgeneration')
+    exact H.rule_mem (by simpa [heq] using hdf)
 
 /-- Successful inductive addition is monotone. -/
 theorem addInduct_le (hadd : addInduct env decl = some env') : env ≤ env' :=
   (addInduct_success hadd).le
 
-/-- Successful environment extension exposes the exact checked descriptor that
+/-- Successful environment extension exposes the exact block descriptor that
 drove generation, so consumers never need to re-run acceptance analysis. -/
-theorem addInduct_checked (hadd : addInduct env decl = some env') :
-    ∃ checked, decl.checked? = some checked :=
-  (addInduct_success hadd).checked
+theorem addInduct_generation (hadd : addInduct env decl = some env') :
+    ∃ generation, decl.identityBlockGeneration? = some generation :=
+  (addInduct_success hadd).generation
 
 theorem addInduct_type_fresh (hadd : addInduct env decl = some env')
     (hty : ty ∈ decl.types) : env.constants ty.name = none :=
@@ -14636,24 +14642,25 @@ theorem addInduct_ctor_lookup (hadd : addInduct env decl = some env')
   (addInduct_success hadd).ctor_lookup ty hty c hc
 
 theorem addInduct_rec_fresh (hadd : addInduct env decl = some env')
-    (hty : ty ∈ decl.types) : env.constants (.str ty.name "rec") = none :=
-  (addInduct_success hadd).rec_fresh ty hty
+    {generation : decl.BlockGenerationChecked}
+    (hgeneration : decl.identityBlockGeneration? = some generation)
+    {recursor : VConstVal} (hrecursor : recursor ∈ generation.recursors) :
+    env.constants recursor.name = none :=
+  (addInduct_success hadd).rec_fresh generation hgeneration recursor hrecursor
 
 theorem addInduct_rec_lookup (hadd : addInduct env decl = some env')
-    (hty : ty ∈ decl.types) :
-    env'.constants (.str ty.name "rec") =
-      some (recConstRec decl.uvars ty.name decl.nparams ty
-        (eliminationMode decl.uvars ty.name decl.nparams
-          (ctorFields (VExpr.dropN decl.nparams ty.type)).length ty)) :=
-  (addInduct_success hadd).rec_lookup ty hty
+    {generation : decl.BlockGenerationChecked}
+    (hgeneration : decl.identityBlockGeneration? = some generation)
+    {recursor : VConstVal} (hrecursor : recursor ∈ generation.recursors) :
+    env'.constants recursor.name = some recursor.toVConstant :=
+  (addInduct_success hadd).rec_lookup generation hgeneration recursor hrecursor
 
 theorem addInduct_rule_mem (hadd : addInduct env decl = some env')
-    (hty : ty ∈ decl.types)
-    (hdf : df ∈ rulesRec decl.uvars ty.name decl.nparams ty
-      (eliminationMode decl.uvars ty.name decl.nparams
-        (ctorFields (VExpr.dropN decl.nparams ty.type)).length ty)) :
+    {generation : decl.BlockGenerationChecked}
+    (hgeneration : decl.identityBlockGeneration? = some generation)
+    (hdf : df ∈ generation.generatedRules) :
     env'.defeqs df :=
-  (addInduct_success hadd).rule_mem ty hty df hdf
+  (addInduct_success hadd).rule_mem generation hgeneration df hdf
 
 /-- `addInduct` is an all-or-nothing transaction: every evaluation either
 returns no environment or returns an environment satisfying the complete
@@ -14668,35 +14675,31 @@ theorem addInduct_atomic :
 /-- The Stage-3 guard is an exact early-rejection condition. -/
 theorem addInduct_eq_none_of_stage3_false (h : decl.stage3 = false) :
     addInduct env decl = none := by
-  have hchecked : decl.checked? = none := checked?_eq_none_iff.2 h
-  simp [addInduct, hchecked]
+  have hgeneration : decl.identityBlockGeneration? = none :=
+    identityBlockGeneration?_eq_none_iff.2 h
+  simp [addInduct, hgeneration]
 
 /-- A pre-existing type name rejects the transaction before any generated
 object is observable. -/
-theorem addInduct_eq_none_of_type_present (htypes : decl.types = [ty])
+theorem addInduct_eq_none_of_type_present (hty : ty ∈ decl.types)
     (hcontains : env.contains ty.name) : addInduct env decl = none := by
-  obtain ⟨ci, hci⟩ := hcontains
-  cases hstage : decl.stage3 with
-  | false => exact addInduct_eq_none_of_stage3_false hstage
-  | true =>
-    obtain ⟨checked, hchecked⟩ := exists_checked_of_stage3 hstage
-    have htype : checked.type = ty := by
-      simpa using checked.types_eq.symm.trans htypes
-    unfold addInduct
-    rw [hchecked]
-    simp [addInductGeneration, Checked.identityGeneration,
-      Checked.identityBlock, htype, VEnv.addConst, hci]
+  cases hadd : addInduct env decl with
+  | none => rfl
+  | some env' =>
+    have hfresh := (addInduct_success hadd).type_fresh ty hty
+    obtain ⟨ci, hci⟩ := hcontains
+    rw [hci] at hfresh
+    contradiction
 
 /-- A pre-existing constructor name rejects the complete transaction. The
 proof is stated through the stable success certificate, not the position of
 the constructor in the internal `foldlM`. -/
-theorem addInduct_eq_none_of_ctor_present (htypes : decl.types = [ty])
+theorem addInduct_eq_none_of_ctor_present (hty : ty ∈ decl.types)
     (hctor : ctor ∈ ty.ctors) (hcontains : env.contains ctor.name) :
     addInduct env decl = none := by
   cases hadd : addInduct env decl with
   | none => rfl
   | some env' =>
-    have hty : ty ∈ decl.types := by rw [htypes]; exact .head _
     have hfresh := (addInduct_success hadd).ctor_fresh ty hty ctor hctor
     obtain ⟨ci, hci⟩ := hcontains
     rw [hci] at hfresh
@@ -14704,24 +14707,28 @@ theorem addInduct_eq_none_of_ctor_present (htypes : decl.types = [ty])
 
 /-- A pre-existing generated recursor name likewise rejects the complete
 transaction. -/
-theorem addInduct_eq_none_of_rec_present (htypes : decl.types = [ty])
-    (hcontains : env.contains (.str ty.name "rec")) : addInduct env decl = none := by
+theorem addInduct_eq_none_of_rec_present
+    {generation : decl.BlockGenerationChecked}
+    (hgeneration : decl.identityBlockGeneration? = some generation)
+    (hrecursor : recursor ∈ generation.recursors)
+    (hcontains : env.contains recursor.name) : addInduct env decl = none := by
   cases hadd : addInduct env decl with
   | none => rfl
   | some env' =>
-    have hty : ty ∈ decl.types := by rw [htypes]; exact .head _
-    have hfresh := (addInduct_success hadd).rec_fresh ty hty
+    have success := addInduct_success hadd
+    have hfresh := success.rec_fresh generation hgeneration recursor hrecursor
     obtain ⟨ci, hci⟩ := hcontains
     rw [hci] at hfresh
     contradiction
 
-theorem addInduct_WF (henv : Ordered env) (hdecl : decl.WF env)
-    (henv' : addInduct env decl = some env') : Ordered env' := by
-  unfold addInduct at henv'
-  obtain ⟨checked, -, hadd⟩ :=
-    Option.bind_eq_some_iff.1 henv'
-  exact addInductGeneration_WF henv
-    ((checked.wf_of_decl hdecl).identityGeneration henv) hadd
+theorem addInduct_WF {generation : decl.BlockGenerationChecked}
+    {blockEnv : VEnv} (henv : Ordered env)
+    (hgeneration : decl.identityBlockGeneration? = some generation)
+    (hgen : generation.WF env blockEnv)
+    (hadd : addInduct env decl = some env') : Ordered env' := by
+  unfold addInduct at hadd
+  rw [hgeneration] at hadd
+  exact addInductBlockGeneration_WF henv hgen hadd
 
 end VEnv
 
@@ -14839,10 +14846,10 @@ info: 'Lean4Lean.VEnv.addInduct_success' depends on axioms: [propext, Classical.
 #print axioms VEnv.addInduct_success
 
 /--
-info: 'Lean4Lean.VEnv.addInduct_checked' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: 'Lean4Lean.VEnv.addInduct_generation' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
-#print axioms VEnv.addInduct_checked
+#print axioms VEnv.addInduct_generation
 
 /--
 info: 'Lean4Lean.VEnv.addInduct_eq_none_of_ctor_present' depends on axioms: [propext, Classical.choice, Quot.sound]

@@ -47,6 +47,10 @@ def natNormalizedChecked : NormalizedChecked natDecl :=
 def natGenerationChecked : GenerationChecked natDecl :=
   (identityGeneration? natDecl).get (by decide)
 
+/-- The public block descriptor specializes to the same singleton metadata. -/
+def natBlockGenerationChecked : BlockGenerationChecked natDecl :=
+  (identityBlockGeneration? natDecl).get (by decide)
+
 example : natNormalizedChecked.normalization.view = natDecl := rfl
 example : natNormalizedChecked.checked.type = natType := rfl
 example : (normalizedChecked? natDecl natDecl).isSome = true := rfl
@@ -194,7 +198,8 @@ example : VEnv.empty.addInduct punitDecl =
     VEnv.empty.addInductGeneration punitGenerationChecked := rfl
 
 theorem punitEnv_ordered : punitEnv.Ordered :=
-  VEnv.addInduct_WF .empty punitDecl_wf rfl
+  VEnv.addInductGeneration_WF .empty
+    ((punitChecked.wf_of_decl punitDecl_wf).identityGeneration .empty) rfl
 
 def emptyType : VInductiveType where
   name := ``Empty
@@ -210,6 +215,9 @@ def emptyChecked : emptyDecl.Checked := emptyDecl.checked?.get (by decide)
 
 def emptyGenerationChecked : GenerationChecked emptyDecl :=
   (identityGeneration? emptyDecl).get (by decide)
+
+def emptyBlockGenerationChecked : BlockGenerationChecked emptyDecl :=
+  (identityBlockGeneration? emptyDecl).get (by decide)
 
 example : emptyChecked.params = [] := rfl
 example : emptyChecked.indices = [] := rfl
@@ -244,7 +252,8 @@ example : VEnv.empty.addInduct emptyDecl =
     VEnv.empty.addInductGeneration emptyGenerationChecked := rfl
 
 theorem emptyEnv_ordered : emptyEnv.Ordered :=
-  VEnv.addInduct_WF .empty emptyDecl_wf rfl
+  VEnv.addInductGeneration_WF .empty
+    ((emptyChecked.wf_of_decl emptyDecl_wf).identityGeneration .empty) rfl
 
 /-! ## List: one parameter, a dependent field, direct recursion -/
 
@@ -482,11 +491,12 @@ example : ∀ env', VEnv.empty.addInduct indexedVecDecl = some env' →
     VEnv.AddInductSuccess VEnv.empty env' indexedVecDecl :=
   fun _ => VEnv.addInduct_success
 
-/-- The transaction certificate exposes the exact analyzer result for ix-like
-consumers without re-running `checked?`. -/
+/-- The transaction certificate exposes the exact block-generation result for
+ix-like consumers without re-running structural analysis. -/
 example : ∀ env', VEnv.empty.addInduct indexedVecDecl = some env' →
-    ∃ checked, indexedVecDecl.checked? = some checked :=
-  fun _ => VEnv.addInduct_checked
+    ∃ generation,
+      indexedVecDecl.identityBlockGeneration? = some generation :=
+  fun _ => VEnv.addInduct_generation
 
 /-! ## Acc: recursive argument beneath a Pi telescope
 
@@ -508,6 +518,9 @@ def accChecked : accDecl.Checked := accDecl.checked?.get (by decide)
 
 def accGenerationChecked : GenerationChecked accDecl :=
   (identityGeneration? accDecl).get (by decide)
+
+def accBlockGenerationChecked : BlockGenerationChecked accDecl :=
+  (identityBlockGeneration? accDecl).get (by decide)
 
 def accRecArgs : List RecArg :=
   recArgs 1 ``Acc 2 1 (ctorFields (VExpr.dropN 2 accType.ctors[0].type))
@@ -555,9 +568,10 @@ example : (VEnv.empty.addInduct accDecl).map (·.constants ``Acc.rec) =
 example : ∀ env', VEnv.empty.addInduct accDecl = some env' →
     env'.defeqs (ruleRec 1 ``Acc 2 accType 0 accType.ctors[0]) := by
   intro env' hadd
-  apply VEnv.addInduct_rule_mem hadd (.head _)
+  apply VEnv.addInduct_rule_mem hadd
+    (generation := accBlockGenerationChecked) rfl
   change ruleRec 1 ``Acc 2 accType 0 accType.ctors[0] ∈
-    [ruleRec 1 ``Acc 2 accType 0 accType.ctors[0]]
+    accBlockGenerationChecked.generatedRules
   exact .head _
 
 example : ∀ env', VEnv.empty.addInduct accDecl = some env' →
@@ -631,7 +645,8 @@ theorem accDecl_wf : accDecl.WF VEnv.empty := by
 def accEnv : VEnv := (VEnv.empty.addInduct accDecl).get (by decide)
 
 example : accEnv.Ordered :=
-  VEnv.addInduct_WF .empty accDecl_wf rfl
+  VEnv.addInductGeneration_WF .empty
+    ((accChecked.wf_of_decl accDecl_wf).identityGeneration .empty) rfl
 
 /-- A collision at the generated recursor name still rejects the whole Acc
 transaction; no recursive-Pi special case bypasses freshness. -/
@@ -639,7 +654,8 @@ def accRecCollisionEnv : VEnv :=
   (VEnv.empty.addConst ``Acc.rec ⟨0, .sort .zero⟩).get (by decide)
 
 example : accRecCollisionEnv.addInduct accDecl = none :=
-  VEnv.addInduct_eq_none_of_rec_present rfl ⟨_, rfl⟩
+  VEnv.addInduct_eq_none_of_rec_present
+    (generation := accBlockGenerationChecked) rfl (.head _) ⟨_, rfl⟩
 
 /-! ## AnnotatedPi: recursive Pi normalization below a constructor field
 
@@ -2908,14 +2924,15 @@ def ctorCollisionEnv : VEnv :=
 
 example : ctorCollisionEnv.constants ``Nat.zero = some ⟨0, .sort .zero⟩ := rfl
 example : ctorCollisionEnv.addInduct natDecl = none :=
-  VEnv.addInduct_eq_none_of_ctor_present rfl (.head _) ⟨_, rfl⟩
+  VEnv.addInduct_eq_none_of_ctor_present (.head _) (.head _) ⟨_, rfl⟩
 
 def recCollisionEnv : VEnv :=
   (VEnv.empty.addConst ``Nat.rec ⟨0, .sort .zero⟩).get (by decide)
 
 example : recCollisionEnv.constants ``Nat.rec = some ⟨0, .sort .zero⟩ := rfl
 example : recCollisionEnv.addInduct natDecl = none :=
-  VEnv.addInduct_eq_none_of_rec_present rfl ⟨_, rfl⟩
+  VEnv.addInduct_eq_none_of_rec_present
+    (generation := natBlockGenerationChecked) rfl (.head _) ⟨_, rfl⟩
 
 /-! ## Small elimination -/
 
@@ -2975,4 +2992,4 @@ example : (VEnv.empty.addInduct andDecl).isSome = true := rfl
 
 /-- A name collision rejects the whole transaction. -/
 example (env : VEnv) (h : env.contains ``Nat) : env.addInduct natDecl = none :=
-  VEnv.addInduct_eq_none_of_type_present rfl h
+  VEnv.addInduct_eq_none_of_type_present (.head _) h

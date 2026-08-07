@@ -1354,9 +1354,10 @@ def identityGeneration? (source : VInductDecl) :
   let block ← identityChecked? source
   block.generation?
 
-/-- The public acceptance predicate is the existence of a checked descriptor,
-not a second ad-hoc pass over the declaration. -/
-def stage3 (decl : VInductDecl) : Bool := decl.checked?.isSome
+/-- Compatibility acceptance predicate for the legacy one-family checked
+descriptor.  The public block-wide predicate is `stage3`, defined once the
+mutual generation descriptor is available below. -/
+def singletonStage3 (decl : VInductDecl) : Bool := decl.checked?.isSome
 
 /-- The parameter telescope in the recursor's universe context. -/
 def paramsTel (ty : VInductiveType) (mode : ElimMode := .large) : List VExpr :=
@@ -2162,6 +2163,12 @@ def identityBlockGeneration? (source : VInductDecl) :
       resultLevel := block.checked.firstResultLevel }
   validated.generation?
 
+/-- Public structural acceptance is exact block-generation readiness.  This
+retains the complete source-ordered mutual descriptor instead of projecting a
+singleton family and then rebuilding generation data. -/
+def stage3 (source : VInductDecl) : Bool :=
+  source.identityBlockGeneration?.isSome
+
 namespace BlockGenerationChecked
 
 abbrev block {source : VInductDecl} (gen : BlockGenerationChecked source) :
@@ -2814,8 +2821,10 @@ structure BlockGenerationCertificate (source : VInductDecl) (env : VEnv) where
 
 end VInductDecl
 
+/-- Legacy declaration-level semantic contract for one-family compatibility.
+Block-wide preservation consumes `BlockGenerationChecked.WF` directly. -/
 def VInductDecl.WF (env : VEnv) (decl : VInductDecl) : Prop :=
-  decl.stage3 ∧
+  decl.singletonStage3 ∧
   ∀ ty ∈ decl.types,
     VEnv.OnTel env decl.uvars []
       (VExpr.telN decl.nparams ty.type ++
@@ -2949,19 +2958,18 @@ structure VEnv.AddInductBlockGenerationTrace {source : VInductDecl}
   addRules :
     gen.generatedRules.foldl VEnv.addDefEq recEnv = env'
 
-/-- The existing raw-normal-form API is exactly the identity-normalization
-wrapper around `addInductGeneration`. -/
+/-- The raw-normal-form API analyzes and inserts a complete mutual block. -/
 def VEnv.addInduct (env : VEnv) (decl : VInductDecl) : Option VEnv := do
-  let checked ← decl.checked?
-  env.addInductGeneration checked.identityGeneration
+  let generation ← decl.identityBlockGeneration?
+  env.addInductBlockGeneration generation
 
 /-- The raw public API is transparently the identity-normalization
-specialization of the normalized transaction. -/
-theorem VEnv.addInduct_eq_addInductGeneration
+specialization of the normalized block transaction. -/
+theorem VEnv.addInduct_eq_addInductBlockGeneration
     (env : VEnv) (decl : VInductDecl) :
     env.addInduct decl =
-      decl.checked? >>= fun checked =>
-        env.addInductGeneration checked.identityGeneration :=
+      decl.identityBlockGeneration? >>= fun generation =>
+        env.addInductBlockGeneration generation :=
   rfl
 
 /-- Stable, consumer-facing consequences of a successful `addInduct`
@@ -2969,23 +2977,18 @@ transaction. This deliberately hides the internal `foldlM` sequence: a
 caller receives the complete output environment and all generated objects, or
 `addInduct` returns `none` without exposing an intermediate environment. -/
 structure VEnv.AddInductSuccess (env env' : VEnv) (decl : VInductDecl) : Prop where
-  checked : ∃ checked, decl.checked? = some checked
+  generation : ∃ generation, decl.identityBlockGeneration? = some generation
   accepted : decl.stage3 = true
-  singleton : ∃ ty, decl.types = [ty]
   le : env ≤ env'
   type_fresh : ∀ ty ∈ decl.types, env.constants ty.name = none
   type_lookup : ∀ ty ∈ decl.types, env'.constants ty.name = some ty.toVConstant
   ctor_fresh : ∀ ty ∈ decl.types, ∀ c ∈ ty.ctors, env.constants c.name = none
   ctor_lookup : ∀ ty ∈ decl.types, ∀ c ∈ ty.ctors,
     env'.constants c.name = some c.toVConstant
-  rec_fresh : ∀ ty ∈ decl.types, env.constants (.str ty.name "rec") = none
-  rec_lookup : ∀ ty ∈ decl.types,
-    env'.constants (.str ty.name "rec") =
-      some (VInductDecl.recConstRec decl.uvars ty.name decl.nparams ty
-        (VInductDecl.eliminationMode decl.uvars ty.name decl.nparams
-          (VInductDecl.ctorFields (VExpr.dropN decl.nparams ty.type)).length ty))
-  rule_mem : ∀ ty ∈ decl.types,
-    ∀ df ∈ VInductDecl.rulesRec decl.uvars ty.name decl.nparams ty
-      (VInductDecl.eliminationMode decl.uvars ty.name decl.nparams
-        (VInductDecl.ctorFields (VExpr.dropN decl.nparams ty.type)).length ty),
-      env'.defeqs df
+  rec_fresh : ∀ generation, decl.identityBlockGeneration? = some generation →
+    ∀ recursor ∈ generation.recursors, env.constants recursor.name = none
+  rec_lookup : ∀ generation, decl.identityBlockGeneration? = some generation →
+    ∀ recursor ∈ generation.recursors,
+      env'.constants recursor.name = some recursor.toVConstant
+  rule_mem : ∀ generation, decl.identityBlockGeneration? = some generation →
+    ∀ df ∈ generation.generatedRules, env'.defeqs df

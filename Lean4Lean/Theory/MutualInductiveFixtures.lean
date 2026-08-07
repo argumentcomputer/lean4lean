@@ -2,14 +2,14 @@ import Lean4Lean.Theory.Inductive
 import Lean4Lean.Theory.Meta
 
 /-!
-# Mutual checked-representation fixtures
+# Mutual public-generation fixtures
 
 These real kernel declarations pin shared parameters, per-family
 indices/results, constructor order, and cross-family recursive target
-ordinals at the pure `VInductDecl.CheckedBlock` boundary.  The Verify mutual
-fixture supplies their L4L-08B validation and normalization semantics.  The
-existing singleton generation transaction intentionally continues to reject
-both blocks until mutual generation and insertion arrive in L4L-08C.
+ordinals at the `VInductDecl.CheckedBlock` boundary, then exercise the
+block-wide public generation transaction added by L4L-08C.  The Verify mutual
+fixture supplies semantic preservation, complete kernel metadata comparison,
+and environment replay.
 -/
 
 namespace Lean4Lean.MutualInductiveFixtures
@@ -170,12 +170,16 @@ example : indexedTreeChecked.families.constructors[1][1].recursive[0].targetType
 example : indexedTreeChecked.families.constructors[1][1].recursive[1].fieldIndex = 2 := rfl
 example : indexedTreeChecked.families.constructors[1][1].recursive[1].targetType = 1 := rfl
 
-/-! ## Representation-only boundary -/
+/-! ## Public block-wide boundary -/
 
-example : treeDecl.stage3 = false := rfl
-example : indexedTreeDecl.stage3 = false := rfl
-example : VEnv.empty.addInduct treeDecl = none := rfl
-example : VEnv.empty.addInduct indexedTreeDecl = none := rfl
+example : treeDecl.stage3 = true := rfl
+example : indexedTreeDecl.stage3 = true := rfl
+example : VEnv.empty.addInduct treeDecl =
+    VEnv.empty.addInductBlockGeneration treeGeneration := rfl
+example : VEnv.empty.addInduct indexedTreeDecl =
+    VEnv.empty.addInductBlockGeneration indexedTreeGeneration := rfl
+example : (VEnv.empty.addInduct treeDecl).isSome = true := rfl
+example : (VEnv.empty.addInduct indexedTreeDecl).isSome = true := rfl
 
 /--
 info: 'Lean4Lean.VInductDecl.checkedBlock?' depends on axioms: [propext, Quot.sound]

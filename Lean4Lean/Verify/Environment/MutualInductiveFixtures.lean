@@ -1713,6 +1713,16 @@ theorem tree_addInductBlockCertified :
       some treeFinalEnv := by
   rfl
 
+/-- The raw public transaction selects the same retained block descriptor and
+produces the same final Theory environment. -/
+theorem tree_addInduct :
+    VEnv.empty.addInduct treeDecl = some treeFinalEnv := by
+  rfl
+
+theorem tree_addInduct_success :
+    VEnv.AddInductSuccess VEnv.empty treeFinalEnv treeDecl :=
+  VEnv.addInduct_success tree_addInduct
+
 /-- Exact four-phase trace for the certified unindexed block transaction. -/
 theorem treeCertifiedTrace :
     Nonempty (VEnv.AddInductBlockGenerationTrace
@@ -1720,7 +1730,7 @@ theorem treeCertifiedTrace :
   VEnv.addInductBlockCertified_trace tree_addInductBlockCertified
 
 theorem treeFinalEnv_ordered : treeFinalEnv.Ordered :=
-  VEnv.addInductBlockCertified_WF .empty tree_addInductBlockCertified
+  VEnv.addInduct_WF .empty rfl treeBlockGenerationWF tree_addInduct
 
 theorem treeFinalEnv_family_lookup {type : VInductiveType}
     (htype : type ∈ treeDecl.types) :
@@ -1759,6 +1769,16 @@ theorem indexedTree_addInductBlockCertified :
       some indexedTreeFinalEnv := by
   rfl
 
+/-- The indexed mutual block also runs through the same raw public entry
+point once its ordinary `Nat` dependency is present. -/
+theorem indexedTree_addInduct :
+    natFinalEnv.addInduct indexedTreeDecl = some indexedTreeFinalEnv := by
+  rfl
+
+theorem indexedTree_addInduct_success :
+    VEnv.AddInductSuccess natFinalEnv indexedTreeFinalEnv indexedTreeDecl :=
+  VEnv.addInduct_success indexedTree_addInduct
+
 /-- Exact four-phase trace for the certified indexed block transaction. -/
 theorem indexedTreeCertifiedTrace :
     Nonempty (VEnv.AddInductBlockGenerationTrace
@@ -1766,8 +1786,8 @@ theorem indexedTreeCertifiedTrace :
   VEnv.addInductBlockCertified_trace indexedTree_addInductBlockCertified
 
 theorem indexedTreeFinalEnv_ordered : indexedTreeFinalEnv.Ordered :=
-  VEnv.addInductBlockCertified_WF nat_env_wf.ordered
-    indexedTree_addInductBlockCertified
+  VEnv.addInduct_WF nat_env_wf.ordered rfl indexedTreeBlockGenerationWF
+    indexedTree_addInduct
 
 theorem indexedTreeFinalEnv_family_lookup {type : VInductiveType}
     (htype : type ∈ indexedTreeDecl.types) :
