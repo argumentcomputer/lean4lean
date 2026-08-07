@@ -8699,7 +8699,7 @@ private theorem annotatedPiCtorCandidate_storedSpine :
         (.const ``AnnotatedPi []) .default := rfl
   simp only [annotatedPiCtorCandidate, annotatedPiCtorCandidateTrace,
     AddInductive.CandidateExprTrace.storedSpine, hsource,
-    beq_self_eq_true, Bool.true_and]
+    Expr.structuralEq_refl, Bool.true_and]
   rfl
 
 private def annotatedPiCtorSpineRun :

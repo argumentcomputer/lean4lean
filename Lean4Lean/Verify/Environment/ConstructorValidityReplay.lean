@@ -1,4 +1,5 @@
 import Lean4Lean.Verify.Environment.ConstructorValidityMatrix
+import Lean4Lean.Verify.Environment.CandidateIdentityReplay
 
 /-!
 # L4L-05 accepted constructor-validity replay
@@ -119,10 +120,133 @@ def cvmExecution := cvmProducedExecution.val
 
 def cvmCandidate := cvmExecution.candidate
 
-theorem cvmFamilyIdentityCheck :
-    TypeChecker.CandidateExprIdentity.check
-      cvmCandidate.families.singleton.familyType.type.trace = true := by
-  native_decide
+open TypeChecker in
+def cvmFamilyIdentityShape :
+    CandidateExprIdentityReplay.Shaped constructorValidityMatrixContext
+      constructorValidityMatrixKernelType.type 2
+      (.sort (.succ (.param `u))) := by
+  let aName := constructorValidityMatrixKernelType.type.bindingBody!
+    |>.bindingDomain!.bindingName!
+  change CandidateExprIdentityReplay.Shaped constructorValidityMatrixContext
+    (.forallE `α (.sort (.succ (.param `u)))
+      (.forallE `P
+        (.forallE aName (.bvar 0) (.sort .zero) .default)
+        (.sort (.succ (.param `u))) .default) .default)
+    2 (.sort (.succ (.param `u)))
+  let alphaContext := constructorValidityMatrixContext.pushLocalDecl
+    `α .default (.sort (.succ (.param `u)))
+  let alphaAnnotations := AddInductive.builtCandidateTypeAnnotations
+    (Expr.sort (.succ (.param `u)))
+  refine .forallE (expectedSpineLength := 1)
+    constructorValidityMatrixContext `α
+    (.sort (.succ (.param `u)))
+    (.forallE `P
+      (.forallE aName (.bvar 0) (.sort .zero) .default)
+      (.sort (.succ (.param `u))) .default) .default
+    (by rfl) alphaAnnotations
+    (AddInductive.buildCandidateTypeAnnotations_built _) (by
+      simpa [AddInductive.CandidateTypeAnnotationTrace.build] using
+        (AddInductive.CandidateTypeAnnotationTrace.build_consumed
+          (.sort (.succ (.param `u)))).symm)
+    (.terminal _ _ (by rfl) rfl) ?_
+  let pDomain := Expr.forallE aName
+    constructorValidityMatrixContext.freshExpr
+    (.sort .zero) .default
+  have alphaFVarWhnf : AddInductive.CandidateWhnfStep.Valid
+      ⟨alphaContext, constructorValidityMatrixContext.freshExpr,
+        constructorValidityMatrixContext.freshExpr⟩ := by
+    simpa [alphaContext] using
+      TypeChecker.candidateWhnfPushedFVar_refl
+        constructorValidityMatrixContext `α
+        (.sort (.succ (.param `u))) .default 9999 (by rfl)
+        (by
+          change LocalContext.WF ⟨.empty, .empty, .empty⟩
+          exact LocalContext.WF.nil)
+        (by
+          change (⟨.empty, .empty, .empty⟩ : LocalContext).find?
+            constructorValidityMatrixContext.freshFVarId = none
+          exact TypeChecker.emptyLocalContextFindNone _)
+  have pDomainShape : CandidateExprIdentityReplay.Shaped alphaContext
+      pDomain 1 (.sort .zero) := by
+    let aAnnotations := AddInductive.builtCandidateTypeAnnotations
+      constructorValidityMatrixContext.freshExpr
+    refine .forallE (expectedSpineLength := 0) alphaContext aName
+      constructorValidityMatrixContext.freshExpr (.sort .zero) .default
+      (by rfl) aAnnotations
+      (AddInductive.buildCandidateTypeAnnotations_built _) (by
+        simpa [AddInductive.Context.freshExpr,
+            AddInductive.CandidateTypeAnnotationTrace.build] using
+          (AddInductive.CandidateTypeAnnotationTrace.build_consumed
+            constructorValidityMatrixContext.freshExpr).symm)
+      (.terminal _ _ alphaFVarWhnf rfl) ?_
+    have terminal : CandidateExprIdentityReplay.Shaped
+        (alphaContext.pushLocalDecl aName .default
+          constructorValidityMatrixContext.freshExpr)
+        (.sort .zero) 0 (.sort .zero) :=
+      .terminal _ _ (by rfl) rfl
+    simpa [aAnnotations, AddInductive.builtCandidateTypeAnnotations,
+      AddInductive.CandidateTypeAnnotationTrace.build,
+      AddInductive.Context.freshExpr,
+      Expr.instantiate1_eq, Expr.instantiate1'] using terminal
+  have alphaBody : CandidateExprIdentityReplay.Shaped alphaContext
+      (.forallE `P pDomain (.sort (.succ (.param `u))) .default)
+      1 (.sort (.succ (.param `u))) := by
+    let pAnnotations := AddInductive.builtCandidateTypeAnnotations pDomain
+    refine .forallE (expectedSpineLength := 0) alphaContext `P pDomain
+      (.sort (.succ (.param `u))) .default (by rfl) pAnnotations
+      (AddInductive.buildCandidateTypeAnnotations_built _) (by
+        simpa [pDomain, AddInductive.Context.freshExpr,
+            AddInductive.CandidateTypeAnnotationTrace.build] using
+          (AddInductive.CandidateTypeAnnotationTrace.build_consumed
+            pDomain).symm)
+      pDomainShape.replay ?_
+    have terminal : CandidateExprIdentityReplay.Shaped
+        (alphaContext.pushLocalDecl `P .default pDomain)
+        (.sort (.succ (.param `u))) 0
+        (.sort (.succ (.param `u))) :=
+      .terminal _ _ (by rfl) rfl
+    simpa [pAnnotations, AddInductive.builtCandidateTypeAnnotations,
+      AddInductive.CandidateTypeAnnotationTrace.build,
+      Expr.instantiate1_eq, Expr.instantiate1'] using terminal
+  simpa [alphaContext, alphaAnnotations, pDomain,
+    AddInductive.builtCandidateTypeAnnotations,
+    AddInductive.CandidateTypeAnnotationTrace.build,
+    Expr.instantiate1_eq, Expr.instantiate1'] using alphaBody
+
+def cvmFamilyIdentityReplay :
+    TypeChecker.CandidateExprIdentityReplay
+      constructorValidityMatrixContext
+      constructorValidityMatrixKernelType.type :=
+  cvmFamilyIdentityShape.replay
+
+theorem cvmFamilyCandidateBuild :
+    AddInductive.buildCandidateExpr constructorValidityMatrixKernelType.type
+        constructorValidityMatrixContext =
+      .ok cvmCandidate.families.singleton.familyType.type := by
+  have produced := cvmExecution.familyTypes.produced
+  rw [AddInductive.CandidateList.singleton_eta
+    cvmExecution.familyTypes.candidates] at produced
+  rw [← cvmExecution.families.produced.singleton_familyType] at produced
+  have exactProduced : AddInductive.CandidateFamilyTypeListProduced
+      constructorValidityMatrixContext
+      (.cons cvmCandidate.families.singleton.familyType .nil) := by
+    simpa [cvmCandidate,
+      AddInductive.NormalizationCandidateExecution.candidate,
+      constructorValidityMatrixContext] using produced
+  exact exactProduced.singleton_build
+
+def cvmFamilyIdentityEvidence :
+    TypeChecker.CandidateExprIdentityReplay.Evidence
+      cvmFamilyIdentityReplay
+      cvmCandidate.families.singleton.familyType.type.trace :=
+  cvmFamilyIdentityReplay.evidence_of_build cvmFamilyCandidateBuild
+
+theorem cvmFamilyIdentityReplay_shape :
+    cvmFamilyIdentityReplay.spineLength = 2 ∧
+      cvmFamilyIdentityReplay.terminalSource =
+        .sort (.succ (.param `u)) :=
+  ⟨cvmFamilyIdentityShape.spineLength_eq,
+    cvmFamilyIdentityShape.terminalSource_eq⟩
 
 theorem cvmCtorIdentityCheck :
     TypeChecker.CandidateExprIdentity.check
@@ -207,9 +331,8 @@ def cvmFamilyValidationRun :
       |>.singletonCandidateInductiveStats
         constructorValidityMatrixKernelType 2 (.succ (.param `u))
   stats_eq := rfl
-  terminal_eq :=
-    TypeChecker.CandidateExprIdentity.terminalResult_eq_of_check
-      (by native_decide)
+  terminal_eq := cvmFamilyIdentityEvidence.terminalResult_eq.trans
+    cvmFamilyIdentityReplay_shape.2
   run := fun k =>
     AddInductive.CandidateExprTrace.checkInductiveTypes_singleton_of_candidate
       constructorValidityMatrixKernelType
@@ -217,8 +340,8 @@ def cvmFamilyValidationRun :
       2 (.succ (.param `u)) k
       cvmFamilyClosed (by native_decide) (by native_decide)
       cvmFamilyValidationAnnotations
-      (TypeChecker.CandidateExprIdentity.terminalResult_eq_of_check
-      (by native_decide))
+      (cvmFamilyIdentityEvidence.terminalResult_eq.trans
+        cvmFamilyIdentityReplay_shape.2)
       cvmFamilyEnsureSort
 
 theorem cvmFamilyContext_eq :
@@ -350,7 +473,11 @@ theorem cvmFamilySource_tr :
 
 theorem cvmStatsNindices_eq :
     cvmFamilyValidationRun.stats.nindices = #[0] := by
-  native_decide
+  rw [cvmFamilyValidationRun.stats_eq]
+  change #[cvmCandidate.families.singleton.familyType.type.trace.spineLength -
+    2] = #[0]
+  rw [cvmFamilyIdentityEvidence.spineLength_eq,
+    cvmFamilyIdentityReplay_shape.1]
 
 theorem cvmTerminalEnv_eq :
     cvmCandidate.families.singleton.familyType.type.trace.terminalContext.env =
@@ -702,10 +829,103 @@ def prbExecution := prbProducedExecution.val
 
 def prbCandidate := prbExecution.candidate
 
-theorem prbFamilyIdentityCheck :
-    TypeChecker.CandidateExprIdentity.check
-      prbCandidate.families.singleton.familyType.type.trace = true := by
-  native_decide
+open TypeChecker in
+def prbFamilyIdentityShape :
+    CandidateExprIdentityReplay.Shaped propRecursiveBoundaryContext
+      propRecursiveBoundaryKernelType.type 2 (.sort .zero) := by
+  let aName := propRecursiveBoundaryKernelType.type.bindingBody!.bindingName!
+  change CandidateExprIdentityReplay.Shaped propRecursiveBoundaryContext
+    (.forallE `α (.sort (.succ (.param `u)))
+      (.forallE aName (.bvar 0) (.sort .zero) .default) .default)
+    2 (.sort .zero)
+  let alphaContext := propRecursiveBoundaryContext.pushLocalDecl
+    `α .default (.sort (.succ (.param `u)))
+  let alphaAnnotations := AddInductive.builtCandidateTypeAnnotations
+    (Expr.sort (.succ (.param `u)))
+  refine .forallE (expectedSpineLength := 1)
+    propRecursiveBoundaryContext `α
+    (.sort (.succ (.param `u)))
+    (.forallE aName (.bvar 0) (.sort .zero) .default) .default
+    (by rfl) alphaAnnotations
+    (AddInductive.buildCandidateTypeAnnotations_built _) (by
+      simpa [AddInductive.CandidateTypeAnnotationTrace.build] using
+        (AddInductive.CandidateTypeAnnotationTrace.build_consumed
+          (.sort (.succ (.param `u)))).symm)
+    (.terminal _ _ (by rfl) rfl) ?_
+  have alphaFVarWhnf : AddInductive.CandidateWhnfStep.Valid
+      ⟨alphaContext, propRecursiveBoundaryContext.freshExpr,
+        propRecursiveBoundaryContext.freshExpr⟩ := by
+    simpa [alphaContext] using
+      TypeChecker.candidateWhnfPushedFVar_refl
+        propRecursiveBoundaryContext `α
+        (.sort (.succ (.param `u))) .default 9999 (by rfl)
+        (by
+          change LocalContext.WF ⟨.empty, .empty, .empty⟩
+          exact LocalContext.WF.nil)
+        (by
+          change (⟨.empty, .empty, .empty⟩ : LocalContext).find?
+            propRecursiveBoundaryContext.freshFVarId = none
+          exact TypeChecker.emptyLocalContextFindNone _)
+  have alphaBody : CandidateExprIdentityReplay.Shaped alphaContext
+      (.forallE aName propRecursiveBoundaryContext.freshExpr
+        (.sort .zero) .default) 1 (.sort .zero) := by
+    let aAnnotations := AddInductive.builtCandidateTypeAnnotations
+      propRecursiveBoundaryContext.freshExpr
+    refine .forallE (expectedSpineLength := 0) alphaContext aName
+      propRecursiveBoundaryContext.freshExpr (.sort .zero) .default
+      (by rfl) aAnnotations
+      (AddInductive.buildCandidateTypeAnnotations_built _) (by
+        simpa [AddInductive.Context.freshExpr,
+            AddInductive.CandidateTypeAnnotationTrace.build] using
+          (AddInductive.CandidateTypeAnnotationTrace.build_consumed
+            propRecursiveBoundaryContext.freshExpr).symm)
+      (.terminal _ _ alphaFVarWhnf rfl) ?_
+    have terminal : CandidateExprIdentityReplay.Shaped
+        (alphaContext.pushLocalDecl aName .default
+          propRecursiveBoundaryContext.freshExpr)
+        (.sort .zero) 0 (.sort .zero) :=
+      .terminal _ _ (by rfl) rfl
+    simpa [aAnnotations, AddInductive.builtCandidateTypeAnnotations,
+      AddInductive.CandidateTypeAnnotationTrace.build,
+      AddInductive.Context.freshExpr,
+      Expr.instantiate1_eq, Expr.instantiate1'] using terminal
+  simpa [alphaContext, alphaAnnotations,
+    AddInductive.builtCandidateTypeAnnotations,
+    AddInductive.CandidateTypeAnnotationTrace.build,
+    Expr.instantiate1_eq, Expr.instantiate1'] using alphaBody
+
+def prbFamilyIdentityReplay :
+    TypeChecker.CandidateExprIdentityReplay propRecursiveBoundaryContext
+      propRecursiveBoundaryKernelType.type :=
+  prbFamilyIdentityShape.replay
+
+theorem prbFamilyCandidateBuild :
+    AddInductive.buildCandidateExpr propRecursiveBoundaryKernelType.type
+        propRecursiveBoundaryContext =
+      .ok prbCandidate.families.singleton.familyType.type := by
+  have produced := prbExecution.familyTypes.produced
+  rw [AddInductive.CandidateList.singleton_eta
+    prbExecution.familyTypes.candidates] at produced
+  rw [← prbExecution.families.produced.singleton_familyType] at produced
+  have exactProduced : AddInductive.CandidateFamilyTypeListProduced
+      propRecursiveBoundaryContext
+      (.cons prbCandidate.families.singleton.familyType .nil) := by
+    simpa [prbCandidate,
+      AddInductive.NormalizationCandidateExecution.candidate,
+      propRecursiveBoundaryContext] using produced
+  exact exactProduced.singleton_build
+
+def prbFamilyIdentityEvidence :
+    TypeChecker.CandidateExprIdentityReplay.Evidence
+      prbFamilyIdentityReplay
+      prbCandidate.families.singleton.familyType.type.trace :=
+  prbFamilyIdentityReplay.evidence_of_build prbFamilyCandidateBuild
+
+theorem prbFamilyIdentityReplay_shape :
+    prbFamilyIdentityReplay.spineLength = 2 ∧
+      prbFamilyIdentityReplay.terminalSource = .sort .zero :=
+  ⟨prbFamilyIdentityShape.spineLength_eq,
+    prbFamilyIdentityShape.terminalSource_eq⟩
 
 theorem prbCtorIdentityCheck :
     TypeChecker.CandidateExprIdentity.check
@@ -790,9 +1010,8 @@ def prbFamilyValidationRun :
       |>.singletonCandidateInductiveStats
         propRecursiveBoundaryKernelType 1 .zero
   stats_eq := rfl
-  terminal_eq :=
-    TypeChecker.CandidateExprIdentity.terminalResult_eq_of_check
-      (by native_decide)
+  terminal_eq := prbFamilyIdentityEvidence.terminalResult_eq.trans
+    prbFamilyIdentityReplay_shape.2
   run := fun k =>
     AddInductive.CandidateExprTrace.checkInductiveTypes_singleton_of_candidate
       propRecursiveBoundaryKernelType
@@ -800,8 +1019,8 @@ def prbFamilyValidationRun :
       1 .zero k
       prbFamilyClosed (by native_decide) (by native_decide)
       prbFamilyValidationAnnotations
-      (TypeChecker.CandidateExprIdentity.terminalResult_eq_of_check
-      (by native_decide))
+      (prbFamilyIdentityEvidence.terminalResult_eq.trans
+        prbFamilyIdentityReplay_shape.2)
       prbFamilyEnsureSort
 
 theorem prbFamilyContext_eq :
@@ -930,7 +1149,11 @@ theorem prbFamilySource_tr :
 
 theorem prbStatsNindices_eq :
     prbFamilyValidationRun.stats.nindices = #[1] := by
-  native_decide
+  rw [prbFamilyValidationRun.stats_eq]
+  change #[prbCandidate.families.singleton.familyType.type.trace.spineLength -
+    1] = #[1]
+  rw [prbFamilyIdentityEvidence.spineLength_eq,
+    prbFamilyIdentityReplay_shape.1]
 
 theorem prbFamilyNames_eq :
     propRecursiveBoundaryKernelType.name =
@@ -1304,7 +1527,7 @@ def cvmFamilySemanticRootRun :
       cvmCanonicalCandidate.families.singleton.familyType.type
       constructorValidityMatrixType.type :=
   cvmFamilyStage.type.rootInput.semanticOfIdentity
-    (TypeChecker.CandidateExprIdentity.of_check cvmFamilyIdentityCheck)
+    cvmFamilyIdentityEvidence.identity
 
 def cvmCtorSemanticRootRun :
     TypeChecker.CandidateExprSemanticRootRun cvmTypeEnv [`u]
@@ -1486,7 +1709,7 @@ def prbFamilySemanticRootRun :
       prbCanonicalCandidate.families.singleton.familyType.type
       propRecursiveBoundaryType.type :=
   prbFamilyStage.type.rootInput.semanticOfIdentity
-    (TypeChecker.CandidateExprIdentity.of_check prbFamilyIdentityCheck)
+    prbFamilyIdentityEvidence.identity
 
 def prbCtorSemanticRootRun :
     TypeChecker.CandidateExprSemanticRootRun prbTypeEnv [`u]
