@@ -2,16 +2,14 @@ import Lean4Lean.Verify.Environment.InductiveFixtures
 import Lean4Lean.Theory.MutualInductiveFixtures
 
 /-!
-# Mutual validation and normalization replay
+# Mutual generation, preservation, and environment replay
 
-L4L-08B instantiates the arbitrary-block validator traces and Theory semantic
-boundary for the real `Tree`/`TreeList` and indexed mutual fixtures.  Family
-types are interpreted in one input environment, every family is then staged
-before any constructor is interpreted, and constructors may target either
-source-ordered family (including beneath a positive Pi telescope).
-
-This checkpoint remains validation-only: it introduces no mutual recursor,
-rule generation, or permanent environment transaction.
+The real `Tree`/`TreeList` and indexed mutual fixtures instantiate the
+arbitrary-block validator traces, generate one recursor per family with one
+globally flattened minor/rule inventory, and compare every kernel metadata
+record.  Their Theory transactions stage all families before constructors,
+all constructors before recursors, and all recursors before rules, then replay
+the same phases through `TrEnv'.inductBlock` into aligned Verify environments.
 -/
 
 namespace Lean4Lean.MutualInductiveReplayFixtures
@@ -70,13 +68,14 @@ structure MutualKernelBlockRow where
 namespace MutualKernelBlockRow
 
 def ctorMatches (row : MutualKernelBlockRow)
-    (family : NormalizedFamily) (info : ConstantInfo)
+    (family : NormalizedFamily) (cidx : Nat) (info : ConstantInfo)
     (constructor : NormalizedCtor) (storedType : VExpr) : Bool :=
   match info with
   | .ctorInfo ctor =>
       ctor.name == constructor.raw.name &&
         ctor.levelParams.length == row.source.uvars &&
         ctor.induct == family.raw.name &&
+        ctor.cidx == cidx &&
         ctor.numParams == row.source.nparams &&
         ctor.numFields == constructor.view.fields.length &&
         !ctor.isUnsafe && storedType == constructor.raw.type
@@ -84,12 +83,13 @@ def ctorMatches (row : MutualKernelBlockRow)
 
 def ctorsMatch (row : MutualKernelBlockRow)
     (family : NormalizedFamily) :
-    List ConstantInfo → List NormalizedCtor → List VExpr → Bool
-  | [], [], [] => true
-  | info :: infos, constructor :: constructors, storedType :: storedTypes =>
-      row.ctorMatches family info constructor storedType &&
-        row.ctorsMatch family infos constructors storedTypes
-  | _, _, _ => false
+    List ConstantInfo → List NormalizedCtor → List VExpr → Nat → Bool
+  | [], [], [], _ => true
+  | info :: infos, constructor :: constructors, storedType :: storedTypes,
+      cidx =>
+      row.ctorMatches family cidx info constructor storedType &&
+        row.ctorsMatch family infos constructors storedTypes (cidx + 1)
+  | _, _, _, _ => false
 
 def recursorMatches (row : MutualKernelBlockRow)
     (family : NormalizedFamily) (offset : Nat)
@@ -131,10 +131,13 @@ def familiesMatch (row : MutualKernelBlockRow) :
               induct.numIndices == family.view.indices.length &&
               induct.all == row.source.types.map (·.name) &&
               induct.ctors == family.raw.ctors.map (·.name) &&
-              induct.numNested == 0 && !induct.isUnsafe &&
+              induct.numNested == 0 &&
+              induct.isRec == row.generation.isRec &&
+              induct.isReflexive == row.generation.isReflexive &&
+              !induct.isUnsafe &&
               familyType == family.raw.type
         | _ => false) &&
-      row.ctorsMatch family ctorInfos family.ctorPairs ctorTypes &&
+      row.ctorsMatch family ctorInfos family.ctorPairs ctorTypes 0 &&
       row.recursorMatches family offset recInfo recType ruleRhs &&
       row.familiesMatch families inductInfos ctorInfosTail recInfos
         familyTypes ctorTypesTail recTypes ruleRhsTail
@@ -1786,7 +1789,7 @@ theorem indexedTreeCertifiedTrace :
   VEnv.addInductBlockCertified_trace indexedTree_addInductBlockCertified
 
 theorem indexedTreeFinalEnv_ordered : indexedTreeFinalEnv.Ordered :=
-  VEnv.addInduct_WF nat_env_wf.ordered rfl indexedTreeBlockGenerationWF
+  VEnv.addInduct_WF natFinalEnv_ordered rfl indexedTreeBlockGenerationWF
     indexedTree_addInduct
 
 theorem indexedTreeFinalEnv_family_lookup {type : VInductiveType}
@@ -2213,32 +2216,112 @@ def treeReplayFirstRecMap : ConstMap :=
 def treeReplayMap : ConstMap :=
   treeReplayFirstRecMap.insert ``TreeList.rec treeListRecKernelInfo
 
+theorem treeReplayFirstType_fresh :
+    ({} : ConstMap).find? ``Tree = none := by
+  simp [SMap.find?]
+
 theorem treeReplayFirstTypeMap_wf : treeReplayFirstTypeMap.WF :=
-  SMap.WF.empty.insert _ _ (by native_decide)
+  SMap.WF.empty.insert _ _ treeReplayFirstType_fresh
+
+theorem treeReplaySecondType_fresh :
+    treeReplayFirstTypeMap.find? ``TreeList = none := by
+  rw [treeReplayFirstTypeMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
 
 theorem treeReplayTypeMap_wf : treeReplayTypeMap.WF :=
-  treeReplayFirstTypeMap_wf.insert _ _ (by native_decide)
+  treeReplayFirstTypeMap_wf.insert _ _ treeReplaySecondType_fresh
+
+theorem treeReplayLeaf_fresh :
+    treeReplayTypeMap.find? ``Tree.leaf = none := by
+  rw [treeReplayTypeMap, treeReplayFirstTypeMap_wf.find?_insert,
+    treeReplayFirstTypeMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
 
 theorem treeReplayLeafMap_wf : treeReplayLeafMap.WF :=
-  treeReplayTypeMap_wf.insert _ _ (by native_decide)
+  treeReplayTypeMap_wf.insert _ _ treeReplayLeaf_fresh
+
+theorem treeReplayNode_fresh :
+    treeReplayLeafMap.find? ``Tree.node = none := by
+  rw [treeReplayLeafMap, treeReplayTypeMap_wf.find?_insert,
+    treeReplayTypeMap, treeReplayFirstTypeMap_wf.find?_insert,
+    treeReplayFirstTypeMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
 
 theorem treeReplayNodeMap_wf : treeReplayNodeMap.WF :=
-  treeReplayLeafMap_wf.insert _ _ (by native_decide)
+  treeReplayLeafMap_wf.insert _ _ treeReplayNode_fresh
+
+theorem treeReplayBranch_fresh :
+    treeReplayNodeMap.find? ``Tree.branch = none := by
+  rw [treeReplayNodeMap, treeReplayLeafMap_wf.find?_insert,
+    treeReplayLeafMap, treeReplayTypeMap_wf.find?_insert,
+    treeReplayTypeMap, treeReplayFirstTypeMap_wf.find?_insert,
+    treeReplayFirstTypeMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
 
 theorem treeReplayBranchMap_wf : treeReplayBranchMap.WF :=
-  treeReplayNodeMap_wf.insert _ _ (by native_decide)
+  treeReplayNodeMap_wf.insert _ _ treeReplayBranch_fresh
+
+theorem treeReplayNil_fresh :
+    treeReplayBranchMap.find? ``TreeList.nil = none := by
+  rw [treeReplayBranchMap, treeReplayNodeMap_wf.find?_insert,
+    treeReplayNodeMap, treeReplayLeafMap_wf.find?_insert,
+    treeReplayLeafMap, treeReplayTypeMap_wf.find?_insert,
+    treeReplayTypeMap, treeReplayFirstTypeMap_wf.find?_insert,
+    treeReplayFirstTypeMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
 
 theorem treeReplayNilMap_wf : treeReplayNilMap.WF :=
-  treeReplayBranchMap_wf.insert _ _ (by native_decide)
+  treeReplayBranchMap_wf.insert _ _ treeReplayNil_fresh
+
+theorem treeReplayCons_fresh :
+    treeReplayNilMap.find? ``TreeList.cons = none := by
+  rw [treeReplayNilMap, treeReplayBranchMap_wf.find?_insert,
+    treeReplayBranchMap, treeReplayNodeMap_wf.find?_insert,
+    treeReplayNodeMap, treeReplayLeafMap_wf.find?_insert,
+    treeReplayLeafMap, treeReplayTypeMap_wf.find?_insert,
+    treeReplayTypeMap, treeReplayFirstTypeMap_wf.find?_insert,
+    treeReplayFirstTypeMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
 
 theorem treeReplayCtorMap_wf : treeReplayCtorMap.WF :=
-  treeReplayNilMap_wf.insert _ _ (by native_decide)
+  treeReplayNilMap_wf.insert _ _ treeReplayCons_fresh
+
+theorem treeReplayFirstRec_fresh :
+    treeReplayCtorMap.find? ``Tree.rec = none := by
+  rw [treeReplayCtorMap, treeReplayNilMap_wf.find?_insert,
+    treeReplayNilMap, treeReplayBranchMap_wf.find?_insert,
+    treeReplayBranchMap, treeReplayNodeMap_wf.find?_insert,
+    treeReplayNodeMap, treeReplayLeafMap_wf.find?_insert,
+    treeReplayLeafMap, treeReplayTypeMap_wf.find?_insert,
+    treeReplayTypeMap, treeReplayFirstTypeMap_wf.find?_insert,
+    treeReplayFirstTypeMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
 
 theorem treeReplayFirstRecMap_wf : treeReplayFirstRecMap.WF :=
-  treeReplayCtorMap_wf.insert _ _ (by native_decide)
+  treeReplayCtorMap_wf.insert _ _ treeReplayFirstRec_fresh
+
+theorem treeReplaySecondRec_fresh :
+    treeReplayFirstRecMap.find? ``TreeList.rec = none := by
+  rw [treeReplayFirstRecMap, treeReplayCtorMap_wf.find?_insert,
+    treeReplayCtorMap, treeReplayNilMap_wf.find?_insert,
+    treeReplayNilMap, treeReplayBranchMap_wf.find?_insert,
+    treeReplayBranchMap, treeReplayNodeMap_wf.find?_insert,
+    treeReplayNodeMap, treeReplayLeafMap_wf.find?_insert,
+    treeReplayLeafMap, treeReplayTypeMap_wf.find?_insert,
+    treeReplayTypeMap, treeReplayFirstTypeMap_wf.find?_insert,
+    treeReplayFirstTypeMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
 
 theorem treeReplayMap_wf : treeReplayMap.WF :=
-  treeReplayFirstRecMap_wf.insert _ _ (by native_decide)
+  treeReplayFirstRecMap_wf.insert _ _ treeReplaySecondRec_fresh
 
 theorem treeReplay_treeRec_lookup :
     treeReplayMap.find? ``Tree.rec = some treeRecKernelInfo := by
@@ -2266,63 +2349,63 @@ def treeAddInductBlockTrace :
       info := treeKernelInfo
       kind_eq := by simp [treeKernelInfo, InductConstantKind.Matches]
       tr := treeKernelInfo_tr
-      map_fresh := by native_decide
+      map_fresh := treeReplayFirstType_fresh
       env_add := rfl
       map_add := rfl }
     (.cons {
       info := treeListKernelInfo
       kind_eq := by simp [treeListKernelInfo, InductConstantKind.Matches]
       tr := treeListKernelInfo_tr
-      map_fresh := by native_decide
+      map_fresh := treeReplaySecondType_fresh
       env_add := rfl
       map_add := rfl } .nil)
   addCtors := .cons {
       info := treeLeafKernelInfo
       kind_eq := by simp [treeLeafKernelInfo, InductConstantKind.Matches]
       tr := treeLeafKernelInfo_tr
-      map_fresh := by native_decide
+      map_fresh := treeReplayLeaf_fresh
       env_add := rfl
       map_add := rfl }
     (.cons {
       info := treeNodeKernelInfo
       kind_eq := by simp [treeNodeKernelInfo, InductConstantKind.Matches]
       tr := treeNodeKernelInfo_tr
-      map_fresh := by native_decide
+      map_fresh := treeReplayNode_fresh
       env_add := rfl
       map_add := rfl }
     (.cons {
       info := treeBranchKernelInfo
       kind_eq := by simp [treeBranchKernelInfo, InductConstantKind.Matches]
       tr := treeBranchKernelInfo_tr
-      map_fresh := by native_decide
+      map_fresh := treeReplayBranch_fresh
       env_add := rfl
       map_add := rfl }
     (.cons {
       info := treeListNilKernelInfo
       kind_eq := by simp [treeListNilKernelInfo, InductConstantKind.Matches]
       tr := treeListNilKernelInfo_tr
-      map_fresh := by native_decide
+      map_fresh := treeReplayNil_fresh
       env_add := rfl
       map_add := rfl }
     (.cons {
       info := treeListConsKernelInfo
       kind_eq := by simp [treeListConsKernelInfo, InductConstantKind.Matches]
       tr := treeListConsKernelInfo_tr
-      map_fresh := by native_decide
+      map_fresh := treeReplayCons_fresh
       env_add := rfl
       map_add := rfl } .nil))))
   addRecs := .cons {
       info := treeRecKernelInfo
       kind_eq := by simp [treeRecKernelInfo, InductConstantKind.Matches]
       tr := treeRecKernelInfo_tr
-      map_fresh := by native_decide
+      map_fresh := treeReplayFirstRec_fresh
       env_add := rfl
       map_add := rfl }
     (.cons {
       info := treeListRecKernelInfo
       kind_eq := by simp [treeListRecKernelInfo, InductConstantKind.Matches]
       tr := treeListRecKernelInfo_tr
-      map_fresh := by native_decide
+      map_fresh := treeReplaySecondRec_fresh
       env_add := rfl
       map_add := rfl } .nil)
   recK := by
@@ -2460,7 +2543,7 @@ theorem indexedTreeConsConstantWF :
 
 theorem indexedReplayFirstTypeEnv_ordered :
     indexedReplayFirstTypeEnv.Ordered := by
-  exact .const nat_env_wf.ordered indexedTreeTypeConstantWF
+  exact .const natFinalEnv_ordered indexedTreeTypeConstantWF
     indexedReplay_addFirstType
 
 theorem indexedReplayTypeEnv_ordered : indexedReplayTypeEnv.Ordered := by
@@ -2569,7 +2652,7 @@ theorem indexedTreeKernelInfo_tr :
   have hshape : TrTypeExpr natFinalEnv indexedTreeKernelInfo.levelParams []
       indexedTreeKernelInfo.type indexedTreeType.type := by
     tr_type_expr_tac
-  exact hshape.to_trExprS nat_env_wf.ordered trivial
+  exact hshape.to_trExprS natFinalEnv_ordered trivial
     (indexedTreeFamilyTypeWF indexedTreeType (.inl rfl))
 
 theorem indexedTreeListKernelInfo_tr :
@@ -2765,29 +2848,121 @@ def indexedReplayMap : ConstMap :=
   indexedReplayFirstRecMap.insert ``IndexedTreeList.rec
     indexedTreeListRecKernelInfo
 
+theorem indexedReplayFirstType_fresh :
+    natMap.find? ``IndexedTree = none := by
+  rw [natMap, natCtorMap_wf.find?_insert, natCtorMap,
+    natZeroMap_wf.find?_insert, natZeroMap,
+    natTypeMap_wf.find?_insert, natTypeMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
+
 theorem indexedReplayFirstTypeMap_wf : indexedReplayFirstTypeMap.WF :=
-  nat_aligned.map_wf.insert _ _ (by native_decide)
+  nat_aligned.map_wf.insert _ _ indexedReplayFirstType_fresh
+
+theorem indexedReplaySecondType_fresh :
+    indexedReplayFirstTypeMap.find? ``IndexedTreeList = none := by
+  rw [indexedReplayFirstTypeMap, nat_aligned.map_wf.find?_insert,
+    natMap, natCtorMap_wf.find?_insert, natCtorMap,
+    natZeroMap_wf.find?_insert, natZeroMap,
+    natTypeMap_wf.find?_insert, natTypeMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
 
 theorem indexedReplayTypeMap_wf : indexedReplayTypeMap.WF :=
-  indexedReplayFirstTypeMap_wf.insert _ _ (by native_decide)
+  indexedReplayFirstTypeMap_wf.insert _ _ indexedReplaySecondType_fresh
+
+theorem indexedReplayLeaf_fresh :
+    indexedReplayTypeMap.find? ``IndexedTree.leaf = none := by
+  rw [indexedReplayTypeMap, indexedReplayFirstTypeMap_wf.find?_insert,
+    indexedReplayFirstTypeMap, nat_aligned.map_wf.find?_insert,
+    natMap, natCtorMap_wf.find?_insert, natCtorMap,
+    natZeroMap_wf.find?_insert, natZeroMap,
+    natTypeMap_wf.find?_insert, natTypeMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
 
 theorem indexedReplayLeafMap_wf : indexedReplayLeafMap.WF :=
-  indexedReplayTypeMap_wf.insert _ _ (by native_decide)
+  indexedReplayTypeMap_wf.insert _ _ indexedReplayLeaf_fresh
+
+theorem indexedReplayNode_fresh :
+    indexedReplayLeafMap.find? ``IndexedTree.node = none := by
+  rw [indexedReplayLeafMap, indexedReplayTypeMap_wf.find?_insert,
+    indexedReplayTypeMap, indexedReplayFirstTypeMap_wf.find?_insert,
+    indexedReplayFirstTypeMap, nat_aligned.map_wf.find?_insert,
+    natMap, natCtorMap_wf.find?_insert, natCtorMap,
+    natZeroMap_wf.find?_insert, natZeroMap,
+    natTypeMap_wf.find?_insert, natTypeMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
 
 theorem indexedReplayNodeMap_wf : indexedReplayNodeMap.WF :=
-  indexedReplayLeafMap_wf.insert _ _ (by native_decide)
+  indexedReplayLeafMap_wf.insert _ _ indexedReplayNode_fresh
+
+theorem indexedReplayNil_fresh :
+    indexedReplayNodeMap.find? ``IndexedTreeList.nil = none := by
+  rw [indexedReplayNodeMap, indexedReplayLeafMap_wf.find?_insert,
+    indexedReplayLeafMap, indexedReplayTypeMap_wf.find?_insert,
+    indexedReplayTypeMap, indexedReplayFirstTypeMap_wf.find?_insert,
+    indexedReplayFirstTypeMap, nat_aligned.map_wf.find?_insert,
+    natMap, natCtorMap_wf.find?_insert, natCtorMap,
+    natZeroMap_wf.find?_insert, natZeroMap,
+    natTypeMap_wf.find?_insert, natTypeMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
 
 theorem indexedReplayNilMap_wf : indexedReplayNilMap.WF :=
-  indexedReplayNodeMap_wf.insert _ _ (by native_decide)
+  indexedReplayNodeMap_wf.insert _ _ indexedReplayNil_fresh
+
+theorem indexedReplayCons_fresh :
+    indexedReplayNilMap.find? ``IndexedTreeList.cons = none := by
+  rw [indexedReplayNilMap, indexedReplayNodeMap_wf.find?_insert,
+    indexedReplayNodeMap, indexedReplayLeafMap_wf.find?_insert,
+    indexedReplayLeafMap, indexedReplayTypeMap_wf.find?_insert,
+    indexedReplayTypeMap, indexedReplayFirstTypeMap_wf.find?_insert,
+    indexedReplayFirstTypeMap, nat_aligned.map_wf.find?_insert,
+    natMap, natCtorMap_wf.find?_insert, natCtorMap,
+    natZeroMap_wf.find?_insert, natZeroMap,
+    natTypeMap_wf.find?_insert, natTypeMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
 
 theorem indexedReplayCtorMap_wf : indexedReplayCtorMap.WF :=
-  indexedReplayNilMap_wf.insert _ _ (by native_decide)
+  indexedReplayNilMap_wf.insert _ _ indexedReplayCons_fresh
+
+theorem indexedReplayFirstRec_fresh :
+    indexedReplayCtorMap.find? ``IndexedTree.rec = none := by
+  rw [indexedReplayCtorMap, indexedReplayNilMap_wf.find?_insert,
+    indexedReplayNilMap, indexedReplayNodeMap_wf.find?_insert,
+    indexedReplayNodeMap, indexedReplayLeafMap_wf.find?_insert,
+    indexedReplayLeafMap, indexedReplayTypeMap_wf.find?_insert,
+    indexedReplayTypeMap, indexedReplayFirstTypeMap_wf.find?_insert,
+    indexedReplayFirstTypeMap, nat_aligned.map_wf.find?_insert,
+    natMap, natCtorMap_wf.find?_insert, natCtorMap,
+    natZeroMap_wf.find?_insert, natZeroMap,
+    natTypeMap_wf.find?_insert, natTypeMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
 
 theorem indexedReplayFirstRecMap_wf : indexedReplayFirstRecMap.WF :=
-  indexedReplayCtorMap_wf.insert _ _ (by native_decide)
+  indexedReplayCtorMap_wf.insert _ _ indexedReplayFirstRec_fresh
+
+theorem indexedReplaySecondRec_fresh :
+    indexedReplayFirstRecMap.find? ``IndexedTreeList.rec = none := by
+  rw [indexedReplayFirstRecMap, indexedReplayCtorMap_wf.find?_insert,
+    indexedReplayCtorMap, indexedReplayNilMap_wf.find?_insert,
+    indexedReplayNilMap, indexedReplayNodeMap_wf.find?_insert,
+    indexedReplayNodeMap, indexedReplayLeafMap_wf.find?_insert,
+    indexedReplayLeafMap, indexedReplayTypeMap_wf.find?_insert,
+    indexedReplayTypeMap, indexedReplayFirstTypeMap_wf.find?_insert,
+    indexedReplayFirstTypeMap, nat_aligned.map_wf.find?_insert,
+    natMap, natCtorMap_wf.find?_insert, natCtorMap,
+    natZeroMap_wf.find?_insert, natZeroMap,
+    natTypeMap_wf.find?_insert, natTypeMap,
+    SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+  simp [SMap.find?]
 
 theorem indexedReplayMap_wf : indexedReplayMap.WF :=
-  indexedReplayFirstRecMap_wf.insert _ _ (by native_decide)
+  indexedReplayFirstRecMap_wf.insert _ _ indexedReplaySecondRec_fresh
 
 theorem indexedReplay_treeRec_lookup :
     indexedReplayMap.find? ``IndexedTree.rec =
@@ -2818,7 +2993,7 @@ def indexedTreeAddInductBlockTrace :
       kind_eq := by simp [indexedTreeKernelInfo,
         InductConstantKind.Matches]
       tr := indexedTreeKernelInfo_tr
-      map_fresh := by native_decide
+      map_fresh := indexedReplayFirstType_fresh
       env_add := rfl
       map_add := rfl }
     (.cons {
@@ -2826,7 +3001,7 @@ def indexedTreeAddInductBlockTrace :
       kind_eq := by simp [indexedTreeListKernelInfo,
         InductConstantKind.Matches]
       tr := indexedTreeListKernelInfo_tr
-      map_fresh := by native_decide
+      map_fresh := indexedReplaySecondType_fresh
       env_add := rfl
       map_add := rfl } .nil)
   addCtors := .cons {
@@ -2834,7 +3009,7 @@ def indexedTreeAddInductBlockTrace :
       kind_eq := by simp [indexedTreeLeafKernelInfo,
         InductConstantKind.Matches]
       tr := indexedTreeLeafKernelInfo_tr
-      map_fresh := by native_decide
+      map_fresh := indexedReplayLeaf_fresh
       env_add := rfl
       map_add := rfl }
     (.cons {
@@ -2842,7 +3017,7 @@ def indexedTreeAddInductBlockTrace :
       kind_eq := by simp [indexedTreeNodeKernelInfo,
         InductConstantKind.Matches]
       tr := indexedTreeNodeKernelInfo_tr
-      map_fresh := by native_decide
+      map_fresh := indexedReplayNode_fresh
       env_add := rfl
       map_add := rfl }
     (.cons {
@@ -2850,7 +3025,7 @@ def indexedTreeAddInductBlockTrace :
       kind_eq := by simp [indexedTreeListNilKernelInfo,
         InductConstantKind.Matches]
       tr := indexedTreeListNilKernelInfo_tr
-      map_fresh := by native_decide
+      map_fresh := indexedReplayNil_fresh
       env_add := rfl
       map_add := rfl }
     (.cons {
@@ -2858,7 +3033,7 @@ def indexedTreeAddInductBlockTrace :
       kind_eq := by simp [indexedTreeListConsKernelInfo,
         InductConstantKind.Matches]
       tr := indexedTreeListConsKernelInfo_tr
-      map_fresh := by native_decide
+      map_fresh := indexedReplayCons_fresh
       env_add := rfl
       map_add := rfl } .nil)))
   addRecs := .cons {
@@ -2866,7 +3041,7 @@ def indexedTreeAddInductBlockTrace :
       kind_eq := by simp [indexedTreeRecKernelInfo,
         InductConstantKind.Matches]
       tr := indexedTreeRecKernelInfo_tr
-      map_fresh := by native_decide
+      map_fresh := indexedReplayFirstRec_fresh
       env_add := rfl
       map_add := rfl }
     (.cons {
@@ -2874,7 +3049,7 @@ def indexedTreeAddInductBlockTrace :
       kind_eq := by simp [indexedTreeListRecKernelInfo,
         InductConstantKind.Matches]
       tr := indexedTreeListRecKernelInfo_tr
-      map_fresh := by native_decide
+      map_fresh := indexedReplaySecondRec_fresh
       env_add := rfl
       map_add := rfl } .nil)
   recK := by
@@ -2910,6 +3085,91 @@ theorem indexedTree_verify_aligned :
 
 
 /-! ## Trust-boundary manifests -/
+
+/- The semantic generation and raw public transaction remain inside the
+accepted Theory trust baseline. -/
+/--
+info: 'Lean4Lean.MutualInductiveReplayFixtures.treeBlockGenerationWF' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms treeBlockGenerationWF
+
+/--
+info: 'Lean4Lean.MutualInductiveReplayFixtures.indexedTreeBlockGenerationWF' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms indexedTreeBlockGenerationWF
+
+/--
+info: 'Lean4Lean.MutualInductiveReplayFixtures.treeFinalEnv_ordered' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms treeFinalEnv_ordered
+
+/--
+info: 'Lean4Lean.MutualInductiveReplayFixtures.indexedTreeFinalEnv_ordered' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms indexedTreeFinalEnv_ordered
+
+/- The implementation metadata replay inherits only the already classified
+Verify relation and persistent-map contracts; fixture-local native-decision
+axioms are deliberately absent. -/
+/--
+info: 'Lean4Lean.MutualInductiveReplayFixtures.treeAddInductBlock' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ Quot.sound,
+ PersistentHashMap.findAux_isSome,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms treeAddInductBlock
+
+/--
+info: 'Lean4Lean.MutualInductiveReplayFixtures.indexedTreeAddInductBlock' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ Quot.sound,
+ PersistentHashMap.findAux_isSome,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms indexedTreeAddInductBlock
+
+/--
+info: 'Lean4Lean.MutualInductiveReplayFixtures.tree_verify_aligned' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ Quot.sound,
+ PersistentHashMap.findAux_isSome,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms tree_verify_aligned
+
+/--
+info: 'Lean4Lean.MutualInductiveReplayFixtures.indexedTree_verify_aligned' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ Quot.sound,
+ PersistentHashMap.findAux_isSome,
+ PersistentHashMap.WF.find?_eq,
+ PersistentHashMap.WF.toList'_insert]
+-/
+#guard_msgs in
+#print axioms indexedTree_verify_aligned
 
 /--
 info: 'Lean4Lean.MutualInductiveReplayFixtures.treeCheckedBlockWF' depends on axioms: [propext, Quot.sound]

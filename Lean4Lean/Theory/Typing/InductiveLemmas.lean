@@ -14492,6 +14492,78 @@ theorem addInductBlockCertified_WF {source : VInductDecl}
   simpa only [addInductBlockCertified_eq_addInductBlockGeneration] using hadd
 
 /--
+info: 'Lean4Lean.VEnv.addInductBlockGeneration_trace' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms addInductBlockGeneration_trace
+
+/--
+info: 'Lean4Lean.VEnv.addInductBlockGeneration_atomic' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms addInductBlockGeneration_atomic
+
+/--
+info: 'Lean4Lean.VEnv.AddInductBlockGenerationTrace.le' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms AddInductBlockGenerationTrace.le
+
+/--
+info: 'Lean4Lean.VEnv.AddInductBlockGenerationTrace.family_lookup' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms AddInductBlockGenerationTrace.family_lookup
+
+/--
+info: 'Lean4Lean.VEnv.AddInductBlockGenerationTrace.ctor_lookup' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms AddInductBlockGenerationTrace.ctor_lookup
+
+/--
+info: 'Lean4Lean.VEnv.AddInductBlockGenerationTrace.rec_lookup' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms AddInductBlockGenerationTrace.rec_lookup
+
+/--
+info: 'Lean4Lean.VEnv.AddInductBlockGenerationTrace.rule_mem' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms AddInductBlockGenerationTrace.rule_mem
+
+/--
+info: 'Lean4Lean.VEnv.addInductBlockGeneration_WF' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms addInductBlockGeneration_WF
+
+/--
+info: 'Lean4Lean.VEnv.addInductBlockCertified_eq_addInductBlockGeneration' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms addInductBlockCertified_eq_addInductBlockGeneration
+
+/--
+info: 'Lean4Lean.VEnv.addInductBlockCertified_trace' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms addInductBlockCertified_trace
+
+/--
+info: 'Lean4Lean.VEnv.addInductBlockCertified_atomic' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms addInductBlockCertified_atomic
+
+/--
+info: 'Lean4Lean.VEnv.addInductBlockCertified_WF' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms addInductBlockCertified_WF
+
+/--
 info: 'Lean4Lean.VEnv.addInductGeneration_trace' depends on axioms: [propext, Quot.sound]
 -/
 #guard_msgs in

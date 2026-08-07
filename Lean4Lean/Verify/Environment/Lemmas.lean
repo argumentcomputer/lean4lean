@@ -202,6 +202,12 @@ info: 'Lean4Lean.Aligned.addInduct' depends on axioms: [propext, sorryAx, Classi
 #guard_msgs in
 #print axioms Aligned.addInduct
 
+/--
+info: 'Lean4Lean.Aligned.addInductBlock' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms Aligned.addInductBlock
+
 theorem TrEnv'.aligned (H : TrEnv' safety C Q venv) : Aligned safety C venv := by
   induction H with
   | empty => exact .empty

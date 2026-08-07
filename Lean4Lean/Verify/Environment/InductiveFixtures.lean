@@ -352,6 +352,19 @@ theorem nat_final_matches_addInduct :
     VEnv.empty.addInduct natDecl = some natFinalEnv :=
   rfl
 
+/-- Theory-only ordering evidence for the Nat dependency environment.  This
+keeps later inductive preservation proofs independent of the Verify relation's
+known projection-sorry frontier. -/
+theorem natFinalEnv_ordered : natFinalEnv.Ordered :=
+  VEnv.addInductGeneration_WF .empty
+    ((natChecked.wf_of_decl natDecl_wf).identityGeneration .empty) rfl
+
+/--
+info: 'Lean4Lean.InductiveReplayFixtures.natFinalEnv_ordered' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms natFinalEnv_ordered
+
 theorem nat_env_wf : natFinalEnv.WF := nat_trEnv'.wf
 
 theorem nat_aligned : Aligned .safe natMap natFinalEnv := nat_trEnv'.aligned

@@ -492,8 +492,8 @@ def blockTypeFormerOK (np : Nat) (names : List Name)
 
 /-- Names reserved by the mutual pipeline: all families, then all constructors
 in family/source order, then one recursor per family.  Validation retains this
-order as checked data; the generation transaction remains assigned to
-L4L-08C. -/
+order as checked data, and the block transaction inserts the same three
+constant phases before installing generated rules. -/
 def blockGeneratedNames (types : List VInductiveType) : List Name :=
   types.map (·.name) ++
     types.flatMap (fun ty => ty.ctors.map (·.name)) ++
@@ -966,10 +966,10 @@ structure ValidatedBlock (source : VInductDecl) where
   block : NormalizedCheckedBlock source
   resultLevel : VLevel
 
-/-- Data-bearing compatibility result for the existing one-family generation
-path.  `CheckedBlock` and `ValidatedBlock` provide block-wide analysis and
-validation; this legacy singleton projection remains live until mutual
-generation is added in L4L-08C.  The descriptor is dependent on its source
+/-- Data-bearing compatibility result for the one-family generation path.
+`CheckedBlock` and `ValidatedBlock` provide the public block-wide analysis and
+validation; this legacy singleton projection remains available for existing
+one-family certificates.  The descriptor is dependent on its source
 declaration, so it cannot silently describe a different block. -/
 structure Checked (source : VInductDecl) where
   type : VInductiveType
@@ -2194,6 +2194,22 @@ abbrev familyCount {source : VInductDecl}
 abbrev minorCount {source : VInductDecl}
     (gen : BlockGenerationChecked source) : Nat :=
   gen.flatCtors.length
+
+/-- Whether the accepted block contains any recursive constructor argument.
+For a positive checked block this is the kernel's `inductInfo.isRec` decision
+expressed through the analyzer-owned recursive descriptors. -/
+def isRec {source : VInductDecl}
+    (gen : BlockGenerationChecked source) : Bool :=
+  gen.flatCtors.any fun constructor =>
+    !constructor.ctor.view.recursive.isEmpty
+
+/-- Whether some recursive argument is hidden beneath a function telescope,
+matching the kernel's `inductInfo.isReflexive` flag. -/
+def isReflexive {source : VInductDecl}
+    (gen : BlockGenerationChecked source) : Bool :=
+  gen.flatCtors.any fun constructor =>
+    constructor.ctor.view.recursive.any fun recursive =>
+      !recursive.binders.isEmpty
 
 /-- The block large-elimination decision.  A non-Prop common result admits
 large elimination; at `Prop`, only the kernel's singleton exception can do

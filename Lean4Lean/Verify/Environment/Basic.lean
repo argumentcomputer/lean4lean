@@ -324,6 +324,27 @@ info: 'Lean4Lean.AddInduct.le' depends on axioms: [propext, sorryAx, Classical.c
 #guard_msgs in
 #print axioms AddInduct.le
 
+/--
+info: 'Lean4Lean.AddInductBlockTrace.to_addInductBlockGeneration' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms AddInductBlockTrace.to_addInductBlockGeneration
+
+/--
+info: 'Lean4Lean.AddInductBlock.to_addInductBlock' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms AddInductBlock.to_addInductBlock
+
+/--
+info: 'Lean4Lean.AddInductBlock.le' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms AddInductBlock.le
+
 variable (safety : DefinitionSafety) in
 inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
   | empty : TrEnv' {} false .empty
