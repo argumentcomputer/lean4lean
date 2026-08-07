@@ -160,6 +160,42 @@ def AddInduct (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
     (m₂ : ConstMap) (env₂ : VEnv) : Prop :=
   Nonempty (AddInductTrace m₁ env₁ decl m₂ env₂)
 
+/-- Every implementation recursor stored by a block replay retains the
+K-like flag computed by the block generator. -/
+def RecursorMapKMatches (m : ConstMap) (recursors : List VConstVal)
+    (kTarget : Bool) : Prop :=
+  ∀ recursor ∈ recursors, ∃ info,
+    m.find? recursor.name = some info ∧ RecursorKMatches info kTarget
+
+/-- Data-bearing alignment trace for a complete mutual inductive block.
+Families, globally flattened constructors, and recursors are each inserted
+as a list phase, followed only after all recursors exist by the flattened
+rule phase. -/
+structure AddInductBlockTrace
+    (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
+    (m₂ : ConstMap) (env₂ : VEnv) where
+  generation : decl.BlockGenerationChecked
+  blockEnv : VEnv
+  generation_wf : generation.WF env₁ blockEnv
+  typeMap : ConstMap
+  typeEnv : VEnv
+  ctorMap : ConstMap
+  ctorEnv : VEnv
+  recEnv : VEnv
+  addTypes : AddInductConstants .induct m₁ env₁
+    decl.blockTypeConstants typeMap typeEnv
+  addCtors : AddInductConstants .ctor typeMap typeEnv
+    decl.blockConstructorConstants ctorMap ctorEnv
+  addRecs : AddInductConstants .recursor ctorMap ctorEnv
+    generation.recursors m₂ recEnv
+  recK : RecursorMapKMatches m₂ generation.recursors generation.kTarget
+  addRules : AddDefEqs recEnv generation.generatedRules env₂
+
+/-- Proposition-valued alignment for a complete mutual block. -/
+def AddInductBlock (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
+    (m₂ : ConstMap) (env₂ : VEnv) : Prop :=
+  Nonempty (AddInductBlockTrace m₁ env₁ decl m₂ env₂)
+
 theorem AddInductConstants.to_foldlM :
     AddInductConstants kind m₁ env₁ cis m₂ env₂ →
     List.foldlM (fun env (ci : VConstVal) => env.addConst ci.name ci.toVConstant) env₁ cis =
@@ -228,6 +264,12 @@ theorem AddInductTrace.to_addInductGeneration
   simp [VEnv.addInductGeneration, H.addType.env_add,
     H.addCtors.to_foldlM, hrec, H.addRules.to_add]
 
+theorem AddInductBlockTrace.to_addInductBlockGeneration
+    (H : AddInductBlockTrace m₁ env₁ decl m₂ env₂) :
+    env₁.addInductBlockGeneration H.generation = some env₂ := by
+  simp [VEnv.addInductBlockGeneration, H.addTypes.to_foldlM,
+    H.addCtors.to_foldlM, H.addRecs.to_foldlM, H.addRules.to_add]
+
 /-- Recover the exact certified normalized Theory transaction represented by
 an implementation metadata replay. This replaces the old, false-for-aliases
 claim that every replay must pass the identity-only `VEnv.addInduct` wrapper. -/
@@ -242,6 +284,23 @@ nonrec theorem AddInduct.to_addInduct
 nonrec theorem AddInduct.le (H : AddInduct m₁ env₁ decl m₂ env₂) : env₁ ≤ env₂ := by
   obtain ⟨generation, -, hadd⟩ := H.to_addInduct
   rcases VEnv.addInductGeneration_trace hadd with ⟨trace⟩
+  exact trace.le
+
+/-- Recover the exact block-wide Theory transaction represented by an
+implementation metadata replay. -/
+theorem AddInductBlock.to_addInductBlock
+    (H : AddInductBlock m₁ env₁ decl m₂ env₂) :
+    ∃ (generation : decl.BlockGenerationChecked) (blockEnv : VEnv),
+      generation.WF env₁ blockEnv ∧
+        env₁.addInductBlockGeneration generation = some env₂ := by
+  rcases H with ⟨H⟩
+  exact ⟨H.generation, H.blockEnv, H.generation_wf,
+    H.to_addInductBlockGeneration⟩
+
+theorem AddInductBlock.le
+    (H : AddInductBlock m₁ env₁ decl m₂ env₂) : env₁ ≤ env₂ := by
+  obtain ⟨generation, -, -, hadd⟩ := H.to_addInductBlock
+  rcases VEnv.addInductBlockGeneration_trace hadd with ⟨trace⟩
   exact trace.le
 
 /- The Verify relation currently mentions `TrExprS`, whose projection branch
@@ -306,6 +365,10 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
     AddInduct C env decl C' env' →
     TrEnv' C Q env →
     TrEnv' C' Q env'
+  | inductBlock :
+    AddInductBlock C env decl C' env' →
+    TrEnv' C Q env →
+    TrEnv' C' Q env'
 
 def TrEnv (safety : DefinitionSafety) (env : Environment) (venv : VEnv) : Prop :=
   TrEnv' safety env.constants env.quotInit venv
@@ -334,6 +397,11 @@ theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
     have ⟨_, H⟩ := ih
     obtain ⟨generation, hgen, hadd⟩ := h1.to_addInduct
     exact ⟨_, H.decl <| .induct hgen hadd⟩
+  | inductBlock h1 _ ih =>
+    have ⟨_, H⟩ := ih
+    obtain ⟨generation, blockEnv, hgen, hadd⟩ :=
+      h1.to_addInductBlock
+    exact ⟨_, H.decl <| .inductBlock (blockEnv := blockEnv) hgen hadd⟩
 
 /--
 info: 'Lean4Lean.TrEnv'.wf' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]

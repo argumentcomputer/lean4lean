@@ -1047,6 +1047,1848 @@ def indexedTreeValidationCertificate :
   blockEnv := indexedTreeBlockEnv
   wf := ⟨indexedTreeNormalizationBlockWF, indexedTreeCheckedBlockWF⟩
 
+/-! ## Certified block-generation semantics -/
+
+theorem treeLeafGenerationWF :
+    NormalizedBlockCtor.WF treeGeneration treeGeneration.flatCtors[0]
+      treeBlockEnv := by
+  refine {
+    declaredTel := ?_
+    declaredResult := ?_
+    emittedTel := ?_
+    emittedResult := ?_
+    owner := ?_
+    recursive := ?_
+    resultSpine := ?_ }
+  · change treeBlockEnv.TelDefEq 1 []
+      [.sort (.succ (.param 0)), .bvar 0]
+      [.sort (.succ (.param 0)), .bvar 0]
+    exact (show treeBlockEnv.OnTel 1 []
+      [.sort (.succ (.param 0)), .bvar 0] from by
+        refine ⟨⟨_, VEnv.HasType.sort (by decide)⟩, ?_⟩
+        exact ⟨⟨_, by type_tac⟩, trivial⟩).telDefEq_refl
+  · change treeBlockEnv.IsDefEq 1
+      [.bvar 0, .sort (.succ (.param 0))]
+      (.app (.const ``Tree [.param 0]) (.bvar 1))
+      (.app (.const ``Tree [.param 0]) (.bvar 1))
+      (.sort (.succ (.param 0)))
+    have hTree : treeBlockEnv.constants ``Tree =
+        some treeType.toVConstant := rfl
+    apply VEnv.HasType.app
+      (A := .sort (.succ (.param 0)))
+      (B := .sort (.succ (.param 0)))
+    · exact VEnv.HasType.const hTree (by simp [VLevel.WF]) rfl
+    · exact VEnv.HasType.bvar (.succ .zero)
+  · change treeBlockEnv.TelDefEq 1 []
+      [.sort (.succ (.param 0)), .bvar 0]
+      [.sort (.succ (.param 0)), .bvar 0]
+    exact (show treeBlockEnv.OnTel 1 []
+      [.sort (.succ (.param 0)), .bvar 0] from by
+        refine ⟨⟨_, VEnv.HasType.sort (by decide)⟩, ?_⟩
+        exact ⟨⟨_, by type_tac⟩, trivial⟩).telDefEq_refl
+  · change treeBlockEnv.IsDefEq 1
+      [.bvar 0, .sort (.succ (.param 0))]
+      (.app (.const ``Tree [.param 0]) (.bvar 1))
+      (.app (.const ``Tree [.param 0]) (.bvar 1))
+      (.sort (.succ (.param 0)))
+    have hTree : treeBlockEnv.constants ``Tree =
+        some treeType.toVConstant := rfl
+    apply VEnv.HasType.app
+      (A := .sort (.succ (.param 0)))
+      (B := .sort (.succ (.param 0)))
+    · exact VEnv.HasType.const hTree (by simp [VLevel.WF]) rfl
+    · exact VEnv.HasType.bvar (.succ .zero)
+  · refine ⟨treeGeneration.families[0], ?_, rfl, rfl, rfl⟩
+    exact .head _
+  · intro recursive hrecursive
+    change recursive ∈ [] at hrecursive
+    nomatch hrecursive
+  · exact treeLeafSemantic.2
+
+theorem treeNodeGenerationWF :
+    NormalizedBlockCtor.WF treeGeneration treeGeneration.flatCtors[1]
+      treeBlockEnv := by
+  have hTree : treeBlockEnv.constants ``Tree =
+      some treeType.toVConstant := rfl
+  have hTreeList : treeBlockEnv.constants ``TreeList =
+      some treeListType.toVConstant := rfl
+  have hbinders : treeBlockEnv.OnTel 1 []
+      [.sort (.succ (.param 0)),
+        .app (.const ``TreeList [.param 0]) (.bvar 0)] := by
+    refine ⟨⟨_, VEnv.HasType.sort (by decide)⟩, ?_⟩
+    refine ⟨⟨.succ (.param 0), ?_⟩, trivial⟩
+    apply VEnv.HasType.app
+      (A := .sort (.succ (.param 0)))
+      (B := .sort (.succ (.param 0)))
+    · exact VEnv.HasType.const hTreeList (by simp [VLevel.WF]) rfl
+    · exact VEnv.HasType.bvar .zero
+  have hresult : treeBlockEnv.HasType 1
+      [.app (.const ``TreeList [.param 0]) (.bvar 0),
+        .sort (.succ (.param 0))]
+      (.app (.const ``Tree [.param 0]) (.bvar 1))
+      (.sort (.succ (.param 0))) := by
+    apply VEnv.HasType.app
+      (A := .sort (.succ (.param 0)))
+      (B := .sort (.succ (.param 0)))
+    · exact VEnv.HasType.const hTree (by simp [VLevel.WF]) rfl
+    · exact VEnv.HasType.bvar (.succ .zero)
+  refine {
+    declaredTel := ?_
+    declaredResult := ?_
+    emittedTel := ?_
+    emittedResult := ?_
+    owner := ?_
+    recursive := ?_
+    resultSpine := ?_ }
+  · exact hbinders.telDefEq_refl
+  · exact hresult
+  · exact hbinders.telDefEq_refl
+  · exact hresult
+  · refine ⟨treeGeneration.families[0], ?_, rfl, rfl, rfl⟩
+    exact .head _
+  · intro recursive hrecursive
+    change recursive ∈ [{
+      fieldIndex := 0
+      binders := []
+      targetType := 1
+      indices := [] }] at hrecursive
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hrecursive
+    subst recursive
+    refine ⟨treeGeneration.families[1], ?_, rfl, ?_, ?_⟩
+    · exact .tail _ (.head _)
+    · exact ⟨.app (.const ``TreeList [.param 0]) (.bvar 0), rfl, rfl⟩
+    · exact ⟨trivial, rfl⟩
+  · exact treeNodeSemantic.2
+
+theorem treeBranchGenerationWF :
+    NormalizedBlockCtor.WF treeGeneration treeGeneration.flatCtors[2]
+      treeBlockEnv := by
+  have hTree : treeBlockEnv.constants ``Tree =
+      some treeType.toVConstant := rfl
+  have hTreeList : treeBlockEnv.constants ``TreeList =
+      some treeListType.toVConstant := rfl
+  have hbinders : treeBlockEnv.OnTel 1 []
+      [.sort (.succ (.param 0)),
+        .forallE (.bvar 0)
+          (.app (.const ``TreeList [.param 0]) (.bvar 1))] := by
+    refine ⟨⟨_, VEnv.HasType.sort (by decide)⟩, ?_⟩
+    refine ⟨⟨.imax (.succ (.param 0)) (.succ (.param 0)), ?_⟩,
+      trivial⟩
+    apply VEnv.HasType.forallE
+    · exact VEnv.HasType.bvar .zero
+    · apply VEnv.HasType.app
+        (A := .sort (.succ (.param 0)))
+        (B := .sort (.succ (.param 0)))
+      · exact VEnv.HasType.const hTreeList (by simp [VLevel.WF]) rfl
+      · exact VEnv.HasType.bvar (.succ .zero)
+  have hresult : treeBlockEnv.HasType 1
+      [.forallE (.bvar 0)
+          (.app (.const ``TreeList [.param 0]) (.bvar 1)),
+        .sort (.succ (.param 0))]
+      (.app (.const ``Tree [.param 0]) (.bvar 1))
+      (.sort (.succ (.param 0))) := by
+    apply VEnv.HasType.app
+      (A := .sort (.succ (.param 0)))
+      (B := .sort (.succ (.param 0)))
+    · exact VEnv.HasType.const hTree (by simp [VLevel.WF]) rfl
+    · exact VEnv.HasType.bvar (.succ .zero)
+  refine {
+    declaredTel := hbinders.telDefEq_refl
+    declaredResult := hresult
+    emittedTel := hbinders.telDefEq_refl
+    emittedResult := hresult
+    owner := ?_
+    recursive := ?_
+    resultSpine := treeBranchSemantic.2 }
+  · refine ⟨treeGeneration.families[0], ?_, rfl, rfl, rfl⟩
+    exact .head _
+  · intro recursive hrecursive
+    change recursive ∈ [{
+      fieldIndex := 0
+      binders := [.bvar 0]
+      targetType := 1
+      indices := [] }] at hrecursive
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hrecursive
+    subst recursive
+    refine ⟨treeGeneration.families[1], ?_, rfl, ?_, ?_⟩
+    · exact .tail _ (.head _)
+    · exact ⟨.forallE (.bvar 0)
+        (.app (.const ``TreeList [.param 0]) (.bvar 1)), rfl, rfl⟩
+    · exact ⟨⟨⟨_, VEnv.HasType.bvar .zero⟩, trivial⟩, rfl⟩
+
+theorem treeListNilGenerationWF :
+    NormalizedBlockCtor.WF treeGeneration treeGeneration.flatCtors[3]
+      treeBlockEnv := by
+  have hTreeList : treeBlockEnv.constants ``TreeList =
+      some treeListType.toVConstant := rfl
+  have hbinders : treeBlockEnv.OnTel 1 []
+      [.sort (.succ (.param 0))] :=
+    ⟨⟨_, VEnv.HasType.sort (by decide)⟩, trivial⟩
+  have hresult : treeBlockEnv.HasType 1
+      [.sort (.succ (.param 0))]
+      (.app (.const ``TreeList [.param 0]) (.bvar 0))
+      (.sort (.succ (.param 0))) := by
+    apply VEnv.HasType.app
+      (A := .sort (.succ (.param 0)))
+      (B := .sort (.succ (.param 0)))
+    · exact VEnv.HasType.const hTreeList (by simp [VLevel.WF]) rfl
+    · exact VEnv.HasType.bvar .zero
+  refine {
+    declaredTel := hbinders.telDefEq_refl
+    declaredResult := hresult
+    emittedTel := hbinders.telDefEq_refl
+    emittedResult := hresult
+    owner := ?_
+    recursive := ?_
+    resultSpine := treeListNilSemantic.2 }
+  · refine ⟨treeGeneration.families[1], ?_, rfl, rfl, rfl⟩
+    exact .tail _ (.head _)
+  · intro recursive hrecursive
+    change recursive ∈ [] at hrecursive
+    nomatch hrecursive
+
+theorem treeListConsGenerationWF :
+    NormalizedBlockCtor.WF treeGeneration treeGeneration.flatCtors[4]
+      treeBlockEnv := by
+  have hTree : treeBlockEnv.constants ``Tree =
+      some treeType.toVConstant := rfl
+  have hTreeList : treeBlockEnv.constants ``TreeList =
+      some treeListType.toVConstant := rfl
+  have hbinders : treeBlockEnv.OnTel 1 []
+      [.sort (.succ (.param 0)),
+        .app (.const ``Tree [.param 0]) (.bvar 0),
+        .app (.const ``TreeList [.param 0]) (.bvar 1)] := by
+    refine ⟨⟨_, VEnv.HasType.sort (by decide)⟩, ?_⟩
+    refine ⟨⟨.succ (.param 0), ?_⟩, ?_⟩
+    · apply VEnv.HasType.app
+        (A := .sort (.succ (.param 0)))
+        (B := .sort (.succ (.param 0)))
+      · exact VEnv.HasType.const hTree (by simp [VLevel.WF]) rfl
+      · exact VEnv.HasType.bvar .zero
+    · refine ⟨⟨.succ (.param 0), ?_⟩, trivial⟩
+      apply VEnv.HasType.app
+        (A := .sort (.succ (.param 0)))
+        (B := .sort (.succ (.param 0)))
+      · exact VEnv.HasType.const hTreeList (by simp [VLevel.WF]) rfl
+      · exact VEnv.HasType.bvar (.succ .zero)
+  have hresult : treeBlockEnv.HasType 1
+      [.app (.const ``TreeList [.param 0]) (.bvar 1),
+        .app (.const ``Tree [.param 0]) (.bvar 0),
+        .sort (.succ (.param 0))]
+      (.app (.const ``TreeList [.param 0]) (.bvar 2))
+      (.sort (.succ (.param 0))) := by
+    apply VEnv.HasType.app
+      (A := .sort (.succ (.param 0)))
+      (B := .sort (.succ (.param 0)))
+    · exact VEnv.HasType.const hTreeList (by simp [VLevel.WF]) rfl
+    · exact VEnv.HasType.bvar (.succ (.succ .zero))
+  refine {
+    declaredTel := hbinders.telDefEq_refl
+    declaredResult := hresult
+    emittedTel := hbinders.telDefEq_refl
+    emittedResult := hresult
+    owner := ?_
+    recursive := ?_
+    resultSpine := treeListConsSemantic.2 }
+  · refine ⟨treeGeneration.families[1], ?_, rfl, rfl, rfl⟩
+    exact .tail _ (.head _)
+  · intro recursive hrecursive
+    change recursive ∈ [{
+      fieldIndex := 0
+      binders := []
+      targetType := 0
+      indices := [] }, {
+      fieldIndex := 1
+      binders := []
+      targetType := 1
+      indices := [] }] at hrecursive
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hrecursive
+    rcases hrecursive with rfl | rfl
+    · refine ⟨treeGeneration.families[0], ?_, rfl, ?_, ?_⟩
+      · exact .head _
+      · exact ⟨.app (.const ``Tree [.param 0]) (.bvar 0), rfl, rfl⟩
+      · exact ⟨trivial, rfl⟩
+    · refine ⟨treeGeneration.families[1], ?_, rfl, ?_, ?_⟩
+      · exact .tail _ (.head _)
+      · exact ⟨.app (.const ``TreeList [.param 0]) (.bvar 1), rfl, rfl⟩
+      · exact ⟨trivial, rfl⟩
+
+theorem treeBlockGenerationWF :
+    treeGeneration.WF VEnv.empty treeBlockEnv := by
+  refine {
+    blockWF := treeValidationCertificate.wf
+    resultLevelWF := by decide
+    paramsTel := ?_
+    families := ?_
+    constructors := ?_ }
+  · change VEnv.empty.TelDefEq 1 []
+      [.sort (.succ (.param 0))] [.sort (.succ (.param 0))]
+    exact (show VEnv.empty.OnTel 1 []
+      [.sort (.succ (.param 0))] from
+        ⟨⟨_, VEnv.HasType.sort (by decide)⟩, trivial⟩).telDefEq_refl
+  · intro family hfamily
+    have hfamilies : treeGeneration.families =
+        [treeGeneration.families[0], treeGeneration.families[1]] := rfl
+    rw [hfamilies] at hfamily
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hfamily
+    rcases hfamily with rfl | rfl
+    · constructor
+      · change VEnv.empty.TelDefEq 1 []
+          [.sort (.succ (.param 0))] [.sort (.succ (.param 0))]
+        exact (show VEnv.empty.OnTel 1 []
+          [.sort (.succ (.param 0))] from
+            ⟨⟨_, VEnv.HasType.sort (by decide)⟩, trivial⟩).telDefEq_refl
+      · change VEnv.empty.IsDefEq 1 [.sort (.succ (.param 0))]
+          (.sort (.succ (.param 0))) (.sort (.succ (.param 0)))
+          (.sort (.succ (.succ (.param 0))))
+        exact .sortDF (by decide) (by decide) rfl
+    · constructor
+      · change VEnv.empty.TelDefEq 1 []
+          [.sort (.succ (.param 0))] [.sort (.succ (.param 0))]
+        exact (show VEnv.empty.OnTel 1 []
+          [.sort (.succ (.param 0))] from
+            ⟨⟨_, VEnv.HasType.sort (by decide)⟩, trivial⟩).telDefEq_refl
+      · change VEnv.empty.IsDefEq 1 [.sort (.succ (.param 0))]
+          (.sort (.succ (.param 0))) (.sort (.succ (.param 0)))
+          (.sort (.succ (.succ (.param 0))))
+        exact .sortDF (by decide) (by decide) rfl
+  · intro constructor hconstructor
+    have hconstructors : treeGeneration.flatCtors =
+        [treeGeneration.flatCtors[0], treeGeneration.flatCtors[1],
+          treeGeneration.flatCtors[2], treeGeneration.flatCtors[3],
+          treeGeneration.flatCtors[4]] := rfl
+    rw [hconstructors] at hconstructor
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hconstructor
+    rcases hconstructor with rfl | rfl | rfl | rfl | rfl
+    · exact treeLeafGenerationWF
+    · exact treeNodeGenerationWF
+    · exact treeBranchGenerationWF
+    · exact treeListNilGenerationWF
+    · exact treeListConsGenerationWF
+
+theorem indexedTreeBlock_le : natFinalEnv ≤ indexedTreeBlockEnv := by
+  have hfold : indexedTreeDecl.blockTypeConstants.foldlM
+      (fun env type => env.addConst type.name type.toVConstant) natFinalEnv =
+        some indexedTreeBlockEnv := by
+    rw [blockTypeConstants_foldlM_eq_stageInductiveTypes]
+    exact indexedTreeStage
+  exact (VInductDecl.ctorFold_spec indexedTreeDecl.blockTypeConstants hfold).1
+
+theorem indexedTreeLeafGenerationWF :
+    NormalizedBlockCtor.WF indexedTreeGeneration
+      indexedTreeGeneration.flatCtors[0] indexedTreeBlockEnv := by
+  have hTree : indexedTreeBlockEnv.constants ``IndexedTree =
+      some indexedTreeType.toVConstant := rfl
+  have hZero : indexedTreeBlockEnv.constants ``Nat.zero =
+      some InductiveFixtures.natType.ctors[0].toVConstant := rfl
+  have hbinders : indexedTreeBlockEnv.OnTel 1 []
+      [.sort (.succ (.param 0)), .bvar 0] := by
+    refine ⟨⟨_, VEnv.HasType.sort (by decide)⟩, ?_⟩
+    exact ⟨⟨_, VEnv.HasType.bvar .zero⟩, trivial⟩
+  have hresult : indexedTreeBlockEnv.HasType 1
+      [.bvar 0, .sort (.succ (.param 0))]
+      (.app
+        (.app (.const ``IndexedTree [.param 0]) (.bvar 1))
+        (.const ``Nat.zero []))
+      (.sort (.succ (.param 0))) := by
+    apply VEnv.HasType.app
+      (A := .const ``Nat [])
+      (B := .sort (.succ (.param 0)))
+    · apply VEnv.HasType.app
+        (A := .sort (.succ (.param 0)))
+        (B := .forallE (.const ``Nat []) (.sort (.succ (.param 0))))
+      · exact VEnv.HasType.const hTree (by simp [VLevel.WF]) rfl
+      · exact VEnv.HasType.bvar (.succ .zero)
+    · exact VEnv.HasType.const hZero (by simp) rfl
+  refine {
+    declaredTel := hbinders.telDefEq_refl
+    declaredResult := hresult
+    emittedTel := hbinders.telDefEq_refl
+    emittedResult := hresult
+    owner := ?_
+    recursive := ?_
+    resultSpine := indexedTreeLeafSemantic.2.mono indexedTreeBlock_le }
+  · refine ⟨indexedTreeGeneration.families[0], ?_, rfl, rfl, rfl⟩
+    exact .head _
+  · intro recursive hrecursive
+    change recursive ∈ [] at hrecursive
+    nomatch hrecursive
+
+theorem indexedTreeListNilGenerationWF :
+    NormalizedBlockCtor.WF indexedTreeGeneration
+      indexedTreeGeneration.flatCtors[2] indexedTreeBlockEnv := by
+  have hTreeList : indexedTreeBlockEnv.constants ``IndexedTreeList =
+      some indexedTreeListType.toVConstant := rfl
+  have hZero : indexedTreeBlockEnv.constants ``Nat.zero =
+      some InductiveFixtures.natType.ctors[0].toVConstant := rfl
+  have hbinders : indexedTreeBlockEnv.OnTel 1 []
+      [.sort (.succ (.param 0))] :=
+    ⟨⟨_, VEnv.HasType.sort (by decide)⟩, trivial⟩
+  have hresult : indexedTreeBlockEnv.HasType 1
+      [.sort (.succ (.param 0))]
+      (.app
+        (.app (.const ``IndexedTreeList [.param 0]) (.bvar 0))
+        (.const ``Nat.zero []))
+      (.sort (.succ (.param 0))) := by
+    apply VEnv.HasType.app
+      (A := .const ``Nat [])
+      (B := .sort (.succ (.param 0)))
+    · apply VEnv.HasType.app
+        (A := .sort (.succ (.param 0)))
+        (B := .forallE (.const ``Nat []) (.sort (.succ (.param 0))))
+      · exact VEnv.HasType.const hTreeList (by simp [VLevel.WF]) rfl
+      · exact VEnv.HasType.bvar .zero
+    · exact VEnv.HasType.const hZero (by simp) rfl
+  refine {
+    declaredTel := hbinders.telDefEq_refl
+    declaredResult := hresult
+    emittedTel := hbinders.telDefEq_refl
+    emittedResult := hresult
+    owner := ?_
+    recursive := ?_
+    resultSpine := indexedTreeListNilSemantic.2.mono
+      indexedTreeBlock_le }
+  · refine ⟨indexedTreeGeneration.families[1], ?_, rfl, rfl, rfl⟩
+    exact .tail _ (.head _)
+  · intro recursive hrecursive
+    change recursive ∈ [] at hrecursive
+    nomatch hrecursive
+
+theorem indexedTreeNodeGenerationWF :
+    NormalizedBlockCtor.WF indexedTreeGeneration
+      indexedTreeGeneration.flatCtors[1] indexedTreeBlockEnv := by
+  have hNat : indexedTreeBlockEnv.constants ``Nat =
+      some InductiveFixtures.natType.toVConstant := rfl
+  have hSucc : indexedTreeBlockEnv.constants ``Nat.succ =
+      some InductiveFixtures.natType.ctors[1].toVConstant := rfl
+  have hTree : indexedTreeBlockEnv.constants ``IndexedTree =
+      some indexedTreeType.toVConstant := rfl
+  have hTreeList : indexedTreeBlockEnv.constants ``IndexedTreeList =
+      some indexedTreeListType.toVConstant := rfl
+  have hbinders : indexedTreeBlockEnv.OnTel 1 []
+      [.sort (.succ (.param 0)), .const ``Nat [],
+        .app
+          (.app (.const ``IndexedTreeList [.param 0]) (.bvar 1))
+          (.bvar 0)] := by
+    refine ⟨⟨_, VEnv.HasType.sort (by decide)⟩, ?_⟩
+    refine ⟨⟨.succ .zero, VEnv.HasType.const hNat (by simp) rfl⟩, ?_⟩
+    refine ⟨⟨.succ (.param 0), ?_⟩, trivial⟩
+    apply VEnv.HasType.app
+      (A := .const ``Nat [])
+      (B := .sort (.succ (.param 0)))
+    · apply VEnv.HasType.app
+        (A := .sort (.succ (.param 0)))
+        (B := .forallE (.const ``Nat []) (.sort (.succ (.param 0))))
+      · exact VEnv.HasType.const hTreeList (by simp [VLevel.WF]) rfl
+      · exact VEnv.HasType.bvar (.succ .zero)
+    · exact VEnv.HasType.bvar .zero
+  have hresult : indexedTreeBlockEnv.HasType 1
+      [.app
+          (.app (.const ``IndexedTreeList [.param 0]) (.bvar 1))
+          (.bvar 0),
+        .const ``Nat [], .sort (.succ (.param 0))]
+      (.app
+        (.app (.const ``IndexedTree [.param 0]) (.bvar 2))
+        (.app (.const ``Nat.succ []) (.bvar 1)))
+      (.sort (.succ (.param 0))) := by
+    apply VEnv.HasType.app
+      (A := .const ``Nat [])
+      (B := .sort (.succ (.param 0)))
+    · apply VEnv.HasType.app
+        (A := .sort (.succ (.param 0)))
+        (B := .forallE (.const ``Nat []) (.sort (.succ (.param 0))))
+      · exact VEnv.HasType.const hTree (by simp [VLevel.WF]) rfl
+      · exact VEnv.HasType.bvar (.succ (.succ .zero))
+    · apply VEnv.HasType.app
+        (A := .const ``Nat []) (B := .const ``Nat [])
+      · exact VEnv.HasType.const hSucc (by simp) rfl
+      · exact VEnv.HasType.bvar (.succ .zero)
+  refine {
+    declaredTel := hbinders.telDefEq_refl
+    declaredResult := hresult
+    emittedTel := hbinders.telDefEq_refl
+    emittedResult := hresult
+    owner := ?_
+    recursive := ?_
+    resultSpine := indexedTreeNodeSemantic.2.mono
+      indexedTreeBlock_le }
+  · refine ⟨indexedTreeGeneration.families[0], ?_, rfl, rfl, rfl⟩
+    exact .head _
+  · intro recursive hrecursive
+    change recursive ∈ [{
+      fieldIndex := 1
+      binders := []
+      targetType := 1
+      indices := [.bvar 0] }] at hrecursive
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hrecursive
+    subst recursive
+    refine ⟨indexedTreeGeneration.families[1], ?_, rfl, ?_, ?_⟩
+    · exact .tail _ (.head _)
+    · exact ⟨.app
+        (.app (.const ``IndexedTreeList [.param 0]) (.bvar 1))
+        (.bvar 0), rfl, rfl⟩
+    · refine ⟨trivial, ?_⟩
+      exact ⟨.const ``Nat [], .sort (.succ (.param 0)), rfl,
+        VEnv.HasType.bvar .zero, rfl⟩
+
+theorem indexedTreeListConsGenerationWF :
+    NormalizedBlockCtor.WF indexedTreeGeneration
+      indexedTreeGeneration.flatCtors[3] indexedTreeBlockEnv := by
+  have hNat : indexedTreeBlockEnv.constants ``Nat =
+      some InductiveFixtures.natType.toVConstant := rfl
+  have hSucc : indexedTreeBlockEnv.constants ``Nat.succ =
+      some InductiveFixtures.natType.ctors[1].toVConstant := rfl
+  have hTree : indexedTreeBlockEnv.constants ``IndexedTree =
+      some indexedTreeType.toVConstant := rfl
+  have hTreeList : indexedTreeBlockEnv.constants ``IndexedTreeList =
+      some indexedTreeListType.toVConstant := rfl
+  have hbinders : indexedTreeBlockEnv.OnTel 1 []
+      [.sort (.succ (.param 0)), .const ``Nat [],
+        .app
+          (.app (.const ``IndexedTree [.param 0]) (.bvar 1))
+          (.bvar 0),
+        .app
+          (.app (.const ``IndexedTreeList [.param 0]) (.bvar 2))
+          (.bvar 1)] := by
+    refine ⟨⟨_, VEnv.HasType.sort (by decide)⟩, ?_⟩
+    refine ⟨⟨.succ .zero, VEnv.HasType.const hNat (by simp) rfl⟩, ?_⟩
+    refine ⟨⟨.succ (.param 0), ?_⟩, ?_⟩
+    · apply VEnv.HasType.app
+        (A := .const ``Nat [])
+        (B := .sort (.succ (.param 0)))
+      · apply VEnv.HasType.app
+          (A := .sort (.succ (.param 0)))
+          (B := .forallE (.const ``Nat []) (.sort (.succ (.param 0))))
+        · exact VEnv.HasType.const hTree (by simp [VLevel.WF]) rfl
+        · exact VEnv.HasType.bvar (.succ .zero)
+      · exact VEnv.HasType.bvar .zero
+    · refine ⟨⟨.succ (.param 0), ?_⟩, trivial⟩
+      apply VEnv.HasType.app
+        (A := .const ``Nat [])
+        (B := .sort (.succ (.param 0)))
+      · apply VEnv.HasType.app
+          (A := .sort (.succ (.param 0)))
+          (B := .forallE (.const ``Nat []) (.sort (.succ (.param 0))))
+        · exact VEnv.HasType.const hTreeList (by simp [VLevel.WF]) rfl
+        · exact VEnv.HasType.bvar (.succ (.succ .zero))
+      · exact VEnv.HasType.bvar (.succ .zero)
+  have hresult : indexedTreeBlockEnv.HasType 1
+      [.app
+          (.app (.const ``IndexedTreeList [.param 0]) (.bvar 2))
+          (.bvar 1),
+        .app
+          (.app (.const ``IndexedTree [.param 0]) (.bvar 1))
+          (.bvar 0),
+        .const ``Nat [], .sort (.succ (.param 0))]
+      (.app
+        (.app (.const ``IndexedTreeList [.param 0]) (.bvar 3))
+        (.app (.const ``Nat.succ []) (.bvar 2)))
+      (.sort (.succ (.param 0))) := by
+    apply VEnv.HasType.app
+      (A := .const ``Nat [])
+      (B := .sort (.succ (.param 0)))
+    · apply VEnv.HasType.app
+        (A := .sort (.succ (.param 0)))
+        (B := .forallE (.const ``Nat []) (.sort (.succ (.param 0))))
+      · exact VEnv.HasType.const hTreeList (by simp [VLevel.WF]) rfl
+      · exact VEnv.HasType.bvar (.succ (.succ (.succ .zero)))
+    · apply VEnv.HasType.app
+        (A := .const ``Nat []) (B := .const ``Nat [])
+      · exact VEnv.HasType.const hSucc (by simp) rfl
+      · exact VEnv.HasType.bvar (.succ (.succ .zero))
+  refine {
+    declaredTel := hbinders.telDefEq_refl
+    declaredResult := hresult
+    emittedTel := hbinders.telDefEq_refl
+    emittedResult := hresult
+    owner := ?_
+    recursive := ?_
+    resultSpine := indexedTreeListConsSemantic.2.mono
+      indexedTreeBlock_le }
+  · refine ⟨indexedTreeGeneration.families[1], ?_, rfl, rfl, rfl⟩
+    exact .tail _ (.head _)
+  · intro recursive hrecursive
+    change recursive ∈ [{
+      fieldIndex := 1
+      binders := []
+      targetType := 0
+      indices := [.bvar 0] }, {
+      fieldIndex := 2
+      binders := []
+      targetType := 1
+      indices := [.bvar 1] }] at hrecursive
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hrecursive
+    rcases hrecursive with rfl | rfl
+    · refine ⟨indexedTreeGeneration.families[0], ?_, rfl, ?_, ?_⟩
+      · exact .head _
+      · exact ⟨.app
+          (.app (.const ``IndexedTree [.param 0]) (.bvar 1))
+          (.bvar 0), rfl, rfl⟩
+      · refine ⟨trivial, ?_⟩
+        exact ⟨.const ``Nat [], .sort (.succ (.param 0)), rfl,
+          VEnv.HasType.bvar .zero, rfl⟩
+    · refine ⟨indexedTreeGeneration.families[1], ?_, rfl, ?_, ?_⟩
+      · exact .tail _ (.head _)
+      · exact ⟨.app
+          (.app (.const ``IndexedTreeList [.param 0]) (.bvar 2))
+          (.bvar 1), rfl, rfl⟩
+      · refine ⟨trivial, ?_⟩
+        exact ⟨.const ``Nat [], .sort (.succ (.param 0)), rfl,
+          VEnv.HasType.bvar (.succ .zero), rfl⟩
+
+theorem indexedTreeBlockGenerationWF :
+    indexedTreeGeneration.WF natFinalEnv indexedTreeBlockEnv := by
+  have hNat : natFinalEnv.constants ``Nat =
+      some InductiveFixtures.natType.toVConstant := rfl
+  have hparams : natFinalEnv.OnTel 1 []
+      [.sort (.succ (.param 0))] :=
+    ⟨⟨_, VEnv.HasType.sort (by decide)⟩, trivial⟩
+  have hfamilyTel : natFinalEnv.OnTel 1 []
+      [.sort (.succ (.param 0)), .const ``Nat []] :=
+    ⟨⟨_, VEnv.HasType.sort (by decide)⟩,
+      ⟨⟨.succ .zero, VEnv.HasType.const hNat (by simp) rfl⟩, trivial⟩⟩
+  refine {
+    blockWF := indexedTreeValidationCertificate.wf
+    resultLevelWF := by decide
+    paramsTel := hparams.telDefEq_refl
+    families := ?_
+    constructors := ?_ }
+  · intro family hfamily
+    have hfamilies : indexedTreeGeneration.families =
+        [indexedTreeGeneration.families[0],
+          indexedTreeGeneration.families[1]] := rfl
+    rw [hfamilies] at hfamily
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hfamily
+    rcases hfamily with rfl | rfl
+    · constructor
+      · exact hfamilyTel.telDefEq_refl
+      · change natFinalEnv.IsDefEq 1
+          [.const ``Nat [], .sort (.succ (.param 0))]
+          (.sort (.succ (.param 0))) (.sort (.succ (.param 0)))
+          (.sort (.succ (.succ (.param 0))))
+        exact .sortDF (by decide) (by decide) rfl
+    · constructor
+      · exact hfamilyTel.telDefEq_refl
+      · change natFinalEnv.IsDefEq 1
+          [.const ``Nat [], .sort (.succ (.param 0))]
+          (.sort (.succ (.param 0))) (.sort (.succ (.param 0)))
+          (.sort (.succ (.succ (.param 0))))
+        exact .sortDF (by decide) (by decide) rfl
+  · intro constructor hconstructor
+    have hconstructors : indexedTreeGeneration.flatCtors =
+        [indexedTreeGeneration.flatCtors[0],
+          indexedTreeGeneration.flatCtors[1],
+          indexedTreeGeneration.flatCtors[2],
+          indexedTreeGeneration.flatCtors[3]] := rfl
+    rw [hconstructors] at hconstructor
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hconstructor
+    rcases hconstructor with rfl | rfl | rfl | rfl
+    · exact indexedTreeLeafGenerationWF
+    · exact indexedTreeNodeGenerationWF
+    · exact indexedTreeListNilGenerationWF
+    · exact indexedTreeListConsGenerationWF
+
+/-- Proof-carrying block generation for `Tree`/`TreeList`. -/
+def treeGenerationCertificate :
+    treeDecl.BlockGenerationCertificate VEnv.empty where
+  generation := treeGeneration
+  blockEnv := treeBlockEnv
+  wf := treeBlockGenerationWF
+
+/-- Proof-carrying block generation for the indexed mutual fixture. -/
+def indexedTreeGenerationCertificate :
+    indexedTreeDecl.BlockGenerationCertificate natFinalEnv where
+  generation := indexedTreeGeneration
+  blockEnv := indexedTreeBlockEnv
+  wf := indexedTreeBlockGenerationWF
+
+/-- Final Theory environment produced by the certified unindexed block
+transaction. -/
+def treeFinalEnv : VEnv :=
+  (VEnv.empty.addInductBlockCertified treeGenerationCertificate).get
+    (by decide)
+
+theorem tree_addInductBlockCertified :
+    VEnv.empty.addInductBlockCertified treeGenerationCertificate =
+      some treeFinalEnv := by
+  rfl
+
+/-- Exact four-phase trace for the certified unindexed block transaction. -/
+theorem treeCertifiedTrace :
+    Nonempty (VEnv.AddInductBlockGenerationTrace
+      VEnv.empty treeFinalEnv treeGeneration) :=
+  VEnv.addInductBlockCertified_trace tree_addInductBlockCertified
+
+theorem treeFinalEnv_ordered : treeFinalEnv.Ordered :=
+  VEnv.addInductBlockCertified_WF .empty tree_addInductBlockCertified
+
+theorem treeFinalEnv_family_lookup {type : VInductiveType}
+    (htype : type ∈ treeDecl.types) :
+    treeFinalEnv.constants type.name = some type.toVConstant := by
+  obtain ⟨trace⟩ := treeCertifiedTrace
+  exact trace.family_lookup htype
+
+theorem treeFinalEnv_ctor_lookup {constructor : VConstVal}
+    (hconstructor : constructor ∈ treeDecl.blockConstructorConstants) :
+    treeFinalEnv.constants constructor.name =
+      some constructor.toVConstant := by
+  obtain ⟨trace⟩ := treeCertifiedTrace
+  exact trace.ctor_lookup hconstructor
+
+theorem treeFinalEnv_rec_lookup {recursor : VConstVal}
+    (hrecursor : recursor ∈ treeGeneration.recursors) :
+    treeFinalEnv.constants recursor.name =
+      some recursor.toVConstant := by
+  obtain ⟨trace⟩ := treeCertifiedTrace
+  exact trace.rec_lookup hrecursor
+
+theorem treeFinalEnv_rule_mem {rule : VDefEq}
+    (hrule : rule ∈ treeGeneration.generatedRules) :
+    treeFinalEnv.defeqs rule := by
+  obtain ⟨trace⟩ := treeCertifiedTrace
+  exact trace.rule_mem hrule
+
+/-- Final Theory environment produced by the certified indexed block
+transaction. -/
+def indexedTreeFinalEnv : VEnv :=
+  (natFinalEnv.addInductBlockCertified indexedTreeGenerationCertificate).get
+    (by decide)
+
+theorem indexedTree_addInductBlockCertified :
+    natFinalEnv.addInductBlockCertified indexedTreeGenerationCertificate =
+      some indexedTreeFinalEnv := by
+  rfl
+
+/-- Exact four-phase trace for the certified indexed block transaction. -/
+theorem indexedTreeCertifiedTrace :
+    Nonempty (VEnv.AddInductBlockGenerationTrace
+      natFinalEnv indexedTreeFinalEnv indexedTreeGeneration) :=
+  VEnv.addInductBlockCertified_trace indexedTree_addInductBlockCertified
+
+theorem indexedTreeFinalEnv_ordered : indexedTreeFinalEnv.Ordered :=
+  VEnv.addInductBlockCertified_WF nat_env_wf.ordered
+    indexedTree_addInductBlockCertified
+
+theorem indexedTreeFinalEnv_family_lookup {type : VInductiveType}
+    (htype : type ∈ indexedTreeDecl.types) :
+    indexedTreeFinalEnv.constants type.name = some type.toVConstant := by
+  obtain ⟨trace⟩ := indexedTreeCertifiedTrace
+  exact trace.family_lookup htype
+
+theorem indexedTreeFinalEnv_ctor_lookup {constructor : VConstVal}
+    (hconstructor :
+      constructor ∈ indexedTreeDecl.blockConstructorConstants) :
+    indexedTreeFinalEnv.constants constructor.name =
+      some constructor.toVConstant := by
+  obtain ⟨trace⟩ := indexedTreeCertifiedTrace
+  exact trace.ctor_lookup hconstructor
+
+theorem indexedTreeFinalEnv_rec_lookup {recursor : VConstVal}
+    (hrecursor : recursor ∈ indexedTreeGeneration.recursors) :
+    indexedTreeFinalEnv.constants recursor.name =
+      some recursor.toVConstant := by
+  obtain ⟨trace⟩ := indexedTreeCertifiedTrace
+  exact trace.rec_lookup hrecursor
+
+theorem indexedTreeFinalEnv_rule_mem {rule : VDefEq}
+    (hrule : rule ∈ indexedTreeGeneration.generatedRules) :
+    indexedTreeFinalEnv.defeqs rule := by
+  obtain ⟨trace⟩ := indexedTreeCertifiedTrace
+  exact trace.rule_mem hrule
+
+/-! ## Verification-environment block replay -/
+
+/-! ## Unindexed Verify block replay -/
+
+def treeReplayFirstTypeEnv : VEnv :=
+  (VEnv.empty.addConst treeType.name treeType.toVConstant).get!
+
+def treeReplayTypeEnv : VEnv :=
+  (treeReplayFirstTypeEnv.addConst treeListType.name
+    treeListType.toVConstant).get!
+
+def treeReplayLeafEnv : VEnv :=
+  (treeReplayTypeEnv.addConst treeType.ctors[0].name
+    treeType.ctors[0].toVConstant).get!
+
+def treeReplayNodeEnv : VEnv :=
+  (treeReplayLeafEnv.addConst treeType.ctors[1].name
+    treeType.ctors[1].toVConstant).get!
+
+def treeReplayBranchEnv : VEnv :=
+  (treeReplayNodeEnv.addConst treeType.ctors[2].name
+    treeType.ctors[2].toVConstant).get!
+
+def treeReplayNilEnv : VEnv :=
+  (treeReplayBranchEnv.addConst treeListType.ctors[0].name
+    treeListType.ctors[0].toVConstant).get!
+
+def treeReplayCtorEnv : VEnv :=
+  (treeReplayNilEnv.addConst treeListType.ctors[1].name
+    treeListType.ctors[1].toVConstant).get!
+
+def treeReplayFirstRecEnv : VEnv :=
+  (treeReplayCtorEnv.addConst treeGeneration.recursors[0].name
+    treeGeneration.recursors[0].toVConstant).get!
+
+def treeReplayRecEnv : VEnv :=
+  (treeReplayFirstRecEnv.addConst treeGeneration.recursors[1].name
+    treeGeneration.recursors[1].toVConstant).get!
+
+example : treeReplayTypeEnv = treeBlockEnv := rfl
+
+theorem treeReplay_addFirstType :
+    VEnv.empty.addConst treeType.name treeType.toVConstant =
+      some treeReplayFirstTypeEnv := rfl
+
+theorem treeReplay_addSecondType :
+    treeReplayFirstTypeEnv.addConst treeListType.name
+      treeListType.toVConstant = some treeReplayTypeEnv := rfl
+
+theorem treeReplay_addLeaf :
+    treeReplayTypeEnv.addConst treeType.ctors[0].name
+      treeType.ctors[0].toVConstant = some treeReplayLeafEnv := rfl
+
+theorem treeReplay_addNode :
+    treeReplayLeafEnv.addConst treeType.ctors[1].name
+      treeType.ctors[1].toVConstant = some treeReplayNodeEnv := rfl
+
+theorem treeReplay_addBranch :
+    treeReplayNodeEnv.addConst treeType.ctors[2].name
+      treeType.ctors[2].toVConstant = some treeReplayBranchEnv := rfl
+
+theorem treeReplay_addNil :
+    treeReplayBranchEnv.addConst treeListType.ctors[0].name
+      treeListType.ctors[0].toVConstant = some treeReplayNilEnv := rfl
+
+theorem treeReplay_addCons :
+    treeReplayNilEnv.addConst treeListType.ctors[1].name
+      treeListType.ctors[1].toVConstant = some treeReplayCtorEnv := rfl
+
+theorem treeReplay_addFirstRec :
+    treeReplayCtorEnv.addConst treeGeneration.recursors[0].name
+      treeGeneration.recursors[0].toVConstant =
+        some treeReplayFirstRecEnv := rfl
+
+theorem treeReplay_addSecondRec :
+    treeReplayFirstRecEnv.addConst treeGeneration.recursors[1].name
+      treeGeneration.recursors[1].toVConstant =
+        some treeReplayRecEnv := rfl
+
+theorem treeTypeConstantWF : treeType.toVConstant.WF VEnv.empty := by
+  exact treeBlockGenerationWF.rawFamily_isType (.head _)
+
+theorem treeListTypeConstantWF :
+    treeListType.toVConstant.WF VEnv.empty := by
+  exact treeBlockGenerationWF.rawFamily_isType (.tail _ (.head _))
+
+theorem treeLeafConstantWF :
+    treeType.ctors[0].toVConstant.WF treeReplayTypeEnv := by
+  exact treeBlockGenerationWF.rawCtor_isType (.head _)
+
+theorem treeNodeConstantWF :
+    treeType.ctors[1].toVConstant.WF treeReplayTypeEnv := by
+  exact treeBlockGenerationWF.rawCtor_isType (.tail _ (.head _))
+
+theorem treeBranchConstantWF :
+    treeType.ctors[2].toVConstant.WF treeReplayTypeEnv := by
+  exact treeBlockGenerationWF.rawCtor_isType
+    (.tail _ (.tail _ (.head _)))
+
+theorem treeNilConstantWF :
+    treeListType.ctors[0].toVConstant.WF treeReplayTypeEnv := by
+  exact treeBlockGenerationWF.rawCtor_isType
+    (.tail _ (.tail _ (.tail _ (.head _))))
+
+theorem treeConsConstantWF :
+    treeListType.ctors[1].toVConstant.WF treeReplayTypeEnv := by
+  exact treeBlockGenerationWF.rawCtor_isType
+    (.tail _ (.tail _ (.tail _ (.tail _ (.head _)))))
+
+theorem treeReplayFirstTypeEnv_ordered :
+    treeReplayFirstTypeEnv.Ordered := by
+  exact .const .empty treeTypeConstantWF treeReplay_addFirstType
+
+theorem treeReplayTypeEnv_ordered : treeReplayTypeEnv.Ordered := by
+  refine .const treeReplayFirstTypeEnv_ordered ?_
+    treeReplay_addSecondType
+  exact treeListTypeConstantWF.mono
+    (VEnv.addConst_le treeReplay_addFirstType)
+
+theorem treeReplayTypeEnv_le_leafEnv :
+    treeReplayTypeEnv ≤ treeReplayLeafEnv :=
+  VEnv.addConst_le treeReplay_addLeaf
+
+theorem treeReplayLeafEnv_ordered : treeReplayLeafEnv.Ordered := by
+  exact .const treeReplayTypeEnv_ordered treeLeafConstantWF
+    treeReplay_addLeaf
+
+theorem treeReplayLeafEnv_le_nodeEnv :
+    treeReplayLeafEnv ≤ treeReplayNodeEnv :=
+  VEnv.addConst_le treeReplay_addNode
+
+theorem treeReplayNodeEnv_ordered : treeReplayNodeEnv.Ordered := by
+  refine .const treeReplayLeafEnv_ordered ?_ treeReplay_addNode
+  exact treeNodeConstantWF.mono
+    treeReplayTypeEnv_le_leafEnv
+
+theorem treeReplayNodeEnv_le_branchEnv :
+    treeReplayNodeEnv ≤ treeReplayBranchEnv :=
+  VEnv.addConst_le treeReplay_addBranch
+
+theorem treeReplayBranchEnv_ordered : treeReplayBranchEnv.Ordered := by
+  refine .const treeReplayNodeEnv_ordered ?_ treeReplay_addBranch
+  exact treeBranchConstantWF.mono
+    (treeReplayTypeEnv_le_leafEnv.trans treeReplayLeafEnv_le_nodeEnv)
+
+theorem treeReplayBranchEnv_le_nilEnv :
+    treeReplayBranchEnv ≤ treeReplayNilEnv :=
+  VEnv.addConst_le treeReplay_addNil
+
+theorem treeReplayNilEnv_ordered : treeReplayNilEnv.Ordered := by
+  refine .const treeReplayBranchEnv_ordered ?_ treeReplay_addNil
+  exact treeNilConstantWF.mono
+      (treeReplayTypeEnv_le_leafEnv.trans
+        (treeReplayLeafEnv_le_nodeEnv.trans
+          treeReplayNodeEnv_le_branchEnv))
+
+theorem treeReplayNilEnv_le_ctorEnv :
+    treeReplayNilEnv ≤ treeReplayCtorEnv :=
+  VEnv.addConst_le treeReplay_addCons
+
+theorem treeReplayCtorEnv_ordered : treeReplayCtorEnv.Ordered := by
+  refine .const treeReplayNilEnv_ordered ?_ treeReplay_addCons
+  exact treeConsConstantWF.mono
+      (treeReplayTypeEnv_le_leafEnv.trans
+        (treeReplayLeafEnv_le_nodeEnv.trans
+          (treeReplayNodeEnv_le_branchEnv.trans
+            treeReplayBranchEnv_le_nilEnv)))
+
+theorem treeReplayInput_le_ctorEnv : VEnv.empty ≤ treeReplayCtorEnv := by
+  exact (VEnv.addConst_le treeReplay_addFirstType).trans
+    ((VEnv.addConst_le treeReplay_addSecondType).trans
+      (treeReplayTypeEnv_le_leafEnv.trans
+        (treeReplayLeafEnv_le_nodeEnv.trans
+          (treeReplayNodeEnv_le_branchEnv.trans
+            (treeReplayBranchEnv_le_nilEnv.trans
+              treeReplayNilEnv_le_ctorEnv)))))
+
+theorem treeReplayBlock_le_ctorEnv : treeBlockEnv ≤ treeReplayCtorEnv := by
+  exact treeReplayTypeEnv_le_leafEnv.trans
+    (treeReplayLeafEnv_le_nodeEnv.trans
+      (treeReplayNodeEnv_le_branchEnv.trans
+        (treeReplayBranchEnv_le_nilEnv.trans
+          treeReplayNilEnv_le_ctorEnv)))
+
+theorem treeReplayGenerationEnv :
+    BlockGenerationEnv treeGeneration treeReplayCtorEnv := by
+  apply treeBlockGenerationWF.toBlockGenerationEnv
+    treeReplayInput_le_ctorEnv treeReplayBlock_le_ctorEnv
+    treeReplayCtorEnv_ordered
+  · intro family hfamily
+    have hfamilies : treeGeneration.families =
+        [treeGeneration.families[0], treeGeneration.families[1]] := rfl
+    rw [hfamilies] at hfamily
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hfamily
+    rcases hfamily with rfl | rfl <;> rfl
+  · intro constructor hconstructor
+    have hconstructors : treeGeneration.flatCtors =
+        [treeGeneration.flatCtors[0], treeGeneration.flatCtors[1],
+          treeGeneration.flatCtors[2], treeGeneration.flatCtors[3],
+          treeGeneration.flatCtors[4]] := rfl
+    rw [hconstructors] at hconstructor
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hconstructor
+    rcases hconstructor with rfl | rfl | rfl | rfl | rfl <;> rfl
+
+theorem treeReplayFirstRecEnv_ordered :
+    treeReplayFirstRecEnv.Ordered := by
+  refine .const treeReplayCtorEnv_ordered ?_ treeReplay_addFirstRec
+  exact treeReplayGenerationEnv.recursor_wf (.head _)
+
+theorem treeReplayCtorEnv_le_firstRecEnv :
+    treeReplayCtorEnv ≤ treeReplayFirstRecEnv :=
+  VEnv.addConst_le treeReplay_addFirstRec
+
+theorem treeReplayRecEnv_ordered : treeReplayRecEnv.Ordered := by
+  refine .const treeReplayFirstRecEnv_ordered ?_ treeReplay_addSecondRec
+  exact (treeReplayGenerationEnv.recursor_wf
+    (.tail _ (.head _))).mono treeReplayCtorEnv_le_firstRecEnv
+
+theorem treeKernelInfo_tr :
+    TrConstVal .safe VEnv.empty treeKernelInfo treeType.toVConstVal := by
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr VEnv.empty treeKernelInfo.levelParams []
+      treeKernelInfo.type treeType.type := by tr_type_expr_tac
+  exact hshape.to_trExprS .empty trivial
+    (treeFamilyTypeWF treeType (.inl rfl))
+
+theorem treeListKernelInfo_tr :
+    TrConstVal .safe treeReplayFirstTypeEnv treeListKernelInfo
+      treeListType.toVConstVal := by
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr treeReplayFirstTypeEnv
+      treeListKernelInfo.levelParams [] treeListKernelInfo.type
+      treeListType.type := by tr_type_expr_tac
+  exact hshape.to_trExprS treeReplayFirstTypeEnv_ordered trivial
+    ((treeFamilyTypeWF treeListType (.inr rfl)).mono
+      (VEnv.addConst_le (by rfl)))
+
+theorem treeLeafKernelInfo_tr :
+    TrConstVal .safe treeReplayTypeEnv treeLeafKernelInfo
+      treeType.ctors[0] := by
+  have hTree : treeReplayTypeEnv.constants ``Tree =
+      some treeType.toVConstant := rfl
+  have hTreeList : treeReplayTypeEnv.constants ``TreeList =
+      some treeListType.toVConstant := rfl
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr treeReplayTypeEnv
+      treeLeafKernelInfo.levelParams [] treeLeafKernelInfo.type
+      treeType.ctors[0].type := by tr_type_expr_tac
+  exact hshape.to_trExprS treeReplayTypeEnv_ordered trivial
+    (treeCtorWF treeType.ctors[0] (.inl (by simp [treeType])))
+
+theorem treeNodeKernelInfo_tr :
+    TrConstVal .safe treeReplayLeafEnv treeNodeKernelInfo
+      treeType.ctors[1] := by
+  have hTree : treeReplayLeafEnv.constants ``Tree =
+      some treeType.toVConstant := rfl
+  have hTreeList : treeReplayLeafEnv.constants ``TreeList =
+      some treeListType.toVConstant := rfl
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr treeReplayLeafEnv
+      treeNodeKernelInfo.levelParams [] treeNodeKernelInfo.type
+      treeType.ctors[1].type := by tr_type_expr_tac
+  exact hshape.to_trExprS treeReplayLeafEnv_ordered trivial
+    ((treeCtorWF treeType.ctors[1] (.inl (by simp [treeType]))).mono
+      treeReplayTypeEnv_le_leafEnv)
+
+theorem treeBranchKernelInfo_tr :
+    TrConstVal .safe treeReplayNodeEnv treeBranchKernelInfo
+      treeType.ctors[2] := by
+  have hTree : treeReplayNodeEnv.constants ``Tree =
+      some treeType.toVConstant := rfl
+  have hTreeList : treeReplayNodeEnv.constants ``TreeList =
+      some treeListType.toVConstant := rfl
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr treeReplayNodeEnv
+      treeBranchKernelInfo.levelParams [] treeBranchKernelInfo.type
+      treeType.ctors[2].type := by tr_type_expr_tac
+  exact hshape.to_trExprS treeReplayNodeEnv_ordered trivial
+    ((treeCtorWF treeType.ctors[2] (.inl (by simp [treeType]))).mono
+      (treeReplayTypeEnv_le_leafEnv.trans treeReplayLeafEnv_le_nodeEnv))
+
+theorem treeListNilKernelInfo_tr :
+    TrConstVal .safe treeReplayBranchEnv treeListNilKernelInfo
+      treeListType.ctors[0] := by
+  have hTree : treeReplayBranchEnv.constants ``Tree =
+      some treeType.toVConstant := rfl
+  have hTreeList : treeReplayBranchEnv.constants ``TreeList =
+      some treeListType.toVConstant := rfl
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr treeReplayBranchEnv
+      treeListNilKernelInfo.levelParams [] treeListNilKernelInfo.type
+      treeListType.ctors[0].type := by tr_type_expr_tac
+  exact hshape.to_trExprS treeReplayBranchEnv_ordered trivial
+    ((treeCtorWF treeListType.ctors[0]
+      (.inr (by simp [treeListType]))).mono
+        (treeReplayTypeEnv_le_leafEnv.trans
+          (treeReplayLeafEnv_le_nodeEnv.trans
+            treeReplayNodeEnv_le_branchEnv)))
+
+theorem treeListConsKernelInfo_tr :
+    TrConstVal .safe treeReplayNilEnv treeListConsKernelInfo
+      treeListType.ctors[1] := by
+  have hTree : treeReplayNilEnv.constants ``Tree =
+      some treeType.toVConstant := rfl
+  have hTreeList : treeReplayNilEnv.constants ``TreeList =
+      some treeListType.toVConstant := rfl
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr treeReplayNilEnv
+      treeListConsKernelInfo.levelParams [] treeListConsKernelInfo.type
+      treeListType.ctors[1].type := by tr_type_expr_tac
+  exact hshape.to_trExprS treeReplayNilEnv_ordered trivial
+    ((treeCtorWF treeListType.ctors[1]
+      (.inr (by simp [treeListType]))).mono
+        (treeReplayTypeEnv_le_leafEnv.trans
+          (treeReplayLeafEnv_le_nodeEnv.trans
+            (treeReplayNodeEnv_le_branchEnv.trans
+              treeReplayBranchEnv_le_nilEnv))))
+
+theorem treeRecKernelInfo_tr :
+    TrConstVal .safe treeReplayCtorEnv treeRecKernelInfo
+      treeGeneration.recursors[0] := by
+  have hTree : treeReplayCtorEnv.constants ``Tree =
+      some treeType.toVConstant := rfl
+  have hTreeList : treeReplayCtorEnv.constants ``TreeList =
+      some treeListType.toVConstant := rfl
+  have hLeaf : treeReplayCtorEnv.constants ``Tree.leaf =
+      some treeType.ctors[0].toVConstant := rfl
+  have hNode : treeReplayCtorEnv.constants ``Tree.node =
+      some treeType.ctors[1].toVConstant := rfl
+  have hBranch : treeReplayCtorEnv.constants ``Tree.branch =
+      some treeType.ctors[2].toVConstant := rfl
+  have hNil : treeReplayCtorEnv.constants ``TreeList.nil =
+      some treeListType.ctors[0].toVConstant := rfl
+  have hCons : treeReplayCtorEnv.constants ``TreeList.cons =
+      some treeListType.ctors[1].toVConstant := rfl
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr treeReplayCtorEnv
+      treeRecKernelInfo.levelParams [] treeRecKernelInfo.type
+      treeGeneration.recursors[0].type := by tr_type_expr_tac
+  obtain ⟨u, hrec⟩ :=
+    treeReplayGenerationEnv.recursor_wf (.head _)
+  exact hshape.to_trExprS treeReplayCtorEnv_ordered trivial
+    ⟨.sort u, hrec⟩
+
+theorem treeListRecKernelInfo_tr :
+    TrConstVal .safe treeReplayFirstRecEnv treeListRecKernelInfo
+      treeGeneration.recursors[1] := by
+  have hTree : treeReplayFirstRecEnv.constants ``Tree =
+      some treeType.toVConstant := rfl
+  have hTreeList : treeReplayFirstRecEnv.constants ``TreeList =
+      some treeListType.toVConstant := rfl
+  have hLeaf : treeReplayFirstRecEnv.constants ``Tree.leaf =
+      some treeType.ctors[0].toVConstant := rfl
+  have hNode : treeReplayFirstRecEnv.constants ``Tree.node =
+      some treeType.ctors[1].toVConstant := rfl
+  have hBranch : treeReplayFirstRecEnv.constants ``Tree.branch =
+      some treeType.ctors[2].toVConstant := rfl
+  have hNil : treeReplayFirstRecEnv.constants ``TreeList.nil =
+      some treeListType.ctors[0].toVConstant := rfl
+  have hCons : treeReplayFirstRecEnv.constants ``TreeList.cons =
+      some treeListType.ctors[1].toVConstant := rfl
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr treeReplayFirstRecEnv
+      treeListRecKernelInfo.levelParams [] treeListRecKernelInfo.type
+      treeGeneration.recursors[1].type := by tr_type_expr_tac
+  obtain ⟨u, hrec⟩ :=
+    treeReplayGenerationEnv.recursor_wf (.tail _ (.head _))
+  exact hshape.to_trExprS treeReplayFirstRecEnv_ordered trivial
+    ⟨.sort u, hrec.mono treeReplayCtorEnv_le_firstRecEnv⟩
+
+def treeReplayFirstTypeMap : ConstMap :=
+  ({} : ConstMap).insert ``Tree treeKernelInfo
+
+def treeReplayTypeMap : ConstMap :=
+  treeReplayFirstTypeMap.insert ``TreeList treeListKernelInfo
+
+def treeReplayLeafMap : ConstMap :=
+  treeReplayTypeMap.insert ``Tree.leaf treeLeafKernelInfo
+
+def treeReplayNodeMap : ConstMap :=
+  treeReplayLeafMap.insert ``Tree.node treeNodeKernelInfo
+
+def treeReplayBranchMap : ConstMap :=
+  treeReplayNodeMap.insert ``Tree.branch treeBranchKernelInfo
+
+def treeReplayNilMap : ConstMap :=
+  treeReplayBranchMap.insert ``TreeList.nil treeListNilKernelInfo
+
+def treeReplayCtorMap : ConstMap :=
+  treeReplayNilMap.insert ``TreeList.cons treeListConsKernelInfo
+
+def treeReplayFirstRecMap : ConstMap :=
+  treeReplayCtorMap.insert ``Tree.rec treeRecKernelInfo
+
+def treeReplayMap : ConstMap :=
+  treeReplayFirstRecMap.insert ``TreeList.rec treeListRecKernelInfo
+
+theorem treeReplayFirstTypeMap_wf : treeReplayFirstTypeMap.WF :=
+  SMap.WF.empty.insert _ _ (by native_decide)
+
+theorem treeReplayTypeMap_wf : treeReplayTypeMap.WF :=
+  treeReplayFirstTypeMap_wf.insert _ _ (by native_decide)
+
+theorem treeReplayLeafMap_wf : treeReplayLeafMap.WF :=
+  treeReplayTypeMap_wf.insert _ _ (by native_decide)
+
+theorem treeReplayNodeMap_wf : treeReplayNodeMap.WF :=
+  treeReplayLeafMap_wf.insert _ _ (by native_decide)
+
+theorem treeReplayBranchMap_wf : treeReplayBranchMap.WF :=
+  treeReplayNodeMap_wf.insert _ _ (by native_decide)
+
+theorem treeReplayNilMap_wf : treeReplayNilMap.WF :=
+  treeReplayBranchMap_wf.insert _ _ (by native_decide)
+
+theorem treeReplayCtorMap_wf : treeReplayCtorMap.WF :=
+  treeReplayNilMap_wf.insert _ _ (by native_decide)
+
+theorem treeReplayFirstRecMap_wf : treeReplayFirstRecMap.WF :=
+  treeReplayCtorMap_wf.insert _ _ (by native_decide)
+
+theorem treeReplayMap_wf : treeReplayMap.WF :=
+  treeReplayFirstRecMap_wf.insert _ _ (by native_decide)
+
+theorem treeReplay_treeRec_lookup :
+    treeReplayMap.find? ``Tree.rec = some treeRecKernelInfo := by
+  rw [treeReplayMap, treeReplayFirstRecMap_wf.find?_insert,
+    treeReplayFirstRecMap, treeReplayCtorMap_wf.find?_insert]
+  rfl
+
+theorem treeReplay_treeListRec_lookup :
+    treeReplayMap.find? ``TreeList.rec = some treeListRecKernelInfo := by
+  rw [treeReplayMap, treeReplayFirstRecMap_wf.find?_insert]
+  rfl
+
+def treeAddInductBlockTrace :
+    AddInductBlockTrace ({} : ConstMap) VEnv.empty treeDecl
+      treeReplayMap treeFinalEnv where
+  generation := treeGeneration
+  blockEnv := treeBlockEnv
+  generation_wf := treeBlockGenerationWF
+  typeMap := treeReplayTypeMap
+  typeEnv := treeReplayTypeEnv
+  ctorMap := treeReplayCtorMap
+  ctorEnv := treeReplayCtorEnv
+  recEnv := treeReplayRecEnv
+  addTypes := .cons {
+      info := treeKernelInfo
+      kind_eq := by simp [treeKernelInfo, InductConstantKind.Matches]
+      tr := treeKernelInfo_tr
+      map_fresh := by native_decide
+      env_add := rfl
+      map_add := rfl }
+    (.cons {
+      info := treeListKernelInfo
+      kind_eq := by simp [treeListKernelInfo, InductConstantKind.Matches]
+      tr := treeListKernelInfo_tr
+      map_fresh := by native_decide
+      env_add := rfl
+      map_add := rfl } .nil)
+  addCtors := .cons {
+      info := treeLeafKernelInfo
+      kind_eq := by simp [treeLeafKernelInfo, InductConstantKind.Matches]
+      tr := treeLeafKernelInfo_tr
+      map_fresh := by native_decide
+      env_add := rfl
+      map_add := rfl }
+    (.cons {
+      info := treeNodeKernelInfo
+      kind_eq := by simp [treeNodeKernelInfo, InductConstantKind.Matches]
+      tr := treeNodeKernelInfo_tr
+      map_fresh := by native_decide
+      env_add := rfl
+      map_add := rfl }
+    (.cons {
+      info := treeBranchKernelInfo
+      kind_eq := by simp [treeBranchKernelInfo, InductConstantKind.Matches]
+      tr := treeBranchKernelInfo_tr
+      map_fresh := by native_decide
+      env_add := rfl
+      map_add := rfl }
+    (.cons {
+      info := treeListNilKernelInfo
+      kind_eq := by simp [treeListNilKernelInfo, InductConstantKind.Matches]
+      tr := treeListNilKernelInfo_tr
+      map_fresh := by native_decide
+      env_add := rfl
+      map_add := rfl }
+    (.cons {
+      info := treeListConsKernelInfo
+      kind_eq := by simp [treeListConsKernelInfo, InductConstantKind.Matches]
+      tr := treeListConsKernelInfo_tr
+      map_fresh := by native_decide
+      env_add := rfl
+      map_add := rfl } .nil))))
+  addRecs := .cons {
+      info := treeRecKernelInfo
+      kind_eq := by simp [treeRecKernelInfo, InductConstantKind.Matches]
+      tr := treeRecKernelInfo_tr
+      map_fresh := by native_decide
+      env_add := rfl
+      map_add := rfl }
+    (.cons {
+      info := treeListRecKernelInfo
+      kind_eq := by simp [treeListRecKernelInfo, InductConstantKind.Matches]
+      tr := treeListRecKernelInfo_tr
+      map_fresh := by native_decide
+      env_add := rfl
+      map_add := rfl } .nil)
+  recK := by
+    intro recursor hrecursor
+    have hrecs : treeGeneration.recursors =
+        [treeGeneration.recursors[0], treeGeneration.recursors[1]] := rfl
+    rw [hrecs] at hrecursor
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hrecursor
+    rcases hrecursor with rfl | rfl
+    · exact ⟨treeRecKernelInfo, treeReplay_treeRec_lookup, by decide⟩
+    · exact ⟨treeListRecKernelInfo, treeReplay_treeListRec_lookup,
+        by decide⟩
+  addRules := ⟨rfl⟩
+
+theorem treeAddInductBlock :
+    AddInductBlock ({} : ConstMap) VEnv.empty treeDecl
+      treeReplayMap treeFinalEnv :=
+  ⟨treeAddInductBlockTrace⟩
+
+theorem tree_trEnv' : TrEnv' .safe treeReplayMap false treeFinalEnv :=
+  .inductBlock treeAddInductBlock .empty
+
+theorem tree_verify_env_wf : treeFinalEnv.WF := tree_trEnv'.wf
+
+theorem tree_verify_aligned :
+    Aligned .safe treeReplayMap treeFinalEnv := tree_trEnv'.aligned
+
+/-! ## Indexed Verify block replay -/
+
+def indexedReplayFirstTypeEnv : VEnv :=
+  (natFinalEnv.addConst indexedTreeType.name
+    indexedTreeType.toVConstant).get!
+
+def indexedReplayTypeEnv : VEnv :=
+  (indexedReplayFirstTypeEnv.addConst indexedTreeListType.name
+    indexedTreeListType.toVConstant).get!
+
+def indexedReplayLeafEnv : VEnv :=
+  (indexedReplayTypeEnv.addConst indexedTreeType.ctors[0].name
+    indexedTreeType.ctors[0].toVConstant).get!
+
+def indexedReplayNodeEnv : VEnv :=
+  (indexedReplayLeafEnv.addConst indexedTreeType.ctors[1].name
+    indexedTreeType.ctors[1].toVConstant).get!
+
+def indexedReplayNilEnv : VEnv :=
+  (indexedReplayNodeEnv.addConst indexedTreeListType.ctors[0].name
+    indexedTreeListType.ctors[0].toVConstant).get!
+
+def indexedReplayCtorEnv : VEnv :=
+  (indexedReplayNilEnv.addConst indexedTreeListType.ctors[1].name
+    indexedTreeListType.ctors[1].toVConstant).get!
+
+def indexedReplayFirstRecEnv : VEnv :=
+  (indexedReplayCtorEnv.addConst
+    indexedTreeGeneration.recursors[0].name
+    indexedTreeGeneration.recursors[0].toVConstant).get!
+
+def indexedReplayRecEnv : VEnv :=
+  (indexedReplayFirstRecEnv.addConst
+    indexedTreeGeneration.recursors[1].name
+    indexedTreeGeneration.recursors[1].toVConstant).get!
+
+example : indexedReplayTypeEnv = indexedTreeBlockEnv := rfl
+
+theorem indexedReplay_addFirstType :
+    natFinalEnv.addConst indexedTreeType.name
+      indexedTreeType.toVConstant = some indexedReplayFirstTypeEnv := rfl
+
+theorem indexedReplay_addSecondType :
+    indexedReplayFirstTypeEnv.addConst indexedTreeListType.name
+      indexedTreeListType.toVConstant = some indexedReplayTypeEnv := rfl
+
+theorem indexedReplay_addLeaf :
+    indexedReplayTypeEnv.addConst indexedTreeType.ctors[0].name
+      indexedTreeType.ctors[0].toVConstant =
+        some indexedReplayLeafEnv := rfl
+
+theorem indexedReplay_addNode :
+    indexedReplayLeafEnv.addConst indexedTreeType.ctors[1].name
+      indexedTreeType.ctors[1].toVConstant =
+        some indexedReplayNodeEnv := rfl
+
+theorem indexedReplay_addNil :
+    indexedReplayNodeEnv.addConst indexedTreeListType.ctors[0].name
+      indexedTreeListType.ctors[0].toVConstant =
+        some indexedReplayNilEnv := rfl
+
+theorem indexedReplay_addCons :
+    indexedReplayNilEnv.addConst indexedTreeListType.ctors[1].name
+      indexedTreeListType.ctors[1].toVConstant =
+        some indexedReplayCtorEnv := rfl
+
+theorem indexedReplay_addFirstRec :
+    indexedReplayCtorEnv.addConst
+      indexedTreeGeneration.recursors[0].name
+      indexedTreeGeneration.recursors[0].toVConstant =
+        some indexedReplayFirstRecEnv := rfl
+
+theorem indexedReplay_addSecondRec :
+    indexedReplayFirstRecEnv.addConst
+      indexedTreeGeneration.recursors[1].name
+      indexedTreeGeneration.recursors[1].toVConstant =
+        some indexedReplayRecEnv := rfl
+
+theorem indexedTreeTypeConstantWF :
+    indexedTreeType.toVConstant.WF natFinalEnv := by
+  exact indexedTreeBlockGenerationWF.rawFamily_isType (.head _)
+
+theorem indexedTreeListTypeConstantWF :
+    indexedTreeListType.toVConstant.WF natFinalEnv := by
+  exact indexedTreeBlockGenerationWF.rawFamily_isType
+    (.tail _ (.head _))
+
+theorem indexedTreeLeafConstantWF :
+    indexedTreeType.ctors[0].toVConstant.WF indexedReplayTypeEnv := by
+  exact indexedTreeBlockGenerationWF.rawCtor_isType (.head _)
+
+theorem indexedTreeNodeConstantWF :
+    indexedTreeType.ctors[1].toVConstant.WF indexedReplayTypeEnv := by
+  exact indexedTreeBlockGenerationWF.rawCtor_isType
+    (.tail _ (.head _))
+
+theorem indexedTreeNilConstantWF :
+    indexedTreeListType.ctors[0].toVConstant.WF
+      indexedReplayTypeEnv := by
+  exact indexedTreeBlockGenerationWF.rawCtor_isType
+    (.tail _ (.tail _ (.head _)))
+
+theorem indexedTreeConsConstantWF :
+    indexedTreeListType.ctors[1].toVConstant.WF
+      indexedReplayTypeEnv := by
+  exact indexedTreeBlockGenerationWF.rawCtor_isType
+    (.tail _ (.tail _ (.tail _ (.head _))))
+
+theorem indexedReplayFirstTypeEnv_ordered :
+    indexedReplayFirstTypeEnv.Ordered := by
+  exact .const nat_env_wf.ordered indexedTreeTypeConstantWF
+    indexedReplay_addFirstType
+
+theorem indexedReplayTypeEnv_ordered : indexedReplayTypeEnv.Ordered := by
+  refine .const indexedReplayFirstTypeEnv_ordered ?_
+    indexedReplay_addSecondType
+  exact indexedTreeListTypeConstantWF.mono
+    (VEnv.addConst_le indexedReplay_addFirstType)
+
+theorem indexedReplayTypeEnv_le_leafEnv :
+    indexedReplayTypeEnv ≤ indexedReplayLeafEnv :=
+  VEnv.addConst_le indexedReplay_addLeaf
+
+theorem indexedReplayLeafEnv_ordered : indexedReplayLeafEnv.Ordered := by
+  exact .const indexedReplayTypeEnv_ordered indexedTreeLeafConstantWF
+    indexedReplay_addLeaf
+
+theorem indexedReplayLeafEnv_le_nodeEnv :
+    indexedReplayLeafEnv ≤ indexedReplayNodeEnv :=
+  VEnv.addConst_le indexedReplay_addNode
+
+theorem indexedReplayNodeEnv_ordered : indexedReplayNodeEnv.Ordered := by
+  refine .const indexedReplayLeafEnv_ordered ?_ indexedReplay_addNode
+  exact indexedTreeNodeConstantWF.mono indexedReplayTypeEnv_le_leafEnv
+
+theorem indexedReplayNodeEnv_le_nilEnv :
+    indexedReplayNodeEnv ≤ indexedReplayNilEnv :=
+  VEnv.addConst_le indexedReplay_addNil
+
+theorem indexedReplayNilEnv_ordered : indexedReplayNilEnv.Ordered := by
+  refine .const indexedReplayNodeEnv_ordered ?_ indexedReplay_addNil
+  exact indexedTreeNilConstantWF.mono
+    (indexedReplayTypeEnv_le_leafEnv.trans
+      indexedReplayLeafEnv_le_nodeEnv)
+
+theorem indexedReplayNilEnv_le_ctorEnv :
+    indexedReplayNilEnv ≤ indexedReplayCtorEnv :=
+  VEnv.addConst_le indexedReplay_addCons
+
+theorem indexedReplayCtorEnv_ordered : indexedReplayCtorEnv.Ordered := by
+  refine .const indexedReplayNilEnv_ordered ?_ indexedReplay_addCons
+  exact indexedTreeConsConstantWF.mono
+    (indexedReplayTypeEnv_le_leafEnv.trans
+      (indexedReplayLeafEnv_le_nodeEnv.trans
+        indexedReplayNodeEnv_le_nilEnv))
+
+theorem indexedReplayInput_le_ctorEnv :
+    natFinalEnv ≤ indexedReplayCtorEnv := by
+  exact (VEnv.addConst_le indexedReplay_addFirstType).trans
+    ((VEnv.addConst_le indexedReplay_addSecondType).trans
+      (indexedReplayTypeEnv_le_leafEnv.trans
+        (indexedReplayLeafEnv_le_nodeEnv.trans
+          (indexedReplayNodeEnv_le_nilEnv.trans
+            indexedReplayNilEnv_le_ctorEnv))))
+
+theorem indexedReplayBlock_le_ctorEnv :
+    indexedTreeBlockEnv ≤ indexedReplayCtorEnv := by
+  exact indexedReplayTypeEnv_le_leafEnv.trans
+    (indexedReplayLeafEnv_le_nodeEnv.trans
+      (indexedReplayNodeEnv_le_nilEnv.trans
+        indexedReplayNilEnv_le_ctorEnv))
+
+theorem indexedReplayGenerationEnv :
+    BlockGenerationEnv indexedTreeGeneration indexedReplayCtorEnv := by
+  apply indexedTreeBlockGenerationWF.toBlockGenerationEnv
+    indexedReplayInput_le_ctorEnv indexedReplayBlock_le_ctorEnv
+    indexedReplayCtorEnv_ordered
+  · intro family hfamily
+    have hfamilies : indexedTreeGeneration.families =
+        [indexedTreeGeneration.families[0],
+          indexedTreeGeneration.families[1]] := rfl
+    rw [hfamilies] at hfamily
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hfamily
+    rcases hfamily with rfl | rfl <;> rfl
+  · intro constructor hconstructor
+    have hconstructors : indexedTreeGeneration.flatCtors =
+        [indexedTreeGeneration.flatCtors[0],
+          indexedTreeGeneration.flatCtors[1],
+          indexedTreeGeneration.flatCtors[2],
+          indexedTreeGeneration.flatCtors[3]] := rfl
+    rw [hconstructors] at hconstructor
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hconstructor
+    rcases hconstructor with rfl | rfl | rfl | rfl <;> rfl
+
+theorem indexedReplayFirstRecEnv_ordered :
+    indexedReplayFirstRecEnv.Ordered := by
+  refine .const indexedReplayCtorEnv_ordered ?_
+    indexedReplay_addFirstRec
+  exact indexedReplayGenerationEnv.recursor_wf (.head _)
+
+theorem indexedReplayCtorEnv_le_firstRecEnv :
+    indexedReplayCtorEnv ≤ indexedReplayFirstRecEnv :=
+  VEnv.addConst_le indexedReplay_addFirstRec
+
+theorem indexedReplayRecEnv_ordered : indexedReplayRecEnv.Ordered := by
+  refine .const indexedReplayFirstRecEnv_ordered ?_
+    indexedReplay_addSecondRec
+  exact (indexedReplayGenerationEnv.recursor_wf
+    (.tail _ (.head _))).mono indexedReplayCtorEnv_le_firstRecEnv
+
+theorem indexedTreeKernelInfo_tr :
+    TrConstVal .safe natFinalEnv indexedTreeKernelInfo
+      indexedTreeType.toVConstVal := by
+  have hNat : natFinalEnv.constants ``Nat =
+      some InductiveFixtures.natType.toVConstant := rfl
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr natFinalEnv indexedTreeKernelInfo.levelParams []
+      indexedTreeKernelInfo.type indexedTreeType.type := by
+    tr_type_expr_tac
+  exact hshape.to_trExprS nat_env_wf.ordered trivial
+    (indexedTreeFamilyTypeWF indexedTreeType (.inl rfl))
+
+theorem indexedTreeListKernelInfo_tr :
+    TrConstVal .safe indexedReplayFirstTypeEnv indexedTreeListKernelInfo
+      indexedTreeListType.toVConstVal := by
+  have hNat : indexedReplayFirstTypeEnv.constants ``Nat =
+      some InductiveFixtures.natType.toVConstant := rfl
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr indexedReplayFirstTypeEnv
+      indexedTreeListKernelInfo.levelParams [] indexedTreeListKernelInfo.type
+      indexedTreeListType.type := by tr_type_expr_tac
+  exact hshape.to_trExprS indexedReplayFirstTypeEnv_ordered trivial
+    ((indexedTreeFamilyTypeWF indexedTreeListType (.inr rfl)).mono
+      (VEnv.addConst_le indexedReplay_addFirstType))
+
+theorem indexedTreeLeafKernelInfo_tr :
+    TrConstVal .safe indexedReplayTypeEnv indexedTreeLeafKernelInfo
+      indexedTreeType.ctors[0] := by
+  have hNat : indexedReplayTypeEnv.constants ``Nat =
+      some InductiveFixtures.natType.toVConstant := rfl
+  have hZero : indexedReplayTypeEnv.constants ``Nat.zero =
+      some InductiveFixtures.natType.ctors[0].toVConstant := rfl
+  have hSucc : indexedReplayTypeEnv.constants ``Nat.succ =
+      some InductiveFixtures.natType.ctors[1].toVConstant := rfl
+  have hTree : indexedReplayTypeEnv.constants ``IndexedTree =
+      some indexedTreeType.toVConstant := rfl
+  have hTreeList : indexedReplayTypeEnv.constants ``IndexedTreeList =
+      some indexedTreeListType.toVConstant := rfl
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr indexedReplayTypeEnv
+      indexedTreeLeafKernelInfo.levelParams [] indexedTreeLeafKernelInfo.type
+      indexedTreeType.ctors[0].type := by tr_type_expr_tac
+  exact hshape.to_trExprS indexedReplayTypeEnv_ordered trivial
+    (indexedTreeCtorWF indexedTreeType.ctors[0]
+      (.inl (by simp [indexedTreeType])))
+
+theorem indexedTreeNodeKernelInfo_tr :
+    TrConstVal .safe indexedReplayLeafEnv indexedTreeNodeKernelInfo
+      indexedTreeType.ctors[1] := by
+  have hNat : indexedReplayLeafEnv.constants ``Nat =
+      some InductiveFixtures.natType.toVConstant := rfl
+  have hZero : indexedReplayLeafEnv.constants ``Nat.zero =
+      some InductiveFixtures.natType.ctors[0].toVConstant := rfl
+  have hSucc : indexedReplayLeafEnv.constants ``Nat.succ =
+      some InductiveFixtures.natType.ctors[1].toVConstant := rfl
+  have hTree : indexedReplayLeafEnv.constants ``IndexedTree =
+      some indexedTreeType.toVConstant := rfl
+  have hTreeList : indexedReplayLeafEnv.constants ``IndexedTreeList =
+      some indexedTreeListType.toVConstant := rfl
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr indexedReplayLeafEnv
+      indexedTreeNodeKernelInfo.levelParams [] indexedTreeNodeKernelInfo.type
+      indexedTreeType.ctors[1].type := by tr_type_expr_tac
+  exact hshape.to_trExprS indexedReplayLeafEnv_ordered trivial
+    ((indexedTreeCtorWF indexedTreeType.ctors[1]
+      (.inl (by simp [indexedTreeType]))).mono
+        indexedReplayTypeEnv_le_leafEnv)
+
+theorem indexedTreeListNilKernelInfo_tr :
+    TrConstVal .safe indexedReplayNodeEnv indexedTreeListNilKernelInfo
+      indexedTreeListType.ctors[0] := by
+  have hNat : indexedReplayNodeEnv.constants ``Nat =
+      some InductiveFixtures.natType.toVConstant := rfl
+  have hZero : indexedReplayNodeEnv.constants ``Nat.zero =
+      some InductiveFixtures.natType.ctors[0].toVConstant := rfl
+  have hSucc : indexedReplayNodeEnv.constants ``Nat.succ =
+      some InductiveFixtures.natType.ctors[1].toVConstant := rfl
+  have hTree : indexedReplayNodeEnv.constants ``IndexedTree =
+      some indexedTreeType.toVConstant := rfl
+  have hTreeList : indexedReplayNodeEnv.constants ``IndexedTreeList =
+      some indexedTreeListType.toVConstant := rfl
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr indexedReplayNodeEnv
+      indexedTreeListNilKernelInfo.levelParams []
+      indexedTreeListNilKernelInfo.type indexedTreeListType.ctors[0].type := by
+    tr_type_expr_tac
+  exact hshape.to_trExprS indexedReplayNodeEnv_ordered trivial
+    ((indexedTreeCtorWF indexedTreeListType.ctors[0]
+      (.inr (by simp [indexedTreeListType]))).mono
+        (indexedReplayTypeEnv_le_leafEnv.trans
+          indexedReplayLeafEnv_le_nodeEnv))
+
+theorem indexedTreeListConsKernelInfo_tr :
+    TrConstVal .safe indexedReplayNilEnv indexedTreeListConsKernelInfo
+      indexedTreeListType.ctors[1] := by
+  have hNat : indexedReplayNilEnv.constants ``Nat =
+      some InductiveFixtures.natType.toVConstant := rfl
+  have hZero : indexedReplayNilEnv.constants ``Nat.zero =
+      some InductiveFixtures.natType.ctors[0].toVConstant := rfl
+  have hSucc : indexedReplayNilEnv.constants ``Nat.succ =
+      some InductiveFixtures.natType.ctors[1].toVConstant := rfl
+  have hTree : indexedReplayNilEnv.constants ``IndexedTree =
+      some indexedTreeType.toVConstant := rfl
+  have hTreeList : indexedReplayNilEnv.constants ``IndexedTreeList =
+      some indexedTreeListType.toVConstant := rfl
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr indexedReplayNilEnv
+      indexedTreeListConsKernelInfo.levelParams []
+      indexedTreeListConsKernelInfo.type indexedTreeListType.ctors[1].type := by
+    tr_type_expr_tac
+  exact hshape.to_trExprS indexedReplayNilEnv_ordered trivial
+    ((indexedTreeCtorWF indexedTreeListType.ctors[1]
+      (.inr (by simp [indexedTreeListType]))).mono
+        (indexedReplayTypeEnv_le_leafEnv.trans
+          (indexedReplayLeafEnv_le_nodeEnv.trans
+            indexedReplayNodeEnv_le_nilEnv)))
+
+theorem indexedTreeRecKernelInfo_tr :
+    TrConstVal .safe indexedReplayCtorEnv indexedTreeRecKernelInfo
+      indexedTreeGeneration.recursors[0] := by
+  have hNat : indexedReplayCtorEnv.constants ``Nat =
+      some InductiveFixtures.natType.toVConstant := rfl
+  have hZero : indexedReplayCtorEnv.constants ``Nat.zero =
+      some InductiveFixtures.natType.ctors[0].toVConstant := rfl
+  have hSucc : indexedReplayCtorEnv.constants ``Nat.succ =
+      some InductiveFixtures.natType.ctors[1].toVConstant := rfl
+  have hTree : indexedReplayCtorEnv.constants ``IndexedTree =
+      some indexedTreeType.toVConstant := rfl
+  have hTreeList : indexedReplayCtorEnv.constants ``IndexedTreeList =
+      some indexedTreeListType.toVConstant := rfl
+  have hLeaf : indexedReplayCtorEnv.constants ``IndexedTree.leaf =
+      some indexedTreeType.ctors[0].toVConstant := rfl
+  have hNode : indexedReplayCtorEnv.constants ``IndexedTree.node =
+      some indexedTreeType.ctors[1].toVConstant := rfl
+  have hNil : indexedReplayCtorEnv.constants ``IndexedTreeList.nil =
+      some indexedTreeListType.ctors[0].toVConstant := rfl
+  have hCons : indexedReplayCtorEnv.constants ``IndexedTreeList.cons =
+      some indexedTreeListType.ctors[1].toVConstant := rfl
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr indexedReplayCtorEnv
+      indexedTreeRecKernelInfo.levelParams [] indexedTreeRecKernelInfo.type
+      indexedTreeGeneration.recursors[0].type := by tr_type_expr_tac
+  obtain ⟨u, hrec⟩ := indexedReplayGenerationEnv.recursor_wf (.head _)
+  exact hshape.to_trExprS indexedReplayCtorEnv_ordered trivial
+    ⟨.sort u, hrec⟩
+
+theorem indexedTreeListRecKernelInfo_tr :
+    TrConstVal .safe indexedReplayFirstRecEnv indexedTreeListRecKernelInfo
+      indexedTreeGeneration.recursors[1] := by
+  have hNat : indexedReplayFirstRecEnv.constants ``Nat =
+      some InductiveFixtures.natType.toVConstant := rfl
+  have hZero : indexedReplayFirstRecEnv.constants ``Nat.zero =
+      some InductiveFixtures.natType.ctors[0].toVConstant := rfl
+  have hSucc : indexedReplayFirstRecEnv.constants ``Nat.succ =
+      some InductiveFixtures.natType.ctors[1].toVConstant := rfl
+  have hTree : indexedReplayFirstRecEnv.constants ``IndexedTree =
+      some indexedTreeType.toVConstant := rfl
+  have hTreeList : indexedReplayFirstRecEnv.constants ``IndexedTreeList =
+      some indexedTreeListType.toVConstant := rfl
+  have hLeaf : indexedReplayFirstRecEnv.constants ``IndexedTree.leaf =
+      some indexedTreeType.ctors[0].toVConstant := rfl
+  have hNode : indexedReplayFirstRecEnv.constants ``IndexedTree.node =
+      some indexedTreeType.ctors[1].toVConstant := rfl
+  have hNil : indexedReplayFirstRecEnv.constants ``IndexedTreeList.nil =
+      some indexedTreeListType.ctors[0].toVConstant := rfl
+  have hCons : indexedReplayFirstRecEnv.constants ``IndexedTreeList.cons =
+      some indexedTreeListType.ctors[1].toVConstant := rfl
+  refine ⟨⟨by decide, rfl, ?_⟩, rfl⟩
+  have hshape : TrTypeExpr indexedReplayFirstRecEnv
+      indexedTreeListRecKernelInfo.levelParams []
+      indexedTreeListRecKernelInfo.type
+      indexedTreeGeneration.recursors[1].type := by tr_type_expr_tac
+  obtain ⟨u, hrec⟩ := indexedReplayGenerationEnv.recursor_wf
+    (.tail _ (.head _))
+  exact hshape.to_trExprS indexedReplayFirstRecEnv_ordered trivial
+    ⟨.sort u, hrec.mono indexedReplayCtorEnv_le_firstRecEnv⟩
+
+def indexedReplayFirstTypeMap : ConstMap :=
+  natMap.insert ``IndexedTree indexedTreeKernelInfo
+
+def indexedReplayTypeMap : ConstMap :=
+  indexedReplayFirstTypeMap.insert ``IndexedTreeList
+    indexedTreeListKernelInfo
+
+def indexedReplayLeafMap : ConstMap :=
+  indexedReplayTypeMap.insert ``IndexedTree.leaf indexedTreeLeafKernelInfo
+
+def indexedReplayNodeMap : ConstMap :=
+  indexedReplayLeafMap.insert ``IndexedTree.node indexedTreeNodeKernelInfo
+
+def indexedReplayNilMap : ConstMap :=
+  indexedReplayNodeMap.insert ``IndexedTreeList.nil
+    indexedTreeListNilKernelInfo
+
+def indexedReplayCtorMap : ConstMap :=
+  indexedReplayNilMap.insert ``IndexedTreeList.cons
+    indexedTreeListConsKernelInfo
+
+def indexedReplayFirstRecMap : ConstMap :=
+  indexedReplayCtorMap.insert ``IndexedTree.rec indexedTreeRecKernelInfo
+
+def indexedReplayMap : ConstMap :=
+  indexedReplayFirstRecMap.insert ``IndexedTreeList.rec
+    indexedTreeListRecKernelInfo
+
+theorem indexedReplayFirstTypeMap_wf : indexedReplayFirstTypeMap.WF :=
+  nat_aligned.map_wf.insert _ _ (by native_decide)
+
+theorem indexedReplayTypeMap_wf : indexedReplayTypeMap.WF :=
+  indexedReplayFirstTypeMap_wf.insert _ _ (by native_decide)
+
+theorem indexedReplayLeafMap_wf : indexedReplayLeafMap.WF :=
+  indexedReplayTypeMap_wf.insert _ _ (by native_decide)
+
+theorem indexedReplayNodeMap_wf : indexedReplayNodeMap.WF :=
+  indexedReplayLeafMap_wf.insert _ _ (by native_decide)
+
+theorem indexedReplayNilMap_wf : indexedReplayNilMap.WF :=
+  indexedReplayNodeMap_wf.insert _ _ (by native_decide)
+
+theorem indexedReplayCtorMap_wf : indexedReplayCtorMap.WF :=
+  indexedReplayNilMap_wf.insert _ _ (by native_decide)
+
+theorem indexedReplayFirstRecMap_wf : indexedReplayFirstRecMap.WF :=
+  indexedReplayCtorMap_wf.insert _ _ (by native_decide)
+
+theorem indexedReplayMap_wf : indexedReplayMap.WF :=
+  indexedReplayFirstRecMap_wf.insert _ _ (by native_decide)
+
+theorem indexedReplay_treeRec_lookup :
+    indexedReplayMap.find? ``IndexedTree.rec =
+      some indexedTreeRecKernelInfo := by
+  rw [indexedReplayMap, indexedReplayFirstRecMap_wf.find?_insert,
+    indexedReplayFirstRecMap, indexedReplayCtorMap_wf.find?_insert]
+  rfl
+
+theorem indexedReplay_treeListRec_lookup :
+    indexedReplayMap.find? ``IndexedTreeList.rec =
+      some indexedTreeListRecKernelInfo := by
+  rw [indexedReplayMap, indexedReplayFirstRecMap_wf.find?_insert]
+  rfl
+
+def indexedTreeAddInductBlockTrace :
+    AddInductBlockTrace natMap natFinalEnv indexedTreeDecl
+      indexedReplayMap indexedTreeFinalEnv where
+  generation := indexedTreeGeneration
+  blockEnv := indexedTreeBlockEnv
+  generation_wf := indexedTreeBlockGenerationWF
+  typeMap := indexedReplayTypeMap
+  typeEnv := indexedReplayTypeEnv
+  ctorMap := indexedReplayCtorMap
+  ctorEnv := indexedReplayCtorEnv
+  recEnv := indexedReplayRecEnv
+  addTypes := .cons {
+      info := indexedTreeKernelInfo
+      kind_eq := by simp [indexedTreeKernelInfo,
+        InductConstantKind.Matches]
+      tr := indexedTreeKernelInfo_tr
+      map_fresh := by native_decide
+      env_add := rfl
+      map_add := rfl }
+    (.cons {
+      info := indexedTreeListKernelInfo
+      kind_eq := by simp [indexedTreeListKernelInfo,
+        InductConstantKind.Matches]
+      tr := indexedTreeListKernelInfo_tr
+      map_fresh := by native_decide
+      env_add := rfl
+      map_add := rfl } .nil)
+  addCtors := .cons {
+      info := indexedTreeLeafKernelInfo
+      kind_eq := by simp [indexedTreeLeafKernelInfo,
+        InductConstantKind.Matches]
+      tr := indexedTreeLeafKernelInfo_tr
+      map_fresh := by native_decide
+      env_add := rfl
+      map_add := rfl }
+    (.cons {
+      info := indexedTreeNodeKernelInfo
+      kind_eq := by simp [indexedTreeNodeKernelInfo,
+        InductConstantKind.Matches]
+      tr := indexedTreeNodeKernelInfo_tr
+      map_fresh := by native_decide
+      env_add := rfl
+      map_add := rfl }
+    (.cons {
+      info := indexedTreeListNilKernelInfo
+      kind_eq := by simp [indexedTreeListNilKernelInfo,
+        InductConstantKind.Matches]
+      tr := indexedTreeListNilKernelInfo_tr
+      map_fresh := by native_decide
+      env_add := rfl
+      map_add := rfl }
+    (.cons {
+      info := indexedTreeListConsKernelInfo
+      kind_eq := by simp [indexedTreeListConsKernelInfo,
+        InductConstantKind.Matches]
+      tr := indexedTreeListConsKernelInfo_tr
+      map_fresh := by native_decide
+      env_add := rfl
+      map_add := rfl } .nil)))
+  addRecs := .cons {
+      info := indexedTreeRecKernelInfo
+      kind_eq := by simp [indexedTreeRecKernelInfo,
+        InductConstantKind.Matches]
+      tr := indexedTreeRecKernelInfo_tr
+      map_fresh := by native_decide
+      env_add := rfl
+      map_add := rfl }
+    (.cons {
+      info := indexedTreeListRecKernelInfo
+      kind_eq := by simp [indexedTreeListRecKernelInfo,
+        InductConstantKind.Matches]
+      tr := indexedTreeListRecKernelInfo_tr
+      map_fresh := by native_decide
+      env_add := rfl
+      map_add := rfl } .nil)
+  recK := by
+    intro recursor hrecursor
+    have hrecs : indexedTreeGeneration.recursors =
+        [indexedTreeGeneration.recursors[0],
+          indexedTreeGeneration.recursors[1]] := rfl
+    rw [hrecs] at hrecursor
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hrecursor
+    rcases hrecursor with rfl | rfl
+    · exact ⟨indexedTreeRecKernelInfo,
+        indexedReplay_treeRec_lookup, by decide⟩
+    · exact ⟨indexedTreeListRecKernelInfo,
+        indexedReplay_treeListRec_lookup, by decide⟩
+  addRules := ⟨rfl⟩
+
+theorem indexedTreeAddInductBlock :
+    AddInductBlock natMap natFinalEnv indexedTreeDecl
+      indexedReplayMap indexedTreeFinalEnv :=
+  ⟨indexedTreeAddInductBlockTrace⟩
+
+theorem indexedTree_trEnv' :
+    TrEnv' .safe indexedReplayMap false indexedTreeFinalEnv :=
+  .inductBlock indexedTreeAddInductBlock nat_trEnv'
+
+theorem indexedTree_verify_env_wf : indexedTreeFinalEnv.WF :=
+  indexedTree_trEnv'.wf
+
+theorem indexedTree_verify_aligned :
+    Aligned .safe indexedReplayMap indexedTreeFinalEnv :=
+  indexedTree_trEnv'.aligned
+
+
+
 /-! ## Trust-boundary manifests -/
 
 /--
