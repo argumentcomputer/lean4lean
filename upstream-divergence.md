@@ -4,8 +4,7 @@ This file tracks every deliberate semantic, API, build, or verification delta
 from `upstream/master` that must either be upstreamed or explicitly retained.
 It is the tracked counterpart to `plans/roadmap.md`.
 
-Audit baseline after the environment-sensitive validation-parity checkpoint
-(2026-08-06):
+Audit baseline after the empty/singleton edge-shape checkpoint (2026-08-07):
 
 - current upstream reconciliation parent: digama `upstream/master`
   `ef849dfbd94a`
@@ -94,19 +93,25 @@ Audit baseline after the environment-sensitive validation-parity checkpoint
   Publication to the fork's `jcb/induct` branch is pending.
 - remote development elimination/K checkpoints at `jcb/formalization`:
   `37e2ada60b04` (`proof: certify elimination mode and recursor levels`) and
-  `41e1126bb587` (`proof: certify recursor K-target metadata`). The current
-  L4L-06B closure adds the exact positive/negative kernel differential; its
-  publication to the fork's `jcb/induct` branch is pending.
+  `41e1126bb587` (`proof: certify recursor K-target metadata`), followed by
+  `0c6b178cc1bd` (`proof: cover empty and singleton generation edges`). The
+  current L4L-06C closure adds exact actual-metadata and operational edge
+  differentials; its publication to the fork's `jcb/induct` branch is pending.
 - fixed fork master: `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb`
   on local and `origin/master`
-- current audited semantic checkpoint: the L4L-06B closure at
+- current audited semantic checkpoint: the L4L-06C closure at
   `jcb/formalization` retains the exact ordinary small/large-elimination and
   K-target executions independently, aligns both decisions with shared Theory
   generation, and requires the actual kernel `recInfo.k` value in environment
   replay. Eq, And, Or, Nat, and a source-universe-bearing small family pin the
   positive/negative K matrix, exact recursor universe order, rule shapes, and
-  rule RHSs. Exact closure guards and the full completion gate are recorded in
-  the roadmap.
+  rule RHSs. `Unit` is pinned as Lean's reducible alias metadata; its actual
+  one-constructor target `PUnit` and zero-constructor `Empty` pin every
+  inductive/constructor/recursor field, exact binder and minor order, field and
+  recursive-argument counts, recursor levels, rule counts, and every available
+  RHS. The common checked transaction and preservation path handles both empty
+  folds without synthetic premises. Exact closure guards and the full
+  completion gate are recorded in the roadmap.
 - generation-readiness source checkpoint: `bbb45e0e` builds on the exact
   arbitrary-length
   producer witnesses and source-indexed semantic inputs that return a
@@ -240,11 +245,12 @@ to the replacement.
 ## D006 — staged computational inductive semantics
 
 - **Status:** remote-development (the earlier checkpoints are published-fork;
-  the elimination/K extension is pushed at `jcb/formalization`, while
-  publication to `jcb/induct` remains pending)
+  the elimination/K and edge extensions are pushed at `jcb/formalization`,
+  while publication to `jcb/induct` remains pending)
 - **Commits:** `71f2eae`, `06e904d`, `201c12f`, `efb2a2b`, the generalized
-  single-family integration in `472a6f0`, and the L4L-06A/B checkpoints
-  `37e2ada6`, `41e1126b`, and the current closure
+  single-family integration in `472a6f0`, the L4L-06A/B checkpoints
+  `37e2ada6` and `41e1126b`, the L4L-06C edge-generation checkpoint
+  `0c6b178c`, and the current closure
 - **Delta:** replace the three placeholder inductive declarations with real
   `VInductDecl.WF`, computational generation, generated recursor/iota rules,
   and sorry-free preservation for the accepted class. The published
@@ -252,16 +258,19 @@ to the replacement.
   recursive targets below positive Pi telescopes, raw/view normalization,
   mixed raw-syntax-preserving artifacts, exact ordinary small/large elimination
   modes, independently computed K-target metadata, and a traced normalized
-  transaction. Acceptance is the dependent descriptor from D009. This remains
-  an underapproximation: full positivity, mutual blocks, nested inductives, and
-  the complete differential matrix are not implemented.
+  transaction. Zero- and one-constructor blocks use the same checked
+  family/constructor/recursor/rule component chain, including ordinary empty
+  constructor and rule folds. Acceptance is the dependent descriptor from
+  D009. This remains an underapproximation: full positivity, mutual blocks,
+  nested inductives, and the complete differential matrix are not implemented.
 - **Ix impact:** discharges ix gap A1's three upstream `sorryAx` origins and is
   the semantic basis for constructing `InductiveOracle`; current breadth is
   not yet enough for all ix blocks.
 - **Tests:** exact Nat, Bool, List, Prod, Option, Eq, HEq, index-changing
-  `IndexedVec`, and recursive-Pi `Acc` recursor/iota fixtures; Eq/And/Or/Nat
-  and source-universe elimination/K differentials; the structured rejection
-  matrix; Theory/Verify build; full flake check; exact axiom guards for
+  `IndexedVec`, recursive-Pi `Acc`, `PUnit`, and `Empty` recursor/iota fixtures;
+  exact `Unit` alias metadata; Eq/And/Or/Nat, source-universe, and
+  `PUnit`/`Empty` elimination/K differentials; the structured rejection matrix;
+  Theory/Verify build; full flake check; exact axiom guards for
   `VEnv.addInduct_WF`, the normalized preservation roots, and the operational
   K trace.
 - **Upstream issue/PR:** TBD; submit in the staged PR sequence described in the
@@ -285,9 +294,9 @@ to the replacement.
   unfolding `Option` binds or `foldlM`, and gives ix a Theory-only
   non-identity certificate boundary without importing Verify.
 - **Tests:** identity and non-identity transaction fixtures, consumer-style
-  `IndexedVec`, `Acc`, AliasFormer, and AnnotatedPi transactions, collision and
-  atomicity fixtures, Theory/Verify and flake gates, and exact axiom guards for
-  the public trace/WF roots.
+  `IndexedVec`, `Acc`, AliasFormer, AnnotatedPi, `PUnit`, and `Empty`
+  transactions, collision and atomicity fixtures, Theory/Verify and flake
+  gates, and exact axiom guards for the public trace/WF roots.
 - **Upstream issue/PR:** TBD; submit after or with the Stage-3 preservation PR.
 - **Removal condition:** equivalent stable postconditions are upstream and ix
   no longer imports the fork-only names.
@@ -295,10 +304,11 @@ to the replacement.
 ## D008 — Verify inductive-environment alignment
 
 - **Status:** remote-development (the earlier checkpoints are published-fork;
-  current K-metadata alignment is pushed at `jcb/formalization`)
+  current K-metadata and empty/singleton execution alignment is pushed at
+  `jcb/formalization`)
 - **Commits:** initial alignment in `472a6f0`, extended through `a1d8943`,
-  `6a77882`, `bc37d43`, `37e2ada6`, `41e1126b`, and the current L4L-06B
-  closure
+  `6a77882`, `bc37d43`, `37e2ada6`, `41e1126b`, `0c6b178c`, and the current
+  L4L-06C closure
 - **Delta:** replace the empty `AddInduct` relation with a data-bearing trace
   for `inductInfo`, ordered `ctorInfo` insertion, `recInfo`, and the generated
   defeq fold. Fold realization, lookup, freshness, monotonicity,
@@ -312,7 +322,10 @@ to the replacement.
   AnnotatedPi adds a seventh focused replay whose raw constructor retains
   `outParam Prop` beneath a recursive Pi and whose generated recursor/iota rule
   is pinned. The normalized trace owns the exact generation and its semantic
-  certificate instead of restating artifacts.
+  certificate instead of restating artifacts. Focused `PUnit` and `Empty`
+  executions now align actual kernel metadata with the same checked generation
+  artifact across the one-/zero-constructor elimination boundary; full
+  environment replay for the complete positive matrix remains L4L-07 work.
 - **Ix impact:** establishes the implementation-to-Theory environment bridge
   needed to translate checked inductive blocks and eventually construct
   `InductiveOracle`; later I2-I4 replay fixtures plus the I5 pattern package
@@ -336,9 +349,10 @@ to the replacement.
 ## D009 — shared checked inductive descriptor
 
 - **Status:** remote-development (the base descriptor is published-fork; its
-  K-target extension is pushed at `jcb/formalization`)
+  K-target and empty/singleton extensions are pushed at `jcb/formalization`)
 - **Commit:** introduced and integrated in `472a6f0`; K-target retention is
-  extended through `41e1126b` and the current L4L-06B closure
+  extended through `41e1126b`, with zero-/one-constructor coverage through
+  `0c6b178c` and the current L4L-06C closure
 - **Delta:** add dependent `VInductDecl.Checked`, normalized constructor and
   recursive-argument records, and the computational `checked?` analyzer.
   Define public Stage-3 acceptance as descriptor existence. Route recursor/rule
@@ -352,6 +366,9 @@ to the replacement.
   their WF contracts retain the raw singleton block, checked view, mixed
   generation layout, ordered constructor pairing, exact K-target decision
   independently of elimination mode, and exact analyzer result.
+  `PUnit` and `Empty` compute through this same descriptor: the former retains
+  one zero-field, nonrecursive constructor and one minor/rule, while the latter
+  retains empty constructor/minor/rule lists without a proof-only premise.
   Stable constructor/recursor collision rejection and identity compatibility
   remain part of the public proof API.
 - **Ix impact:** creates the stable, consumer-neutral analysis object that E2
@@ -361,9 +378,10 @@ to the replacement.
   lets it reuse the exact checked value. Reserved recursive binder telescope
   and target-family fields provide the extension point for Acc-like and mutual
   recursion.
-- **Tests:** computed descriptor-shape checks for Nat, Eq, and `IndexedVec`,
-  plus exact K-target shapes for Eq, And, Or, and Nat;
-  semantic bridge fixtures for `IndexedVec`; negative fixtures for loose data,
+- **Tests:** computed descriptor-shape checks for Nat, Eq, `IndexedVec`,
+  `PUnit`, and `Empty`, plus exact K-target shapes for Eq, And, Or, Nat,
+  `PUnit`, and `Empty`; semantic bridge fixtures for `IndexedVec`; negative
+  fixtures for loose data,
   internal/pre-existing name collisions, self-referential parameters, invalid
   levels, malformed results/spines, parameter counts, and universe-count
   mismatches; exact Theory/Verify build; 20-sorry audit; Theory import boundary;

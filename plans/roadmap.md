@@ -66,12 +66,12 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-06C active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
-| Current formalization source | L4L-06B closure at the current `jcb/formalization` checkpoint, built on the elimination/K-metadata checkpoints `37e2ada6` and `41e1126b`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
+| Ladder position | **L4L-07 active**; everything above it in §5 is complete and pruned from this document; everything below is queued |
+| Current formalization source | L4L-06C closure in this checkpoint, built on the elimination/K-metadata checkpoints `37e2ada6` and `41e1126b` and the edge-generation checkpoint `0c6b178c`; publication to `argumentcomputer/lean4lean` `jcb/induct` is pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 20 live sorries and 29 custom-axiom declarations, both pinned by exact audits |
-| Gates | the full §6 gate list is green on the current L4L-06B closure source, including the Theory/Verify and default Lake builds, Nix build/check suite, trust audits, and formatter |
+| Gates | the full §6 gate is green on the L4L-06C closure source, including the focused and aggregate Lean builds, Nix build, all-system flake evaluation, native flake checks, sorry-frontier audit, formatter check, and whitespace check |
 
 ### 2.1 What is green
 
@@ -92,11 +92,13 @@ cannot affect computation. The shared checked/generation artifact retains the
 exact K-target decision separately from its elimination mode. The slice covers
 one generalized family with parameters, indices, direct recursion, recursive
 targets below Pi telescopes, small elimination, subsingleton large elimination,
-and K-target metadata.
+K-target metadata, and exact zero-/one-constructor generation. Preservation is
+factored through the common checked family, constructor fold, recursor, and
+rule-fold components, with empty folds using that same path.
 
 **Kernel parity fixtures.** Nat, Bool, List, Prod, Option, Eq, HEq,
-`IndexedVec`, and `Acc` compare generated recursors and/or iota rules
-definitionally with Lean's actual kernel declarations. `AliasFormer` and
+`IndexedVec`, `Acc`, `PUnit`, and `Empty` compare generated recursors and/or
+iota rules definitionally with Lean's actual kernel declarations. `AliasFormer` and
 `AliasRec` prove normalization is necessary, not hypothetical: real metadata
 retains reducible aliases at the family result and around a recursive field;
 their raw declarations fail `checked?` while their certified views succeed.
@@ -106,6 +108,11 @@ Pi-hidden-recursive positions, including retained beta/let bodies. Its exact
 kernel candidate succeeds at fuel 10 and fails at 9, opaque and non-defeq
 variants reject, and the actual family/constructor/recursor/rule metadata
 replays through the final aligned Theory environment.
+The edge fixtures additionally pin every `PUnit` and `Empty` inductive,
+constructor, and recursor metadata field, exact motive/minor/major order,
+zero-field recursive-argument data, rule counts, and every available iota RHS.
+They record `Unit` itself as the reducible `PUnit` definition metadata Lean
+actually supplies, rather than inventing alias-level inductive metadata.
 
 **Elimination and K-target parity.** The ordinary large-eliminator decision,
 elimination-level run, and independent K-target decision now retain exact
@@ -121,6 +128,11 @@ parameter without adding a fresh one. Their exact kernel K flags, recursor
 metadata, universe order, and every focused rule RHS match Theory generation.
 Verify's `RecursorKMatches` makes a type-correct recursor with the wrong K
 metadata fail environment alignment.
+The `PUnit`/`Empty` executions close the one-/zero-constructor boundary:
+`PUnit` traverses a singleton with no parameter, proof, or data fields and
+retains fresh-first recursor levels, while `Empty` takes the ordinary
+never-zero large-elimination branch with no singleton, minor, or rule. Both
+align with the shared checked generation and remain non-K.
 
 **Verify.** A checker-run certificate layer (`WhnfRun`, `CheckTypeRun`,
 `IsDefEqRun`, `DefEqEvidence`, `TelDefEqEvidence`, `NormalizedCtorRun`,
@@ -233,9 +245,8 @@ replay. `AliasRec` remains the compositional constructor-normalization
 specification until its candidate list is migrated.
 
 **Not claimed.** The complete normalization differential matrix, constructor
-parity beyond the singleton-family scope, empty/singleton edge-shape closure,
-mutual/nested blocks, patterns, projections, and the remaining
-metatheory/checker roots.
+parity beyond the singleton-family scope, mutual/nested blocks, patterns,
+projections, and the remaining metatheory/checker roots.
 Bare producer success is never generation-shape authority or Theory semantics.
 
 ### 2.2 Live debt
@@ -425,18 +436,10 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Singleton kernel parity (L4L-06C–L4L-07)
+### Singleton kernel parity (L4L-07)
 
-**L4L-06C — empty and singleton edge shapes (active).** Cover empty families and
-zero-/one-constructor behavior, proving exact recursor binder ordering, minor
-ordering, field counts, recursive-argument metadata, rule counts, and iota
-RHSs. Refactor the preservation proof one generated component at a time.
-*Exit:* Unit/Empty and focused edge fixtures match all recorded fields and
-every RHS; no case bypasses `Checked` or adds a proof-only premise real
-kernel metadata does not supply; preservation uses the common checked path.
-
-**L4L-07 — complete one-family parity.** Integrate the complete singleton
-pipeline (through L4L-06C) into the fixed positive/negative matrix, remove
+**L4L-07 — complete one-family parity (active).** Integrate the complete
+singleton pipeline (through L4L-06C) into the fixed positive/negative matrix, remove
 obsolete singleton staging seams, and replay every accepted family through
 the environment layer
 immediately — Theory parity without actual `ConstantInfo` translation is
