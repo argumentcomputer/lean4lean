@@ -591,6 +591,7 @@ inductive TrTypeExpr : VLCtx → Expr → VExpr → Prop where
     TrTypeExpr Δ (.const c us) (.const c us')
   | app : TrTypeExpr Δ f f' → TrTypeExpr Δ a a' →
       TrTypeExpr Δ (.app f a) (.app f' a')
+  | mdata : TrTypeExpr Δ e e' → TrTypeExpr Δ (.mdata data e) e'
   | forallE : TrTypeExpr Δ ty ty' →
       TrTypeExpr ((none, .vlam ty') :: Δ) body body' →
       TrTypeExpr Δ (.forallE name ty body bi) (.forallE ty' body')
@@ -610,6 +611,7 @@ theorem TrTypeExpr.to_trExprS
   | app _ _ ihf iha =>
     obtain ⟨A, B, htf, hta⟩ := hwf.app_inv henv hΔ
     exact .app htf hta (ihf hΔ ⟨_, htf⟩) (iha hΔ ⟨_, hta⟩)
+  | mdata _ ih => exact .mdata (ih hΔ hwf)
   | forallE _ _ ihty ihbody =>
     obtain ⟨_, hwf⟩ := hwf
     obtain ⟨hty, hbody⟩ := VEnv.HasType.forallE_inv henv hwf

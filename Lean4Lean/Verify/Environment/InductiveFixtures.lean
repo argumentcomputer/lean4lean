@@ -84,6 +84,7 @@ macro_rules
     | apply TrTypeExpr.const <;>
         (first | assumption | rfl | (dsimp; simp [VLevel.params']))
     | apply TrTypeExpr.app <;> tr_type_expr_tac
+    | apply TrTypeExpr.mdata; tr_type_expr_tac
     | apply TrTypeExpr.forallE <;> tr_type_expr_tac)
 
 local instance : Inhabited VEnv := ⟨.empty⟩

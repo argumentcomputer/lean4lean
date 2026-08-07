@@ -1,6 +1,11 @@
-import Lean4Lean.Verify.Environment.EliminationFixturesOrAnd
-import Lean4Lean.Verify.Environment.EliminationFixturesEqNat
+import Lean4Lean.Verify.Environment.SingletonParityReplay
 import Lean4Lean.Verify.Environment.EliminationFixturesSmall
-import Lean4Lean.Verify.Environment.EliminationFixturesEdges
 
-/-! Umbrella for the exact L4L-06 elimination differential fixtures. -/
+/-!
+Public singleton-inductive verification umbrella.
+
+`SingletonParityReplay` is the sole L4L-07 path for the fixed positive,
+normalization, rejection, kernel-metadata, and environment-replay matrices.
+The small synthetic elimination boundary cases remain alongside it because
+they are not standard-library singleton declarations.
+-/
