@@ -4261,6 +4261,538 @@ noncomputable def prbStagedPostFamilyInput :
           propRecursiveBoundaryMkInfo, ConstantInfo.type,
           ConstantInfo.toConstantVal, Expr.isForall] at terminal
 
+def prbPreFamilyContextReplay : AddInductive.Context :=
+  prbValidationFamilyContext
+
+def prbPreFamilyAContextReplay : AddInductive.Context :=
+  prbPreFamilyContextReplay.pushLocalDecl `a .default prbValidationAlpha
+
+def prbPreFamilyBContextReplay : AddInductive.Context :=
+  prbPreFamilyAContextReplay.pushLocalDecl `b .default prbValidationAlpha
+
+def prbPreFamilyResultContextReplay : AddInductive.Context :=
+  prbPreFamilyAContextReplay.advanceFresh
+
+def prbPreFamilyIndexTelescopeReplay : Expr :=
+  .forallE prbValidationAName prbValidationAlpha (.sort .zero) .default
+
+theorem prbPreFamilyContextReplay_eq :
+    prbPreFamilyContextReplay = prbValidationFamilyContext := by
+  rfl
+
+theorem prbPreFamilyAContextReplay_eq :
+    prbPreFamilyAContextReplay =
+      { prbValidationAContext with env := prbPreFamilyContextReplay.env } := by
+  rw [prbPreFamilyAContextReplay, prbValidationAContext,
+    prbValidationRootContext, prbPreFamilyContextReplay_eq]
+  rfl
+
+theorem prbPreFamilyBContextReplay_eq :
+    prbPreFamilyBContextReplay =
+      { prbValidationBContext with env := prbPreFamilyContextReplay.env } := by
+  rw [prbPreFamilyBContextReplay, prbPreFamilyAContextReplay_eq,
+    prbValidationBContext]
+  rfl
+
+theorem prbPreFamilyResultContextReplay_eq :
+    prbPreFamilyResultContextReplay =
+      { prbValidationAContext.advanceFresh with
+        env := prbPreFamilyContextReplay.env } := by
+  rw [prbPreFamilyResultContextReplay, prbPreFamilyAContextReplay_eq]
+  rfl
+
+theorem prbFamilyViewReplay_eq :
+    prbCandidate.families.singleton.familyType.type.view =
+      propRecursiveBoundaryKernelType.type := by
+  apply prbFamilyIdentityEvidence.identity.view_eq_source
+  · apply TypeChecker.CandidateLocalContextRun.empty
+    rw [prbFamilyCandidateContext_eq]
+    rfl
+  · rw [prbFamilyCandidateContext_eq]
+    simp [propRecursiveBoundaryKernelType,
+      propRecursiveBoundaryInfo, ConstantInfo.type,
+      ConstantInfo.toConstantVal, FVarsIn, Level.hasMVar']
+
+theorem prbStagedParamsReplay_eq :
+    prbStagedUniverseInput.staged.family.validation.stats.params =
+      #[prbValidationAlpha] := by
+  rw [prbStagedStats_eq, prbStatsParams_eq]
+  rfl
+
+theorem prbStagedNindicesReplay_eq :
+    prbStagedUniverseInput.staged.family.validation.stats.nindices = #[1] := by
+  rw [prbStagedStats_eq, prbStatsNindices_eq]
+
+theorem prbStagedIndConstsReplay_eq :
+    prbStagedUniverseInput.staged.family.validation.stats.indConsts =
+      #[.const propRecursiveBoundaryKernelType.name [.param `u]] := by
+  rw [prbStagedStats_eq, prbFamilyValidationRun.stats_eq]
+  simp only [prbFamilyValidationRun,
+    AddInductive.CandidateExprTrace.singletonCandidateInductiveStats]
+  rw [show
+    prbCandidate.families.singleton.familyType.type.context.lparams = [`u] by
+      rw [prbFamilyCandidateContext_eq]
+      rfl]
+  rfl
+
+def prbPreFamilyFVarInferOnlyStateReplay
+    (id : FVarId) (type : Expr) : TypeChecker.State :=
+  { ({} : TypeChecker.State) with
+    inferTypeI := ({} : TypeChecker.State).inferTypeI.insert
+      (.fvar id) type }
+
+theorem prbPreFamilyFVarInferOnlyReplay
+    (context : AddInductive.Context) (id : FVarId) (type : Expr)
+    (find : context.lctx.find? id =
+      some (.cdecl index id name type bi kind))
+    (depth : context.fuel.recDepth = 10000) :
+    TypeChecker.Inner.inferType (.fvar id) true
+      (TypeChecker.Methods.withFuel context.fuel.recDepth)
+      context.toTypeChecker ({} : TypeChecker.State) =
+        .ok (type, prbPreFamilyFVarInferOnlyStateReplay id type) := by
+  rw [depth]
+  change TypeChecker.Inner.inferType' (.fvar id) true
+    (TypeChecker.Methods.withFuel 9999) context.toTypeChecker
+    ({} : TypeChecker.State) = _
+  unfold TypeChecker.Inner.inferType'
+  simp [prbPreFamilyFVarInferOnlyStateReplay,
+    Expr.hasLooseBVars, Expr.looseBVarRange',
+    TypeChecker.Inner.inferFVar, AddInductive.Context.toTypeChecker,
+    find, LocalDecl.type, Bind.bind, ReaderT.bind,
+    StateT.bind, Except.bind]
+
+theorem prbPreFamilyFVarEnsureValidReplay
+    (context : AddInductive.Context) (id : FVarId) (level : Level)
+    (find : context.lctx.find? id =
+      some (.cdecl index id name (.sort level) bi kind))
+    (depth : context.fuel.recDepth = 10000) :
+    AddInductive.ConstructorEnsureTypeStep.Valid
+      ⟨context, .fvar id, .sort level⟩ := by
+  unfold AddInductive.ConstructorEnsureTypeStep.Valid
+    TypeChecker.ensureType TypeChecker.inferType TypeChecker.ensureSort
+    TypeChecker.RecM.run TypeChecker.M.run
+  simp only [readThe, MonadReaderOf.read, ReaderT.read,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind,
+    Pure.pure, StateT.pure, Except.pure, StateT.run',
+    Functor.map, Except.map]
+  rw [show TypeChecker.Inner.inferType (.fvar id) true
+      (TypeChecker.Methods.withFuel context.fuel.recDepth)
+      { env := context.env, lctx := context.lctx,
+        safety := context.safety, lparams := context.lparams,
+        fuel := context.fuel }
+      ({} : TypeChecker.State) =
+        .ok (.sort level,
+          prbPreFamilyFVarInferOnlyStateReplay id (.sort level)) by
+    simpa [AddInductive.Context.toTypeChecker] using
+      prbPreFamilyFVarInferOnlyReplay context id (.sort level) find depth]
+  rfl
+
+theorem prbPreFamilyCheckLevelSuccParamReplay
+    (context : AddInductive.Context)
+    (lparams : context.lparams = [`u]) :
+    TypeChecker.Inner.checkLevel context.toTypeChecker
+      (.succ (.param `u)) = .ok () := by
+  simp [TypeChecker.Inner.checkLevel, AddInductive.Context.toTypeChecker,
+    lparams, Level.getUndefParam, Level.forEach,
+    Level.hasParam_eq, Level.hasParam']
+  rfl
+
+theorem prbPreFamilySortCheckValidReplay
+    (context : AddInductive.Context)
+    (lparams : context.lparams = [`u])
+    (depth : context.fuel.recDepth = 10000) :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨context, .sort (.succ (.param `u)),
+        .sort (.succ (.succ (.param `u)))⟩ := by
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  change TypeChecker.M.run context.env context.safety context.lctx
+    context.lparams context.fuel
+    (TypeChecker.checkType (.sort (.succ (.param `u)))) = _
+  unfold TypeChecker.M.run TypeChecker.checkType TypeChecker.RecM.run
+  simp [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    StateT.pure, Except.pure, Pure.pure,
+    StateT.run', Functor.map, Except.map]
+  rw [depth]
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+    (TypeChecker.Inner.inferType'
+      (.sort (.succ (.param `u))) false
+      (TypeChecker.Methods.withFuel 9999)
+      context.toTypeChecker ({} : TypeChecker.State)) = _
+  unfold TypeChecker.Inner.inferType'
+  simp [Expr.hasLooseBVars, Expr.looseBVarRange',
+    prbPreFamilyCheckLevelSuccParamReplay context lparams,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+  rfl
+
+theorem prbPreFamilySortZeroCheckValidReplay
+    (context : AddInductive.Context)
+    (depth : context.fuel.recDepth = 10000) :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨context, .sort .zero, .sort (.succ .zero)⟩ := by
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  change TypeChecker.M.run context.env context.safety context.lctx
+    context.lparams context.fuel (TypeChecker.checkType (.sort .zero)) = _
+  unfold TypeChecker.M.run TypeChecker.checkType TypeChecker.RecM.run
+  simp [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    StateT.pure, Except.pure, Pure.pure,
+    StateT.run', Functor.map, Except.map]
+  rw [depth]
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+    (TypeChecker.Inner.inferType' (.sort .zero) false
+      (TypeChecker.Methods.withFuel 9999)
+      context.toTypeChecker ({} : TypeChecker.State)) = _
+  unfold TypeChecker.Inner.inferType'
+  simp [Expr.hasLooseBVars, Expr.looseBVarRange',
+    TypeChecker.Inner.checkLevel, Level.getUndefParam,
+    Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+  rfl
+
+@[simp] theorem prbPreFamilyCheckLevelZeroReplay
+    (context : TypeChecker.Context) :
+    TypeChecker.Inner.checkLevel context .zero = .ok () := by
+  simp [TypeChecker.Inner.checkLevel, Level.getUndefParam,
+    Level.forEach, Level.hasParam_eq, Level.hasParam']
+  rfl
+
+@[simp] theorem prbFVarBeqSortReplay (id : FVarId) (level : Level) :
+    ((.fvar id : Expr) == .sort level) = false := by
+  change Expr.eqv (.fvar id) (.sort level) = false
+  rw [Expr.eqv_eq]
+  rfl
+
+def prbPreFamilyTelescopeAlphaStateReplay : TypeChecker.State :=
+  prbReplayInsert ({} : TypeChecker.State) prbValidationAlpha
+    (.sort (.succ (.param `u)))
+
+def prbPreFamilyTelescopeInternalIdReplay : FVarId :=
+  ⟨prbPreFamilyTelescopeAlphaStateReplay.ngen.curr⟩
+
+def prbPreFamilyTelescopeInternalStateReplay : TypeChecker.State :=
+  { prbPreFamilyTelescopeAlphaStateReplay with
+    ngen := prbPreFamilyTelescopeAlphaStateReplay.ngen.next }
+
+def prbPreFamilyTelescopeFinalStateReplay : TypeChecker.State :=
+  prbReplayInsert prbPreFamilyTelescopeInternalStateReplay
+    (.sort .zero) (.sort (.succ .zero))
+
+theorem prbPreFamilyInferSortZeroCoreReplay
+    (fuel : Nat) (context : TypeChecker.Context)
+    (state : TypeChecker.State)
+    (miss : state.inferTypeC[(.sort .zero : Expr)]? = none) :
+    TypeChecker.Inner.inferType' (.sort .zero) false
+      (TypeChecker.Methods.withFuel fuel) context state =
+        .ok (.sort (.succ .zero),
+          prbReplayInsert state (.sort .zero) (.sort (.succ .zero))) := by
+  unfold TypeChecker.Inner.inferType'
+  simp [Expr.hasLooseBVars, Expr.looseBVarRange', miss,
+    prbPreFamilyCheckLevelZeroReplay,
+    prbReplayInsert, Bind.bind, ReaderT.bind,
+    StateT.bind, Except.bind]
+
+theorem prbPreFamilyIndexTelescopeCheckValidReplay
+    (context : AddInductive.Context)
+    (alphaFind : context.lctx.find? prbValidationAlphaId =
+      some (.cdecl alphaIndex prbValidationAlphaId alphaName
+        (.sort (.succ (.param `u))) alphaBi alphaKind))
+    (depth : context.fuel.recDepth = 10000) :
+    AddInductive.CandidateCheckTypeStep.Valid
+      ⟨context, prbPreFamilyIndexTelescopeReplay,
+        .sort (mkLevelIMax' (.succ (.param `u)) (.succ .zero))⟩ := by
+  have domainRun : TypeChecker.Inner.inferType'
+      prbValidationAlpha false (TypeChecker.Methods.withFuel 9998)
+      context.toTypeChecker ({} : TypeChecker.State) =
+        .ok (.sort (.succ (.param `u)),
+          prbPreFamilyTelescopeAlphaStateReplay) := by
+    simpa [prbPreFamilyTelescopeAlphaStateReplay,
+      prbValidationAlpha_shape] using
+      prbValidationInferTypeFVarCore 9998 context
+        ({} : TypeChecker.State) prbValidationAlphaId
+        (.sort (.succ (.param `u))) Std.HashMap.getElem?_empty alphaFind
+  have bodyMiss : prbPreFamilyTelescopeInternalStateReplay.inferTypeC[
+      (.sort .zero : Expr)]? = none := by
+    simp [prbPreFamilyTelescopeInternalStateReplay,
+      prbPreFamilyTelescopeAlphaStateReplay, prbReplayInsert,
+      prbValidationAlpha_shape]
+  have bodyRun : TypeChecker.Inner.inferType'
+      (.sort .zero) false (TypeChecker.Methods.withFuel 9998)
+      { context.toTypeChecker with
+        lctx := context.lctx.mkLocalDecl
+          prbPreFamilyTelescopeInternalIdReplay prbValidationAName
+          prbValidationAlpha .default }
+      prbPreFamilyTelescopeInternalStateReplay =
+        .ok (.sort (.succ .zero),
+          prbPreFamilyTelescopeFinalStateReplay) := by
+    simpa [prbPreFamilyTelescopeFinalStateReplay] using
+      prbPreFamilyInferSortZeroCoreReplay 9998 _
+        prbPreFamilyTelescopeInternalStateReplay bodyMiss
+  have forallRun : TypeChecker.Inner.inferForall
+      prbPreFamilyIndexTelescopeReplay false
+      (TypeChecker.Methods.withFuel 9999) context.toTypeChecker
+      ({} : TypeChecker.State) =
+        .ok (.sort
+          (mkLevelIMax' (.succ (.param `u)) (.succ .zero)),
+          prbPreFamilyTelescopeFinalStateReplay) := by
+    unfold prbPreFamilyIndexTelescopeReplay TypeChecker.Inner.inferForall
+    simp only [TypeChecker.Inner.inferForall.loop]
+    rw [show prbValidationAlpha.instantiateRev #[] =
+        prbValidationAlpha by
+      simp [Expr.instantiateRev_eq, Expr.instantiate_eq]]
+    simp only [Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+    rw [show TypeChecker.Inner.inferType prbValidationAlpha false
+        (TypeChecker.Methods.withFuel 9999) context.toTypeChecker
+        ({} : TypeChecker.State) =
+          TypeChecker.Inner.inferType' prbValidationAlpha false
+            (TypeChecker.Methods.withFuel 9998) context.toTypeChecker
+            ({} : TypeChecker.State) by rfl]
+    rw [domainRun]
+    simp only [prbEnsureSortExact]
+    rw [prbWithLocalDeclEq]
+    change TypeChecker.Inner.inferForall.loop false
+      #[Expr.fvar prbPreFamilyTelescopeInternalIdReplay]
+      #[Level.succ (.param `u)] (.sort .zero)
+      (TypeChecker.Methods.withFuel 9999)
+      { context.toTypeChecker with
+        lctx := context.lctx.mkLocalDecl
+          prbPreFamilyTelescopeInternalIdReplay prbValidationAName
+          prbValidationAlpha .default }
+      prbPreFamilyTelescopeInternalStateReplay = _
+    simp only [TypeChecker.Inner.inferForall.loop]
+    rw [show (.sort .zero : Expr).instantiateRev
+        #[Expr.fvar prbPreFamilyTelescopeInternalIdReplay] =
+          .sort .zero by
+      simp [Expr.instantiateRev_eq, Expr.instantiate_eq]]
+    simp only [Bind.bind, ReaderT.bind, StateT.bind, Except.bind]
+    rw [show TypeChecker.Inner.inferType (.sort .zero) false
+        (TypeChecker.Methods.withFuel 9999) _
+        prbPreFamilyTelescopeInternalStateReplay =
+          TypeChecker.Inner.inferType' (.sort .zero) false
+            (TypeChecker.Methods.withFuel 9998) _
+            prbPreFamilyTelescopeInternalStateReplay by rfl]
+    rw [bodyRun]
+    simp [Expr.sortLevel!, Pure.pure, ReaderT.pure,
+      StateT.pure, Except.pure]
+  have outerRun := prbInferTypeForallCore 9999 context.toTypeChecker
+    ({} : TypeChecker.State) prbPreFamilyTelescopeFinalStateReplay
+    prbValidationAName prbValidationAlpha (.sort .zero)
+    (.sort (mkLevelIMax' (.succ (.param `u)) (.succ .zero)))
+    .default
+    (by simp [prbPreFamilyIndexTelescopeReplay,
+      prbValidationAlpha_shape, Expr.hasLooseBVars,
+      Expr.looseBVarRange']) Std.HashMap.getElem?_empty forallRun
+  unfold AddInductive.CandidateCheckTypeStep.Valid
+  change TypeChecker.M.run context.env context.safety context.lctx
+    context.lparams context.fuel
+      (TypeChecker.checkType prbPreFamilyIndexTelescopeReplay) = _
+  unfold TypeChecker.M.run TypeChecker.checkType TypeChecker.RecM.run
+  simp [readThe, MonadReaderOf.read, ReaderT.read,
+    ReaderT.bind, StateT.bind, Except.bind, Bind.bind,
+    StateT.pure, Except.pure, Pure.pure,
+    StateT.run', Functor.map, Except.map]
+  rw [depth]
+  change Except.map (fun x : Expr × TypeChecker.State => x.1)
+    (TypeChecker.Inner.inferType' prbPreFamilyIndexTelescopeReplay false
+      (TypeChecker.Methods.withFuel 9999) context.toTypeChecker
+      ({} : TypeChecker.State)) = _
+  simpa [prbPreFamilyIndexTelescopeReplay,
+    Functor.map, Except.map] using
+    congrArg (Except.map (fun x : Expr × TypeChecker.State => x.1))
+      outerRun
+
+theorem prbPreFamilyAlphaFindReplay :
+    prbPreFamilyContextReplay.lctx.find? prbValidationAlphaId =
+      some (.cdecl 0 prbValidationAlphaId `α
+        (.sort (.succ (.param `u))) .default .default) := by
+  rw [prbPreFamilyContextReplay_eq]
+  simpa [prbValidationRootContext] using prbValidationAlphaFind
+
+theorem prbPreFamilyAlphaFindInAReplay :
+    prbPreFamilyAContextReplay.lctx.find? prbValidationAlphaId =
+      some (.cdecl 0 prbValidationAlphaId `α
+        (.sort (.succ (.param `u))) .default .default) := by
+  rw [prbPreFamilyAContextReplay_eq]
+  exact prbValidationAlphaFindInA
+
+theorem prbPreFamilyAlphaFindInBReplay :
+    prbPreFamilyBContextReplay.lctx.find? prbValidationAlphaId =
+      some (.cdecl 0 prbValidationAlphaId `α
+        (.sort (.succ (.param `u))) .default .default) := by
+  rw [prbPreFamilyBContextReplay_eq]
+  exact prbValidationAlphaFindInB
+
+theorem prbPreFamilyAlphaFindInResultReplay :
+    prbPreFamilyResultContextReplay.lctx.find? prbValidationAlphaId =
+      some (.cdecl 0 prbValidationAlphaId `α
+        (.sort (.succ (.param `u))) .default .default) := by
+  rw [prbPreFamilyResultContextReplay_eq]
+  simpa [AddInductive.Context.advanceFresh] using
+    prbValidationAlphaFindInA
+
+theorem prbPreFamilyAFindInResultReplay :
+    prbPreFamilyResultContextReplay.lctx.find? prbValidationAId =
+      some (.cdecl prbValidationRootContext.lctx.decls.size
+        prbValidationAId `a prbValidationAlpha .default .default) := by
+  rw [prbPreFamilyResultContextReplay_eq]
+  simpa [AddInductive.Context.advanceFresh] using prbValidationAFind
+
+theorem prbPreFamilyBFindReplay :
+    prbPreFamilyBContextReplay.lctx.find? prbValidationBId =
+      some (.cdecl prbValidationAContext.lctx.decls.size
+        prbValidationBId `b prbValidationAlpha .default .default) := by
+  rw [prbPreFamilyBContextReplay_eq]
+  exact prbValidationBFind
+
+theorem prbPreFamilyRootFreshReplay :
+    prbPreFamilyContextReplay.lctx.find?
+      prbPreFamilyContextReplay.freshFVarId = none := by
+  rw [prbPreFamilyContextReplay_eq]
+  simpa [prbValidationRootContext,
+    AddInductive.Context.freshFVarId] using prbValidationRootFresh
+
+theorem prbPreFamilyAFreshReplay :
+    prbPreFamilyAContextReplay.lctx.find?
+      prbPreFamilyAContextReplay.freshFVarId = none := by
+  rw [prbPreFamilyAContextReplay_eq]
+  exact prbValidationAFresh
+
+theorem prbPreFamilyBFreshReplay :
+    prbPreFamilyBContextReplay.lctx.find?
+      prbPreFamilyBContextReplay.freshFVarId = none := by
+  rw [prbPreFamilyBContextReplay_eq]
+  exact prbValidationBFresh
+
+theorem prbPreFamilyRootDepthReplay :
+    prbPreFamilyContextReplay.fuel.recDepth = 10000 := by
+  rw [prbPreFamilyContextReplay_eq]
+  rfl
+
+theorem prbPreFamilyADepthReplay :
+    prbPreFamilyAContextReplay.fuel.recDepth = 10000 := by
+  rw [prbPreFamilyAContextReplay_eq]
+  rfl
+
+theorem prbPreFamilyBDepthReplay :
+    prbPreFamilyBContextReplay.fuel.recDepth = 10000 := by
+  rw [prbPreFamilyBContextReplay_eq]
+  rfl
+
+theorem prbPreFamilyResultDepthReplay :
+    prbPreFamilyResultContextReplay.fuel.recDepth = 10000 := by
+  rw [prbPreFamilyResultContextReplay_eq]
+  rfl
+
+theorem prbPreFamilyRootInductiveFuelReplay :
+    prbPreFamilyContextReplay.fuel.inductiveFuel = 1000 := by
+  rw [prbPreFamilyContextReplay_eq]
+  rfl
+
+theorem prbPreFamilyAInductiveFuelReplay :
+    prbPreFamilyAContextReplay.fuel.inductiveFuel = 1000 := by
+  rw [prbPreFamilyAContextReplay_eq]
+  rfl
+
+theorem prbPreFamilyAFreshExprReplay :
+    prbPreFamilyAContextReplay.freshExpr = prbValidationBExpr := by
+  rw [prbPreFamilyAContextReplay_eq]
+  rfl
+
+theorem prbPreFamilyRootFreshExprReplay :
+    prbPreFamilyContextReplay.freshExpr = prbValidationAExpr := by
+  rfl
+
+theorem prbPreFamilyAlphaHasNoIndOccReplay :
+    AddInductive.hasIndOcc
+      prbStagedUniverseInput.staged.family.validation.stats.indConsts
+      prbValidationAlpha = false := by
+  rw [prbStagedIndConstsReplay_eq]
+  simp [AddInductive.hasIndOcc, prbValidationAlpha_shape]
+
+theorem prbPreFamilyNextDomainHasIndOccReplay :
+    AddInductive.hasIndOcc
+      prbStagedUniverseInput.staged.family.validation.stats.indConsts
+      prbValidationNextDomain = true := by
+  rw [prbStagedIndConstsReplay_eq]
+  simp [AddInductive.hasIndOcc, prbValidationNextDomain,
+    prbValidationFamilyApp, Expr.constName!]
+
+@[simp] theorem prbValidationFamilyAppGetAppFnReplay (arg : Expr) :
+    (prbValidationFamilyApp arg).getAppFn =
+      .const propRecursiveBoundaryKernelType.name [.param `u] := by
+  rfl
+
+@[simp] theorem prbValidationFamilyAppGetAppArgsReplay (arg : Expr) :
+    (prbValidationFamilyApp arg).getAppArgs =
+      #[prbValidationAlpha, arg] := by
+  rfl
+
+@[simp] theorem prbExprBneSelfReplay (source : Expr) :
+    (source != source) = false := by
+  change (!Expr.eqv source source) = false
+  rw [show Expr.eqv source source = true by exact Expr.eqv_refl source]
+  rfl
+
+theorem prbPreFamilyFamilyAppValidReplay (arg : Expr)
+    (argFree : AddInductive.hasIndOcc
+      prbStagedUniverseInput.staged.family.validation.stats.indConsts
+      arg = false) :
+    AddInductive.isValidIndAppIdx
+      prbStagedUniverseInput.staged.family.validation.stats
+      (prbValidationFamilyApp arg) 0 = true := by
+  have parameterSelf : (prbValidationAlpha != prbValidationAlpha) = false := by
+    change (!Expr.eqv prbValidationAlpha prbValidationAlpha) = false
+    rw [show Expr.eqv prbValidationAlpha prbValidationAlpha = true by
+      exact Expr.eqv_refl prbValidationAlpha]
+    rfl
+  have argFree' : AddInductive.hasIndOcc
+      #[.const propRecursiveBoundaryKernelType.name [.param `u]] arg =
+        false := by
+    simpa [prbStagedIndConstsReplay_eq] using argFree
+  simp +decide [AddInductive.isValidIndAppIdx,
+    prbStagedParamsReplay_eq, prbStagedNindicesReplay_eq,
+    prbStagedIndConstsReplay_eq,
+    prbValidationFamilyAppGetAppFnReplay,
+    prbValidationFamilyAppGetAppArgsReplay,
+    prbExprBneSelfReplay, parameterSelf, argFree', Expr.constName!]
+
+theorem prbPreFamilyTargetValidReplay :
+    AddInductive.isValidIndAppIdx
+      prbStagedUniverseInput.staged.family.validation.stats
+      prbValidationTarget 0 = true := by
+  apply prbPreFamilyFamilyAppValidReplay
+  rw [prbStagedIndConstsReplay_eq]
+  simp [AddInductive.hasIndOcc, prbValidationTarget,
+    prbValidationFamilyApp, prbValidationBExpr_shape]
+
+theorem prbPreFamilyTerminalValidReplay :
+    AddInductive.isValidIndAppIdx
+      prbStagedUniverseInput.staged.family.validation.stats
+      prbValidationTerminal 0 = true := by
+  apply prbPreFamilyFamilyAppValidReplay
+  rw [prbStagedIndConstsReplay_eq]
+  simp [AddInductive.hasIndOcc, prbValidationTerminal,
+    prbValidationFamilyApp, prbValidationAExpr_shape]
+
+theorem prbPreFamilyAIdNeRemovedReplay :
+    prbValidationAId ≠ prbPreFamilyAContextReplay.freshFVarId := by
+  intro equality
+  have fresh := prbPreFamilyAFreshReplay
+  rw [← equality] at fresh
+  have found : prbPreFamilyAContextReplay.lctx.find? prbValidationAId =
+      some (.cdecl prbValidationRootContext.lctx.decls.size
+        prbValidationAId `a prbValidationAlpha .default .default) := by
+    rw [prbPreFamilyAContextReplay_eq]
+    exact prbValidationAFind
+  rw [found] at fresh
+  contradiction
+
+theorem prbPreFamilyAlphaIdNeRemovedReplay :
+    prbValidationAlphaId ≠ prbPreFamilyAContextReplay.freshFVarId := by
+  intro equality
+  have fresh := prbPreFamilyAFreshReplay
+  rw [← equality, prbPreFamilyAlphaFindInAReplay] at fresh
+  contradiction
+
 theorem prbSafetyRunDirect :
     AddInductive.checkConstructorPreFamilySafety
         prbStagedUniverseInput.staged.family.validation.stats
@@ -4268,9 +4800,737 @@ theorem prbSafetyRunDirect :
         prbCandidate.families.singleton.constructors
         prbCandidate.families.singleton.familyType.type.trace.terminalContext =
       .ok () := by
-  rw [prbStagedStats_eq]
-  apply exceptUnit_eq_ok_of_isOk
-  native_decide
+  rw [prbFamilyViewReplay_eq]
+  rw [AddInductive.CandidateList.singleton_eta
+    prbCandidate.families.singleton.constructors]
+  rw [prbFamilyTerminalContext_eq]
+  change AddInductive.checkConstructorPreFamilySafety
+    prbStagedUniverseInput.staged.family.validation.stats
+    propRecursiveBoundaryKernelType.type
+    (.cons prbCandidate.families.singleton.constructors.singleton .nil)
+    prbPreFamilyContextReplay = .ok ()
+  let rootAlpha : AddInductive.ConstructorCheckedExpr
+      prbPreFamilyContextReplay prbValidationAlpha :=
+    .ofRun (by
+      rw [prbValidationAlpha_shape]
+      change (prbPreFamilyContextReplay.lctx.find?
+        prbValidationAlphaId).isSome = true
+      rw [prbPreFamilyAlphaFindReplay]
+      rfl)
+      (by
+        simpa [prbValidationAlpha_shape] using
+          prbCandidateCheckTypeFVar prbPreFamilyContextReplay
+            prbValidationAlphaId (.sort (.succ (.param `u)))
+            prbPreFamilyRootDepthReplay prbPreFamilyAlphaFindReplay)
+  let rootAlphaEnsure : AddInductive.ConstructorEnsureTypeObservation
+      prbPreFamilyContextReplay prbValidationAlpha :=
+    ⟨.sort (.succ (.param `u)), by
+      simpa [prbValidationAlpha_shape] using
+        prbPreFamilyFVarEnsureValidReplay prbPreFamilyContextReplay
+          prbValidationAlphaId (.succ (.param `u))
+          prbPreFamilyAlphaFindReplay prbPreFamilyRootDepthReplay⟩
+  let rootAlphaConsumed : AddInductive.ConstructorCheckedExpr
+      prbPreFamilyContextReplay
+        (AddInductive.consumeTypeAnnotations prbValidationAlpha) := by
+    rw [prbValidationConsumeAlpha]
+    exact rootAlpha
+  let rootAlphaAnnotations : AddInductive.CandidateIsDefEqObservation
+      prbPreFamilyContextReplay prbValidationAlpha
+        (AddInductive.consumeTypeAnnotations prbValidationAlpha) := by
+    rw [prbValidationConsumeAlpha]
+    exact ⟨AddInductive.candidateIsDefEqRefl
+      prbPreFamilyContextReplay prbValidationAlpha⟩
+  let aAlpha : AddInductive.ConstructorCheckedExpr
+      prbPreFamilyAContextReplay prbValidationAlpha :=
+    .ofRun (by
+      rw [prbValidationAlpha_shape]
+      change (prbPreFamilyAContextReplay.lctx.find?
+        prbValidationAlphaId).isSome = true
+      rw [prbPreFamilyAlphaFindInAReplay]
+      rfl)
+      (by
+        simpa [prbValidationAlpha_shape] using
+          prbCandidateCheckTypeFVar prbPreFamilyAContextReplay
+            prbValidationAlphaId (.sort (.succ (.param `u)))
+            prbPreFamilyADepthReplay prbPreFamilyAlphaFindInAReplay)
+  let aAlphaEnsure : AddInductive.ConstructorEnsureTypeObservation
+      prbPreFamilyAContextReplay prbValidationAlpha :=
+    ⟨.sort (.succ (.param `u)), by
+      simpa [prbValidationAlpha_shape] using
+        prbPreFamilyFVarEnsureValidReplay prbPreFamilyAContextReplay
+          prbValidationAlphaId (.succ (.param `u))
+          prbPreFamilyAlphaFindInAReplay prbPreFamilyADepthReplay⟩
+  let aAlphaConsumed : AddInductive.ConstructorCheckedExpr
+      prbPreFamilyAContextReplay
+        (AddInductive.consumeTypeAnnotations prbValidationAlpha) := by
+    rw [prbValidationConsumeAlpha]
+    exact aAlpha
+  let aAlphaAnnotations : AddInductive.CandidateIsDefEqObservation
+      prbPreFamilyAContextReplay prbValidationAlpha
+        (AddInductive.consumeTypeAnnotations prbValidationAlpha) := by
+    rw [prbValidationConsumeAlpha]
+    exact ⟨AddInductive.candidateIsDefEqRefl
+      prbPreFamilyAContextReplay prbValidationAlpha⟩
+  let bTelescope : AddInductive.ConstructorCheckedExpr
+      prbPreFamilyBContextReplay prbPreFamilyIndexTelescopeReplay :=
+    .ofRun (by
+      simp [prbPreFamilyIndexTelescopeReplay,
+        prbValidationAlpha_shape, FVarsIn, Level.hasMVar']
+      change (prbPreFamilyBContextReplay.lctx.find?
+        prbValidationAlphaId).isSome = true
+      rw [prbPreFamilyAlphaFindInBReplay]
+      rfl)
+      (prbPreFamilyIndexTelescopeCheckValidReplay
+        prbPreFamilyBContextReplay prbPreFamilyAlphaFindInBReplay
+          prbPreFamilyBDepthReplay)
+  let bArgument : AddInductive.ConstructorCheckedExpr
+      prbPreFamilyBContextReplay prbValidationBExpr :=
+    .ofRun (by
+      rw [prbValidationBExpr_shape]
+      change (prbPreFamilyBContextReplay.lctx.find?
+        prbValidationBId).isSome = true
+      rw [prbPreFamilyBFindReplay]
+      rfl)
+      (by
+        simpa [prbValidationBExpr_shape, prbValidationAlpha_shape] using
+          prbCandidateCheckTypeFVar prbPreFamilyBContextReplay
+            prbValidationBId prbValidationAlpha prbPreFamilyBDepthReplay
+            prbPreFamilyBFindReplay)
+  let bAlpha : AddInductive.ConstructorCheckedExpr
+      prbPreFamilyBContextReplay prbValidationAlpha :=
+    .ofRun (by
+      rw [prbValidationAlpha_shape]
+      change (prbPreFamilyBContextReplay.lctx.find?
+        prbValidationAlphaId).isSome = true
+      rw [prbPreFamilyAlphaFindInBReplay]
+      rfl)
+      (by
+        simpa [prbValidationAlpha_shape] using
+          prbCandidateCheckTypeFVar prbPreFamilyBContextReplay
+            prbValidationAlphaId (.sort (.succ (.param `u)))
+            prbPreFamilyBDepthReplay prbPreFamilyAlphaFindInBReplay)
+  let bSortZero : AddInductive.ConstructorCheckedExpr
+      prbPreFamilyBContextReplay (.sort .zero) :=
+    .ofRun (by simp [FVarsIn, Level.hasMVar'])
+      (prbPreFamilySortZeroCheckValidReplay
+        prbPreFamilyBContextReplay prbPreFamilyBDepthReplay)
+  let bComparison : AddInductive.CandidateIsDefEqObservation
+      prbPreFamilyBContextReplay prbValidationAlpha prbValidationAlpha :=
+    ⟨AddInductive.candidateIsDefEqRefl
+      prbPreFamilyBContextReplay prbValidationAlpha⟩
+  let targetSpine : AddInductive.ConstructorPreFamilyIndexSpineTrace
+      prbPreFamilyBContextReplay prbPreFamilyIndexTelescopeReplay
+        [prbValidationBExpr] := by
+    unfold prbPreFamilyIndexTelescopeReplay
+    exact .cons prbPreFamilyBContextReplay prbValidationAName
+      prbValidationAlpha (.sort .zero) .default
+      prbValidationBExpr [] bTelescope
+      ⟨bArgument, bAlpha, bComparison⟩
+      (by
+        simpa [Expr.instantiate1_eq, Expr.instantiate1'] using
+          (AddInductive.ConstructorPreFamilyIndexSpineTrace.nil
+            prbPreFamilyBContextReplay (.sort .zero) bSortZero rfl))
+  have targetArgs : prbValidationTarget.getAppArgs.toList.drop
+      prbStagedUniverseInput.staged.family.validation.stats.params.size =
+        [prbValidationBExpr] := by
+    rw [prbStagedParamsReplay_eq]
+    simp [prbValidationTarget,
+      prbValidationFamilyAppGetAppArgsReplay]
+  obtain ⟨targetSpineExact, targetSpineRun⟩ :
+      ∃ targetSpineExact :
+          AddInductive.ConstructorPreFamilyIndexSpineTrace
+            prbPreFamilyBContextReplay prbPreFamilyIndexTelescopeReplay
+            (prbValidationTarget.getAppArgs.toList.drop
+              prbStagedUniverseInput.staged.family.validation.stats.params.size),
+        AddInductive.ConstructorPreFamilyIndexSpineTrace.build
+            prbPreFamilyBContextReplay prbPreFamilyIndexTelescopeReplay
+            (prbValidationTarget.getAppArgs.toList.drop
+              prbStagedUniverseInput.staged.family.validation.stats.params.size) =
+          .ok targetSpineExact := by
+    rw [targetArgs]
+    exact ⟨targetSpine, targetSpine.build_eq⟩
+  let targetTrace : AddInductive.ConstructorPreFamilyRecursiveTrace
+      prbStagedUniverseInput.staged.family.validation.stats 0
+      prbPreFamilyIndexTelescopeReplay prbPreFamilyBContextReplay
+      prbValidationTarget 999 :=
+    .target prbPreFamilyBContextReplay prbValidationTarget
+      prbPreFamilyTargetValidReplay targetSpineExact
+  have targetRun : AddInductive.ConstructorPreFamilyRecursiveTrace.build
+      prbStagedUniverseInput.staged.family.validation.stats 0
+      prbPreFamilyIndexTelescopeReplay prbPreFamilyBContextReplay
+      prbValidationTarget 999 = .ok targetTrace := by
+    exact AddInductive.ConstructorPreFamilyRecursiveTrace.target_build_eq
+      (fuel := 998) rfl prbPreFamilyTargetValidReplay targetSpineExact
+  obtain ⟨recursiveTargetTrace, recursiveTargetRun⟩ :
+      ∃ recursiveTargetTrace : AddInductive.ConstructorPreFamilyRecursiveTrace
+          prbStagedUniverseInput.staged.family.validation.stats 0
+          prbPreFamilyIndexTelescopeReplay prbPreFamilyBContextReplay
+          (prbValidationNextDomain.bindingBody!.instantiate1
+            prbPreFamilyAContextReplay.freshExpr) 999,
+        AddInductive.ConstructorPreFamilyRecursiveTrace.build
+            prbStagedUniverseInput.staged.family.validation.stats 0
+            prbPreFamilyIndexTelescopeReplay prbPreFamilyBContextReplay
+            (prbValidationNextDomain.bindingBody!.instantiate1
+              prbPreFamilyAContextReplay.freshExpr) 999 =
+          .ok recursiveTargetTrace := by
+    rw [show prbValidationNextDomain.bindingBody!.instantiate1
+        prbPreFamilyAContextReplay.freshExpr = prbValidationTarget by
+      rw [prbPreFamilyAFreshExprReplay]
+      exact prbValidationTarget_shape]
+    exact ⟨targetTrace, targetRun⟩
+  have recursiveTailContext_eq :
+      prbPreFamilyAContextReplay.pushLocalDecl `b .default
+          (AddInductive.consumeTypeAnnotations prbValidationAlpha) =
+        prbPreFamilyBContextReplay := by
+    rw [prbValidationConsumeAlpha]
+    rfl
+  have recursiveTailSource_eq :
+      (prbValidationFamilyApp (.bvar 0)).instantiate1
+          prbPreFamilyAContextReplay.freshExpr =
+        prbValidationTarget := by
+    rw [prbPreFamilyAFreshExprReplay]
+    simpa [prbValidationNextDomain, Expr.bindingBody!] using
+      prbValidationTarget_shape
+  let recursiveTailSpineExact :
+      AddInductive.ConstructorPreFamilyIndexSpineTrace
+        (prbPreFamilyAContextReplay.pushLocalDecl `b .default
+          (AddInductive.consumeTypeAnnotations prbValidationAlpha))
+        prbPreFamilyIndexTelescopeReplay
+        (((prbValidationFamilyApp (.bvar 0)).instantiate1
+          prbPreFamilyAContextReplay.freshExpr).getAppArgs.toList.drop
+            prbStagedUniverseInput.staged.family.validation.stats.params.size) := by
+    rw [recursiveTailContext_eq, recursiveTailSource_eq]
+    exact targetSpineExact
+  have recursiveTailValid : AddInductive.isValidIndAppIdx
+      prbStagedUniverseInput.staged.family.validation.stats
+      ((prbValidationFamilyApp (.bvar 0)).instantiate1
+        prbPreFamilyAContextReplay.freshExpr) 0 = true := by
+    rw [recursiveTailSource_eq]
+    exact prbPreFamilyTargetValidReplay
+  let recursiveTargetTraceExact :
+      AddInductive.ConstructorPreFamilyRecursiveTrace
+        prbStagedUniverseInput.staged.family.validation.stats 0
+        prbPreFamilyIndexTelescopeReplay
+        (prbPreFamilyAContextReplay.pushLocalDecl `b .default
+          (AddInductive.consumeTypeAnnotations prbValidationAlpha))
+        ((prbValidationFamilyApp (.bvar 0)).instantiate1
+          prbPreFamilyAContextReplay.freshExpr) 999 :=
+    .target _ _ recursiveTailValid recursiveTailSpineExact
+  have recursiveTargetRunExact :
+      AddInductive.ConstructorPreFamilyRecursiveTrace.build
+        prbStagedUniverseInput.staged.family.validation.stats 0
+        prbPreFamilyIndexTelescopeReplay
+        (prbPreFamilyAContextReplay.pushLocalDecl `b .default
+          (AddInductive.consumeTypeAnnotations prbValidationAlpha))
+        ((prbValidationFamilyApp (.bvar 0)).instantiate1
+          prbPreFamilyAContextReplay.freshExpr) 999 =
+        .ok recursiveTargetTraceExact := by
+    exact AddInductive.ConstructorPreFamilyRecursiveTrace.target_build_eq
+      (fuel := 998) (by rw [recursiveTailSource_eq]; rfl)
+      recursiveTailValid recursiveTailSpineExact
+  let recursiveFieldTrace :
+      AddInductive.ConstructorPreFamilyRecursiveTrace
+        prbStagedUniverseInput.staged.family.validation.stats 0
+        prbPreFamilyIndexTelescopeReplay prbPreFamilyAContextReplay
+        prbValidationNextDomain 1000 :=
+    .forallE prbPreFamilyAContextReplay `b prbValidationAlpha
+      (prbValidationFamilyApp (.bvar 0)) .default aAlpha aAlphaEnsure
+      aAlphaConsumed aAlphaAnnotations prbPreFamilyAFreshReplay
+      recursiveTargetTraceExact
+  have recursiveFieldRun :
+      AddInductive.ConstructorPreFamilyRecursiveTrace.build
+        prbStagedUniverseInput.staged.family.validation.stats 0
+        prbPreFamilyIndexTelescopeReplay prbPreFamilyAContextReplay
+        prbValidationNextDomain 1000 = .ok recursiveFieldTrace := by
+    unfold prbValidationNextDomain
+    exact AddInductive.ConstructorPreFamilyRecursiveTrace.forallE_build_eq
+      aAlpha aAlphaEnsure aAlphaConsumed aAlphaAnnotations
+      prbPreFamilyAFreshReplay recursiveTargetTraceExact
+      recursiveTargetRunExact
+  obtain ⟨recursiveFieldTraceAtContext, recursiveFieldRunAtContext⟩ :
+      ∃ recursiveFieldTraceAtContext :
+          AddInductive.ConstructorPreFamilyRecursiveTrace
+            prbStagedUniverseInput.staged.family.validation.stats 0
+            prbPreFamilyIndexTelescopeReplay prbPreFamilyAContextReplay
+            prbValidationNextDomain
+            prbPreFamilyAContextReplay.fuel.inductiveFuel,
+        AddInductive.ConstructorPreFamilyRecursiveTrace.build
+            prbStagedUniverseInput.staged.family.validation.stats 0
+            prbPreFamilyIndexTelescopeReplay prbPreFamilyAContextReplay
+            prbValidationNextDomain
+            prbPreFamilyAContextReplay.fuel.inductiveFuel =
+          .ok recursiveFieldTraceAtContext := by
+    rw [prbPreFamilyAInductiveFuelReplay]
+    exact ⟨recursiveFieldTrace, recursiveFieldRun⟩
+  let resultTelescope : AddInductive.ConstructorCheckedExpr
+      prbPreFamilyResultContextReplay prbPreFamilyIndexTelescopeReplay :=
+    .ofRun (by
+      simp [prbPreFamilyIndexTelescopeReplay,
+        prbValidationAlpha_shape, FVarsIn, Level.hasMVar']
+      change (prbPreFamilyResultContextReplay.lctx.find?
+        prbValidationAlphaId).isSome = true
+      rw [prbPreFamilyAlphaFindInResultReplay]
+      rfl)
+      (prbPreFamilyIndexTelescopeCheckValidReplay
+        prbPreFamilyResultContextReplay prbPreFamilyAlphaFindInResultReplay
+          prbPreFamilyResultDepthReplay)
+  let resultArgument : AddInductive.ConstructorCheckedExpr
+      prbPreFamilyResultContextReplay prbValidationAExpr :=
+    .ofRun (by
+      rw [prbValidationAExpr_shape]
+      change (prbPreFamilyResultContextReplay.lctx.find?
+        prbValidationAId).isSome = true
+      rw [prbPreFamilyAFindInResultReplay]
+      rfl)
+      (by
+        simpa [prbValidationAExpr_shape, prbValidationAlpha_shape] using
+          prbCandidateCheckTypeFVar prbPreFamilyResultContextReplay
+            prbValidationAId prbValidationAlpha
+            prbPreFamilyResultDepthReplay prbPreFamilyAFindInResultReplay)
+  let resultAlpha : AddInductive.ConstructorCheckedExpr
+      prbPreFamilyResultContextReplay prbValidationAlpha :=
+    .ofRun (by
+      rw [prbValidationAlpha_shape]
+      change (prbPreFamilyResultContextReplay.lctx.find?
+        prbValidationAlphaId).isSome = true
+      rw [prbPreFamilyAlphaFindInResultReplay]
+      rfl)
+      (by
+        simpa [prbValidationAlpha_shape] using
+          prbCandidateCheckTypeFVar prbPreFamilyResultContextReplay
+            prbValidationAlphaId (.sort (.succ (.param `u)))
+            prbPreFamilyResultDepthReplay
+            prbPreFamilyAlphaFindInResultReplay)
+  let resultSortZero : AddInductive.ConstructorCheckedExpr
+      prbPreFamilyResultContextReplay (.sort .zero) :=
+    .ofRun (by simp [FVarsIn, Level.hasMVar'])
+      (prbPreFamilySortZeroCheckValidReplay
+        prbPreFamilyResultContextReplay prbPreFamilyResultDepthReplay)
+  let resultComparison : AddInductive.CandidateIsDefEqObservation
+      prbPreFamilyResultContextReplay prbValidationAlpha
+        prbValidationAlpha :=
+    ⟨AddInductive.candidateIsDefEqRefl
+      prbPreFamilyResultContextReplay prbValidationAlpha⟩
+  let resultSpine : AddInductive.ConstructorPreFamilyIndexSpineTrace
+      prbPreFamilyResultContextReplay prbPreFamilyIndexTelescopeReplay
+        [prbValidationAExpr] := by
+    unfold prbPreFamilyIndexTelescopeReplay
+    exact .cons prbPreFamilyResultContextReplay prbValidationAName
+      prbValidationAlpha (.sort .zero) .default
+      prbValidationAExpr [] resultTelescope
+      ⟨resultArgument, resultAlpha, resultComparison⟩
+      (by
+        simpa [Expr.instantiate1_eq, Expr.instantiate1'] using
+          (AddInductive.ConstructorPreFamilyIndexSpineTrace.nil
+            prbPreFamilyResultContextReplay (.sort .zero)
+            resultSortZero rfl))
+  have resultArgs : prbValidationTerminal.getAppArgs.toList.drop
+      prbStagedUniverseInput.staged.family.validation.stats.params.size =
+        [prbValidationAExpr] := by
+    rw [prbStagedParamsReplay_eq]
+    simp [prbValidationTerminal,
+      prbValidationFamilyAppGetAppArgsReplay]
+  obtain ⟨resultSpineExact, resultSpineRun⟩ :
+      ∃ resultSpineExact :
+          AddInductive.ConstructorPreFamilyIndexSpineTrace
+            prbPreFamilyResultContextReplay prbPreFamilyIndexTelescopeReplay
+            (prbValidationTerminal.getAppArgs.toList.drop
+              prbStagedUniverseInput.staged.family.validation.stats.params.size),
+        AddInductive.ConstructorPreFamilyIndexSpineTrace.build
+            prbPreFamilyResultContextReplay prbPreFamilyIndexTelescopeReplay
+            (prbValidationTerminal.getAppArgs.toList.drop
+              prbStagedUniverseInput.staged.family.validation.stats.params.size) =
+          .ok resultSpineExact := by
+    rw [resultArgs]
+    exact ⟨resultSpine, resultSpine.build_eq⟩
+  have resultIndependent : AddInductive.constructorIndependentOf
+      prbValidationTerminal
+      [prbPreFamilyAContextReplay.freshFVarId] = true := by
+    simp [AddInductive.constructorIndependentOf,
+      prbValidationTerminal, prbValidationFamilyApp,
+      Expr.fvarsList, prbValidationAlpha_shape,
+      prbValidationAExpr_shape,
+      prbPreFamilyAlphaIdNeRemovedReplay,
+      prbPreFamilyAIdNeRemovedReplay]
+  let resultTrace : AddInductive.ConstructorPreFamilyViewTrace
+      prbStagedUniverseInput.staged.family.validation.stats 0
+      prbPreFamilyIndexTelescopeReplay prbPreFamilyResultContextReplay
+      prbValidationTerminal 3
+      [prbPreFamilyAContextReplay.freshFVarId] true :=
+    .terminal prbPreFamilyResultContextReplay prbValidationTerminal 3
+      [prbPreFamilyAContextReplay.freshFVarId] true
+      prbPreFamilyTerminalValidReplay resultIndependent resultSpineExact
+  have resultRun : AddInductive.ConstructorPreFamilyViewTrace.build
+      prbStagedUniverseInput.staged.family.validation.stats 0
+      prbPreFamilyIndexTelescopeReplay prbPreFamilyResultContextReplay
+      prbValidationTerminal 3
+      [prbPreFamilyAContextReplay.freshFVarId] true 997 =
+        .ok resultTrace := by
+    exact AddInductive.ConstructorPreFamilyViewTrace.terminal_build_eq
+      (fuel := 996) rfl prbPreFamilyTerminalValidReplay resultIndependent
+      resultSpineExact
+  obtain ⟨recursiveViewTailTrace, recursiveViewTailRun⟩ :
+      ∃ recursiveViewTailTrace : AddInductive.ConstructorPreFamilyViewTrace
+          prbStagedUniverseInput.staged.family.validation.stats 0
+          prbPreFamilyIndexTelescopeReplay
+          prbPreFamilyAContextReplay.advanceFresh
+          (prbValidationAfterA.bindingBody!.instantiate1
+            prbPreFamilyAContextReplay.freshExpr) 3
+          [prbPreFamilyAContextReplay.freshFVarId] true,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            prbStagedUniverseInput.staged.family.validation.stats 0
+            prbPreFamilyIndexTelescopeReplay
+            prbPreFamilyAContextReplay.advanceFresh
+            (prbValidationAfterA.bindingBody!.instantiate1
+              prbPreFamilyAContextReplay.freshExpr) 3
+            [prbPreFamilyAContextReplay.freshFVarId] true 997 =
+          .ok recursiveViewTailTrace := by
+    rw [show prbPreFamilyAContextReplay.advanceFresh =
+        prbPreFamilyResultContextReplay by rfl]
+    rw [show prbValidationAfterA.bindingBody!.instantiate1
+        prbPreFamilyAContextReplay.freshExpr = prbValidationTerminal by
+      simp [prbValidationAfterA, prbValidationTerminal,
+        prbValidationFamilyApp, Expr.bindingBody!,
+        Expr.instantiate1_eq, Expr.instantiate1']]
+    exact ⟨resultTrace, resultRun⟩
+  obtain ⟨recursiveViewTailTraceExact, recursiveViewTailRunExact⟩ :
+      ∃ recursiveViewTailTraceExact :
+          AddInductive.ConstructorPreFamilyViewTrace
+            prbStagedUniverseInput.staged.family.validation.stats 0
+            prbPreFamilyIndexTelescopeReplay
+            prbPreFamilyAContextReplay.advanceFresh
+            ((prbValidationFamilyApp prbValidationAExpr).instantiate1
+              prbPreFamilyAContextReplay.freshExpr) 3
+            [prbPreFamilyAContextReplay.freshFVarId] true,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            prbStagedUniverseInput.staged.family.validation.stats 0
+            prbPreFamilyIndexTelescopeReplay
+            prbPreFamilyAContextReplay.advanceFresh
+            ((prbValidationFamilyApp prbValidationAExpr).instantiate1
+              prbPreFamilyAContextReplay.freshExpr) 3
+            [prbPreFamilyAContextReplay.freshFVarId] true 997 =
+          .ok recursiveViewTailTraceExact := by
+    change ∃ recursiveViewTailTraceExact :
+        AddInductive.ConstructorPreFamilyViewTrace
+          prbStagedUniverseInput.staged.family.validation.stats 0
+          prbPreFamilyIndexTelescopeReplay
+          prbPreFamilyAContextReplay.advanceFresh
+          (prbValidationAfterA.bindingBody!.instantiate1
+            prbPreFamilyAContextReplay.freshExpr) 3
+          [prbPreFamilyAContextReplay.freshFVarId] true,
+      AddInductive.ConstructorPreFamilyViewTrace.build
+          prbStagedUniverseInput.staged.family.validation.stats 0
+          prbPreFamilyIndexTelescopeReplay
+          prbPreFamilyAContextReplay.advanceFresh
+          (prbValidationAfterA.bindingBody!.instantiate1
+            prbPreFamilyAContextReplay.freshExpr) 3
+          [prbPreFamilyAContextReplay.freshFVarId] true 997 =
+        .ok recursiveViewTailTraceExact
+    exact ⟨recursiveViewTailTrace, recursiveViewTailRun⟩
+  have noParameterTwo :
+      prbStagedUniverseInput.staged.family.validation.stats.params[2]? =
+        none := by
+    rw [prbStagedParamsReplay_eq]
+    rfl
+  have recursiveIndependent : AddInductive.constructorIndependentOf
+      prbValidationNextDomain [] = true := by
+    simp [AddInductive.constructorIndependentOf]
+  let recursiveViewTrace : AddInductive.ConstructorPreFamilyViewTrace
+      prbStagedUniverseInput.staged.family.validation.stats 0
+      prbPreFamilyIndexTelescopeReplay prbPreFamilyAContextReplay
+      (.forallE `next prbValidationNextDomain
+        (prbValidationFamilyApp prbValidationAExpr) .default)
+      2 [] false :=
+    .recursive prbPreFamilyAContextReplay 2 [] false `next
+      prbValidationNextDomain (prbValidationFamilyApp prbValidationAExpr)
+      .default noParameterTwo prbPreFamilyNextDomainHasIndOccReplay
+      recursiveIndependent recursiveFieldTraceAtContext
+      prbPreFamilyAFreshReplay recursiveViewTailTraceExact
+  have recursiveViewRun : AddInductive.ConstructorPreFamilyViewTrace.build
+      prbStagedUniverseInput.staged.family.validation.stats 0
+      prbPreFamilyIndexTelescopeReplay prbPreFamilyAContextReplay
+      (.forallE `next prbValidationNextDomain
+        (prbValidationFamilyApp prbValidationAExpr) .default)
+      2 [] false 998 =
+        .ok recursiveViewTrace := by
+    simp only [prbValidationAfterA,
+      AddInductive.ConstructorPreFamilyViewTrace.build]
+    split
+    · rename_i parameter parameterAt
+      rw [noParameterTwo] at parameterAt
+      contradiction
+    · split
+      · rename_i nonrecursive
+        rw [prbPreFamilyNextDomainHasIndOccReplay] at nonrecursive
+        contradiction
+      · rw [dif_pos recursiveIndependent]
+        rw [recursiveFieldRunAtContext]
+        simp only [Bind.bind, Except.bind]
+        rw [dif_pos prbPreFamilyAFreshReplay]
+        rw [recursiveViewTailRunExact]
+        rfl
+  obtain ⟨afterATrace, afterARun⟩ :
+      ∃ afterATrace : AddInductive.ConstructorPreFamilyViewTrace
+          prbStagedUniverseInput.staged.family.validation.stats 0
+          prbPreFamilyIndexTelescopeReplay prbPreFamilyAContextReplay
+          prbValidationAfterA 2 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            prbStagedUniverseInput.staged.family.validation.stats 0
+            prbPreFamilyIndexTelescopeReplay prbPreFamilyAContextReplay
+            prbValidationAfterA 2 [] false 998 = .ok afterATrace := by
+    change ∃ afterATrace : AddInductive.ConstructorPreFamilyViewTrace
+        prbStagedUniverseInput.staged.family.validation.stats 0
+        prbPreFamilyIndexTelescopeReplay prbPreFamilyAContextReplay
+        (.forallE `next prbValidationNextDomain
+          (prbValidationFamilyApp prbValidationAExpr) .default)
+        2 [] false,
+      AddInductive.ConstructorPreFamilyViewTrace.build
+          prbStagedUniverseInput.staged.family.validation.stats 0
+          prbPreFamilyIndexTelescopeReplay prbPreFamilyAContextReplay
+          (.forallE `next prbValidationNextDomain
+            (prbValidationFamilyApp prbValidationAExpr) .default)
+          2 [] false 998 = .ok afterATrace
+    exact ⟨recursiveViewTrace, recursiveViewRun⟩
+  obtain ⟨ordinaryTailTrace, ordinaryTailRun⟩ :
+      ∃ ordinaryTailTrace : AddInductive.ConstructorPreFamilyViewTrace
+          prbStagedUniverseInput.staged.family.validation.stats 0
+          prbPreFamilyIndexTelescopeReplay
+          (prbPreFamilyContextReplay.pushLocalDecl `a .default
+            (AddInductive.consumeTypeAnnotations prbValidationAlpha))
+          (prbValidationAfterParam.bindingBody!.instantiate1
+            prbPreFamilyContextReplay.freshExpr) 2 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            prbStagedUniverseInput.staged.family.validation.stats 0
+            prbPreFamilyIndexTelescopeReplay
+            (prbPreFamilyContextReplay.pushLocalDecl `a .default
+              (AddInductive.consumeTypeAnnotations prbValidationAlpha))
+            (prbValidationAfterParam.bindingBody!.instantiate1
+              prbPreFamilyContextReplay.freshExpr) 2 [] false 998 =
+          .ok ordinaryTailTrace := by
+    rw [prbValidationConsumeAlpha]
+    rw [show prbPreFamilyContextReplay.pushLocalDecl `a .default
+        prbValidationAlpha = prbPreFamilyAContextReplay by rfl]
+    rw [show prbValidationAfterParam.bindingBody!.instantiate1
+        prbPreFamilyContextReplay.freshExpr = prbValidationAfterA by
+      rw [prbPreFamilyRootFreshExprReplay]
+      exact prbValidationAfterA_shape]
+    exact ⟨afterATrace, afterARun⟩
+  have noParameterOne :
+      prbStagedUniverseInput.staged.family.validation.stats.params[1]? =
+        none := by
+    rw [prbStagedParamsReplay_eq]
+    rfl
+  have rootIndependent : AddInductive.constructorIndependentOf
+      prbValidationAlpha [] = true := by
+    simp [AddInductive.constructorIndependentOf]
+  let ordinaryViewTrace : AddInductive.ConstructorPreFamilyViewTrace
+      prbStagedUniverseInput.staged.family.validation.stats 0
+      prbPreFamilyIndexTelescopeReplay prbPreFamilyContextReplay
+      (.forallE `a prbValidationAlpha
+        (.forallE `next prbValidationNextDomain
+          (prbValidationFamilyApp (.bvar 1)) .default) .default)
+      1 [] false :=
+    .ordinary prbPreFamilyContextReplay 1 [] false `a
+      prbValidationAlpha
+      (.forallE `next prbValidationNextDomain
+        (prbValidationFamilyApp (.bvar 1)) .default)
+      .default noParameterOne prbPreFamilyAlphaHasNoIndOccReplay
+      rootIndependent rootAlpha rootAlphaEnsure rootAlphaConsumed
+      rootAlphaAnnotations prbPreFamilyRootFreshReplay ordinaryTailTrace
+  have ordinaryViewRun : AddInductive.ConstructorPreFamilyViewTrace.build
+      prbStagedUniverseInput.staged.family.validation.stats 0
+      prbPreFamilyIndexTelescopeReplay prbPreFamilyContextReplay
+      (.forallE `a prbValidationAlpha
+        (.forallE `next prbValidationNextDomain
+          (prbValidationFamilyApp (.bvar 1)) .default) .default)
+      1 [] false 999 = .ok ordinaryViewTrace := by
+    simp only [AddInductive.ConstructorPreFamilyViewTrace.build]
+    split
+    · rename_i parameter parameterAt
+      rw [noParameterOne] at parameterAt
+      contradiction
+    · split
+      · rw [dif_pos rootIndependent]
+        rw [rootAlpha.check_eq, rootAlphaEnsure.observe_eq,
+          rootAlphaConsumed.check_eq]
+        simp only [Bind.bind, Except.bind]
+        rw [rootAlphaAnnotations.observe_eq]
+        simp only [Bind.bind, Except.bind]
+        rw [dif_pos prbPreFamilyRootFreshReplay]
+        have ordinaryTailRun' :
+            AddInductive.ConstructorPreFamilyViewTrace.build
+                prbStagedUniverseInput.staged.family.validation.stats 0
+                prbPreFamilyIndexTelescopeReplay
+                (prbPreFamilyContextReplay.pushLocalDecl `a .default
+                  (AddInductive.consumeTypeAnnotations prbValidationAlpha))
+                ((Expr.forallE `next prbValidationNextDomain
+                  (prbValidationFamilyApp (.bvar 1)) .default).instantiate1
+                    prbPreFamilyContextReplay.freshExpr)
+                2 [] false 998 = .ok ordinaryTailTrace := by
+          simpa only [prbValidationAfterParam, Expr.bindingBody!] using
+            ordinaryTailRun
+        rw [ordinaryTailRun']
+        rfl
+      · rename_i recursive
+        rw [prbPreFamilyAlphaHasNoIndOccReplay] at recursive
+        contradiction
+  obtain ⟨afterParamTrace, afterParamRun⟩ :
+      ∃ afterParamTrace : AddInductive.ConstructorPreFamilyViewTrace
+          prbStagedUniverseInput.staged.family.validation.stats 0
+          prbPreFamilyIndexTelescopeReplay prbPreFamilyContextReplay
+          prbValidationAfterParam 1 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            prbStagedUniverseInput.staged.family.validation.stats 0
+            prbPreFamilyIndexTelescopeReplay prbPreFamilyContextReplay
+            prbValidationAfterParam 1 [] false 999 =
+          .ok afterParamTrace := by
+    change ∃ afterParamTrace : AddInductive.ConstructorPreFamilyViewTrace
+        prbStagedUniverseInput.staged.family.validation.stats 0
+        prbPreFamilyIndexTelescopeReplay prbPreFamilyContextReplay
+        (.forallE `a prbValidationAlpha
+          (.forallE `next prbValidationNextDomain
+            (prbValidationFamilyApp (.bvar 1)) .default) .default)
+        1 [] false,
+      AddInductive.ConstructorPreFamilyViewTrace.build
+          prbStagedUniverseInput.staged.family.validation.stats 0
+          prbPreFamilyIndexTelescopeReplay prbPreFamilyContextReplay
+          (.forallE `a prbValidationAlpha
+            (.forallE `next prbValidationNextDomain
+              (prbValidationFamilyApp (.bvar 1)) .default) .default)
+          1 [] false 999 = .ok afterParamTrace
+    exact ⟨ordinaryViewTrace, ordinaryViewRun⟩
+  obtain ⟨parameterTailTrace, parameterTailRun⟩ :
+      ∃ parameterTailTrace : AddInductive.ConstructorPreFamilyViewTrace
+          prbStagedUniverseInput.staged.family.validation.stats 0
+          prbPreFamilyIndexTelescopeReplay prbPreFamilyContextReplay
+          (propRecursiveBoundaryKernelCtor.type.bindingBody!.instantiate1
+            prbValidationAlpha) 1 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            prbStagedUniverseInput.staged.family.validation.stats 0
+            prbPreFamilyIndexTelescopeReplay prbPreFamilyContextReplay
+            (propRecursiveBoundaryKernelCtor.type.bindingBody!.instantiate1
+              prbValidationAlpha) 1 [] false 999 =
+          .ok parameterTailTrace := by
+    rw [prbValidationAfterParam_shape]
+    exact ⟨afterParamTrace, afterParamRun⟩
+  have parameterAtZero :
+      prbStagedUniverseInput.staged.family.validation.stats.params[0]? =
+        some prbValidationAlpha := by
+    rw [prbStagedParamsReplay_eq]
+    rfl
+  obtain ⟨rawViewTrace, rawViewRun⟩ :
+      ∃ rawViewTrace : AddInductive.ConstructorPreFamilyViewTrace
+          prbStagedUniverseInput.staged.family.validation.stats 0
+          prbPreFamilyIndexTelescopeReplay prbPreFamilyContextReplay
+          propRecursiveBoundaryKernelCtor.type 0 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            prbStagedUniverseInput.staged.family.validation.stats 0
+            prbPreFamilyIndexTelescopeReplay prbPreFamilyContextReplay
+            propRecursiveBoundaryKernelCtor.type 0 [] false 1000 =
+          .ok rawViewTrace := by
+    change ∃ rawViewTrace : AddInductive.ConstructorPreFamilyViewTrace
+        prbStagedUniverseInput.staged.family.validation.stats 0
+        prbPreFamilyIndexTelescopeReplay prbPreFamilyContextReplay
+        (.forallE `α (.sort (.succ (.param `u)))
+          propRecursiveBoundaryKernelCtor.type.bindingBody! .implicit)
+        0 [] false,
+      AddInductive.ConstructorPreFamilyViewTrace.build
+          prbStagedUniverseInput.staged.family.validation.stats 0
+          prbPreFamilyIndexTelescopeReplay prbPreFamilyContextReplay
+          (.forallE `α (.sort (.succ (.param `u)))
+            propRecursiveBoundaryKernelCtor.type.bindingBody! .implicit)
+          0 [] false 1000 = .ok rawViewTrace
+    let rawViewTrace : AddInductive.ConstructorPreFamilyViewTrace
+        prbStagedUniverseInput.staged.family.validation.stats 0
+        prbPreFamilyIndexTelescopeReplay prbPreFamilyContextReplay
+        (.forallE `α (.sort (.succ (.param `u)))
+          propRecursiveBoundaryKernelCtor.type.bindingBody! .implicit)
+        0 [] false :=
+      .parameter prbPreFamilyContextReplay 0 [] false `α
+        (.sort (.succ (.param `u)))
+        propRecursiveBoundaryKernelCtor.type.bindingBody! .implicit
+        prbValidationAlpha parameterAtZero parameterTailTrace
+    refine ⟨rawViewTrace, ?_⟩
+    simp only [AddInductive.ConstructorPreFamilyViewTrace.build]
+    split
+    · rename_i parameter parameterAt
+      rw [parameterAtZero] at parameterAt
+      cases parameterAt
+      rw [parameterTailRun]
+      rfl
+    · rename_i noParameter
+      rw [parameterAtZero] at noParameter
+      contradiction
+  obtain ⟨headTrace, headRun⟩ :
+      ∃ headTrace : AddInductive.ConstructorPreFamilyViewTrace
+          prbStagedUniverseInput.staged.family.validation.stats 0
+          prbPreFamilyIndexTelescopeReplay prbPreFamilyContextReplay
+          prbCandidate.families.singleton.constructors.singleton.type.view
+          0 [] false,
+        AddInductive.ConstructorPreFamilyViewTrace.build
+            prbStagedUniverseInput.staged.family.validation.stats 0
+            prbPreFamilyIndexTelescopeReplay prbPreFamilyContextReplay
+            prbCandidate.families.singleton.constructors.singleton.type.view
+            0 [] false 1000 = .ok headTrace := by
+    rw [prbCtorView_eq]
+    exact ⟨rawViewTrace, rawViewRun⟩
+  let listTrace : AddInductive.ConstructorPreFamilyListTrace
+      prbStagedUniverseInput.staged.family.validation.stats 0
+      prbPreFamilyIndexTelescopeReplay prbPreFamilyContextReplay
+      (.cons prbCandidate.families.singleton.constructors.singleton .nil) :=
+    .cons headTrace .nil
+  have listRun : AddInductive.ConstructorPreFamilyListTrace.build
+      prbStagedUniverseInput.staged.family.validation.stats 0
+      prbPreFamilyIndexTelescopeReplay prbPreFamilyContextReplay
+      (.cons prbCandidate.families.singleton.constructors.singleton .nil) =
+        .ok listTrace := by
+    exact AddInductive.ConstructorPreFamilyListTrace.cons_build_eq
+      headTrace (by
+        rw [prbPreFamilyRootInductiveFuelReplay]
+        exact headRun)
+      .nil rfl
+  have parametersRun : AddInductive.instantiateFamilyParameters
+      propRecursiveBoundaryKernelType.type
+      prbStagedUniverseInput.staged.family.validation.stats.params.toList =
+        .ok prbPreFamilyIndexTelescopeReplay := by
+    rw [prbStagedParamsReplay_eq]
+    simp [propRecursiveBoundaryKernelType,
+      propRecursiveBoundaryInfo, ConstantInfo.type,
+      ConstantInfo.toConstantVal,
+      AddInductive.instantiateFamilyParameters,
+      prbPreFamilyIndexTelescopeReplay, prbValidationAlpha,
+      prbValidationAName, Expr.bindingName!,
+      Expr.instantiate1_eq, Expr.instantiate1',
+      Pure.pure, Except.pure]
+  unfold AddInductive.checkConstructorPreFamilySafety
+  have translationUnique :
+      (AddInductive.theoryTranslationUnique
+          propRecursiveBoundaryKernelType.type &&
+        (AddInductive.CandidateList.cons
+          prbCandidate.families.singleton.constructors.singleton
+          (AddInductive.CandidateList.nil : AddInductive.CandidateList
+            AddInductive.CandidateConstructor [])).viewTranslationUnique) =
+        true := by
+    change (AddInductive.theoryTranslationUnique
+      propRecursiveBoundaryKernelType.type &&
+      (prbCandidate.families.singleton.constructors.singleton.type.trace.viewTranslationUnique &&
+        true)) = true
+    rw [prbCandidate.families.singleton.constructors.singleton.type.trace.viewTranslationUnique_eq]
+    change (AddInductive.theoryTranslationUnique
+      propRecursiveBoundaryKernelType.type &&
+      (AddInductive.theoryTranslationUnique
+        prbCandidate.families.singleton.constructors.singleton.type.view &&
+        true)) = true
+    rw [prbCtorView_eq]
+    simp [AddInductive.theoryTranslationUnique,
+      propRecursiveBoundaryKernelType, propRecursiveBoundaryKernelCtor,
+      propRecursiveBoundaryInfo, propRecursiveBoundaryMkInfo,
+      ConstantInfo.type, ConstantInfo.toConstantVal]
+  rw [if_pos translationUnique]
+  rw [parametersRun]
+  simp only [Bind.bind, Except.bind]
+  rw [listRun]
+  rfl
 
 theorem prbSafetyRun :
     AddInductive.checkConstructorPreFamilySafety
