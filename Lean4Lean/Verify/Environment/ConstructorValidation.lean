@@ -8641,6 +8641,102 @@ theorem StagedNormalizationCandidatePreFamilyInput.normalization_eq
     rw [familyEq]
   exact Normalization.eq_of_view_eq viewDeclEq
 
+/-- Choice-free constructor-root interpretation: the semantic root's view is
+computed by the deterministic translator under the constructor's strict-view
+uniqueness certificate. -/
+def CandidateConstructorSemanticInput.semanticOfUnique
+    {env : VEnv} {Us : List Name} {source : Constructor}
+    {candidate : AddInductive.CandidateConstructor source} {raw : VConstVal}
+    (input : CandidateConstructorSemanticInput env Us candidate raw)
+    (unique : TypeChecker.CandidateExprTraceViewIsUnique
+      candidate.type.trace) :
+    CandidateConstructorSemanticRun env Us candidate raw where
+  name_eq := input.name_eq
+  uvars_eq := input.uvars_eq
+  type := input.type.semanticOfUnique unique
+
+/-- Choice-free source-ordered interpretation of a complete constructor list
+under its source-ordered strict-view certificate. -/
+def CandidateConstructorSemanticListInput.semanticOfUnique
+    {env : VEnv} {Us : List Name} :
+    {sources : List Constructor} →
+    {candidates : AddInductive.CandidateList
+      AddInductive.CandidateConstructor sources} →
+    {raws : List VConstVal} →
+    CandidateConstructorSemanticListInput env Us candidates raws →
+    candidates.ViewTranslationUnique →
+    CandidateConstructorSemanticListRun env Us candidates raws
+  | _, _, _, .nil, _ => .nil
+  | _, _, _, .cons head tail, unique =>
+    .cons (head.semanticOfUnique unique.1) (tail.semanticOfUnique unique.2)
+
+/-- Choice-free family interpretation: the family type and every
+post-insertion constructor view are computed by the deterministic
+translator. -/
+def CandidateFamilySemanticInput.semanticOfUnique
+    {env : VEnv} {Us : List Name} {source : InductiveType}
+    {candidate : AddInductive.CandidateFamily source} {raw : VInductiveType}
+    (input : CandidateFamilySemanticInput env Us candidate raw)
+    (uniqueType : TypeChecker.CandidateExprTraceViewIsUnique
+      candidate.familyType.type.trace)
+    (uniqueCtors : candidate.constructors.ViewTranslationUnique) :
+    CandidateFamilySemanticRun env Us candidate raw where
+  name_eq := input.name_eq
+  uvars_eq := input.uvars_eq
+  type := input.type.semanticOfUnique uniqueType
+  typeEnv := input.typeEnv
+  addType := input.addType
+  constructors := input.constructors.semanticOfUnique uniqueCtors
+
+/-- Choice-free singleton semantic hierarchy: every normalized Theory view
+in the family and constructor list is computed by the deterministic
+translator, with `Nonempty` interpretation transferred onto the computed
+values. -/
+def NormalizationCandidateSemanticInput.semanticOfUnique
+    {env : VEnv} {Us : List Name} {source : InductiveType}
+    {candidate : AddInductive.NormalizationCandidate [source]}
+    {rawDecl : VInductDecl}
+    (input : NormalizationCandidateSemanticInput env Us candidate rawDecl)
+    (uniqueType : TypeChecker.CandidateExprTraceViewIsUnique
+      candidate.families.singleton.familyType.type.trace)
+    (uniqueCtors :
+      candidate.families.singleton.constructors.ViewTranslationUnique) :
+    NormalizationCandidateSemanticRun env Us candidate rawDecl where
+  raw := input.raw
+  raw_types_eq := input.raw_types_eq
+  uvars_eq := input.uvars_eq
+  family := input.family.semanticOfUnique uniqueType uniqueCtors
+
+/-- The executable D3 gate's uniqueness Bool supplies the family strict-view
+certificate consumed by the choice-free semantic assembly. -/
+theorem StagedNormalizationCandidatePreFamilyInput.familyViewUnique
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name} {source : InductiveType}
+    {candidate : AddInductive.NormalizationCandidate [source]}
+    {rawDecl : VInductDecl}
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us candidate rawDecl) :
+    TypeChecker.CandidateExprTraceViewIsUnique
+      candidate.families.singleton.familyType.type.trace := by
+  have h := input.safety.translationUnique
+  simp only [Bool.and_eq_true] at h
+  exact AddInductive.CandidateExprTrace.viewTranslationUnique_sound _
+    ((AddInductive.CandidateExprTrace.viewTranslationUnique_eq _).trans h.1)
+
+/-- The executable D3 gate's uniqueness Bool likewise supplies the
+constructor-list strict-view certificate. -/
+theorem StagedNormalizationCandidatePreFamilyInput.constructorViewsUnique
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name} {source : InductiveType}
+    {candidate : AddInductive.NormalizationCandidate [source]}
+    {rawDecl : VInductDecl}
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us candidate rawDecl) :
+    candidate.families.singleton.constructors.ViewTranslationUnique := by
+  have h := input.safety.translationUnique
+  simp only [Bool.and_eq_true] at h
+  exact AddInductive.CandidateList.viewTranslationUnique_sound _ h.2
+
 /-- Exact, source-indexed refinement of the public producer package.
 
 The public `ProducedGenerationCandidatePackage` deliberately erases its
@@ -8676,6 +8772,41 @@ def ExactProducedGenerationCandidatePackage.package
     ProducedGenerationCandidatePackage env Us :=
   exact.semantic.producedPackage context source.nparams numNested isUnsafe
     producedCandidate.produced
+
+/-- Close one strengthened singleton producer choice-free.  The semantic
+hierarchy is computed by the deterministic translator under the executable
+D3 strict-view gate carried by the staged owner, so the retained package is
+data rather than a `Classical.choice` selection from `Nonempty`. -/
+def ProducedGenerationShapeCandidate.exactProducedPackage
+    {familyContext constructorContext : AddInductive.Context}
+    {env : VEnv} {Us : List Name}
+    {kernelSource : InductiveType} {source : VInductDecl}
+    {raw : VInductiveType} {numNested : Nat} {isUnsafe : Bool}
+    {context : AddInductive.Context}
+    (producedCandidate : ProducedGenerationShapeCandidate source raw
+      kernelSource numNested isUnsafe context)
+    (input : StagedNormalizationCandidatePreFamilyInput familyContext
+      constructorContext env Us producedCandidate.candidate source)
+    (rawOwnerEq : raw =
+      input.postFamilyInput.universeInput.staged.raw)
+    (generation : GenerationChecked source)
+    (analysis : ∀ normalization : NormalizationCandidateSemanticRun env Us
+        producedCandidate.candidate source,
+      normalization.root.normalization.generation? = some generation) :
+    ExactProducedGenerationCandidatePackage env Us
+      producedCandidate generation :=
+  let normalization :=
+    input.postFamilyInput.universeInput.staged.semanticInput.semanticOfUnique
+      input.familyViewUnique input.constructorViewsUnique
+  { normalization := normalization
+    raw_eq := rawOwnerEq
+    semantic := GenerationCandidateSemanticRun.ofGenerationShape input
+      normalization generation (analysis normalization)
+      (by
+        have hraw : normalization.raw =
+            input.postFamilyInput.universeInput.staged.raw := rfl
+        simpa only [NormalizationCandidateSemanticRun.generationShape,
+          rawOwnerEq, hraw] using producedCandidate.shape) }
 
 /-- Close one strengthened singleton producer from the staged D1--D4 owner
 without choosing a semantic hierarchy at the API boundary, while retaining

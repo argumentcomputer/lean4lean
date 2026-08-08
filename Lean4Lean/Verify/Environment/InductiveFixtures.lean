@@ -8114,21 +8114,23 @@ theorem aliasFormerExactProducedGenerationCandidatePackage_exists :
     aliasFormerStagedPreFamilyInput rfl aliasFormerGenerationChecked
     aliasFormerCandidate_analysis
 
-private noncomputable def
+private def
     aliasFormerExactProducedGenerationCandidatePackage :
     VInductDecl.ExactProducedGenerationCandidatePackage typeFamilyAliasEnv []
       aliasFormerProducedGenerationShapeCandidate aliasFormerGenerationChecked :=
-  Classical.choice aliasFormerExactProducedGenerationCandidatePackage_exists
+  aliasFormerProducedGenerationShapeCandidate.exactProducedPackage
+    aliasFormerStagedPreFamilyInput rfl aliasFormerGenerationChecked
+    aliasFormerCandidate_analysis
 
 /-- Complete source-indexed candidate certificate for the non-identity
 AliasFormer generation transaction. -/
-noncomputable def aliasFormerGenerationCandidateSemanticRun :
+def aliasFormerGenerationCandidateSemanticRun :
   VInductDecl.GenerationCandidateSemanticRun
       aliasFormerExactProducedGenerationCandidatePackage.normalization
       aliasFormerGenerationChecked :=
   aliasFormerExactProducedGenerationCandidatePackage.semantic
 
-noncomputable def aliasFormerGenerationCandidateRun :
+def aliasFormerGenerationCandidateRun :
     VInductDecl.GenerationCandidateRun
       aliasFormerExactProducedGenerationCandidatePackage.normalization.root
       aliasFormerGenerationChecked :=
@@ -8137,14 +8139,14 @@ noncomputable def aliasFormerGenerationCandidateRun :
 /-- The generic dependent package retains the exact AliasFormer kernel
 source, candidate trace, reconstructed normalization, successful dependent
 analysis, and semantic generation run in one value. -/
-noncomputable def aliasFormerGenerationCandidatePackage :
+def aliasFormerGenerationCandidatePackage :
     VInductDecl.GenerationCandidatePackage typeFamilyAliasEnv [] :=
   aliasFormerGenerationCandidateSemanticRun.package
 
 /-- The complete AliasFormer semantic package is selected by the exact
 successful whole-call metadata producer, including its pre-family and
 post-family checker environments. -/
-noncomputable def aliasFormerProducedGenerationCandidatePackage :
+def aliasFormerProducedGenerationCandidatePackage :
     VInductDecl.ProducedGenerationCandidatePackage typeFamilyAliasEnv [] :=
   aliasFormerExactProducedGenerationCandidatePackage.package
 
@@ -8175,7 +8177,7 @@ theorem aliasFormerCertified_ordered : aliasFormerFinalEnv.Ordered :=
 /-- Complete checker-side AliasFormer generation run, now derived by the
 generic family/constructor spine assembler from the executable singleton
 candidate rather than assembled field-by-field by the fixture. -/
-noncomputable def aliasFormerGenerationRun :
+def aliasFormerGenerationRun :
     VInductDecl.GenerationRun aliasFormerGenerationChecked
       typeFamilyAliasEnv :=
   aliasFormerProducedGenerationCandidatePackage.package.run.generationRun
@@ -10214,22 +10216,24 @@ theorem annotatedPiExactProducedGenerationCandidatePackage_exists :
     annotatedPiStagedPreFamilyInput rfl annotatedPiGenerationChecked
     annotatedPiCandidate_analysis
 
-private noncomputable def
+private def
     annotatedPiExactProducedGenerationCandidatePackage :
     VInductDecl.ExactProducedGenerationCandidatePackage outParamEnv []
       annotatedPiProducedGenerationShapeCandidate annotatedPiGenerationChecked :=
-  Classical.choice annotatedPiExactProducedGenerationCandidatePackage_exists
+  annotatedPiProducedGenerationShapeCandidate.exactProducedPackage
+    annotatedPiStagedPreFamilyInput rfl annotatedPiGenerationChecked
+    annotatedPiCandidate_analysis
 
 /-- Complete source-indexed checker certificate for annotated recursive-Π
 generation. This is the first live generation run whose main constructor
 spine contains an annotation-normalized recursive function domain. -/
-noncomputable def annotatedPiGenerationCandidateSemanticRun :
+def annotatedPiGenerationCandidateSemanticRun :
   VInductDecl.GenerationCandidateSemanticRun
       annotatedPiExactProducedGenerationCandidatePackage.normalization
       annotatedPiGenerationChecked :=
   annotatedPiExactProducedGenerationCandidatePackage.semantic
 
-noncomputable def annotatedPiGenerationCandidateRun :
+def annotatedPiGenerationCandidateRun :
     VInductDecl.GenerationCandidateRun
       annotatedPiExactProducedGenerationCandidatePackage.normalization.root
       annotatedPiGenerationChecked :=
@@ -10237,14 +10241,14 @@ noncomputable def annotatedPiGenerationCandidateRun :
 
 /-- Complete dependent producer package for the annotation-bearing recursive
 Π candidate. -/
-noncomputable def annotatedPiGenerationCandidatePackage :
+def annotatedPiGenerationCandidatePackage :
     VInductDecl.GenerationCandidatePackage outParamEnv [] :=
   annotatedPiGenerationCandidateSemanticRun.package
 
 /-- The complete AnnotatedPi semantic package is selected by the exact
 successful whole-call metadata producer, including its nested annotation-
 consuming traversal in the post-family environment. -/
-noncomputable def annotatedPiProducedGenerationCandidatePackage :
+def annotatedPiProducedGenerationCandidatePackage :
     VInductDecl.ProducedGenerationCandidatePackage outParamEnv [] :=
   annotatedPiExactProducedGenerationCandidatePackage.package
 
@@ -10254,7 +10258,7 @@ def annotatedPiGenerationCertificate :
   generation := annotatedPiGenerationChecked
   wf := annotatedPiExactProducedGenerationCandidatePackage.semantic.run.wf
 
-noncomputable def annotatedPiGenerationRun :
+def annotatedPiGenerationRun :
     VInductDecl.GenerationRun annotatedPiGenerationChecked outParamEnv :=
   annotatedPiProducedGenerationCandidatePackage.package.run.generationRun
 
@@ -10372,7 +10376,7 @@ private theorem annotatedPiRec_fresh :
 
 /-- Complete kernel-metadata replay transaction for `AnnotatedPi`, driven by
 the checker-produced non-identity normalization certificate. -/
-noncomputable def annotatedPiAddInductTraceChecked :
+def annotatedPiAddInductTraceChecked :
     AddInductTrace outParamMap outParamEnv annotatedPiRawDecl
       annotatedPiMap annotatedPiFinalEnv := by
   refine annotatedPiProducedGenerationCandidatePackage.package.addInductTrace
@@ -10780,7 +10784,7 @@ theorem annotatedParam_rec_lookup_unique :
 /-- The complete AliasFormer metadata trace with the generation-WF field
 supplied by the checker-produced certificate. All computational metadata
 witnesses are shared with the existing replay. -/
-noncomputable def aliasFormerAddInductTraceChecked :
+def aliasFormerAddInductTraceChecked :
     AddInductTrace typeFamilyAliasMap typeFamilyAliasEnv
       aliasFormerRawDecl aliasFormerMap aliasFormerFinalEnv :=
   let replay :=

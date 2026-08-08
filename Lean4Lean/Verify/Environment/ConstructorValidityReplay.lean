@@ -11466,19 +11466,24 @@ theorem cvmExactProducedGenerationCandidatePackage_exists :
       constructorValidityMatrixGenerationChecked
     cvmCandidate_analysis
 
-private noncomputable def cvmExactProducedGenerationCandidatePackage :
+private def cvmExactProducedGenerationCandidatePackage :
     VInductDecl.ExactProducedGenerationCandidatePackage VEnv.empty [`u]
       cvmProducedGenerationShapeCandidate
       constructorValidityMatrixGenerationChecked :=
-  Classical.choice cvmExactProducedGenerationCandidatePackage_exists
+  cvmProducedGenerationShapeCandidate.exactProducedPackage
+    cvmCanonicalStagedPreFamilyInput
+      (stagedPreFamily_transport_raw cvmCandidate_eq_canonical
+        cvmStagedPreFamilyInput).symm
+      constructorValidityMatrixGenerationChecked
+    cvmCandidate_analysis
 
-noncomputable def cvmGenerationCandidateSemanticRun :
+def cvmGenerationCandidateSemanticRun :
     VInductDecl.GenerationCandidateSemanticRun
       cvmExactProducedGenerationCandidatePackage.normalization
       constructorValidityMatrixGenerationChecked :=
   cvmExactProducedGenerationCandidatePackage.semantic
 
-noncomputable def cvmProducedGenerationCandidatePackage :
+def cvmProducedGenerationCandidatePackage :
     VInductDecl.ProducedGenerationCandidatePackage VEnv.empty [`u] :=
   cvmExactProducedGenerationCandidatePackage.package
 
@@ -11661,19 +11666,23 @@ theorem prbExactProducedGenerationCandidatePackage_exists :
       prbStagedPreFamilyInput).symm propRecursiveBoundaryGenerationChecked
     prbCandidate_analysis
 
-private noncomputable def prbExactProducedGenerationCandidatePackage :
+private def prbExactProducedGenerationCandidatePackage :
     VInductDecl.ExactProducedGenerationCandidatePackage VEnv.empty [`u]
       prbProducedGenerationShapeCandidate
       propRecursiveBoundaryGenerationChecked :=
-  Classical.choice prbExactProducedGenerationCandidatePackage_exists
+  prbProducedGenerationShapeCandidate.exactProducedPackage
+    prbCanonicalStagedPreFamilyInput
+    (stagedPreFamily_transport_raw prbCandidate_eq_canonical
+      prbStagedPreFamilyInput).symm propRecursiveBoundaryGenerationChecked
+    prbCandidate_analysis
 
-noncomputable def prbGenerationCandidateSemanticRun :
+def prbGenerationCandidateSemanticRun :
     VInductDecl.GenerationCandidateSemanticRun
       prbExactProducedGenerationCandidatePackage.normalization
       propRecursiveBoundaryGenerationChecked :=
   prbExactProducedGenerationCandidatePackage.semantic
 
-noncomputable def prbProducedGenerationCandidatePackage :
+def prbProducedGenerationCandidatePackage :
     VInductDecl.ProducedGenerationCandidatePackage VEnv.empty [`u] :=
   prbExactProducedGenerationCandidatePackage.package
 
@@ -11823,7 +11832,7 @@ theorem cvmReplayRec_fresh :
     SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
   simp [constructorValidityMatrixType, SMap.find?]
 
-noncomputable def cvmAddInductTraceChecked :
+def cvmAddInductTraceChecked :
     AddInductTrace ({} : ConstMap) VEnv.empty constructorValidityMatrixDecl
       cvmReplayMap cvmCertifiedFinalEnv := by
   refine cvmProducedGenerationCandidatePackage.package.addInductTrace
@@ -12064,7 +12073,7 @@ theorem prbReplayRec_fresh :
     SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
   simp [propRecursiveBoundaryType, SMap.find?]
 
-noncomputable def prbAddInductTraceChecked :
+def prbAddInductTraceChecked :
     AddInductTrace ({} : ConstMap) VEnv.empty propRecursiveBoundaryDecl
       prbReplayMap prbCertifiedFinalEnv := by
   refine prbProducedGenerationCandidatePackage.package.addInductTrace

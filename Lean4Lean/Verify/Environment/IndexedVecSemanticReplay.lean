@@ -2862,31 +2862,32 @@ theorem indexedVecSemanticExactProducedGenerationCandidatePackage_exists :
     |>.exactProducedPackage_nonempty indexedVecStagedPreFamilyInput rfl
       indexedVecChecked.identityGeneration indexedVecSemanticCandidate_analysis
 
-private noncomputable def
+private def
     indexedVecSemanticExactProducedGenerationCandidatePackage :
     VInductDecl.ExactProducedGenerationCandidatePackage natFinalEnv [`u]
       indexedVecSemanticProducedGenerationShapeCandidate
       indexedVecChecked.identityGeneration :=
-  Classical.choice
-    indexedVecSemanticExactProducedGenerationCandidatePackage_exists
+  indexedVecSemanticProducedGenerationShapeCandidate.exactProducedPackage
+    indexedVecStagedPreFamilyInput rfl indexedVecChecked.identityGeneration
+    indexedVecSemanticCandidate_analysis
 
-noncomputable def indexedVecSemanticGenerationCandidateSemanticRun :
+def indexedVecSemanticGenerationCandidateSemanticRun :
   VInductDecl.GenerationCandidateSemanticRun
       indexedVecSemanticExactProducedGenerationCandidatePackage.normalization
       indexedVecChecked.identityGeneration :=
   indexedVecSemanticExactProducedGenerationCandidatePackage.semantic
 
-noncomputable def indexedVecSemanticGenerationCandidateRun :
+def indexedVecSemanticGenerationCandidateRun :
     VInductDecl.GenerationCandidateRun
       indexedVecSemanticExactProducedGenerationCandidatePackage.normalization.root
       indexedVecChecked.identityGeneration :=
   indexedVecSemanticGenerationCandidateSemanticRun.run
 
-noncomputable def indexedVecSemanticGenerationCandidatePackage :
+def indexedVecSemanticGenerationCandidatePackage :
     VInductDecl.GenerationCandidatePackage natFinalEnv [`u] :=
   indexedVecSemanticGenerationCandidateSemanticRun.package
 
-noncomputable def indexedVecSemanticProducedGenerationCandidatePackage :
+def indexedVecSemanticProducedGenerationCandidatePackage :
     VInductDecl.ProducedGenerationCandidatePackage natFinalEnv [`u] :=
   indexedVecSemanticExactProducedGenerationCandidatePackage.package
 
@@ -2911,7 +2912,7 @@ theorem indexedVecSemanticCertified_ordered :
   VEnv.addInductCertified_WF nat_env_wf.ordered
     indexedVecSemantic_addInductCertified
 
-noncomputable def indexedVecSemanticAddInductTraceChecked :
+def indexedVecSemanticAddInductTraceChecked :
     AddInductTrace natMap natFinalEnv indexedVecDecl indexedVecMap
       indexedVecFinalEnv := by
   refine indexedVecSemanticProducedGenerationCandidatePackage.package.addInductTrace

@@ -2039,6 +2039,46 @@ def CandidateExprSemanticRootInput.semanticOfIdentity
     simpa only [input.venv_eq, input.lparams_eq, input.vlctx_eq] using
       recursive
 
+/-- Interpret a staged root at the deterministic translation of its
+checker-selected view.  For a projection-free view the recursive semantic
+run's endpoint is pinned by strict-translation agreement
+(`CandidateExprRun.view_tr_strict` plus `TrExprS.trExprS?_eq`), so the
+retained `view` field is computed by `trExprS?` and the `Nonempty`
+interpretation is transferred onto it; no choice operator selects data.
+Unlike `semanticOfIdentity` this covers non-identity normalizations, at the
+cost of the executable view-uniqueness certificate. -/
+def CandidateExprSemanticRootInput.semanticOfUnique
+    {env : VEnv} {Us : List Name} {source : Expr}
+    {candidate : AddInductive.CandidateExpr source} {source' : VExpr}
+    (input : CandidateExprSemanticRootInput env Us candidate source')
+    (unique : CandidateExprTraceViewIsUnique candidate.trace) :
+    CandidateExprSemanticRootRun env Us candidate source' :=
+  match hview : trExprS? Us [] candidate.trace.view with
+  | some view =>
+    { contextRun := input.contextRun
+      venv_eq := input.venv_eq
+      lparams_eq := input.lparams_eq
+      vlctx_eq := input.vlctx_eq
+      source_tr := input.source_tr
+      whnfFuel := input.whnfFuel
+      whnfDepth := input.whnfDepth
+      view := view
+      recursive := by
+        obtain ⟨w⟩ := input.exists
+        obtain ⟨inferred, run⟩ := w.recursive
+        cases Option.some.inj
+          (((run.view_tr_strict unique).trExprS?_eq unique.view).symm.trans
+            hview)
+        exact ⟨inferred, run⟩ }
+  | none =>
+      absurd
+        (show (trExprS? Us [] candidate.trace.view).isSome by
+          obtain ⟨w⟩ := input.exists
+          obtain ⟨inferred, run⟩ := w.recursive
+          exact TrExprS.trExprS?_isSome
+            ⟨w.view, run.view_tr_strict unique⟩ unique.view)
+        (by simp [hview])
+
 /-- One explicitly verified root stage shared by every candidate expression
 interpreted before or after family insertion.
 
