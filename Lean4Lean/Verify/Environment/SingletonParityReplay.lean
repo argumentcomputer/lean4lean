@@ -211,7 +211,7 @@ def normalizationMatrixReplay07 : SingletonReplayArtifact where
   transaction := normalizationMatrix_addInduct
   aligned := normalizationMatrix_aligned
 
-noncomputable def annotatedPiReplay07 : SingletonReplayArtifact where
+def annotatedPiReplay07 : SingletonReplayArtifact where
   label := ``AnnotatedPi
   source := annotatedPiRawDecl
   inputMap := _
@@ -2686,13 +2686,13 @@ def singletonFixedReplays : List SingletonReplayArtifact :=
 
 /-- The focused non-identity normalization rows use the same public replay
 artifact as the standard-library matrix. -/
-noncomputable def singletonNormalizationReplays :
+def singletonNormalizationReplays :
     List SingletonReplayArtifact :=
   [aliasFormerReplay07, aliasRecReplay07, normalizationMatrixReplay07,
     annotatedPiReplay07, annotatedParamReplay07]
 
 /-- The sole public L4L-07 environment replay inventory. -/
-noncomputable def singletonReplayMatrix : List SingletonReplayArtifact :=
+def singletonReplayMatrix : List SingletonReplayArtifact :=
   singletonFixedReplays ++ singletonNormalizationReplays
 
 example : singletonFixedReplays.map (·.label) =
