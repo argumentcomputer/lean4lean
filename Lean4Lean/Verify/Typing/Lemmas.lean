@@ -1874,6 +1874,175 @@ theorem TrExprS.unique' (hΔ : IsUniqueCtx Δ₁ Δ₂) (H : IsUnique e)
 theorem TrExprS.unique (H : IsUnique e)
     (H1 : TrExprS env Us Δ e e₁) (H2 : TrExprS env Us Δ e e₂) : e₁ = e₂ := H1.unique' .base H H2
 
+/-- A successful lookup transfers along value-preserving context alignment:
+the found value is identical and only the (discarded) type component may
+differ. -/
+theorem TrExprS.IsUniqueCtx.find?_transfer (hΔ : IsUniqueCtx Δ₁ Δ₂)
+    (H : Δ₁.find? v = some (e, A)) : ∃ A₂, Δ₂.find? v = some (e, A₂) := by
+  induction hΔ generalizing v e A with
+  | base => exact ⟨A, H⟩
+  | @cons Δ₁' Δ₂' d₁ d₂ ofv _ hd ih =>
+    revert H; simp only [VLCtx.find?]; split
+    next heq =>
+      simp only [Option.some.injEq, Prod.mk.injEq]
+      rintro ⟨rfl, rfl⟩
+      cases hd <;> exact ⟨_, rfl, rfl⟩
+    next v' heq =>
+      rintro h
+      simp only [Bind.bind, Option.bind_eq_some_iff] at h
+      obtain ⟨⟨e₁, A₁⟩, h1, h2⟩ := h
+      simp only [Option.some.injEq, Prod.mk.injEq] at h2
+      obtain ⟨rfl, rfl⟩ := h2
+      obtain ⟨A₂, h₂⟩ := ih h1
+      have hdep : d₁.depth = d₂.depth := by cases hd <;> rfl
+      refine ⟨VExpr.liftN d₂.depth A₂, ?_⟩
+      simp only [Bind.bind, Option.bind_eq_some_iff]
+      exact ⟨(e₁, A₂), h₂, by rw [hdep]⟩
+
+/-- Every strict translation of an unfolded natural-number literal is the
+canonical numeral: the constructor spine pins the Theory value
+syntactically. -/
+theorem TrExprS.natLitToConstructor_eq :
+    ∀ {n : Nat} {w}, TrExprS env Us Δ (Expr.natLitToConstructor n) w →
+      w = VExpr.natLit n
+  | 0, w, h => by
+    have h : TrExprS env Us Δ (.const ``Nat.zero []) w := h
+    cases h with
+    | const h1 h2 h3 =>
+      obtain rfl : _ = ([] : List VLevel) := by simpa using h2.symm
+      rfl
+  | n+1, w, h => by
+    have h : TrExprS env Us Δ (.app (.const ``Nat.succ []) (.lit (.natVal n))) w := h
+    cases h with
+    | app h1 h2 hf ha =>
+      cases hf with
+      | const hf1 hf2 hf3 =>
+        obtain rfl : _ = ([] : List VLevel) := by simpa using hf2.symm
+        cases ha with
+        | lit ha1 ha2 =>
+          cases natLitToConstructor_eq ha2
+          rfl
+
+/-- Every strict translation of an unfolded character-list literal is the
+canonical Theory list. -/
+theorem TrExprS.strLitToConstructor_chars_eq :
+    ∀ {cs : List Char} {w},
+      TrExprS env Us Δ
+        (cs.foldr (init := .app (.const ``List.nil [.zero]) (.const ``Char []))
+          fun c e =>
+            .app (.app (.app (.const ``List.cons [.zero]) (.const ``Char []))
+              (.app (.const ``Char.ofNat []) (.lit (.natVal c.toNat)))) e) w →
+      w = VExpr.listCharLit cs
+  | [], w, h => by
+    cases h with
+    | app h1 h2 hf ha =>
+      cases hf with
+      | const hf1 hf2 hf3 =>
+        simp [VLevel.ofLevel] at hf2
+        obtain rfl := hf2
+        cases ha with
+        | const ha1 ha2 ha3 =>
+          obtain rfl : _ = ([] : List VLevel) := by simpa using ha2.symm
+          rfl
+  | c :: cs, w, h => by
+    cases h with
+    | app h1 h2 hf ha =>
+      cases strLitToConstructor_chars_eq ha
+      cases hf with
+      | app hg1 hg2 hgf hga =>
+        cases hgf with
+        | app hh1 hh2 hhf hha =>
+          cases hhf with
+          | const hi1 hi2 hi3 =>
+            simp [VLevel.ofLevel] at hi2
+            obtain rfl := hi2
+            cases hha with
+            | const hj1 hj2 hj3 =>
+              obtain rfl : _ = ([] : List VLevel) := by simpa using hj2.symm
+              cases hga with
+              | app hk1 hk2 hkf hka =>
+                cases hkf with
+                | const hl1 hl2 hl3 =>
+                  obtain rfl : _ = ([] : List VLevel) := by simpa using hl2.symm
+                  cases hka with
+                  | lit hm1 hm2 =>
+                    cases natLitToConstructor_eq hm2
+                    rfl
+
+/-- Every strict translation of a literal's constructor unfolding is the
+canonical `VExpr.trLiteral` value. -/
+theorem TrExprS.toConstructor_eq {l : Literal} {w}
+    (h : TrExprS env Us Δ l.toConstructor w) : w = VExpr.trLiteral l := by
+  match l with
+  | .natVal n => exact natLitToConstructor_eq h
+  | .strVal s =>
+    have h : TrExprS env Us Δ (.app (.const ``String.ofList [])
+      (s.toList.foldr (init := .app (.const ``List.nil [.zero]) (.const ``Char []))
+        fun c e =>
+          .app (.app (.app (.const ``List.cons [.zero]) (.const ``Char []))
+            (.app (.const ``Char.ofNat []) (.lit (.natVal c.toNat)))) e)) w := h
+    cases h with
+    | app h1 h2 hf ha =>
+      cases strLitToConstructor_chars_eq ha
+      cases hf with
+      | const hf1 hf2 hf3 =>
+        obtain rfl : _ = ([] : List VLevel) := by simpa using hf2.symm
+        rfl
+
+/-- The deterministic translator agrees with every strict-translation
+derivation over any value-preserving context alignment: on the `IsUnique`
+fragment, `trExprS?` computes exactly the derivation's Theory value.  This
+is the replay engine for choice-free semantic packaging — a `Nonempty`
+translation witness plus this agreement pins the computed value. -/
+theorem TrExprS.trExprS?_eq' (hΔ : IsUniqueCtx Δ₁ Δ₂)
+    (H : TrExprS env Us Δ₁ e e') (hu : IsUnique e) :
+    trExprS? Us Δ₂ e = some e' := by
+  induction H generalizing Δ₂ with
+  | bvar h1 =>
+    obtain ⟨A₂, h2⟩ := hΔ.find?_transfer h1
+    simp [trExprS?, h2]
+  | fvar h1 =>
+    obtain ⟨A₂, h2⟩ := hΔ.find?_transfer h1
+    simp [trExprS?, h2]
+  | sort h1 => simp [trExprS?, h1]
+  | const h1 h2 h3 => simp [trExprS?, h2]
+  | app h1 h2 _ _ ih1 ih2 =>
+    simp [trExprS?, ih1 hΔ hu.1, ih2 hΔ hu.2]
+  | lam h1 _ _ ih1 ih2 =>
+    simp [trExprS?, ih1 hΔ hu.1, ih2 (hΔ.cons .vlam) hu.2]
+  | forallE h1 h2 _ _ ih1 ih2 =>
+    simp [trExprS?, ih1 hΔ hu.1, ih2 (hΔ.cons .vlam) hu.2]
+  | letE h1 _ _ _ ih1 ih2 ih3 =>
+    simp [trExprS?, ih2 hΔ hu.1, ih3 (hΔ.cons .vlet) hu.2]
+  | lit h1 h2 ih =>
+    cases h2.toConstructor_eq
+    simp [trExprS?]
+  | mdata _ ih => simpa [trExprS?] using ih hΔ hu
+  | proj h1 h2 => cases hu
+
+/-- Deterministic-translator agreement in a fixed context. -/
+theorem TrExprS.trExprS?_eq (H : TrExprS env Us Δ e e') (hu : IsUnique e) :
+    trExprS? Us Δ e = some e' :=
+  H.trExprS?_eq' .base hu
+
+/-- Executable totality on the unique fragment: any translation witness
+guarantees the deterministic translator succeeds. -/
+theorem TrExprS.trExprS?_isSome (hex : ∃ e', TrExprS env Us Δ e e')
+    (hu : IsUnique e) : (trExprS? Us Δ e).isSome := by
+  obtain ⟨e', H⟩ := hex
+  simp [H.trExprS?_eq hu]
+
+/-- Replay transfer: an existential translation witness holds of the computed
+translation itself.  Choice-free packagers pin their Theory data with this:
+compute by `trExprS?`, then transfer the `Nonempty`-level witness onto the
+computed value. -/
+theorem TrExprS.of_trExprS?_eq (hex : ∃ e', TrExprS env Us Δ e e')
+    (hu : IsUnique e) (h : trExprS? Us Δ e = some v) :
+    TrExprS env Us Δ e v := by
+  obtain ⟨e', H⟩ := hex
+  cases Option.some.inj ((H.trExprS?_eq hu).symm.trans h)
+  exact H
+
 theorem TrExprS.boolFalse (henv : env.HasPrimitives) (H : env.contains ``Bool) :
     TrExprS env Us Δ (toExpr false) .boolFalse ∧
     env.HasType Us.length Δ.toCtx .boolFalse .bool := by

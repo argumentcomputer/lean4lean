@@ -134,6 +134,34 @@ def VExpr.trLiteral : Literal → VExpr
   | .natVal n => .natLit n
   | .strVal s => .app .stringOfList (.listCharLit s.toList)
 
+/-- Deterministic shadow of `TrExprS`: compute the strict Theory translation
+of an expression syntactically.  Every semantic premise of `TrExprS` only
+validates a translation, it never selects between candidates, so on the
+`TrExprS.IsUnique` fragment this function returns exactly the translation of
+any derivation (`TrExprS.trExprS?_eq`).  The function checks nothing
+semantic: it is meaningful only through that agreement theorem.  The pushed
+`vlet` type is a dummy because `TrExprS` never reads it — `VLCtx.find?`
+returns a let's value, and the type component is existentially discarded. -/
+def trExprS? (Us : List Name) : VLCtx → Expr → Option VExpr
+  | Δ, .bvar i => (Δ.find? (.inl i)).map (·.1)
+  | Δ, .fvar fv => (Δ.find? (.inr fv)).map (·.1)
+  | _, .sort u => (VLevel.ofLevel Us u).map .sort
+  | _, .const c us => (us.mapM (VLevel.ofLevel Us)).map (VExpr.const c)
+  | Δ, .app f a => do return .app (← trExprS? Us Δ f) (← trExprS? Us Δ a)
+  | Δ, .lam _ ty body _ => do
+      let ty' ← trExprS? Us Δ ty
+      return .lam ty' (← trExprS? Us ((none, .vlam ty') :: Δ) body)
+  | Δ, .forallE _ ty body _ => do
+      let ty' ← trExprS? Us Δ ty
+      return .forallE ty' (← trExprS? Us ((none, .vlam ty') :: Δ) body)
+  | Δ, .letE _ _ val body _ => do
+      let val' ← trExprS? Us Δ val
+      trExprS? Us ((none, .vlet (.sort .zero) val') :: Δ) body
+  | _, .lit l => some (.trLiteral l)
+  | Δ, .mdata _ e => trExprS? Us Δ e
+  | _, .proj .. => none
+  | _, .mvar .. => none
+
 def VEnv.ReflectsNatNatNat (env : VEnv) (fc : Name) (f : Nat → Nat → Nat) :=
   env.contains fc →
   ∀ a b, env.IsDefEqU 0 [] (.app (.app (.const fc []) (.natLit a)) (.natLit b)) (.natLit (f a b))
