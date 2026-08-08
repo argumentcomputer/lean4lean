@@ -1071,6 +1071,24 @@ theorem nonempty_of_check
       contradiction
   | ok alignment => exact ⟨alignment⟩
 
+/-- A successful alignment audit guarantees the retained builder returns its
+trace, so audit owners can replay `build` instead of choosing from
+`Nonempty`. -/
+theorem build_ok_of_check
+    {validationTrace : ConstructorListValidationTrace stats isUnsafe familyIdx
+      context seen constructors}
+    {candidates : AddInductive.CandidateList
+      AddInductive.CandidateConstructor constructors}
+    (success : check validationTrace candidates context = .ok ()) :
+    ∃ alignment, build validationTrace candidates = .ok alignment := by
+  unfold check at success
+  cases h : build validationTrace candidates with
+  | error error =>
+      rw [h] at success
+      change Except.error error = Except.ok () at success
+      contradiction
+  | ok alignment => exact ⟨alignment, rfl⟩
+
 end ConstructorCandidateAlignmentTrace
 
 /-- Source-ordered supplemental alignment audit for every exact constructor
@@ -3937,6 +3955,32 @@ theorem ConstructorPreFamilyListTrace.nonempty_of_check
               exact ⟨⟨translationUnique, familyIndices, parameters,
                 constructors⟩⟩
 
+/-- A successful executable D3 gate guarantees the retained builder returns
+its trace, so gate owners can replay `buildConstructorPreFamilySafety`
+instead of choosing from `Nonempty`. -/
+theorem buildConstructorPreFamilySafety_ok_of_check
+    (success : checkConstructorPreFamilySafety stats familyView candidates
+      context = .ok ()) :
+    ∃ trace, buildConstructorPreFamilySafety stats familyView candidates
+      context = .ok trace := by
+  unfold checkConstructorPreFamilySafety at success
+  unfold buildConstructorPreFamilySafety
+  split
+  next translationUnique =>
+    simp [translationUnique] at success
+  next translationUnique =>
+    split
+    next error parameters =>
+      simp [translationUnique, parameters, Bind.bind, Except.bind] at success
+    next familyIndices parameters =>
+      cases hbuild : ConstructorPreFamilyListTrace.build stats 0 familyIndices
+          context candidates with
+      | error error =>
+          simp [translationUnique, parameters, hbuild,
+            Bind.bind, Except.bind] at success
+      | ok constructors =>
+          exact ⟨_, rfl⟩
+
 end AddInductive
 
 namespace TypeChecker
@@ -4331,8 +4375,10 @@ structure StagedNormalizationCandidatePostFamilyInput
 
 /-- Package a successful executable alignment audit into the staged D2 owner.
 The direct `alignment` field also permits proof-oriented clients to assemble
-the same indexed trace from already-retained checker observations. -/
-noncomputable def StagedNormalizationCandidatePostFamilyInput.ofRun
+the same indexed trace from already-retained checker observations.  The
+retained trace is computed by replaying the alignment builder; the audit
+premise only discharges its impossible error branch. -/
+def StagedNormalizationCandidatePostFamilyInput.ofRun
     {familyContext constructorContext : AddInductive.Context}
     {env : VEnv} {Us : List Name} {source : InductiveType}
     {candidate : AddInductive.NormalizationCandidate [source]}
@@ -4347,9 +4393,16 @@ noncomputable def StagedNormalizationCandidatePostFamilyInput.ofRun
     StagedNormalizationCandidatePostFamilyInput familyContext
       constructorContext env Us candidate rawDecl where
   universeInput := universeInput
-  alignment := Classical.choice <|
-    AddInductive.ConstructorCandidateAlignmentTrace.nonempty_of_check
-      alignmentRun
+  alignment :=
+    match h : AddInductive.ConstructorCandidateAlignmentTrace.build
+        universeInput.staged.constructorValidation.trace
+        candidate.families.singleton.constructors with
+    | .ok alignment => alignment
+    | .error _ =>
+        absurd
+          (AddInductive.ConstructorCandidateAlignmentTrace.build_ok_of_check
+            alignmentRun)
+          (by simp [h])
 
 /-- The exact output of D2: the established produced semantic hierarchy plus
 the actual post-family validation context, retained source/candidate
@@ -4454,8 +4507,10 @@ structure StagedNormalizationCandidatePreFamilyInput
 
 /-- Package a successful executable D3 gate into the staged owner. The gate
 itself, rather than a caller-supplied Theory premise, selects the retained
-parameter-instantiated family telescope and constructor traces. -/
-noncomputable def StagedNormalizationCandidatePreFamilyInput.ofRun
+parameter-instantiated family telescope and constructor traces.  The trace
+is computed by replaying the safety builder; the gate premise only
+discharges its impossible error branch. -/
+def StagedNormalizationCandidatePreFamilyInput.ofRun
     {familyContext constructorContext : AddInductive.Context}
     {env : VEnv} {Us : List Name} {source : InductiveType}
     {candidate : AddInductive.NormalizationCandidate [source]}
@@ -4471,8 +4526,17 @@ noncomputable def StagedNormalizationCandidatePreFamilyInput.ofRun
     StagedNormalizationCandidatePreFamilyInput familyContext
       constructorContext env Us candidate rawDecl where
   postFamilyInput := postFamilyInput
-  safety := Classical.choice <|
-    AddInductive.ConstructorPreFamilyListTrace.nonempty_of_check safetyRun
+  safety :=
+    match h : AddInductive.buildConstructorPreFamilySafety
+        postFamilyInput.universeInput.staged.family.validation.stats
+        candidate.families.singleton.familyType.type.view
+        candidate.families.singleton.constructors
+        candidate.families.singleton.familyType.type.trace.terminalContext with
+    | .ok safety => safety
+    | .error _ =>
+        absurd
+          (AddInductive.buildConstructorPreFamilySafety_ok_of_check safetyRun)
+          (by simp [h])
 
 /-- D3's produced meaning: D2's post-family semantics together with the exact
 verified pre-family context and source-ordered family-free replay selected by
