@@ -7703,7 +7703,7 @@ private def aliasFormerCandidateFamilyRun :
       aliasFormerFamilyListCandidate aliasFormerRawType :=
   aliasFormerCandidateFamilySemanticRun.root
 
-private noncomputable def aliasFormerStagedUniverseInput :
+private def aliasFormerStagedUniverseInput :
     VInductDecl.StagedNormalizationCandidateUniverseInput
       aliasFormerCandidateContext aliasFormerCtorCandidateContext
       typeFamilyAliasEnv [] aliasFormerNormalizationCandidate
@@ -7811,7 +7811,7 @@ private theorem aliasFormerAlignmentRun :
           ConstantInfo.toConstantVal]
         rfl
 
-private noncomputable def aliasFormerStagedPostFamilyInput :
+private def aliasFormerStagedPostFamilyInput :
     VInductDecl.StagedNormalizationCandidatePostFamilyInput
       aliasFormerCandidateContext aliasFormerCtorCandidateContext
       typeFamilyAliasEnv [] aliasFormerNormalizationCandidate
@@ -7930,7 +7930,7 @@ private theorem aliasFormerPreFamilySafetyRun :
   simp [parametersRun, listRun, Bind.bind, Except.bind,
     Except.pure, Pure.pure]
 
-private noncomputable def aliasFormerStagedPreFamilyInput :
+private def aliasFormerStagedPreFamilyInput :
     VInductDecl.StagedNormalizationCandidatePreFamilyInput
       aliasFormerCandidateContext aliasFormerCtorCandidateContext
       typeFamilyAliasEnv [] aliasFormerNormalizationCandidate
@@ -8769,7 +8769,7 @@ private def annotatedPiCandidateFamilyRun :
       annotatedPiFamilyListCandidate annotatedPiRawType :=
   annotatedPiCandidateFamilySemanticRun.root
 
-private noncomputable def annotatedPiStagedUniverseInput :
+private def annotatedPiStagedUniverseInput :
     VInductDecl.StagedNormalizationCandidateUniverseInput
       annotatedPiFamilyCandidateContext annotatedPiCtorCandidateContext
       outParamEnv [] annotatedPiNormalizationCandidate
@@ -9333,7 +9333,7 @@ private theorem constructorTypeValidationTrace_eq_terminal
   | terminal => rfl
 
 set_option maxHeartbeats 10000000 in
-private noncomputable def annotatedPiStagedPostFamilyInput :
+private def annotatedPiStagedPostFamilyInput :
     VInductDecl.StagedNormalizationCandidatePostFamilyInput
       annotatedPiFamilyCandidateContext annotatedPiCtorCandidateContext
       outParamEnv [] annotatedPiNormalizationCandidate
@@ -10094,7 +10094,7 @@ private theorem annotatedPiPreFamilySafetyRun :
   rw [listRun]
   rfl
 
-private noncomputable def annotatedPiStagedPreFamilyInput :
+private def annotatedPiStagedPreFamilyInput :
     VInductDecl.StagedNormalizationCandidatePreFamilyInput
       annotatedPiFamilyCandidateContext annotatedPiCtorCandidateContext
       outParamEnv [] annotatedPiNormalizationCandidate annotatedPiRawDecl :=

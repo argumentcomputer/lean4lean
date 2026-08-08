@@ -213,7 +213,7 @@ theorem indexedVecSemanticConsSourceTr :
   exact hshape.to_trExprS indexedVecTypeEnv_ordered trivial
     ⟨.sort u, htype⟩
 
-noncomputable def indexedVecStagedUniverseInput :
+def indexedVecStagedUniverseInput :
     VInductDecl.StagedNormalizationCandidateUniverseInput
       indexedVecFamilyCandidateContext ctorContext natFinalEnv [`u]
       indexedVecNormalizationCandidate indexedVecDecl where
@@ -786,7 +786,7 @@ private theorem indexedVecCandidateWhnfResult_eq
   rw [self] at other
   exact (Except.ok.inj other).symm
 
-private noncomputable def indexedVecValidationNatPositivityAlignment
+private def indexedVecValidationNatPositivityAlignment
     (trace : AddInductive.ConstructorPositivityModeTrace
       indexedVecStagedUniverseInput.staged.family.validation.stats false
       indexedVecKernelCons.name 1 indexedVecCtorValidationContext
@@ -816,7 +816,7 @@ private noncomputable def indexedVecValidationNatPositivityAlignment
             indexedVecValidationNatHasNoIndOcc] at occurs
           contradiction
 
-private noncomputable def indexedVecValidationAlphaPositivityAlignment
+private def indexedVecValidationAlphaPositivityAlignment
     (trace : AddInductive.ConstructorPositivityModeTrace
       indexedVecStagedUniverseInput.staged.family.validation.stats false
       indexedVecKernelCons.name 2 indexedVecValidationNContext
@@ -849,7 +849,7 @@ private noncomputable def indexedVecValidationAlphaPositivityAlignment
           rw [indexedVecValidationAlphaHasNoIndOcc] at occurs
           contradiction
 
-private noncomputable def indexedVecValidationTailPositivityAlignment
+private def indexedVecValidationTailPositivityAlignment
     (trace : AddInductive.ConstructorPositivityModeTrace
       indexedVecStagedUniverseInput.staged.family.validation.stats false
       indexedVecKernelCons.name 3 indexedVecValidationHeadContext
@@ -926,7 +926,7 @@ theorem indexedVecValidationCandidateFieldFVars_ne :
 /-- Exact D2 owner for `IndexedVec`.  Its validator telescope is transported
 only across proved context/source equalities, while every candidate view is
 instantiated with the validator-owned locals at the same de Bruijn position. -/
-noncomputable def indexedVecStagedPostFamilyInput :
+def indexedVecStagedPostFamilyInput :
     VInductDecl.StagedNormalizationCandidatePostFamilyInput
       indexedVecFamilyCandidateContext ctorContext natFinalEnv [`u]
       indexedVecNormalizationCandidate indexedVecDecl where
@@ -2595,7 +2595,7 @@ private theorem indexedVecPreFamilySafetyRun :
   rw [constructorListRun]
   rfl
 
-private noncomputable def indexedVecStagedPreFamilyInput :
+private def indexedVecStagedPreFamilyInput :
     VInductDecl.StagedNormalizationCandidatePreFamilyInput
       indexedVecFamilyCandidateContext ctorContext natFinalEnv [`u]
       indexedVecNormalizationCandidate indexedVecDecl :=

@@ -3628,14 +3628,14 @@ private theorem prbCandidateWhnfResult_eq
   rw [self] at other
   exact (Except.ok.inj other).symm
 
-noncomputable def prbConstructorValidation :
+def prbConstructorValidation :
     AddInductive.ConstructorValidationRun propRecursiveBoundaryKernelType
       prbFamilyValidationRun.stats false
       prbConstructorValidationContext :=
   AddInductive.ConstructorValidationRun.of_run (by
     simpa [prbConstructorValidationContext] using prbCheckConstructorsRun)
 
-noncomputable def prbStagedUniverseInput :
+def prbStagedUniverseInput :
     VInductDecl.StagedNormalizationCandidateUniverseInput
       prbFamilyContext prbConstructorContext VEnv.empty [`u]
       prbCandidate propRecursiveBoundaryDecl where
@@ -3712,7 +3712,7 @@ private def prbValidationNextDomainAnnotations :
   ⟨AddInductive.candidateIsDefEqRefl prbValidationAContext
     prbValidationNextDomain⟩
 
-private noncomputable def prbValidationAlphaPositivityAlignment
+private def prbValidationAlphaPositivityAlignment
     (trace : AddInductive.ConstructorPositivityModeTrace
       prbStagedUniverseInput.staged.family.validation.stats false
       propRecursiveBoundaryKernelCtor.name 1 prbValidationRootContext
@@ -3766,7 +3766,7 @@ private def prbTransportPositivityAlignment
   subst source'
   exact alignment
 
-private noncomputable def prbValidationNextPositivityAlignment
+private def prbValidationNextPositivityAlignment
     (trace : AddInductive.ConstructorPositivityModeTrace
       prbStagedUniverseInput.staged.family.validation.stats false
       propRecursiveBoundaryKernelCtor.name 2 prbValidationAContext
@@ -3940,7 +3940,7 @@ private def prbTransportViewAlignmentIndexed
 
 set_option pp.universes false in
 set_option pp.all false in
-noncomputable def prbStagedPostFamilyInput :
+def prbStagedPostFamilyInput :
     VInductDecl.StagedNormalizationCandidatePostFamilyInput
       prbFamilyContext prbConstructorContext VEnv.empty [`u]
       prbCandidate propRecursiveBoundaryDecl where
@@ -5457,7 +5457,7 @@ theorem prbSafetyRun :
     VInductDecl.StagedNormalizationCandidatePostFamilyInput.ofRun] using
     prbSafetyRunDirect
 
-noncomputable def prbStagedPreFamilyInput :
+def prbStagedPreFamilyInput :
     VInductDecl.StagedNormalizationCandidatePreFamilyInput
       prbFamilyContext prbConstructorContext VEnv.empty [`u]
       prbCandidate propRecursiveBoundaryDecl :=
@@ -6716,7 +6716,7 @@ theorem cvmCtorTerminalValidationShapeTest :
     AddInductive.Context.freshExpr, AddInductive.Context.freshFVarId,
     Expr.bindingBody!, Expr.instantiate1_eq, Expr.instantiate1']
 
-noncomputable def cvmConstructorValidationTest :
+def cvmConstructorValidationTest :
     AddInductive.ConstructorValidationRun
       constructorValidityMatrixKernelType cvmFamilyValidationRun.stats false
       cvmValidationRootContextTest :=
@@ -8402,7 +8402,7 @@ def cvmValidationFunctionPosBodyCheckedTest :
       rw [cvmValidationPFindInFunctionPosTest]
       rfl) cvmValidationFunctionPosBodyCheckTest
 
-noncomputable def cvmStagedUniverseInputTest :
+def cvmStagedUniverseInputTest :
     VInductDecl.StagedNormalizationCandidateUniverseInput
       cvmFamilyContext cvmConstructorContext VEnv.empty [`u]
       cvmCandidate constructorValidityMatrixDecl where
@@ -8673,7 +8673,7 @@ def cvmTransportPositivityFuelAlignmentTest
   subst fuel'
   exact alignment
 
-noncomputable def cvmAbsentPositivityAlignmentCoreTest
+def cvmAbsentPositivityAlignmentCoreTest
     (self : AddInductive.CandidateWhnfStep.Valid
       ⟨context, source, source⟩)
     (notForall : source.isForall = false)
@@ -8701,7 +8701,7 @@ noncomputable def cvmAbsentPositivityAlignmentCoreTest
       rw [noOccurrence] at occurs
       contradiction
 
-noncomputable def cvmTargetPositivityAlignmentCoreTest
+def cvmTargetPositivityAlignmentCoreTest
     (self : AddInductive.CandidateWhnfStep.Valid
       ⟨context, source, source⟩)
     (notForall : source.isForall = false)
@@ -8729,7 +8729,7 @@ noncomputable def cvmTargetPositivityAlignmentCoreTest
       subst result
       exact .target checked
 
-noncomputable def cvmAbsentPositivityModeAlignmentTest
+def cvmAbsentPositivityModeAlignmentTest
     (self : AddInductive.CandidateWhnfStep.Valid
       ⟨context, source, source⟩)
     (notForall : source.isForall = false)
@@ -8750,7 +8750,7 @@ noncomputable def cvmAbsentPositivityModeAlignmentTest
       exact cvmTransportPositivityFuelAlignmentTest
         inductiveFuel positivityTrace normalizedAlignment
 
-noncomputable def cvmTargetPositivityModeAlignmentTest
+def cvmTargetPositivityModeAlignmentTest
     (self : AddInductive.CandidateWhnfStep.Valid
       ⟨context, source, source⟩)
     (notForall : source.isForall = false)
@@ -8771,7 +8771,7 @@ noncomputable def cvmTargetPositivityModeAlignmentTest
       exact cvmTransportPositivityFuelAlignmentTest
         inductiveFuel positivityTrace normalizedAlignment
 
-noncomputable def cvmValidationXPositivityAlignmentTest
+def cvmValidationXPositivityAlignmentTest
     (trace : AddInductive.ConstructorPositivityModeTrace
       cvmStagedUniverseInputTest.staged.family.validation.stats false
       constructorValidityMatrixKernelCtor.name 2
@@ -8781,7 +8781,7 @@ noncomputable def cvmValidationXPositivityAlignmentTest
     (by rw [cvmCtorXDomainValidationShapeTest]; rfl)
     cvmValidationXHasNoIndOccTest cvmValidationXCheckedTest (by rfl) trace
 
-noncomputable def cvmValidationProofPositivityAlignmentTest
+def cvmValidationProofPositivityAlignmentTest
     (trace : AddInductive.ConstructorPositivityModeTrace
       cvmStagedUniverseInputTest.staged.family.validation.stats false
       constructorValidityMatrixKernelCtor.name 3
@@ -8792,7 +8792,7 @@ noncomputable def cvmValidationProofPositivityAlignmentTest
     cvmValidationProofHasNoIndOccTest cvmValidationProofCheckedTest
     (by rfl) trace
 
-noncomputable def cvmValidationDirectPositivityAlignmentTest
+def cvmValidationDirectPositivityAlignmentTest
     (trace : AddInductive.ConstructorPositivityModeTrace
       cvmStagedUniverseInputTest.staged.family.validation.stats false
       constructorValidityMatrixKernelCtor.name 4
@@ -8803,7 +8803,7 @@ noncomputable def cvmValidationDirectPositivityAlignmentTest
     cvmValidationDirectHasIndOccTest cvmValidationDirectCheckedTest
     (by rfl) trace
 
-noncomputable def cvmValidationLaterPositivityAlignmentTest
+def cvmValidationLaterPositivityAlignmentTest
     (trace : AddInductive.ConstructorPositivityModeTrace
       cvmStagedUniverseInputTest.staged.family.validation.stats false
       constructorValidityMatrixKernelCtor.name 6
@@ -8814,7 +8814,7 @@ noncomputable def cvmValidationLaterPositivityAlignmentTest
     cvmValidationLaterHasNoIndOccTest cvmValidationLaterCheckedTest
     (by rfl) trace
 
-noncomputable def cvmValidationLaterProofPositivityAlignmentTest
+def cvmValidationLaterProofPositivityAlignmentTest
     (trace : AddInductive.ConstructorPositivityModeTrace
       cvmStagedUniverseInputTest.staged.family.validation.stats false
       constructorValidityMatrixKernelCtor.name 7
@@ -8850,7 +8850,7 @@ def cvmTransportPositivityAlignmentTest
   subst source'
   exact alignment
 
-noncomputable def cvmValidationFunctionPositivityAlignmentTest
+def cvmValidationFunctionPositivityAlignmentTest
     (trace : AddInductive.ConstructorPositivityModeTrace
       cvmStagedUniverseInputTest.staged.family.validation.stats false
       constructorValidityMatrixKernelCtor.name 5
@@ -9061,7 +9061,7 @@ def cvmTransportViewAlignmentIndexedTest
 
 set_option pp.universes false in
 set_option pp.all false in
-noncomputable def cvmStagedPostFamilyInputTest :
+def cvmStagedPostFamilyInputTest :
     VInductDecl.StagedNormalizationCandidatePostFamilyInput
       cvmFamilyContext cvmConstructorContext VEnv.empty [`u]
       cvmCandidate constructorValidityMatrixDecl where
@@ -11234,7 +11234,7 @@ theorem cvmSafetyRunTest :
         .ok () := by
   simpa [cvmStagedPostFamilyInputTest] using cvmSafetyRunDirectTest
 
-noncomputable def cvmStagedPreFamilyInputTest :
+def cvmStagedPreFamilyInputTest :
     VInductDecl.StagedNormalizationCandidatePreFamilyInput
       cvmFamilyContext cvmConstructorContext VEnv.empty [`u]
       cvmCandidate constructorValidityMatrixDecl :=
@@ -11254,11 +11254,11 @@ theorem cvmUniverseRun :
     rw [cvmConstructorValidationContextTest_root]
     exact cvmUniverseRunTest
 
-noncomputable def cvmConstructorValidation := cvmConstructorValidationTest
+def cvmConstructorValidation := cvmConstructorValidationTest
 
-noncomputable def cvmStagedUniverseInput := cvmStagedUniverseInputTest
+def cvmStagedUniverseInput := cvmStagedUniverseInputTest
 
-noncomputable def cvmStagedPostFamilyInput := cvmStagedPostFamilyInputTest
+def cvmStagedPostFamilyInput := cvmStagedPostFamilyInputTest
 
 theorem cvmSafetyRunDirect :
     AddInductive.checkConstructorPreFamilySafety
@@ -11278,7 +11278,7 @@ theorem cvmSafetyRun :
         .ok () :=
   cvmSafetyRunTest
 
-noncomputable def cvmStagedPreFamilyInput := cvmStagedPreFamilyInputTest
+def cvmStagedPreFamilyInput := cvmStagedPreFamilyInputTest
 
 /- The accepted CVM package may inherit the ordinary verified-checker
 transition frontier and the one exact L4L-01E execution witness, but no
@@ -11362,7 +11362,7 @@ theorem cvmCanonicalCandidate_produced :
   rw [← cvmCandidate_eq_canonical]
   exact cvmCandidate_produced
 
-noncomputable abbrev cvmCanonicalStagedPreFamilyInput :
+abbrev cvmCanonicalStagedPreFamilyInput :
     VInductDecl.StagedNormalizationCandidatePreFamilyInput
       cvmFamilyContext cvmConstructorContext VEnv.empty [`u]
       cvmCanonicalCandidate constructorValidityMatrixDecl :=
@@ -11557,7 +11557,7 @@ theorem prbCanonicalCandidate_produced :
   rw [← prbCandidate_eq_canonical]
   exact prbCandidate_produced
 
-noncomputable abbrev prbCanonicalStagedPreFamilyInput :
+abbrev prbCanonicalStagedPreFamilyInput :
     VInductDecl.StagedNormalizationCandidatePreFamilyInput
       prbFamilyContext prbConstructorContext VEnv.empty [`u]
       prbCanonicalCandidate propRecursiveBoundaryDecl :=
