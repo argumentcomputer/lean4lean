@@ -67,8 +67,8 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-10A active**; L4L-09C and everything above it are complete and pruned from §5; everything below L4L-10A is queued |
-| Current formalization source | L4L-09C nested generation and replay closure on top of its sub-checkpoints (`4b3d4498` generic layer, `34753706` round-trip, `b71ab5c2` σ̂ transport, `a77e358b` rose replay), the L4L-09B transformation checkpoint `b8899c7d`, the L4L-09A design checkpoint `e0ee54ee`, and the L4L-08C closure `ea733017`; the closing checkpoint adds the nested-indexed replay over a staged `PVec` boundary in `Lean4Lean/Verify/Environment/NestedReplay.lean` at `jcb/formalization2`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
+| Ladder position | **L4L-10B active**; L4L-10A and everything above it are complete and pruned from §5; everything below L4L-10B is queued |
+| Current formalization source | the L4L-10A generated-iota-pattern checkpoint (`Theory/Typing/Pattern.lean` shape helpers, `Theory/Typing/InductivePattern.lean` block pattern facts, `Theory/Typing/InductivePatternFixtures.lean`) on top of the L4L-09 line (`e297560d` nested closure, `4b3d4498`/`34753706`/`b71ab5c2`/`a77e358b` sub-checkpoints, `b8899c7d` transformation, `e0ee54ee` design) and the L4L-08C closure `ea733017`, at `jcb/formalization2`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 20 live source `sorry` tokens across 19 proof declarations, plus six kernel-rejection recovery declarations (25 compiled allowlist entries total), and 29 custom-axiom declarations; all are pinned by exact audits |
@@ -387,8 +387,34 @@ applications, canonical-auxiliary-name collisions, and missing target
 declarations. Source declarations remain rejected by every raw analyzer;
 no generated recursor, rule, or replay is claimed for nested blocks yet.
 
-**Not claimed.** Generated patterns, projections, and the remaining
-metatheory/checker roots. The nested fixtures prove the current
+**Generated iota patterns.** Every certified block's iota rules are exact
+`SimplePattern.iota` patterns (`Theory/Typing/InductivePattern.lean`): the
+generated left body is the owning recursor applied to the shared parameters,
+all motives, all minors, and the constructor's result indices with a
+constructor-headed major premise, and `ruleLhsBody_matches` matches it
+against `rulePattern` at the rule's recursor levels. The block's pattern set
+`IotaPat` couples each rule's pattern with an RHS template — the registered
+right tower applied to the captured common arguments and fields — and a
+check list demanding parameter and result-index agreement between the
+recursor spine and the major premise, with payload closedness carried by a
+`RuleClosure` bundle that fixtures discharge by evaluation. The complete
+generic `Params` obligations — `pat_simple`, match inversion with
+rule-index/constructor recovery, rule distinctness, and the
+`pat_uniq`/`pat_app_l`/`pat_app_l_uniq`/`pat_app_uniq` non-intersection
+laws — are proved for one certified block from the certified
+`blockGeneratedNames` inventory (nodup transported across the normalization
+boundary) and the analyzer's terminal `blockTarget?` arity equation, at
+guarded `propext`/`Quot.sound`-level closures. The implementation-independent
+shape layer (`HeadConstN`, `HeadConst`, `of_varN_matches`,
+`RecursorIotaPattern`, `matches_shape`, tower intersection laws,
+`varNPaths`) lives in `Theory/Typing/Pattern.lean`; a mutual tree/forest
+block and a `Nat`-indexed vector fixture pin the pattern inventories and
+closedness by kernel evaluation. No open-environment `Params` instance is
+installed; `pat_wf` and the block-local environment assembler belong to
+L4L-10B.
+
+**Not claimed.** Pattern soundness (`pat_wf`), the pattern-form environment
+assembler, projections, and the remaining metatheory/checker roots. The nested fixtures prove the current
 single-target nesting boundary (one auxiliary block per occurrence class,
 `nparams ≤ 1` exercised by the ladder fixtures); nesting classes beyond
 the accepted flattened-block analyzer remain rejected, and deep
@@ -415,10 +441,12 @@ The remaining v4.31-added sorry is classified:
 `Lean4Lean.addDecl.WF` → L4L-19B. Non-sorry debt:
 
 - The public inductive spec has complete one-family, non-nested mutual,
-  and nested generation, preservation, metadata parity, and environment
-  replay, but remains a growing subset rather than kernel-complete;
-  generated-pattern and projection coverage remain queued, and nested
-  replay breadth beyond the two ladder fixtures belongs to L4L-11.
+  and nested generation, preservation, metadata parity, environment
+  replay, and generic iota-pattern facts, but remains a growing subset
+  rather than kernel-complete; pattern soundness (`pat_wf`), the
+  pattern-form assembler, and projection coverage remain queued, and
+  nested replay breadth beyond the two ladder fixtures belongs to
+  L4L-11.
 - Consumer-neutral APIs (`VLocalDecl` core, literal encodings,
   `ContainsLits`, `HasPrimitives`, `TrProj`) still live under `Verify/`,
   forcing downstream checkers to import that layer (L4L-12A/L4L-15C).
@@ -590,24 +618,13 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Generated patterns (L4L-10A–L4L-10B)
+### Generated patterns (L4L-10B)
 
-**L4L-10A — generated iota pattern core (active).** Construct every generated iota LHS
-through `SimplePattern.iota` or prove exact equality to its `Pattern`. Prove
-match inversion, rule-index/constructor recovery, rule distinctness, pairwise
-non-intersection, and the
-`Params.pat_uniq`/`pat_app_l_uniq`/`pat_app_uniq` obligations for one
-certified block. Add the implementation-independent shape helpers
-(`HeadConst`, `HeadConstN`, `of_varN_matches`, `RecursorIotaPattern`,
-`matches_shape`) to `Theory/Typing/Pattern.lean`.
-*Exit:* a certified block supplies the complete generic pattern facts with
-standard Theory axiom closure; no open-environment instance is installed.
-
-**L4L-10B — pattern soundness and environment assembler.** Prove `pat_wf`:
-successful match/check instantiates the LHS/RHS defeq registered by
-`addInduct`. Add a block-local assembler for an environment whose defeq set
-consists of generated inductive rules plus separately certified extension
-rules.
+**L4L-10B — pattern soundness and environment assembler (active).** Prove
+`pat_wf`: successful match/check instantiates the LHS/RHS defeq registered
+by `addInduct`. Add a block-local assembler for an environment whose defeq
+set consists of generated inductive rules plus separately certified
+extension rules.
 *Exit:* the assembler is generic over certified extensions, installs no
 global open-environment `Params` instance, and exposes exactly the helpers
 Church–Rosser and downstream consumers need.
