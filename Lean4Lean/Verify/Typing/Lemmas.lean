@@ -524,14 +524,18 @@ inductive SortList : VLCtx → List VLevel → Prop
 
 end VLCtx
 
-theorem TrProj.weak' (W : Ctx.Lift' n Γ Γ')
+theorem TrProj.weak' (henv : env.Ordered) (W : Ctx.Lift' n Γ Γ')
     (H : TrProj env U Γ s i e e') :
-    TrProj env U Γ' s i (e.lift' n) (e'.lift' n) := sorry
+    TrProj env U Γ' s i (e.lift' n) (e'.lift' n) := by
+  obtain ⟨view, levels, params, hname, hproj⟩ := H
+  exact ⟨view, levels, params.map (fun param => param.lift' n),
+    hname, hproj.weak' henv W⟩
 
-theorem TrProj.weakN (W : Ctx.LiftN n k Γ Γ')
+theorem TrProj.weakN (henv : env.Ordered) (W : Ctx.LiftN n k Γ Γ')
     (H : TrProj env U Γ s i e e') :
     TrProj env U Γ' s i (e.liftN n k) (e'.liftN n k) := by
-  simpa [VExpr.lift'_consN_skipN] using H.weak' <| Ctx.liftN_iff_lift'.1 W
+  simpa [VExpr.lift'_consN_skipN] using
+    H.weak' henv (Ctx.liftN_iff_lift'.1 W)
 
 /-! ## Replaying closed metadata types -/
 
@@ -609,7 +613,7 @@ theorem TrExprS.weakFV' (W : VLCtx.FVLift' Δ Δ' dk n k) (hΔ' : Δ'.WF env Us.
     exact .letE h1 (ih1 W hΔ') (ih2 W hΔ') (ih3 (W.cons_bvar _) ⟨hΔ', nofun, h1⟩)
   | lit h1 _ ih => exact .lit h1 (ih W hΔ')
   | mdata _ ih => exact .mdata (ih W hΔ')
-  | proj _ h2 ih => exact .proj (ih W hΔ') (h2.weak' W.toCtx)
+  | proj _ h2 ih => exact .proj (ih W hΔ') (h2.weak' henv W.toCtx)
 
 variable! (henv : WF env) in
 theorem TrExpr.weakFV' (W : VLCtx.FVLift' Δ Δ' dk n k) (hΔ' : Δ'.WF env Us.length)
@@ -648,7 +652,7 @@ theorem TrExprS.weakBV (W : VLCtx.BVLift Δ Δ' dn dk n k)
     refine .lit h1 (Expr.liftLooseBVars_eq_self ?_ ▸ ih W :)
     exact Closed.toConstructor.looseBVarRange_le
   | mdata _ ih => exact .mdata (ih W)
-  | proj _ h2 ih => exact .proj (ih W) (h2.weakN W.toCtx)
+  | proj _ h2 ih => exact .proj (ih W) (h2.weakN henv W.toCtx)
 
 variable! (henv : WF env) in
 theorem TrExpr.weakBV (W : VLCtx.BVLift Δ Δ' dn dk n k)
@@ -664,11 +668,23 @@ theorem HasType.skips (W : Ctx.LiftN n k Γ Γ')
 theorem TrProj.weak'_inv (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U))
     (W : Ctx.Lift' l Γ Γ') :
     TrProj env U Γ' s i (e.lift' l) e' →
-      ∃ e', TrProj env U Γ s i e e' := sorry
+      ∃ e', TrProj env U Γ s i e e' := by
+  rintro ⟨view, levels, params, hname, hproj⟩
+  obtain ⟨params', result, hresult⟩ :=
+    henv.registeredStructureHeadInversion.weak'_inv hΓ' W hproj
+  exact ⟨result, view, levels, params', hname, hresult⟩
 
 theorem TrProj.defeqDFC (henv : VEnv.WF env) (hΓ : env.IsDefEqCtx U [] Γ₁ Γ₂)
     (he : env.IsDefEqU U Γ₁ e₁ e₂) (H : TrProj env U Γ₁ s i e₁ e') :
-    ∃ e', TrProj env U Γ₂ s i e₂ e' := sorry
+    ∃ e', TrProj env U Γ₂ s i e₂ e' := by
+  obtain ⟨view, levels, params, hname, hproj⟩ := H
+  have he₂ : env.HasType U Γ₂ e₂
+      (view.structureType levels params) :=
+    (hproj.majorType.defeqU_l henv hΓ.isType he).defeqDFC
+      henv.ordered hΓ
+  obtain ⟨result, hresult⟩ :=
+    hproj.defeqDFC henv.ordered hΓ he₂
+  exact ⟨result, view, levels, params, hname, hresult⟩
 
 theorem TrProj.mono {env env' : VEnv} (henv : env ≤ env')
     (H : TrProj env U Γ s i e e') : TrProj env' U Γ s i e e' := by
@@ -912,7 +928,10 @@ theorem TrExpr.fvarsList (H : TrExpr env Us Δ e e') : e.fvarsList ⊆ Δ.fvars 
   (fvarsIn_iff.1 H.fvarsIn).1
 
 theorem TrProj.wf (H1 : TrProj env U Γ s i e e')
-    (H2 : VExpr.WF env U Γ e) : VExpr.WF env U Γ e' := sorry
+    (_H2 : VExpr.WF env U Γ e) : VExpr.WF env U Γ e' := by
+  obtain ⟨view, levels, params, _hname, hproj⟩ := H1
+  obtain ⟨code, _hcode, rfl, hprojector⟩ := hproj.program
+  exact ⟨_, hprojector.app hproj.majorType⟩
 
 theorem TrExpr.wf (H : TrExpr env Us Δ e e') : VExpr.WF env Us.length Δ.toCtx e' :=
   let ⟨_, _, _, H⟩ := H; ⟨_, H.hasType.2⟩
@@ -958,7 +977,11 @@ variable! (henv : VEnv.WF env) (hΓ : IsDefEqCtx env U [] Γ₁ Γ₂) in
 theorem TrProj.uniq (H1 : TrProj env U Γ₁ s₁ i e₁ e₁')
     (H2 : TrProj env U Γ₂ s₂ i e₂ e₂')
     (H : env.IsDefEqU U Γ₁ e₁ e₂) :
-    env.IsDefEqU U Γ₁ e₁' e₂' := sorry
+    env.IsDefEqU U Γ₁ e₁' e₂' := by
+  obtain ⟨view₁, levels₁, params₁, _hname₁, hproj₁⟩ := H1
+  obtain ⟨view₂, levels₂, params₂, _hname₂, hproj₂⟩ := H2
+  exact henv.registeredStructureHeadInversion.unique
+    hΓ hproj₁ hproj₂ H
 
 variable! (henv : VEnv.WF env) {Us : List Name} (hΔ : VLCtx.IsDefEq env Us.length Δ₁ Δ₂) in
 theorem TrExprS.uniq (H1 : TrExprS env Us Δ₁ e e₁) (H2 : TrExprS env Us Δ₂ e e₂) :
@@ -1325,9 +1348,14 @@ theorem TrExprS.instN_var (W : VLCtx.InstN Δ₀ e₀' A₀ dk k Δ₁ Δ) (H : 
         refine ⟨_, _, h, ?_, rfl⟩
         cases d <;> simp [VLocalDecl.depth, VLocalDecl.inst, VExpr.lift_instN_lo]
 
-theorem TrProj.instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ)
+theorem TrProj.instN (henv : env.Ordered)
+    (h₀ : env.HasType U Γ₀ e₀ A₀)
+    (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ)
     (H : TrProj env U Γ₁ s i e e') :
-    TrProj env U Γ s i (e.inst e₀ k) (e'.inst e₀ k) := sorry
+    TrProj env U Γ s i (e.inst e₀ k) (e'.inst e₀ k) := by
+  obtain ⟨view, levels, params, hname, hproj⟩ := H
+  exact ⟨view, levels, params.map (fun param => param.inst e₀ k),
+    hname, hproj.instN henv W h₀⟩
 
 variable! (henv : Ordered env) (h₀ : TrExprS env Us Δ₀ e₀ e₀')
   (t₀ : env.HasType Us.length Δ₀.toCtx e₀' A₀) in
@@ -1350,7 +1378,7 @@ theorem TrExprS.instN (W : VLCtx.InstN Δ₀ e₀' A₀ dk k Δ₁ Δ) (H : TrEx
     refine .lit h1 (Expr.instantiate1'_eq_self ?_ ▸ ih W :)
     exact Closed.toConstructor.looseBVarRange_le
   | mdata _ ih => exact .mdata (ih W)
-  | proj _ h2 ih => exact .proj (ih W) (h2.instN W.toCtx)
+  | proj _ h2 ih => exact .proj (ih W) (h2.instN henv t₀ W.toCtx)
 
 theorem TrExprS.inst {Δ : VLCtx} (henv : Ordered env)
     (t₀ : env.HasType Us.length Δ.toCtx e₀' A₀)
@@ -1598,7 +1626,110 @@ variable! {ls : List VLevel} (hls : ∀ l ∈ ls, l.WF U')
     (hU : U = ls.length) in
 theorem TrProj.instL (H : TrProj env U Γ s i e e') :
     TrProj env U' (Γ.map (VExpr.instL ls)) s i
-      (e.instL ls) (e'.instL ls) := sorry
+      (e.instL ls) (e'.instL ls) := by
+  obtain ⟨view, levels, params, hname, hproj⟩ := H
+  exact ⟨view, levels.map (VLevel.inst ls),
+    params.map (VExpr.instL ls), hname, hproj.instL hls⟩
+
+/-- The structural interface of Verify's projection translation.  The bundle
+keeps the seven laws available as one coherent capability while the named
+theorems above remain the compatibility surface for existing callers. -/
+structure TrProj.StructuralLaws (env : VEnv) : Prop where
+  weakening : ∀ {U n Γ Γ' s i e e'},
+    Ctx.Lift' n Γ Γ' → TrProj env U Γ s i e e' →
+      TrProj env U Γ' s i (e.lift' n) (e'.lift' n)
+  inverseWeakening : ∀ {U l Γ Γ' s i e e'},
+    OnCtx Γ' (env.IsType U) → Ctx.Lift' l Γ Γ' →
+      TrProj env U Γ' s i (e.lift' l) e' →
+        ∃ result, TrProj env U Γ s i e result
+  contextDefEq : ∀ {U Γ₁ Γ₂ s i e₁ e₂ result},
+    env.IsDefEqCtx U [] Γ₁ Γ₂ → env.IsDefEqU U Γ₁ e₁ e₂ →
+      TrProj env U Γ₁ s i e₁ result →
+        ∃ result', TrProj env U Γ₂ s i e₂ result'
+  wellFormed : ∀ {U Γ s i e result},
+    TrProj env U Γ s i e result → VExpr.WF env U Γ e →
+      VExpr.WF env U Γ result
+  unique : ∀ {U Γ₁ Γ₂ s₁ s₂ i e₁ e₂ result₁ result₂},
+    env.IsDefEqCtx U [] Γ₁ Γ₂ →
+      TrProj env U Γ₁ s₁ i e₁ result₁ →
+      TrProj env U Γ₂ s₂ i e₂ result₂ →
+      env.IsDefEqU U Γ₁ e₁ e₂ →
+        env.IsDefEqU U Γ₁ result₁ result₂
+  termSubstitution : ∀ {U Γ₀ Γ₁ Γ s i e e' e₀ A₀ k},
+    env.HasType U Γ₀ e₀ A₀ → Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ →
+      TrProj env U Γ₁ s i e e' →
+        TrProj env U Γ s i (e.inst e₀ k) (e'.inst e₀ k)
+  universeInstantiation : ∀ {U U' Γ s i e e'} {ls : List VLevel},
+    (∀ level ∈ ls, level.WF U') → U = ls.length →
+      TrProj env U Γ s i e e' →
+        TrProj env U' (Γ.map (VExpr.instL ls)) s i
+          (e.instL ls) (e'.instL ls)
+
+/-- Every well-formed environment supplies the complete projection structural
+interface. -/
+theorem TrProj.structuralLaws (henv : VEnv.WF env) :
+    TrProj.StructuralLaws env where
+  weakening W H := H.weak' henv.ordered W
+  inverseWeakening hΓ' W H := H.weak'_inv henv hΓ' W
+  contextDefEq hΓ he H := H.defeqDFC henv hΓ he
+  wellFormed H he := H.wf he
+  unique hΓ H1 H2 he := H1.uniq henv hΓ H2 he
+  termSubstitution h₀ W H := H.instN henv.ordered h₀ W
+  universeInstantiation hls hU H := H.instL hls hU
+
+/-!
+The guards below pin both the proved laws and the inherited Tier-R boundary.
+In particular, they distinguish local proof closure from the remaining public
+registered-head inversion dependency.
+-/
+
+/--
+info: 'Lean4Lean.TrProj.weak'' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms TrProj.weak'
+
+/--
+info: 'Lean4Lean.TrProj.weak'_inv' depends on axioms: [propext, sorryAx, Quot.sound]
+-/
+#guard_msgs in
+#print axioms TrProj.weak'_inv
+
+/--
+info: 'Lean4Lean.TrProj.defeqDFC' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms TrProj.defeqDFC
+
+/--
+info: 'Lean4Lean.TrProj.wf' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms TrProj.wf
+
+/--
+info: 'Lean4Lean.TrProj.uniq' depends on axioms: [propext, sorryAx, Quot.sound]
+-/
+#guard_msgs in
+#print axioms TrProj.uniq
+
+/--
+info: 'Lean4Lean.TrProj.instN' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms TrProj.instN
+
+/--
+info: 'Lean4Lean.TrProj.instL' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms TrProj.instL
+
+/--
+info: 'Lean4Lean.TrProj.structuralLaws' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms TrProj.structuralLaws
 
 section
 

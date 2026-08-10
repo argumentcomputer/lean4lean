@@ -132,14 +132,6 @@ private def surfacePrefixes : Array Lean.Name := #[`Lean4Lean.Theory, `Lean4Lean
 S (missing specification), P (stated but sorried, blocked on S), V (checker
 verification, blocked on S/P), R (research-grade metatheory, upstream-driven). -/
 private def allowlist : Array Lean.Name := #[
-  -- Tier P — projection structural laws (L4L-14)
-  `Lean4Lean.TrProj.weak',
-  `Lean4Lean.TrProj.weak'_inv,
-  `Lean4Lean.TrProj.defeqDFC,
-  `Lean4Lean.TrProj.wf,
-  `Lean4Lean.TrProj.uniq,
-  `Lean4Lean.TrProj.instN,
-  `Lean4Lean.TrProj.instL,
   -- Tier V — checker verification, blocked on Tier P
   -- (NormLevel.subsumption_eval and Level.isEquiv_wf were proved on the
   -- formalization line, 2026-08-05/07, and left the frontier.)
@@ -154,6 +146,7 @@ private def allowlist : Array Lean.Name := #[
   `Lean4Lean.VEnv.IsDefEqU.forallE_inv_stratified,
   `Lean4Lean.VEnv.IsDefEqU.sort_forallE_inv,
   `Lean4Lean.VEnv.IsDefEqU.weakN_iff,
+  `Lean4Lean.VEnv.WF.registeredStructureHeadInversion,
   `Lean4Lean.VEnv.NormalEq.parRed,
   -- Tier F — deliberately kernel-rejected inductive fixtures. Elaborator error
   -- recovery admits the invalid `inductive` with `sorryAx`, so the constant
