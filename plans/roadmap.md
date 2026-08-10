@@ -67,12 +67,12 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-12B active**; L4L-12A and everything above it are complete and pruned from §5; everything below L4L-12B is queued |
-| Current formalization source | the complete L4L-12A Theory API extraction checkpoint (`Theory/LocalContext.lean`, `Theory/Literals.lean`, and the Verify compatibility imports) based on the L4L-11 closure `0587b91a`, at `jcb/formalization2`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
+| Ladder position | **L4L-13A active**; L4L-12 and everything above it are complete and pruned from §5; everything below L4L-13A is queued |
+| Current formalization source | the complete L4L-12B literal-readiness checkpoint (`Theory/Literals.lean`, the Verify literal bridge, and `Tests/LiteralReadiness.lean`) layered on the independently gated L4L-12A extraction checkpoint `958d03b7` (itself based on the L4L-11 closure `0587b91a`), at `jcb/formalization2`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 20 live source `sorry` tokens across 19 proof declarations, plus six kernel-rejection recovery declarations (25 compiled allowlist entries total), and 29 custom-axiom declarations; all are pinned by exact audits |
-| Gates | the full §6 gate is green on the L4L-12A closure source, including focused, aggregate, and default Lake builds, the Nix proof/dependency build, a clean-source `nix flake check`, the unchanged 25-entry sorry frontier, Theory import-boundary and exact-axiom audits, formatter check, and whitespace check |
+| Gates | the full §6 gate is green independently on the L4L-12A extraction checkpoint and the L4L-12B readiness checkpoint, including focused, aggregate, and default Lake builds, the Nix proof/dependency build, clean-source `nix flake check`, the unchanged 25-entry sorry frontier, Theory import-boundary and exact-axiom audits, formatter check, and whitespace check |
 
 ### 2.1 What is green
 
@@ -103,12 +103,14 @@ direct and sibling recursion, recursive targets below Pi telescopes, small
 elimination, subsingleton large elimination, K-target metadata, and exact
 zero-/one-constructor generation.
 
-The consumer-neutral `VLocalDecl` core now lives in
-`Theory/LocalContext.lean`. Literal encodings, containment, primitive
-descriptors, and their VExpr-only structural laws live in
-`Theory/Literals.lean`; Verify retains `FVarId`, `Lean.Expr`, and
-`Literal.toConstructor` traversal while its former import paths re-export the
-same declaration names. Exact typed-prelude readiness remains L4L-12B.
+The consumer-neutral local-context core now lives in
+`Theory/LocalContext.lean`. `Theory/Literals.lean` owns literal encodings,
+containment, primitive descriptors, and `VEnv.PreludeReady`: an ordered exact
+Bool/Nat/Char/List/String contract including generated recursors and iota
+rules. Readiness derives direct literal WF, is stable under ordered
+environment extension and fresh constants, and remains independent of
+`Lean.Expr`; Verify retains only traversal and proves its constructor result
+equal to the direct Theory encoding.
 
 **Mutual validation, generation, and replay.** `VInductDecl.CheckedBlock` and
 `checkedBlock?` analyze an arbitrary nonempty `decl.types` list without
@@ -520,10 +522,9 @@ The remaining v4.31-added sorry is classified:
   inductive language remains a growing subset rather than kernel-complete;
   projection coverage remains queued. `pat_wf` carries the Church–Rosser
   development's transitional unique-typing closure until L4L-16/17 close it.
-- Exact typed-prelude readiness remains to be derived in L4L-12B, and
-  projection semantics plus the final consumer-neutral structure/checker
-  audit remain under `Verify/` (L4L-13A--L4L-15C). The local-context and
-  literal encoding APIs now have Theory-only homes.
+- Projection semantics and a final audit of consumer-neutral structure and
+  checker lemmas remain under `Verify/` (L4L-13A--L4L-15C). The local-context
+  and literal/prelude APIs now have Theory-only homes.
 - 29 project-specific `axiom` declarations outside `Experimental/`: 27 in
   `Verify/Axioms.lean` and two pointer-equality contracts in `PtrEq.lean`.
   Three cached-field equations from the group once false on older pins
@@ -692,19 +693,6 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Theory literals (L4L-12B)
-
-**L4L-12B — literal and prelude readiness (active).** `ContainsLits` says only that
-names occur in the environment; it does not imply their types. Define a
-Theory-level readiness predicate combining `Ordered` with the exact
-Nat/Bool/Char/List/String constant types and required iota rules. Prove that
-readiness plus `ContainsLits l` gives `VExpr.WF env U [] (VExpr.trLiteral
-l)`; that direct `trLiteral` meaning agrees with the Verify translation of
-`Literal.toConstructor`; and that readiness is monotone under `VEnv.LE` and
-preserved by unrelated declarations.
-*Exit:* literal WF is a derived theorem from the readiness predicate;
-notation-heavy fixtures pass; no invalid name-containment shortcut is used.
-
 ### Projections and structures (L4L-13A–L4L-15C)
 
 The current API needs a design gate first. `TrProj Γ structName idx e e'` has
@@ -712,7 +700,7 @@ no environment, universe count, structure descriptor, constructor metadata,
 or projection-name map; `TrProj.uniq` is even stated for unrelated `s₁` and
 `s₂`. A recursor encoding cannot simply be dropped into that signature.
 
-**L4L-13A — projection expressibility decision.** Freeze the seven current
+**L4L-13A — projection expressibility decision (active).** Freeze the seven current
 lemma statements as regression tests, then check whether a meaningful
 relation can satisfy them without strengthening their premises — in
 particular structure-name dependence, parameter offsets, dependent fields,
@@ -767,7 +755,7 @@ this is a metatheory change, not a local checker lemma.
 subject-reduction/injectivity/confluence and downstream-impact evidence.
 
 **L4L-15C — Theory-only consumer import surface.** Audit the consumer-neutral
-lemmas still living under Verify after L4L-12B and L4L-15B; give each a
+lemmas still living under Verify after the literal migration and L4L-15B; give each a
 Theory home and deprecate the corresponding Verify compatibility shims.
 *Exit:* no consumer-neutral lemma requires a `Lean4Lean.Verify` import;
 compatibility re-exports are removable without loss.

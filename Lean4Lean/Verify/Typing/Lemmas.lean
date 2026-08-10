@@ -1918,6 +1918,17 @@ theorem TrExprS.toConstructor_eq {l : Literal} {w}
         obtain rfl : _ = ([] : List VLevel) := by simpa using hf2.symm
         rfl
 
+/-- The Verify traversal of `Literal.toConstructor` and the direct Theory
+encoding form one ready, well-formed literal value. -/
+theorem TrExprS.toConstructor_ready {l : Literal} {w}
+    (hready : env.PreludeReady) (hcontains : env.ContainsLits l)
+    (h : TrExprS env Us Δ l.toConstructor w) :
+    w = VExpr.trLiteral l ∧ VExpr.WF env U [] w := by
+  have heq := h.toConstructor_eq
+  refine ⟨heq, ?_⟩
+  rw [heq]
+  exact hready.trLiteral_wf l hcontains
+
 /-- The deterministic translator agrees with every strict-translation
 derivation over any value-preserving context alignment: on the `IsUnique`
 fragment, `trExprS?` computes exactly the derivation's Theory value.  This
@@ -2464,3 +2475,9 @@ theorem AppStack.append {e : Expr} (H : AppStack env Us Δ (e.mkAppList as) e' b
 
 theorem AppStack.build {e : Expr} (H : TrExprS env Us Δ (e.mkAppList as) e') :
     ∃ e', AppStack env Us Δ e e' as := by simpa using AppStack.append (.head H)
+
+/--
+info: 'Lean4Lean.TrExprS.toConstructor_ready' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms TrExprS.toConstructor_ready
