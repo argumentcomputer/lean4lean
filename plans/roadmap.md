@@ -67,8 +67,8 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-10B active**; L4L-10A and everything above it are complete and pruned from §5; everything below L4L-10B is queued |
-| Current formalization source | the L4L-10A generated-iota-pattern checkpoint (`Theory/Typing/Pattern.lean` shape helpers, `Theory/Typing/InductivePattern.lean` block pattern facts, `Theory/Typing/InductivePatternFixtures.lean`) on top of the L4L-09 line (`e297560d` nested closure, `4b3d4498`/`34753706`/`b71ab5c2`/`a77e358b` sub-checkpoints, `b8899c7d` transformation, `e0ee54ee` design) and the L4L-08C closure `ea733017`, at `jcb/formalization2`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
+| Ladder position | **L4L-11 active**; L4L-10B and everything above it are complete and pruned from §5; everything below L4L-11 is queued |
+| Current formalization source | the L4L-10B pattern-soundness checkpoint (`Theory/Typing/InductivePatternWF.lean` typed β-collapse and `pat_wf`, `Theory/Typing/InductivePatternEnv.lean` block-local assembler) on top of the L4L-10A pattern-core checkpoint `3689b115`, the L4L-09 line (`e297560d` nested closure and its sub-checkpoints), and the L4L-08C closure `ea733017`, at `jcb/formalization2`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 20 live source `sorry` tokens across 19 proof declarations, plus six kernel-rejection recovery declarations (25 compiled allowlist entries total), and 29 custom-axiom declarations; all are pinned by exact audits |
@@ -410,11 +410,42 @@ shape layer (`HeadConstN`, `HeadConst`, `of_varN_matches`,
 `varNPaths`) lives in `Theory/Typing/Pattern.lean`; a mutual tree/forest
 block and a `Nat`-indexed vector fixture pin the pattern inventories and
 closedness by kernel evaluation. No open-environment `Params` instance is
-installed; `pat_wf` and the block-local environment assembler belong to
-L4L-10B.
+installed.
 
-**Not claimed.** Pattern soundness (`pat_wf`), the pattern-form environment
-assembler, projections, and the remaining metatheory/checker roots. The nested fixtures prove the current
+**Pattern soundness and the assembler.** The typed β-collapse layer
+(`Theory/Typing/InductivePatternWF.lean`) proves, at a sorry-free
+`propext`/`Quot.sound` closure, that applying a lambda telescope to a full
+well-typed spine is definitionally equal to the iterated instantiation of
+its body (`IsDefEq.appN_lamN` over `instRev`, with `SpineDefEq` pointwise
+application congruence, telescope instantiation, and lambda/pi tower
+inversions `lamN_wf`/`forallN_wf`), and that a matched pattern's captures
+are exactly the spine arguments (`varN_matches_paths`). `pat_wf` composes
+these into pattern soundness for one certified block: a successful match of
+a rule's pattern whose parameter and index checks hold is definitionally
+equal to the instantiated RHS template, derived from the exact rule defeq
+registered by `addInduct` — the redex arrives decomposed into its recursor
+and constructor spines with spine-form typing and pinned source levels,
+which is precisely what a verified reduction site holds, and the theorem's
+guarded closure is exactly the Church–Rosser development's own transitional
+unique-typing closure, shedding `sorryAx` automatically when L4L-16/17
+land. The block-local assembler
+(`Theory/Typing/InductivePatternEnv.lean`) builds an environment whose
+defeq set is exactly one certified block's generated rules plus separately
+certified extension rules over a constant base: `assembleEnv_defeqs`
+inverts the defeq set exactly, `assembleEnv_WF` preserves ordering through
+the block phases and the extension fold, and the union pattern set
+`AssembledPat` couples the block's L4L-10A facts with each
+`CertifiedExtension`'s payload and spine-level `extra_pat` coverage
+equation. No global open-environment `Params` instance is installed; both
+fixture blocks assemble over the empty base with their defeq sets pinned to
+their generated rules.
+
+**Not claimed.** Projections, and the remaining metatheory/checker roots.
+The upstream `Params.extra_pat` field demands that registered defeqs match
+patterns syntactically, which lambda-tower registrations (including
+`quotDefEq`) never do; the assembler therefore exposes spine-level coverage
+and `pat_wf`-derived reduction rather than claiming a `Params` instance for
+tower-registered environments. The nested fixtures prove the current
 single-target nesting boundary (one auxiliary block per occurrence class,
 `nparams ≤ 1` exercised by the ladder fixtures); nesting classes beyond
 the accepted flattened-block analyzer remain rejected, and deep
@@ -442,11 +473,12 @@ The remaining v4.31-added sorry is classified:
 
 - The public inductive spec has complete one-family, non-nested mutual,
   and nested generation, preservation, metadata parity, environment
-  replay, and generic iota-pattern facts, but remains a growing subset
-  rather than kernel-complete; pattern soundness (`pat_wf`), the
-  pattern-form assembler, and projection coverage remain queued, and
-  nested replay breadth beyond the two ladder fixtures belongs to
-  L4L-11.
+  replay, generic iota-pattern facts, pattern soundness (`pat_wf`), and
+  the block-local pattern environment assembler, but remains a growing
+  subset rather than kernel-complete; projection coverage remains queued,
+  and nested replay breadth beyond the two ladder fixtures belongs to
+  L4L-11. `pat_wf` carries the Church–Rosser development's transitional
+  unique-typing closure until L4L-16/17 close it.
 - Consumer-neutral APIs (`VLocalDecl` core, literal encodings,
   `ContainsLits`, `HasPrimitives`, `TrProj`) still live under `Verify/`,
   forcing downstream checkers to import that layer (L4L-12A/L4L-15C).
@@ -618,20 +650,9 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Generated patterns (L4L-10B)
-
-**L4L-10B — pattern soundness and environment assembler (active).** Prove
-`pat_wf`: successful match/check instantiates the LHS/RHS defeq registered
-by `addInduct`. Add a block-local assembler for an environment whose defeq
-set consists of generated inductive rules plus separately certified
-extension rules.
-*Exit:* the assembler is generic over certified extensions, installs no
-global open-environment `Params` instance, and exposes exactly the helpers
-Church–Rosser and downstream consumers need.
-
 ### Replay breadth and the block-certificate API (L4L-11)
 
-**L4L-11 — consumer block-certificate API.** Generalize the automatic
+**L4L-11 — consumer block-certificate API (active).** Generalize the automatic
 candidate/package construction and environment replay across the complete
 single/mutual/nested fixture matrix, keeping every dependency environment
 explicit and checking type, every constructor role, and recursor lookup

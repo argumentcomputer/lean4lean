@@ -1,4 +1,4 @@
-import Lean4Lean.Theory.Typing.InductivePattern
+import Lean4Lean.Theory.Typing.InductivePatternEnv
 
 /-! # Pattern facts for concrete certified blocks
 
@@ -119,5 +119,23 @@ axiom closure recorded below. -/
 /-- info: 'Lean4Lean.InductivePatternFixtures.patVecClosure' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms patVecClosure
+
+/-! ## The assembled block-local environments
+
+Both blocks assemble over the empty base with no extensions; their defeq
+sets are exactly their generated rules. -/
+
+#guard (patTreeGen.assembleEnv .empty []).isSome
+#guard (patVecGen.assembleEnv .empty []).isSome
+
+/-- Every defeq of the assembled tree/forest environment is a generated
+rule: the base is defeq-free and no extensions are registered. -/
+example {env' : VEnv} (h : patTreeGen.assembleEnv .empty [] = some env')
+    {df : VDefEq} (hdf : env'.defeqs df) :
+    df ∈ patTreeGen.generatedRules := by
+  rcases patTreeGen.assembleEnv_defeq_cases h (fun _ hd => hd) hdf with
+    hrule | ⟨ext, hm, -⟩
+  · exact hrule
+  · cases hm
 
 end Lean4Lean.InductivePatternFixtures
