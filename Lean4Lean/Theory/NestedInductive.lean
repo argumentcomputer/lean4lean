@@ -52,6 +52,7 @@ L4L-09C's obligation.
 namespace Lean4Lean
 
 deriving instance DecidableEq for VConstant
+deriving instance DecidableEq for VDefEq
 deriving instance DecidableEq for VConstVal
 deriving instance DecidableEq for VInductiveType
 deriving instance DecidableEq for VInductDecl
