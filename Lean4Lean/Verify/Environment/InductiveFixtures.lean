@@ -2530,6 +2530,11 @@ private theorem outParam_trEnv' :
 private theorem outParamMap_wf : outParamMap.WF :=
   outParam_trEnv'.map_wf
 
+/-- Public map-well-formedness boundary for replay artifacts whose concrete
+dependency map is intentionally kept private to this fixture module. -/
+theorem annotatedReplayInputMap_wf : outParamMap.WF :=
+  outParamMap_wf
+
 private def outParamKernelEnv : Kernel.Environment :=
   Kernel.Environment.ofConstants `_annotatedPiCandidate outParamMap
 

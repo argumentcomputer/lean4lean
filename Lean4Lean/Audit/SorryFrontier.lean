@@ -11,6 +11,7 @@ import Lean4Lean.Theory.Typing.ChurchRosser
 import Lean4Lean.Theory.Typing.Env
 import Lean4Lean.Theory.Typing.EnvLemmas
 import Lean4Lean.Theory.Typing.HeadReduction
+import Lean4Lean.Theory.Typing.InductiveCertificate
 import Lean4Lean.Theory.Typing.InductiveLemmas
 import Lean4Lean.Theory.Typing.Injectivity
 import Lean4Lean.Theory.Typing.Lemmas
@@ -31,6 +32,7 @@ import Lean4Lean.Verify.Environment.CandidateIdentityReplay
 import Lean4Lean.Verify.Environment.ConstructorValidation
 import Lean4Lean.Verify.Environment.ConstructorValidityMatrix
 import Lean4Lean.Verify.Environment.ConstructorValidityReplay
+import Lean4Lean.Verify.Environment.DeepNestedReplay
 import Lean4Lean.Verify.Environment.Elimination
 import Lean4Lean.Verify.Environment.EliminationFixtures
 import Lean4Lean.Verify.Environment.EliminationFixturesCommon
@@ -46,6 +48,7 @@ import Lean4Lean.Verify.Environment.IndexedVecConstructors
 import Lean4Lean.Verify.Environment.IndexedVecOuterReplay
 import Lean4Lean.Verify.Environment.IndexedVecSemanticReplay
 import Lean4Lean.Verify.Environment.InductiveFixtures
+import Lean4Lean.Verify.Environment.InductiveReplayMatrix
 import Lean4Lean.Verify.Environment.Lemmas
 import Lean4Lean.Verify.Environment.MutualInductiveFixtures
 import Lean4Lean.Verify.Environment.Normalization

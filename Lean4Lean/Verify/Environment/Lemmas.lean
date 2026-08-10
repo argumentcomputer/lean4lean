@@ -96,6 +96,31 @@ theorem AddInductConstant.map_wf
   rw [H.map_add]
   exact wf.insert _ _ H.map_fresh
 
+/-- The implementation metadata inserted by one inductive-constant step is
+still available at that step's output boundary. -/
+theorem AddInductConstant.map_lookup
+    (H : AddInductConstant kind C₁ env₁ ci C₂ env₂)
+    (wf : C₁.WF) : C₂.find? ci.name = some H.info := by
+  simpa [H.map_add, wf.find?_insert]
+
+/-- An inductive-metadata insertion preserves every lookup already present in
+the input map.  Freshness rules out the only key at which `insert` could
+replace that entry. -/
+theorem AddInductConstant.preserve_map_lookup
+    (H : AddInductConstant kind C₁ env₁ ci' C₂ env₂)
+    (wf : C₁.WF) {name : Name} {info : ConstantInfo}
+    (hlookup : C₁.find? name = some info) :
+    C₂.find? name = some info := by
+  rw [H.map_add, wf.find?_insert]
+  split
+  · rename_i heq
+    have hname : ci'.name = name := by simpa using heq
+    subst name
+    have hfresh := H.map_fresh
+    rw [hlookup] at hfresh
+    contradiction
+  · exact hlookup
+
 theorem InductConstantKind.Matches.deltaValue?_eq_none
     {kind : InductConstantKind} {ci : ConstantInfo}
     (H : InductConstantKind.Matches kind ci) : ci.deltaValue? = none := by
@@ -121,12 +146,175 @@ theorem AddInductConstants.map_wf :
   | .nil, wf => wf
   | .cons h hrest, wf => hrest.map_wf (h.map_wf wf)
 
+/-- A whole insertion fold preserves every lookup from its input map. -/
+theorem AddInductConstants.preserve_map_lookup
+    (H : AddInductConstants kind C₁ env₁ cis C₂ env₂)
+    (wf : C₁.WF) {name : Name} {info : ConstantInfo}
+    (hlookup : C₁.find? name = some info) :
+    C₂.find? name = some info := by
+  induction H with
+  | nil => exact hlookup
+  | cons h hrest ih =>
+    exact ih (h.map_wf wf) (h.preserve_map_lookup wf hlookup)
+
+/-- Final-map evidence for any member of an inductive metadata fold.  The
+result retains the exact implementation object, its role tag, and its
+translation against the final Theory environment. -/
+theorem AddInductConstants.translated_lookup
+    (H : AddInductConstants kind C₁ env₁ cis C₂ env₂)
+    (wf : C₁.WF) {ci : VConstVal} (hmem : ci ∈ cis) : ∃ info,
+      C₂.find? ci.name = some info ∧
+      kind.Matches info ∧ TrConstVal .safe env₂ info ci := by
+  induction H with
+  | nil => contradiction
+  | cons h hrest ih =>
+    rcases List.mem_cons.1 hmem with rfl | hmem
+    · refine ⟨h.info, ?_, h.kind_eq, ?_⟩
+      exact hrest.preserve_map_lookup (h.map_wf wf) (h.map_lookup wf)
+      exact h.tr.mono (h.le.trans hrest.le)
+    · exact ih (h.map_wf wf) hmem
+
 theorem AddInductConstants.old_of_value :
     (H : AddInductConstants kind C₁ env₁ cis C₂ env₂) → C₁.WF →
     C₂.find? name = some ci → ci.deltaValue? = some v → C₁.find? name = some ci
   | .nil, _, hout, _ => hout
   | .cons h hrest, wf, hout, hv =>
     h.old_of_value wf (hrest.old_of_value (h.map_wf wf) hout hv) hv
+
+/-! ## Final translated metadata inventories -/
+
+/-- Final-map and final-environment evidence for the family emitted by a
+singleton inductive replay. -/
+theorem AddInductTrace.type_translated_lookup
+    (H : AddInductTrace C₁ env₁ decl C₂ env₂) (wf : C₁.WF) :
+    ∃ info,
+      C₂.find? H.generation.block.sourceType.name = some info ∧
+      InductConstantKind.induct.Matches info ∧
+      TrConstVal .safe env₂ info H.generation.block.sourceType.toVConstVal := by
+  refine ⟨H.addType.info, ?_, H.addType.kind_eq, ?_⟩
+  · exact H.addRec.preserve_map_lookup
+      (H.addCtors.map_wf (H.addType.map_wf wf))
+      (H.addCtors.preserve_map_lookup (H.addType.map_wf wf)
+        (H.addType.map_lookup wf))
+  · exact H.addType.tr.mono
+      (H.addType.le.trans <| H.addCtors.le.trans <|
+        H.addRec.le.trans H.addRules.le)
+
+/-- Final-map and final-environment evidence for every constructor emitted by
+a singleton inductive replay. -/
+theorem AddInductTrace.constructor_translated_lookup
+    (H : AddInductTrace C₁ env₁ decl C₂ env₂) (wf : C₁.WF)
+    {constructor : VConstVal}
+    (hconstructor : constructor ∈ H.generation.block.sourceType.ctors) :
+    ∃ info,
+      C₂.find? constructor.name = some info ∧
+      InductConstantKind.ctor.Matches info ∧
+      TrConstVal .safe env₂ info constructor := by
+  obtain ⟨info, hlookup, hkind, htr⟩ :=
+    H.addCtors.translated_lookup (H.addType.map_wf wf) hconstructor
+  exact ⟨info,
+    H.addRec.preserve_map_lookup (H.addCtors.map_wf (H.addType.map_wf wf)) hlookup,
+    hkind, htr.mono (H.addRec.le.trans H.addRules.le)⟩
+
+/-- Final-map and final-environment evidence for the recursor emitted by a
+singleton inductive replay. -/
+theorem AddInductTrace.recursor_translated_lookup
+    (H : AddInductTrace C₁ env₁ decl C₂ env₂)
+    (wf : C₁.WF) : ∃ info,
+      C₂.find? (inductGenerationRecVal H.generation).name = some info ∧
+      InductConstantKind.recursor.Matches info ∧
+      TrConstVal .safe env₂ info (inductGenerationRecVal H.generation) := by
+  exact ⟨H.addRec.info, H.addRec.map_lookup
+      (H.addCtors.map_wf (H.addType.map_wf wf)), H.addRec.kind_eq,
+    H.addRec.tr.mono (H.addRec.le.trans H.addRules.le)⟩
+
+/-- Final translated lookup for every source family in a mutual block. -/
+theorem AddInductBlockTrace.family_translated_lookup
+    (H : AddInductBlockTrace C₁ env₁ decl C₂ env₂) (wf : C₁.WF)
+    {family : VInductiveType} (hfamily : family ∈ decl.types) : ∃ info,
+      C₂.find? family.name = some info ∧
+      InductConstantKind.induct.Matches info ∧
+      TrConstVal .safe env₂ info family.toVConstVal := by
+  have hmember : family.toVConstVal ∈ decl.blockTypeConstants :=
+    List.mem_map.2 ⟨family, hfamily, rfl⟩
+  obtain ⟨info, hlookup, hkind, htr⟩ :=
+    H.addTypes.translated_lookup wf hmember
+  exact ⟨info,
+    H.addRecs.preserve_map_lookup
+      (H.addCtors.map_wf (H.addTypes.map_wf wf))
+      (H.addCtors.preserve_map_lookup (H.addTypes.map_wf wf) hlookup),
+    hkind, htr.mono (H.addCtors.le.trans <| H.addRecs.le.trans H.addRules.le)⟩
+
+/-- Final translated lookup for every flattened constructor in a mutual
+block. -/
+theorem AddInductBlockTrace.constructor_translated_lookup
+    (H : AddInductBlockTrace C₁ env₁ decl C₂ env₂) (wf : C₁.WF)
+    {constructor : VConstVal}
+    (hconstructor : constructor ∈ decl.blockConstructorConstants) : ∃ info,
+      C₂.find? constructor.name = some info ∧
+      InductConstantKind.ctor.Matches info ∧
+      TrConstVal .safe env₂ info constructor := by
+  obtain ⟨info, hlookup, hkind, htr⟩ :=
+    H.addCtors.translated_lookup (H.addTypes.map_wf wf) hconstructor
+  exact ⟨info,
+    H.addRecs.preserve_map_lookup
+      (H.addCtors.map_wf (H.addTypes.map_wf wf)) hlookup,
+    hkind, htr.mono (H.addRecs.le.trans H.addRules.le)⟩
+
+/-- Final translated lookup for every generated recursor in a mutual block. -/
+theorem AddInductBlockTrace.recursor_translated_lookup
+    (H : AddInductBlockTrace C₁ env₁ decl C₂ env₂) (wf : C₁.WF)
+    {recursor : VConstVal} (hrecursor : recursor ∈ H.generation.recursors) :
+    ∃ info,
+      C₂.find? recursor.name = some info ∧
+      InductConstantKind.recursor.Matches info ∧
+      TrConstVal .safe env₂ info recursor := by
+  obtain ⟨info, hlookup, hkind, htr⟩ := H.addRecs.translated_lookup
+    (H.addCtors.map_wf (H.addTypes.map_wf wf)) hrecursor
+  exact ⟨info, hlookup, hkind, htr.mono H.addRules.le⟩
+
+/-- Final translated lookup for every source family in a nested replay. -/
+theorem AddInductNestedTrace.family_translated_lookup
+    (H : AddInductNestedTrace C₁ env₁ decl C₂ env₂) (wf : C₁.WF)
+    {family : VInductiveType} (hfamily : family ∈ decl.types) : ∃ info,
+      C₂.find? family.name = some info ∧
+      InductConstantKind.induct.Matches info ∧
+      TrConstVal .safe env₂ info family.toVConstVal := by
+  have hmember : family.toVConstVal ∈ decl.blockTypeConstants :=
+    List.mem_map.2 ⟨family, hfamily, rfl⟩
+  obtain ⟨info, hlookup, hkind, htr⟩ :=
+    H.addTypes.translated_lookup wf hmember
+  exact ⟨info,
+    H.addRecs.preserve_map_lookup
+      (H.addCtors.map_wf (H.addTypes.map_wf wf))
+      (H.addCtors.preserve_map_lookup (H.addTypes.map_wf wf) hlookup),
+    hkind, htr.mono (H.addCtors.le.trans <| H.addRecs.le.trans H.addRules.le)⟩
+
+/-- Final translated lookup for every source constructor in a nested replay. -/
+theorem AddInductNestedTrace.constructor_translated_lookup
+    (H : AddInductNestedTrace C₁ env₁ decl C₂ env₂) (wf : C₁.WF)
+    {constructor : VConstVal}
+    (hconstructor : constructor ∈ decl.blockConstructorConstants) : ∃ info,
+      C₂.find? constructor.name = some info ∧
+      InductConstantKind.ctor.Matches info ∧
+      TrConstVal .safe env₂ info constructor := by
+  obtain ⟨info, hlookup, hkind, htr⟩ :=
+    H.addCtors.translated_lookup (H.addTypes.map_wf wf) hconstructor
+  exact ⟨info,
+    H.addRecs.preserve_map_lookup
+      (H.addCtors.map_wf (H.addTypes.map_wf wf)) hlookup,
+    hkind, htr.mono (H.addRecs.le.trans H.addRules.le)⟩
+
+/-- Final translated lookup for every restored recursor in a nested replay. -/
+theorem AddInductNestedTrace.recursor_translated_lookup
+    (H : AddInductNestedTrace C₁ env₁ decl C₂ env₂) (wf : C₁.WF)
+    {recursor : VConstVal} (hrecursor : recursor ∈ H.nested.recursors) : ∃ info,
+      C₂.find? recursor.name = some info ∧
+      InductConstantKind.recursor.Matches info ∧
+      TrConstVal .safe env₂ info recursor := by
+  obtain ⟨info, hlookup, hkind, htr⟩ := H.addRecs.translated_lookup
+    (H.addCtors.map_wf (H.addTypes.map_wf wf)) hrecursor
+  exact ⟨info, hlookup, hkind, htr.mono H.addRules.le⟩
 
 theorem AddInduct.map_wf (H : AddInduct C₁ env₁ decl C₂ env₂)
     (wf : C₁.WF) : C₂.WF := by

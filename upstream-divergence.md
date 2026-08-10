@@ -4,8 +4,8 @@ This file tracks every deliberate semantic, API, build, or verification delta
 from `upstream/master` that must either be upstreamed or explicitly retained.
 It is the tracked counterpart to `plans/roadmap.md`.
 
-Audit baseline after the complete L4L-08C mutual generation/preservation/replay
-checkpoint (2026-08-07):
+Audit baseline after the complete L4L-11 replay/certificate checkpoint
+(2026-08-10):
 
 - current upstream reconciliation parent: digama `upstream/master`
   `ef849dfbd94a`
@@ -116,9 +116,21 @@ checkpoint (2026-08-07):
   `eeae5282`; the block-wide public raw transaction in `1159c655`; and the
   metadata/trust audit in `aa10005d`; this closure checkpoint adds the
   deprecated singleton migration shim and completion records.
+- local-committed nested-inductive checkpoints at `jcb/formalization2`:
+  representation and flattening from `e0ee54e` through `b8899c7`, restored
+  generation/real-output alignment from `4b3d449` through `3475370`, typed
+  constant-interpretation transport in `b71ab5c`, and the two real replay
+  closures `a77e358` and `e297560`.
+- local-committed generated-pattern checkpoints at `jcb/formalization2`:
+  the certified-block iota-pattern core `3689b11` and typed pattern soundness
+  plus the block-local environment assembler `bc51f98`.
+- L4L-11 closure checkpoint: the consumer-neutral block/nested
+  certificates, complete 25-row actual-metadata replay matrix, real queued
+  two-parameter nested replay, and 296-declaration notation-prelude replay
+  described in D013. Publication is pending.
 - fixed fork master: `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb`
   on local and `origin/master`
-- current audited semantic checkpoint: the L4L-08C closure extends the
+- audited L4L-08C semantic base: the L4L-08C closure extends the
   `jcb/formalization` L4L-07 base, which integrates Nat, Bool, List, Option,
   Prod, Unit/`PUnit`,
   Empty, Or, And, Eq, HEq, Fin, Vector, and Acc into one executable kernel
@@ -287,10 +299,10 @@ to the replacement.
 
 ## D006 — staged computational inductive semantics
 
-- **Status:** remote-development (the earlier checkpoints are published-fork;
-  the elimination/K/edge, complete L4L-07 singleton-parity, and L4L-08C
-  mutual-generation extensions are pushed at `jcb/formalization`, while
-  publication to `jcb/induct` remains pending)
+- **Status:** remote-development (the earlier checkpoints are published-fork
+  or pushed to `jcb/formalization`; the L4L-09 through L4L-11 extensions are
+  checkpointed at `jcb/formalization2`, while publication to `jcb/induct`
+  remains pending)
 - **Commits:** `71f2eae`, `06e904d`, `201c12f`, `efb2a2b`, the generalized
   single-family integration in `472a6f0`, the L4L-06A/B checkpoints
   `37e2ada6` and `41e1126b`, the L4L-06C edge checkpoints `0c6b178c` and
@@ -318,9 +330,13 @@ to the replacement.
   checked/validated certificates. L4L-08C adds block-wide motive, minor,
   recursor, and rule generation; proves every artifact well formed and the
   exact four-phase transaction ordered; and replays both real mutual fixtures
-  through the implementation environment. This remains an underapproximation
-  of the full kernel: nested inductives and the later
-  generated-pattern/projection corpus are not implemented.
+  through the implementation environment. L4L-09 adds flattening/restoration,
+  generation, preservation, and real-metadata replay for the accepted nested
+  class; L4L-10 adds generated iota patterns, typed pattern soundness, and the
+  block-local assembler; L4L-11 adds the consumer certificates and complete
+  supported replay matrix recorded in D013. This remains an underapproximation
+  of the full kernel: unsupported nesting classes, projections, and the
+  remaining metatheory/checker roots are still open.
 - **Ix impact:** discharges ix gap A1's three upstream `sorryAx` origins and is
   the semantic basis for constructing `InductiveOracle`; current breadth is
   not yet enough for all ix blocks.
@@ -344,8 +360,10 @@ to the replacement.
 
 ## D007 — consumer-facing inductive transaction API
 
-- **Status:** remote-development (the one-family base is published-fork; the
-  L4L-08C block transaction is pushed at `jcb/formalization`)
+- **Status:** remote-development (the one-family base is published-fork, the
+  L4L-08C block transaction is pushed at `jcb/formalization`, and the nested
+  transaction plus L4L-11 certificate façade are checkpointed at
+  `jcb/formalization2`)
 - **Commits:** the normalized core in `472a6f0`, the proof-carrying
   non-identity API in `6a77882`, and the block transaction/public migration
   through `12040b3e`, `48882b9c`, `67d65928`, `1159c655`, and `aa10005d`
@@ -359,7 +377,9 @@ to the replacement.
   The raw `VEnv.addInduct` now selects the same block artifact and no longer
   performs singleton projection. The former one-family raw computation remains
   available as deprecated `addInductSingleton`; the normalized
-  `addInductGeneration`/`addInductCertified` APIs remain unchanged.
+  `addInductGeneration`/`addInductCertified` APIs remain unchanged. The
+  L4L-09 nested transaction and L4L-11 `BlockCertificate`/
+  `NestedBlockCertificate` consumer façade are tracked in D013.
 - **Ix impact:** lets `InductiveOracle` consume checked block results without
   unfolding `Option` binds or `foldlM`, and gives ix a Theory-only
   non-identity certificate boundary without importing Verify.
@@ -374,9 +394,9 @@ to the replacement.
 
 ## D008 — Verify inductive-environment alignment
 
-- **Status:** remote-development (the earlier checkpoints are published-fork;
-  complete L4L-07 actual-metadata execution alignment and L4L-08C mutual
-  replay are pushed at `jcb/formalization`)
+- **Status:** remote-development (the earlier checkpoints are published-fork
+  or pushed at `jcb/formalization`, and the L4L-09 nested replays plus complete
+  L4L-11 matrix are checkpointed at `jcb/formalization2`)
 - **Commits:** initial alignment in `472a6f0`, extended through `a1d8943`,
   `6a77882`, `bc37d43`, `37e2ada6`, `41e1126b`, `0c6b178c`, `df58a3a0`,
   `bb39cb2a`, `cc132cdd`, `fefb93fe`, the L4L-07 closure, and the L4L-08C
@@ -401,12 +421,16 @@ to the replacement.
   list-wide constant phases, proves fold realization and monotonicity, and
   extends `TrEnv'`/`Aligned` with an atomic mutual-block case. Both real mutual
   maps replay every family, constructor, and recursor in kernel order before
-  installing the globally flattened rules.
+  installing the globally flattened rules. L4L-09 adds the corresponding
+  restored nested trace/alignment path and two actual-metadata replays; L4L-11
+  adds final-map translated role/uniqueness lemmas, the third deep replay, and
+  the unified matrix in D013.
 - **Ix impact:** establishes the implementation-to-Theory environment bridge
   needed to translate checked inductive blocks and eventually construct
-  `InductiveOracle`; non-nested mutual replay is now closed, while nested and
-  generated-pattern/projection work is still required before that oracle is
-  constructible for the full kernel surface.
+  `InductiveOracle`. The supported singleton, mutual, and nested replay matrix
+  and generated-pattern consequences are now closed; projection semantics and
+  unsupported inductive forms still prevent construction for the full kernel
+  surface.
 - **Tests:** `lake build Lean4Lean.Verify.Environment.SingletonParityReplay`;
   executable 14/5/19 inventory equalities; every actual-metadata transaction,
   final alignment, and derived output ordering; exact Fin/Vector dependency
@@ -852,6 +876,53 @@ to the replacement.
 - **Removal condition:** upstream provides an equivalent standard-only
   mvar-free level-order theorem and constructor semantic validation consumes it
   without a fork-only comparator.
+
+## D013 — complete inductive replay and consumer certificates
+
+- **Status:** remote-development at `jcb/formalization2`; publication to
+  `jcb/induct` is pending.
+- **Commit:** this L4L-11 closure checkpoint, based on `bc51f980`.
+- **Delta:** add the Theory-only `VInductDecl.BlockCertificate` and
+  `NestedBlockCertificate` façades over successful proof-carrying
+  transactions. They export raw transaction recovery, environment growth/WF,
+  exact family/constructor/recursor lookups and freshness, lookup uniqueness,
+  registered rule membership/WF, derived rule closure, and generated-recursion
+  pattern facts without carrying Verify state or implementation metadata.
+  Verify now preserves old implementation-map lookups across inductive folds
+  and exports exact final-map translated roles. A single 25-row inventory
+  combines 20 ordinary singleton candidate executions, both real mutual
+  blocks, and three analyzer-produced nested blocks with explicit dependency
+  maps/environments, data-bearing traces, every constructor role, and recursor
+  uniqueness. The new `DeepBi` row replays actual stored metadata over the
+  two-parameter `BiBox` dependency and exercises a queued second nested
+  occurrence, three restored recursors, and all three kernel rule RHSs. A
+  separate executable test freshly replays the real compiled dependency
+  closure of a notation-heavy fixture (296 declarations) instead of using a
+  hand-built Theory prelude.
+- **Ix impact:** downstream checkers can consume one implementation-independent
+  block certificate for growth, preservation, metadata lookup, registered
+  rules, and L4L-10 pattern consequences. The matrix demonstrates that the
+  supported singleton/mutual/nested class is constructible from actual kernel
+  metadata with dependencies kept explicit.
+- **Tests:** focused deep-nested and unified-matrix builds; aggregate
+  Theory/Verify/Tests/sorry-frontier and default Lake builds; exact 20/2/3/25
+  inventory counts and the 296-declaration fresh replay; default Nix proof and
+  dependency builds; clean-source `nix flake check`; formatter, whitespace,
+  and Theory import-boundary checks; exact compile-time axiom manifests.
+- **Axiom note:** the Theory certificate WF roots close over only `propext` and
+  `Quot.sound`; rule closure/pattern facts additionally use
+  `Classical.choice`, never `sorryAx` or a project-specific axiom. Verify's
+  translated matrix retains the already classified projection `sorryAx`,
+  pointer/expression/persistent-container contracts, existing mutual/nested
+  observations, and six narrowly named native observations for selecting the
+  singleton matrix and pinning the new deep fixture. No new `axiom`
+  declaration or source `sorry` was added, and the compiled frontier remains
+  exactly 25 allowlisted entries.
+- **Upstream issue/PR:** TBD; submit the Theory façade independently of the
+  implementation replay corpus where practical.
+- **Removal condition:** upstream exposes equivalent consumer-neutral block
+  consequences and actual-metadata replay breadth, all downstream users move
+  to it, and the fork-only certificate/matrix can be deleted.
 
 ## Review checklist
 

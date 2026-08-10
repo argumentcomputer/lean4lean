@@ -22,6 +22,7 @@ structure SingletonReplayArtifact where
   source : VInductDecl
   inputMap : ConstMap
   inputEnv : VEnv
+  inputMapWF : inputMap.WF
   outputMap : ConstMap
   outputEnv : VEnv
   inputOrdered : inputEnv.Ordered
@@ -150,6 +151,7 @@ def natReplay07 : SingletonReplayArtifact where
   source := natDecl
   inputMap := {}
   inputEnv := .empty
+  inputMapWF := SMap.WF.empty
   outputMap := natMap
   outputEnv := natFinalEnv
   inputOrdered := .empty
@@ -161,6 +163,7 @@ def eqReplay07 : SingletonReplayArtifact where
   source := eqDecl
   inputMap := {}
   inputEnv := .empty
+  inputMapWF := SMap.WF.empty
   outputMap := eqMap
   outputEnv := eqFinalEnv
   inputOrdered := .empty
@@ -172,6 +175,7 @@ def accReplay07 : SingletonReplayArtifact where
   source := accDecl
   inputMap := {}
   inputEnv := .empty
+  inputMapWF := SMap.WF.empty
   outputMap := accMap
   outputEnv := accFinalEnv
   inputOrdered := .empty
@@ -183,6 +187,7 @@ def aliasFormerReplay07 : SingletonReplayArtifact where
   source := aliasFormerRawDecl
   inputMap := typeFamilyAliasMap
   inputEnv := typeFamilyAliasEnv
+  inputMapWF := typeFamilyAliasMap_wf
   outputMap := aliasFormerMap
   outputEnv := aliasFormerFinalEnv
   inputOrdered := typeFamilyAliasEnv_ordered
@@ -194,6 +199,7 @@ def aliasRecReplay07 : SingletonReplayArtifact where
   source := aliasRecRawDecl
   inputMap := recAliasMap
   inputEnv := recAliasEnv
+  inputMapWF := recAliasMap_wf
   outputMap := aliasRecMap
   outputEnv := aliasRecFinalEnv
   inputOrdered := recAliasEnv_ordered
@@ -205,6 +211,7 @@ def normalizationMatrixReplay07 : SingletonReplayArtifact where
   source := normalizationMatrixRawDecl
   inputMap := matrixAliasMap
   inputEnv := normalizationMatrixAliasEnv
+  inputMapWF := matrixAliasMap_wf
   outputMap := normalizationMatrixMap
   outputEnv := normalizationMatrixFinalEnv
   inputOrdered := normalizationMatrixAliasEnv_ordered
@@ -216,6 +223,7 @@ def annotatedPiReplay07 : SingletonReplayArtifact where
   source := annotatedPiRawDecl
   inputMap := _
   inputEnv := outParamEnv
+  inputMapWF := annotatedReplayInputMap_wf
   outputMap := _
   outputEnv := annotatedPiFinalEnv
   inputOrdered := outParamEnv_ordered
@@ -227,6 +235,7 @@ def annotatedParamReplay07 : SingletonReplayArtifact where
   source := annotatedParamRawDecl
   inputMap := _
   inputEnv := outParamEnv
+  inputMapWF := annotatedReplayInputMap_wf
   outputMap := _
   outputEnv := annotatedParamFinalEnv
   inputOrdered := outParamEnv_ordered
@@ -431,6 +440,7 @@ def boolReplay07 : SingletonReplayArtifact where
   source := boolDecl
   inputMap := {}
   inputEnv := .empty
+  inputMapWF := SMap.WF.empty
   outputMap := boolMap07
   outputEnv := boolFinalEnv07
   inputOrdered := .empty
@@ -655,6 +665,7 @@ def listReplay07 : SingletonReplayArtifact where
   source := listDecl
   inputMap := {}
   inputEnv := .empty
+  inputMapWF := SMap.WF.empty
   outputMap := listMap07
   outputEnv := listFinalEnv07
   inputOrdered := .empty
@@ -877,6 +888,7 @@ def optionReplay07 : SingletonReplayArtifact where
   source := optionDecl
   inputMap := {}
   inputEnv := .empty
+  inputMapWF := SMap.WF.empty
   outputMap := optionMap07
   outputEnv := optionFinalEnv07
   inputOrdered := .empty
@@ -1051,6 +1063,7 @@ def prodReplay07 : SingletonReplayArtifact where
   source := prodDecl
   inputMap := {}
   inputEnv := .empty
+  inputMapWF := SMap.WF.empty
   outputMap := prodMap07
   outputEnv := prodFinalEnv07
   inputOrdered := .empty
@@ -1219,6 +1232,7 @@ def andReplay07 : SingletonReplayArtifact where
   source := andDecl
   inputMap := {}
   inputEnv := .empty
+  inputMapWF := SMap.WF.empty
   outputMap := andMap07
   outputEnv := andFinalEnv07
   inputOrdered := .empty
@@ -1437,6 +1451,7 @@ def orReplay07 : SingletonReplayArtifact where
   source := orDecl
   inputMap := {}
   inputEnv := .empty
+  inputMapWF := SMap.WF.empty
   outputMap := orMap07
   outputEnv := orFinalEnv07
   inputOrdered := .empty
@@ -1602,6 +1617,7 @@ def heqReplay07 : SingletonReplayArtifact where
   source := heqDecl
   inputMap := {}
   inputEnv := .empty
+  inputMapWF := SMap.WF.empty
   outputMap := heqMap07
   outputEnv := heqFinalEnv07
   inputOrdered := .empty
@@ -2053,6 +2069,7 @@ def finReplay07 : SingletonReplayArtifact where
   source := finDecl
   inputMap := finInputMap07
   inputEnv := finInputEnv07
+  inputMapWF := finInputMapWF07
   outputMap := finMap07
   outputEnv := finFinalEnv07
   inputOrdered := finInputEnv_ordered07
@@ -2430,6 +2447,7 @@ def vectorReplay07 : SingletonReplayArtifact where
   source := vectorDecl
   inputMap := vectorInputMap07
   inputEnv := vectorInputEnv07
+  inputMapWF := vectorInputMapWF07
   outputMap := vectorMap07
   outputEnv := vectorFinalEnv07
   inputOrdered := vectorInputEnv_ordered07
@@ -2570,6 +2588,7 @@ def punitReplay07 : SingletonReplayArtifact where
   source := punitDecl
   inputMap := {}
   inputEnv := .empty
+  inputMapWF := SMap.WF.empty
   outputMap := punitMap07
   outputEnv := punitFinalEnv07
   inputOrdered := .empty
@@ -2669,6 +2688,7 @@ def emptyReplay07 : SingletonReplayArtifact where
   source := emptyDecl
   inputMap := {}
   inputEnv := .empty
+  inputMapWF := SMap.WF.empty
   outputMap := emptyMap07
   outputEnv := emptyFinalEnv07
   inputOrdered := .empty

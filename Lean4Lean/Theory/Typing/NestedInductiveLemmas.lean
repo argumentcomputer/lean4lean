@@ -79,6 +79,16 @@ theorem family_lookup (H : AddInductNestedTrace env env' nested)
       (rulesFold_spec nested.generatedRules H.recEnv).1
   exact (hctors.trans (hrecs.trans hrules)).constants hlookup
 
+/-- Every flattened source constructor name was fresh before the nested
+transaction. -/
+theorem ctor_fresh (H : AddInductNestedTrace env env' nested)
+    {c : VConstVal} (hc : c ∈ source.blockConstructorConstants) :
+    env.constants c.name = none := by
+  have htypes := (ctorFold_spec source.blockTypeConstants H.addTypes).1
+  have hfresh :=
+    (ctorFold_spec source.blockConstructorConstants H.addCtors).2.2 c hc
+  exact htypes.constants_none hfresh
+
 /-- The final environment stores every exact source constructor
 constant. -/
 theorem ctor_lookup (H : AddInductNestedTrace env env' nested)
@@ -104,6 +114,16 @@ theorem rec_lookup (H : AddInductNestedTrace env env' nested)
     simpa only [H.addRules] using
       (rulesFold_spec nested.generatedRules H.recEnv).1
   exact hrules.constants hlookup
+
+/-- Every restored recursor name was fresh before the nested transaction. -/
+theorem rec_fresh (H : AddInductNestedTrace env env' nested)
+    {recursor : VConstVal} (hrec : recursor ∈ nested.recursors) :
+    env.constants recursor.name = none := by
+  have htypes := (ctorFold_spec source.blockTypeConstants H.addTypes).1
+  have hctors :=
+    (ctorFold_spec source.blockConstructorConstants H.addCtors).1
+  have hfresh := (ctorFold_spec nested.recursors H.addRecs).2.2 recursor hrec
+  exact (htypes.trans hctors).constants_none hfresh
 
 /-- The final environment registers every restored rule. -/
 theorem rule_mem (H : AddInductNestedTrace env env' nested)

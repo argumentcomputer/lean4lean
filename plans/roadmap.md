@@ -1,6 +1,6 @@
 # Lean4Lean completion roadmap
 
-**Status:** authoritative local roadmap, audited 2026-08-07 against the
+**Status:** authoritative local roadmap, audited 2026-08-10 against the
 committed fork and the current `jcb/formalization` development bookmark;
 publication to `jcb/induct` remains a separate boundary.
 
@@ -67,12 +67,12 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-11 active**; L4L-10B and everything above it are complete and pruned from §5; everything below L4L-11 is queued |
-| Current formalization source | the L4L-10B pattern-soundness checkpoint (`Theory/Typing/InductivePatternWF.lean` typed β-collapse and `pat_wf`, `Theory/Typing/InductivePatternEnv.lean` block-local assembler) on top of the L4L-10A pattern-core checkpoint `3689b115`, the L4L-09 line (`e297560d` nested closure and its sub-checkpoints), and the L4L-08C closure `ea733017`, at `jcb/formalization2`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
+| Ladder position | **L4L-12A active**; L4L-11 and everything above it are complete and pruned from §5; everything below L4L-12A is queued |
+| Current formalization source | the L4L-11 replay/certificate checkpoint (`Theory/Typing/InductiveCertificate.lean`, `Verify/Environment/InductiveReplayMatrix.lean`, the two-parameter deep-nested replay, and the notation-heavy fresh replay) on top of the L4L-10B pattern-soundness checkpoint `bc51f980`, the L4L-09 line (`e297560d` nested closure and its sub-checkpoints), and the L4L-08C closure `ea733017`, at `jcb/formalization2`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 20 live source `sorry` tokens across 19 proof declarations, plus six kernel-rejection recovery declarations (25 compiled allowlist entries total), and 29 custom-axiom declarations; all are pinned by exact audits |
-| Gates | the full §6 gate is green on the L4L-09C closure source, including focused, aggregate, and default Lake builds, the Nix proof/dependency build, all native flake checks, sorry-frontier and Theory import-boundary audits, formatter check, and whitespace check |
+| Gates | the full §6 gate is green on the L4L-11 closure source, including focused, aggregate, and default Lake builds, the Nix proof/dependency build, a clean-source `nix flake check`, the unchanged 25-entry sorry frontier, Theory import-boundary and exact-axiom audits, formatter check, and whitespace check |
 
 ### 2.1 What is green
 
@@ -299,6 +299,36 @@ fixture still spells indices as `Nat.zero`/`Nat.succ`, deliberately excluding
 notation's `OfNat`/`HAdd` instance closure — a reduced dependency claim, not
 full prelude replay.
 
+**Complete replay matrix and consumer certificates.** The supported replay
+matrix now executes 25 actual-metadata transactions rather than merely
+packaging abstract witnesses: 20 automatically constructed singleton
+candidates (the L4L-07 inventory plus the two-parameter `BiBox` dependency),
+both mutual tree blocks, and three nested blocks. Every row retains its exact
+input/output `ConstMap` and `VEnv`, input-map WF and dependency ordering,
+producer result, data-bearing transaction trace, final translated
+type/constructor/recursor roles, and recursor lookup uniqueness. The mutual
+and nested rows expose the same
+metadata-completeness predicate through one sum artifact, while their
+certificates separately derive environment growth and block WF.
+
+The consumer-neutral Theory API is
+`VInductDecl.BlockCertificate`/`NestedBlockCertificate`. It reconstructs the
+raw `addInduct` result, `addInduct_le`, `addInduct_WF`, exact family and every
+constructor/recursor lookup, freshness, lookup uniqueness, registered rule
+membership/WF, rule closure, and L4L-10 recursor-pattern facts from one checked
+transaction. The API imports no Verify state, `Lean.Expr`, normalization
+oracle, or kernel implementation object. Its WF root has only the standard
+logical baseline, and its rule/pattern root additionally uses
+`Classical.choice`; in particular neither reaches `sorryAx`. Verify's unified
+matrix has one exact guarded `sorryAx`, solely through the separately tracked
+projection/refinement frontier.
+
+A separate fresh replay loads the compiled dependency closure of the
+notation-heavy fixture into an empty kernel environment and checks all 296
+declarations. Numerals, arithmetic and comparison notation, lists, arrays,
+products, conditionals, and strings therefore exercise their real compiled
+prelude dependencies rather than a hand-built Theory environment.
+
 **Nested representation and flattening.** The committed design note and
 executable metadata probes in
 `Lean4Lean/Verify/Environment/NestedRepresentation.lean` pin how the
@@ -342,12 +372,16 @@ its entire output against the Theory artifacts (payload constants,
 recursors, K flags, rule RHSs, and `numNested`), on the rose-tree,
 nested-indexed, and constant-universe fixtures.
 
-**Nested environment replay.** Both ladder fixtures replay from real
+**Nested environment replay.** All three ladder fixtures replay from real
 stored metadata through `TrEnv'.inductNested`
 (`Verify/Environment/NestedReplay.lean`): the rose tree over the
 completed `List` replay environment, and the nested-indexed family over
 a `PVec` boundary staged by `TrEnv'.inductStaging` on the completed
-`Nat` replay. Each replay inserts the stored `ConstantInfo`s with
+`Nat` replay, plus `DeepBi α β` over the actual two-parameter `BiBox α β`
+dependency. `DeepBi.node` contains two queued nested occurrences,
+`BiBox (DeepBi α β) (BiBox α (DeepBi α β))`; the analyzer produces all
+three auxiliary recursors/rules and their RHSs agree with the real stored
+kernel metadata. Each replay inserts the stored `ConstantInfo`s with
 `tr_type_expr_tac` translations, exact freshness chains, K-flag
 agreement, and the literal rule fold, and proves the complete
 `NestedBlockChecked.WF` package by direct concrete typing derivations
@@ -384,8 +418,9 @@ hand-written `List` target to stored metadata, and matches kernel
 accept/reject on four nearest negatives: local-variable parametric
 arguments (with the kernel's exact diagnostic), off-spine parametric
 applications, canonical-auxiliary-name collisions, and missing target
-declarations. Source declarations remain rejected by every raw analyzer;
-no generated recursor, rule, or replay is claimed for nested blocks yet.
+declarations. Source declarations remain rejected by the non-nested raw
+analyzer; the dedicated nested analyzer and transaction own their
+flattened/restored recursors, rules, and replay.
 
 **Generated iota patterns.** Every certified block's iota rules are exact
 `SimplePattern.iota` patterns (`Theory/Typing/InductivePattern.lean`): the
@@ -446,12 +481,11 @@ patterns syntactically, which lambda-tower registrations (including
 `quotDefEq`) never do; the assembler therefore exposes spine-level coverage
 and `pat_wf`-derived reduction rather than claiming a `Params` instance for
 tower-registered environments. The nested fixtures prove the current
-single-target nesting boundary (one auxiliary block per occurrence class,
-`nparams ≤ 1` exercised by the ladder fixtures); nesting classes beyond
-the accepted flattened-block analyzer remain rejected, and deep
-multi-parameter nesting breadth belongs to the L4L-11 replay-breadth
-matrix. Bare producer success is never generation-shape authority or
-Theory semantics.
+single-target, indexed, and queued deep two-parameter boundaries; nesting
+classes beyond the accepted flattened-block analyzer remain rejected. The
+296-declaration notation replay is a real fresh prelude prefix, not a claim
+that an arbitrary whole kernel environment replays. Bare producer success is
+never generation-shape authority or Theory semantics.
 
 ### 2.2 Live debt
 
@@ -474,11 +508,11 @@ The remaining v4.31-added sorry is classified:
 - The public inductive spec has complete one-family, non-nested mutual,
   and nested generation, preservation, metadata parity, environment
   replay, generic iota-pattern facts, pattern soundness (`pat_wf`), and
-  the block-local pattern environment assembler, but remains a growing
-  subset rather than kernel-complete; projection coverage remains queued,
-  and nested replay breadth beyond the two ladder fixtures belongs to
-  L4L-11. `pat_wf` carries the Church–Rosser development's transitional
-  unique-typing closure until L4L-16/17 close it.
+  the block-local pattern environment assembler. The complete supported
+  replay matrix and consumer certificate API are now closed, but the accepted
+  inductive language remains a growing subset rather than kernel-complete;
+  projection coverage remains queued. `pat_wf` carries the Church–Rosser
+  development's transitional unique-typing closure until L4L-16/17 close it.
 - Consumer-neutral APIs (`VLocalDecl` core, literal encodings,
   `ContainsLits`, `HasPrimitives`, `TrProj`) still live under `Verify/`,
   forcing downstream checkers to import that layer (L4L-12A/L4L-15C).
@@ -650,31 +684,9 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Replay breadth and the block-certificate API (L4L-11)
-
-**L4L-11 — consumer block-certificate API (active).** Generalize the automatic
-candidate/package construction and environment replay across the complete
-single/mutual/nested fixture matrix, keeping every dependency environment
-explicit and checking type, every constructor role, and recursor lookup
-uniqueness. Separately add a notation-heavy prelude replay fixture before
-claiming whole-environment coverage; do not hide that prefix behind a
-hand-built Theory-only environment, and abstract witness-only tests are not
-sufficient. Export the consumer-neutral block-certificate consequences:
-environment growth (`addInduct`/`addInduct_le`), block WF
-(`VDecl.WF.induct`/`addInduct_WF`), translated type/constructor/recursor
-lookups, recursor facts from generated rule membership and registered
-defeqs, and recursor patterns from L4L-10A/B. If a downstream checker cannot
-fill a semantic obligation from these APIs without a new assumption,
-strengthen the checked-block API here rather than expecting the consumer to
-add trust.
-*Exit:* the full supported block class replays from actual metadata; the
-block-certificate API is exported with exact guards and no `sorryAx` beyond
-the separately tracked projection relation; no Verify state, normalization
-oracle, or kernel implementation object crosses the Theory boundary.
-
 ### Theory API extraction and literals (L4L-12A–L4L-12B)
 
-**L4L-12A — Theory API extraction.** Split `VLocalDecl` and its VExpr-only
+**L4L-12A — Theory API extraction (active).** Split `VLocalDecl` and its VExpr-only
 operations/WF/defeq lemmas from the `FVarId`-specific `VLCtx` layer into
 `Theory/LocalContext.lean`. Move `VExpr.boolLit`, `natLit`, `listCharLit`,
 `trLiteral`, `VEnv.ContainsLits`, the implementation-independent part of
