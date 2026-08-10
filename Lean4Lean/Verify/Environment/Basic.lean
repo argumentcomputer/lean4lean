@@ -196,6 +196,35 @@ def AddInductBlock (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
     (m₂ : ConstMap) (env₂ : VEnv) : Prop :=
   Nonempty (AddInductBlockTrace m₁ env₁ decl m₂ env₂)
 
+/-- Data-bearing alignment trace for a nested inductive declaration: the
+source families and constructors are the stored payload, followed by the
+restored recursors and restored rules.  The implementation map receives
+only restored metadata; no auxiliary constant appears in either the map or
+the Theory environment. -/
+structure AddInductNestedTrace
+    (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
+    (m₂ : ConstMap) (env₂ : VEnv) where
+  nested : decl.NestedBlockChecked
+  nested_wf : nested.WF env₁
+  typeMap : ConstMap
+  typeEnv : VEnv
+  ctorMap : ConstMap
+  ctorEnv : VEnv
+  recEnv : VEnv
+  addTypes : AddInductConstants .induct m₁ env₁
+    decl.blockTypeConstants typeMap typeEnv
+  addCtors : AddInductConstants .ctor typeMap typeEnv
+    decl.blockConstructorConstants ctorMap ctorEnv
+  addRecs : AddInductConstants .recursor ctorMap ctorEnv
+    nested.recursors m₂ recEnv
+  recK : RecursorMapKMatches m₂ nested.recursors nested.generation.kTarget
+  addRules : AddDefEqs recEnv nested.generatedRules env₂
+
+/-- Proposition-valued alignment for a nested declaration. -/
+def AddInductNested (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
+    (m₂ : ConstMap) (env₂ : VEnv) : Prop :=
+  Nonempty (AddInductNestedTrace m₁ env₁ decl m₂ env₂)
+
 theorem AddInductConstants.to_foldlM :
     AddInductConstants kind m₁ env₁ cis m₂ env₂ →
     List.foldlM (fun env (ci : VConstVal) => env.addConst ci.name ci.toVConstant) env₁ cis =
@@ -270,6 +299,12 @@ theorem AddInductBlockTrace.to_addInductBlockGeneration
   simp [VEnv.addInductBlockGeneration, H.addTypes.to_foldlM,
     H.addCtors.to_foldlM, H.addRecs.to_foldlM, H.addRules.to_add]
 
+theorem AddInductNestedTrace.to_addInductNested
+    (H : AddInductNestedTrace m₁ env₁ decl m₂ env₂) :
+    env₁.addInductNested H.nested = some env₂ := by
+  simp [VEnv.addInductNested, H.addTypes.to_foldlM,
+    H.addCtors.to_foldlM, H.addRecs.to_foldlM, H.addRules.to_add]
+
 /-- Recover the exact certified normalized Theory transaction represented by
 an implementation metadata replay. This replaces the old, false-for-aliases
 claim that every replay must pass the identity-only `VEnv.addInduct` wrapper. -/
@@ -302,6 +337,20 @@ theorem AddInductBlock.le
   obtain ⟨generation, -, -, hadd⟩ := H.to_addInductBlock
   rcases VEnv.addInductBlockGeneration_trace hadd with ⟨trace⟩
   exact trace.le
+
+/-- Recover the exact nested Theory transaction represented by an
+implementation metadata replay. -/
+theorem AddInductNested.to_addInductNested
+    (H : AddInductNested m₁ env₁ decl m₂ env₂) :
+    ∃ nested : decl.NestedBlockChecked,
+      nested.WF env₁ ∧ env₁.addInductNested nested = some env₂ := by
+  rcases H with ⟨H⟩
+  exact ⟨H.nested, H.nested_wf, H.to_addInductNested⟩
+
+theorem AddInductNested.le
+    (H : AddInductNested m₁ env₁ decl m₂ env₂) : env₁ ≤ env₂ := by
+  obtain ⟨nested, -, hadd⟩ := H.to_addInductNested
+  exact VEnv.addInductNested_le hadd
 
 /- The Verify relation currently mentions `TrExprS`, whose projection branch
 mentions the still-sorried `TrProj`. These guards make that inherited debt
@@ -390,6 +439,10 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
     AddInductBlock C env decl C' env' →
     TrEnv' C Q env →
     TrEnv' C' Q env'
+  | inductNested :
+    AddInductNested C env decl C' env' →
+    TrEnv' C Q env →
+    TrEnv' C' Q env'
 
 def TrEnv (safety : DefinitionSafety) (env : Environment) (venv : VEnv) : Prop :=
   TrEnv' safety env.constants env.quotInit venv
@@ -423,6 +476,10 @@ theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
     obtain ⟨generation, blockEnv, hgen, hadd⟩ :=
       h1.to_addInductBlock
     exact ⟨_, H.decl <| .inductBlock (blockEnv := blockEnv) hgen hadd⟩
+  | inductNested h1 _ ih =>
+    have ⟨_, H⟩ := ih
+    obtain ⟨nested, hwf, hadd⟩ := h1.to_addInductNested
+    exact ⟨_, H.decl <| .inductNested hwf hadd⟩
 
 /--
 info: 'Lean4Lean.TrEnv'.wf' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]

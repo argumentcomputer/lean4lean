@@ -260,4 +260,64 @@ def collisionSource : VInductDecl where
 #guard (nestedElimination? [listTarget] collisionSource).isSome
 #guard !nestedStage3 [listTarget] collisionSource
 
+/-! ## Restoration pins (L4L-09C)
+
+Structural pins for the restored generation artifacts; the exact
+comparison against Lean's stored recursor types and rule RHSs lives in the
+Verify differential. -/
+
+def roseNested? : Option (NestedBlockChecked roseSource) :=
+  nestedBlockChecked? [listTarget] roseSource
+
+def nvNested? : Option (NestedBlockChecked nvSource) :=
+  nestedBlockChecked? [pvecTarget] nvSource
+
+#guard roseNested?.isSome
+#guard nvNested?.isSome
+
+-- the restored recursor inventory: one per source family plus one per
+-- auxiliary family, on the main family's `appendIndexAfter` names
+#guard (roseNested?.map fun n => n.recursors.map (·.name)).getD [] ==
+  [`Rose.rec, ((.str `Rose "rec" : Lean.Name)).appendIndexAfter 1]
+#guard (nvNested?.map fun n => n.recursors.map (·.name)).getD [] ==
+  [`NV.rec, ((.str `NV "rec" : Lean.Name)).appendIndexAfter 1]
+
+def roseAuxConsts : List Lean.Name :=
+  [roseAux, roseAux ++ `nil, roseAux ++ `cons, .str roseAux "rec"]
+
+def nvAuxConsts : List Lean.Name :=
+  [nvAux, nvAux ++ `nil, nvAux ++ `cons, .str nvAux "rec"]
+
+/-- No auxiliary constant survives restoration in any recursor type or
+rule component. -/
+def restoredClean {source : VInductDecl} (auxConsts : List Lean.Name)
+    (nested : NestedBlockChecked source) : Bool :=
+  nested.recursors.all (fun r => !VExpr.hasAnyConst auxConsts r.type) &&
+    nested.generatedRules.all fun df =>
+      !VExpr.hasAnyConst auxConsts df.lhs &&
+        !VExpr.hasAnyConst auxConsts df.rhs &&
+        !VExpr.hasAnyConst auxConsts df.type
+
+#guard (roseNested?.map (restoredClean roseAuxConsts)).getD false
+#guard (nvNested?.map (restoredClean nvAuxConsts)).getD false
+
+-- the globally flattened rule inventory: one node rule plus the two
+-- restored `List`/`PVec` rules
+#guard (roseNested?.map fun n => n.generatedRules.length).getD 0 == 3
+#guard (nvNested?.map fun n => n.generatedRules.length).getD 0 == 3
+
+-- the nested transaction inserts the source payload and the restored
+-- recursors, and no auxiliary constant
+def roseNestedEnv? : Option VEnv := do
+  VEnv.empty.addInductNested (← roseNested?)
+
+#guard roseNestedEnv?.isSome
+#guard (roseNestedEnv?.map fun env =>
+  (env.constants `Rose).isSome && (env.constants `Rose.node).isSome &&
+    (env.constants `Rose.rec).isSome &&
+    (env.constants (((.str `Rose "rec" : Lean.Name)).appendIndexAfter 1)).isSome &&
+    (env.constants roseAux).isNone &&
+    (env.constants (roseAux ++ `cons)).isNone &&
+    (env.constants (.str roseAux "rec")).isNone).getD false
+
 end Lean4Lean.NestedInductiveFixtures

@@ -2,6 +2,7 @@ import Lean4Lean.Theory.Typing.Lemmas
 import Lean4Lean.Theory.Typing.Env
 import Lean4Lean.Theory.Typing.QuotLemmas
 import Lean4Lean.Theory.Typing.InductiveLemmas
+import Lean4Lean.Theory.Typing.NestedInductiveLemmas
 
 namespace Lean4Lean
 
@@ -23,5 +24,6 @@ theorem VEnv.WF.ordered : WF env → Ordered env
       | quot h1 h2 => exact addQuot_WF ih h1 h2
       | induct h1 h2 => exact addInductGeneration_WF ih h1 h2
       | inductBlock h1 h2 => exact addInductBlockGeneration_WF ih h1 h2
+      | inductNested h1 h2 => exact VEnv.addInductNested_WF ih h1 h2
 
 instance : CoeOut (VEnv.WF env) env.Ordered := ⟨(·.ordered)⟩

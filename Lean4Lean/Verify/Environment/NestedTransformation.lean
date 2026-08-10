@@ -258,4 +258,59 @@ run_meta do
   unless !nestedStage3 [] roseV do
     throwError "noTarget: Theory gate accepted without target metadata"
 
+/-! ## Restoration parity (L4L-09C)
+
+The Theory restoration over the flattened block's generation artifacts
+reproduces Lean's stored metadata exactly: every restored recursor name,
+universe count, and type, and every rule RHS in the globally flattened
+order, on all three real fixtures.  This runs the product σ
+(`NestedBlockChecked.recursors`/`generatedRules`), not the L4L-09A design
+probe. -/
+
+open Elab in
+def checkRestoreParity (label : String) (main : Name) (lparams : List Name)
+    (nparams : Nat) (targets : List NestedTargetBlock) : MetaM Unit := do
+  let env ← getEnv
+  let src := sourceType09A env main
+  let sourceV ← toVInductDecl09B lparams nparams [src]
+  let some nested := nestedBlockChecked? targets sourceV
+    | throwError "{label}: nested acceptance failed"
+  let expectedNames := [mkRecName main] ++
+    nested.elim.specs.mapIdx fun i _ => (mkRecName main).appendIndexAfter (i + 1)
+  unless nested.recursors.length == expectedNames.length do
+    throwError "{label}: {nested.recursors.length} restored recursors, \
+      expected {expectedNames.length}"
+  for (r, expected) in nested.recursors.zip expectedNames do
+    unless r.name == expected do
+      throwError "{label}: restored recursor name {r.name}, expected {expected}"
+    let some (.recInfo stored) := env.find? expected
+      | throwError "{label}: stored recursor {expected} missing"
+    unless r.uvars == stored.levelParams.length do
+      throwError "{label}: recursor universe count differs for {expected}"
+    let storedType ← Lean4Lean.Meta.ofExpr stored.levelParams {}
+      (← Lean4Lean.Meta.expandExpr stored.type)
+    unless r.type == storedType do
+      throwError "{label}: restored recursor type differs from stored for {expected}"
+  let mut storedRules : List (Name × Expr) := []
+  for n in expectedNames do
+    let some (.recInfo stored) := env.find? n
+      | throwError "{label}: stored recursor {n} missing"
+    for rule in stored.rules do
+      storedRules := storedRules ++ [(rule.ctor, rule.rhs)]
+  let rules := nested.generatedRules
+  unless rules.length == storedRules.length do
+    throwError "{label}: {rules.length} restored rules, stored {storedRules.length}"
+  let some (.recInfo mainRec) := env.find? (mkRecName main)
+    | throwError "{label}: stored main recursor missing"
+  for (df, (ctor, storedRhs)) in rules.zip storedRules do
+    let storedRhsV ← Lean4Lean.Meta.ofExpr mainRec.levelParams {}
+      (← Lean4Lean.Meta.expandExpr storedRhs)
+    unless df.rhs == storedRhsV do
+      throwError "{label}: restored rule RHS differs from stored for {ctor}"
+
+run_meta do
+  checkRestoreParity "rose" ``RoseTree [`u] 1 [listTarget]
+  checkRestoreParity "nv" ``NVTree [] 0 [pvecStoredTarget]
+  checkRestoreParity "cu" ``CURose [] 0 [listTarget]
+
 end Lean4Lean.NestedTransformation

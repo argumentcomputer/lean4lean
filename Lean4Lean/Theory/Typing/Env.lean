@@ -2,6 +2,7 @@ import Lean4Lean.Theory.Typing.Basic
 import Lean4Lean.Theory.VDecl
 import Lean4Lean.Theory.Quot
 import Lean4Lean.Theory.Inductive
+import Lean4Lean.Theory.NestedInductive
 
 namespace Lean4Lean
 
@@ -34,6 +35,10 @@ inductive VDecl.WF : VEnv → VDecl → VEnv → Prop where
   | inductBlock {gen : decl.BlockGenerationChecked} :
     gen.WF env blockEnv →
     env.addInductBlockGeneration gen = some env' →
+    VDecl.WF env (.induct decl) env'
+  | inductNested {nested : decl.NestedBlockChecked} :
+    nested.WF env →
+    env.addInductNested nested = some env' →
     VDecl.WF env (.induct decl) env'
 
 inductive VEnv.WF' : List VDecl → VEnv → Prop where

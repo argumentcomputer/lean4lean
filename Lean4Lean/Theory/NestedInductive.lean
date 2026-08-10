@@ -297,6 +297,229 @@ def nestedStage3 (targets : List NestedTargetBlock)
     (source : VInductDecl) (fuel : Nat := 1000) : Bool :=
   (nestedBlockChecked? targets source fuel).isSome
 
+/-! ## Restoration (L4L-09C)
+
+The restoration substitution σ maps the flattened block's generation
+artifacts back to the stored metadata surface: auxiliary family constants
+become their nested values, auxiliary constructor constants become the
+target block's constructors applied to the instantiated value's own
+arguments, and auxiliary recursor constants are renamed onto the main
+family's `appendIndexAfter` inventory.  On an application spine headed by
+an auxiliary family or constructor, the first `nparams` spine arguments
+are consumed by the value instantiation, mirroring
+`ElimNestedInductive.Result.restoreNested`; generated artifacts always
+apply auxiliary constants to at least the block parameters (the kernel
+asserts exactly this), so the identity fallback on an under-applied
+auxiliary head is unreachable from real artifacts and merely keeps σ
+total. -/
+
+/-- One σ replacement entry.  `value` is already in the level world of the
+artifact being restored (`instL`-spliced by the caller for recursor-world
+artifacts). -/
+structure RestoreEntry where
+  aux : Name
+  np : Nat
+  value : VExpr
+  deriving DecidableEq
+
+def findRestoreCtor (entries : List RestoreEntry) (c : Name) :
+    Option (RestoreEntry × Name) :=
+  entries.findSome? fun entry =>
+    if entry.aux.isPrefixOf c && c != entry.aux then
+      some (entry, c.replacePrefix entry.aux .anonymous)
+    else none
+
+/-- σ on one expression, bottom-up: a replacement fires at the innermost
+spine node where an auxiliary head has collected exactly its block-parameter
+count, and enclosing applications extend the already-restored value.  On
+generated artifacts — where auxiliary constants are always applied to at
+least the block parameters and never occur inside another auxiliary spine's
+arguments — this coincides with `restoreNested`'s top-down
+replace-without-descending pass.  `recMap` renames auxiliary recursor
+constants and is consulted before the constructor-prefix case, exactly like
+`restoreNested`'s `auxRec` map. -/
+def restoreExpr (entries : List RestoreEntry) (recMap : List (Name × Name)) :
+    VExpr → VExpr
+  | .bvar i => .bvar i
+  | .sort l => .sort l
+  | .lam ty body => .lam (restoreExpr entries recMap ty) (restoreExpr entries recMap body)
+  | .forallE ty body =>
+      .forallE (restoreExpr entries recMap ty) (restoreExpr entries recMap body)
+  | .app f a =>
+      let e := VExpr.app (restoreExpr entries recMap f) (restoreExpr entries recMap a)
+      (restoreSpine e).getD e
+  | e@(.const ..) => (restoreSpine e).getD e
+  where
+  /-- Fire one replacement at a completed spine.  The head constant is
+  still unrestored exactly when no inner node completed its parameter
+  count. -/
+  restoreSpine (e : VExpr) : Option VExpr :=
+    match VExpr.appHead e with
+    | .const c ls =>
+      let args := e.appArgs []
+      match recMap.find? (·.1 == c) with
+      | some (_, newName) =>
+          if args.isEmpty then some (VExpr.const newName ls) else none
+      | none =>
+      match entries.find? (·.aux == c) with
+      | some entry =>
+          if args.length == entry.np then
+            some (instRevParams entry.value args)
+          else none
+      | none =>
+      match findRestoreCtor entries c with
+      | some (entry, suffix) =>
+          if args.length == entry.np then
+            let value := instRevParams entry.value args
+            match VExpr.appHead value with
+            | .const iname ils =>
+                some ((VExpr.const (iname ++ suffix) ils).appN (value.appArgs []))
+            | _ => none
+          else none
+      | none => none
+    | _ => none
+
+namespace NestedBlockChecked
+
+variable {source : VInductDecl}
+
+/-- The main family name owning the restored recursor inventory. -/
+def mainName (nested : NestedBlockChecked source) : Name :=
+  match source.types with
+  | ty :: _ => ty.name
+  | [] => .anonymous
+
+/-- Auxiliary recursor renaming: the `i`-th auxiliary family's recursor
+becomes `mainName.rec_(i+1)`, matching `mkAuxRecNameMap`. -/
+def recMap (nested : NestedBlockChecked source) : List (Name × Name) :=
+  nested.elim.specs.mapIdx fun i spec =>
+    (.str spec.aux "rec", ((.str nested.mainName "rec" : Name)).appendIndexAfter (i + 1))
+
+/-- σ entries in declaration level-world (constructor-type restorations). -/
+def declEntries (nested : NestedBlockChecked source) : List RestoreEntry :=
+  nested.elim.specs.map fun spec =>
+    ⟨spec.aux, source.nparams, spec.value⟩
+
+/-- σ entries spliced into recursor level-world by the elimination
+offset. -/
+def recEntries (nested : NestedBlockChecked source) : List RestoreEntry :=
+  nested.elim.specs.map fun spec =>
+    ⟨spec.aux, source.nparams,
+      spec.value.instL (VLevel.params' source.uvars
+        (nested.generation.recUvars - source.uvars))⟩
+
+/-- σ on a recursor-world artifact. -/
+def restoreRec (nested : NestedBlockChecked source) (e : VExpr) : VExpr :=
+  restoreExpr nested.recEntries nested.recMap e
+
+/-- The restored recursor inventory: the flattened block's recursors with
+auxiliary names renamed and every type restored.  Source-family recursors
+keep their `.str name "rec"` names. -/
+def recursors (nested : NestedBlockChecked source) : List VConstVal :=
+  nested.generation.recursors.map fun r =>
+    ⟨⟨r.uvars, nested.restoreRec r.type⟩,
+      ((nested.recMap.find? (·.1 == r.name)).map (·.2)).getD r.name⟩
+
+/-- The restored rule inventory, in the flattened block's globally ordered
+rule order. -/
+def generatedRules (nested : NestedBlockChecked source) : List VDefEq :=
+  nested.generation.generatedRules.map fun df =>
+    { df with
+        lhs := nested.restoreRec df.lhs
+        rhs := nested.restoreRec df.rhs
+        type := nested.restoreRec df.type }
+
+end NestedBlockChecked
+
 end VInductDecl
+
+/-- The nested transaction: the four-phase shape of
+`addInductBlockGeneration` with the *source* families and constructors as
+the stored payload and the *restored* recursors and rules as the generated
+artifacts.  No auxiliary constant enters the environment. -/
+def VEnv.addInductNested {source : VInductDecl} (env : VEnv)
+    (nested : source.NestedBlockChecked) : Option VEnv := do
+  let env ← source.blockTypeConstants.foldlM
+    (fun env type => env.addConst type.name type.toVConstant) env
+  let env ← source.blockConstructorConstants.foldlM
+    (fun env constructor => env.addConst constructor.name constructor.toVConstant) env
+  let env ← nested.recursors.foldlM
+    (fun env recursor => env.addConst recursor.name recursor.toVConstant) env
+  return nested.generatedRules.foldl VEnv.addDefEq env
+
+namespace VInductDecl
+
+/-- Chained constant well-formedness along an `addConst` fold: each
+constant is well formed in the environment already holding every earlier
+one. -/
+def NestedConstsWF (env : VEnv) : List VConstVal → Prop
+  | [] => True
+  | c :: cs => c.toVConstant.WF env ∧
+      ∀ env', env.addConst c.name c.toVConstant = some env' →
+        NestedConstsWF env' cs
+
+/-- Chained rule well-formedness along an `addDefEq` fold. -/
+def NestedRulesWF (env : VEnv) : List VDefEq → Prop
+  | [] => True
+  | df :: dfs => df.WF env ∧ NestedRulesWF (env.addDefEq df) dfs
+
+/-- Semantic input to nested preservation: the four transaction phases are
+well formed at their exact insertion environments.  The phase environments
+are determined by the deterministic constant folds, so each later field
+takes the earlier folds as hypotheses; a fixture discharges them by
+computation.  Inhabiting this package from the flattened block's staged
+semantic certificate is the σ-transport route recorded by the L4L-09A
+design note; fixtures may equally inhabit it from direct checker
+executions on the restored artifacts. -/
+structure NestedBlockChecked.WF {source : VInductDecl}
+    (nested : NestedBlockChecked source) (env : VEnv) : Prop where
+  types : NestedConstsWF env source.blockTypeConstants
+  ctors : ∀ {typeEnv},
+    source.blockTypeConstants.foldlM
+      (fun env type => env.addConst type.name type.toVConstant) env =
+        some typeEnv →
+    NestedConstsWF typeEnv source.blockConstructorConstants
+  recs : ∀ {typeEnv ctorEnv},
+    source.blockTypeConstants.foldlM
+      (fun env type => env.addConst type.name type.toVConstant) env =
+        some typeEnv →
+    source.blockConstructorConstants.foldlM
+      (fun env constructor => env.addConst constructor.name constructor.toVConstant)
+      typeEnv = some ctorEnv →
+    NestedConstsWF ctorEnv nested.recursors
+  rules : ∀ {typeEnv ctorEnv recEnv},
+    source.blockTypeConstants.foldlM
+      (fun env type => env.addConst type.name type.toVConstant) env =
+        some typeEnv →
+    source.blockConstructorConstants.foldlM
+      (fun env constructor => env.addConst constructor.name constructor.toVConstant)
+      typeEnv = some ctorEnv →
+    nested.recursors.foldlM
+      (fun env recursor => env.addConst recursor.name recursor.toVConstant)
+      ctorEnv = some recEnv →
+    NestedRulesWF recEnv nested.generatedRules
+
+end VInductDecl
+
+/-- Exact phase boundaries of a successful nested transaction. -/
+structure VEnv.AddInductNestedTrace {source : VInductDecl}
+    (env env' : VEnv) (nested : source.NestedBlockChecked) where
+  typeEnv : VEnv
+  ctorEnv : VEnv
+  recEnv : VEnv
+  addTypes :
+    source.blockTypeConstants.foldlM
+      (fun env type => env.addConst type.name type.toVConstant) env =
+        some typeEnv
+  addCtors :
+    source.blockConstructorConstants.foldlM
+      (fun env constructor => env.addConst constructor.name constructor.toVConstant)
+      typeEnv = some ctorEnv
+  addRecs :
+    nested.recursors.foldlM
+      (fun env recursor => env.addConst recursor.name recursor.toVConstant)
+      ctorEnv = some recEnv
+  addRules :
+    nested.generatedRules.foldl VEnv.addDefEq recEnv = env'
 
 end Lean4Lean
