@@ -352,9 +352,8 @@ theorem nat_final_matches_addInduct :
     VEnv.empty.addInduct natDecl = some natFinalEnv :=
   rfl
 
-/-- Theory-only ordering evidence for the Nat dependency environment.  This
-keeps later inductive preservation proofs independent of the Verify relation's
-known projection-sorry frontier. -/
+/-- Theory-only ordering evidence for the Nat dependency environment. This
+keeps later inductive preservation proofs entirely within the Theory layer. -/
 theorem natFinalEnv_ordered : natFinalEnv.Ordered :=
   VEnv.addInductGeneration_WF .empty
     ((natChecked.wf_of_decl natDecl_wf).identityGeneration .empty) rfl
@@ -412,12 +411,10 @@ theorem nat_rec_lookup_unique :
         (VInductDecl.recConst 0 ``Nat 0 natType) :=
   nat_aligned.find?_uniq nat_rec_map_lookup nat_rec_env_lookup
 
-/- This closure is transitional for exactly the reasons recorded in the
-roadmap: `sorryAx` comes from `TrProj`, and the persistent-map contracts come
+/- This closure is now free of `sorryAx`; the persistent-map contracts come
 from proving concrete `SMap` freshness. The fixture introduces no new axiom. -/
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.nat_trEnv'' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,
@@ -637,7 +634,6 @@ theorem seed_after_nat_of_value :
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.seed_after_nat_of_value' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,
@@ -918,7 +914,6 @@ theorem eq_rec_lookup_unique :
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.eq_trEnv'' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,
@@ -1431,7 +1426,6 @@ theorem indexedVec_rec_lookup_unique :
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.indexedVec_trEnv'' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,
@@ -1721,12 +1715,10 @@ theorem acc_rec_lookup_unique :
         (VInductDecl.recConstRec 1 ``Acc 2 accType) :=
   acc_aligned.find?_uniq acc_rec_map_lookup acc_rec_env_lookup
 
-/- This has the same transitional Verify closure as the direct replay roots:
-`sorryAx` enters through `TrProj`, and the persistent-map contracts enter
-through concrete `SMap` freshness proofs. -/
+/- This has the same `sorryAx`-free closure as the direct replay roots; the
+persistent-map contracts enter through concrete `SMap` freshness proofs. -/
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.acc_trEnv'' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,
@@ -10839,12 +10831,10 @@ theorem aliasRec_aligned_checked :
 
 /- The operational traces do not reach the pointer-equality contracts. Their
 semantic endpoints intentionally inherit Verify's existing checker-refinement
-and reflection contracts, including pointer equality, plus the separately
-tracked `TrProj` frontier. No new axiom or native-evaluation principle is
-used. -/
+and reflection contracts, including pointer equality. No new axiom or
+native-evaluation principle is used. -/
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerFamily_candidateTrace' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -10860,7 +10850,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerFamily_candidateTrace' depen
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerCtor_candidateTrace' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -10876,7 +10865,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerCtor_candidateTrace' depends
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerFamily_candidate' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -10925,7 +10913,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerFamily_candidateRun_exists' 
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerFamily_candidateSource_tr' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -11046,7 +11033,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerTruncatedView_rejected' depe
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasRecField_checkType' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -11100,7 +11086,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasRecField_hasType_checked' depends 
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerFamily_whnf' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -11115,7 +11100,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerFamily_whnf' depends on axio
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerCtor_whnf' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -11130,7 +11114,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerCtor_whnf' depends on axioms
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.recAlias_whnf' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -11149,7 +11132,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.recAlias_whnf' depends on axioms: [prop
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerFamily_checkType' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -11165,7 +11147,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerFamily_checkType' depends on
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerCtor_checkType' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -11544,7 +11525,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerGenerationCandidatePackage' 
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerNormalizationCandidate_produced' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -11562,7 +11542,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerNormalizationCandidate_produ
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasFormerGenerationShapeCandidate_produced' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -11908,13 +11887,11 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasRec_trEnv'_checked' depends on axi
 #guard_msgs in
 #print axioms aliasRec_trEnv'_checked
 
-/- Both alias replays have the same explicitly transitional Verify closure as
-the identity fixtures. `sorryAx` is inherited only through `TrProj`, and the
-three persistent-map contracts enter through concrete `ConstMap` freshness
-proofs. -/
+/- Both alias replays have the same `sorryAx`-free Verify closure as the
+identity fixtures. The three persistent-map contracts enter through concrete
+`ConstMap` freshness proofs. -/
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasFormer_trEnv'' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,
@@ -11926,7 +11903,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasFormer_trEnv'' depends on axioms: 
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasFormer_env_wf' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,
@@ -11938,7 +11914,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasFormer_env_wf' depends on axioms: 
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasFormer_aligned' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,
@@ -11950,7 +11925,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasFormer_aligned' depends on axioms:
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasRec_trEnv'' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,
@@ -11962,7 +11936,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasRec_trEnv'' depends on axioms: [pr
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasRec_env_wf' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,
@@ -11974,7 +11947,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.aliasRec_env_wf' depends on axioms: [pr
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.aliasRec_aligned' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,
@@ -12217,7 +12189,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiGenerationCandidatePackage' 
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiCtor_candidateTrace' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -12256,7 +12227,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiFamily_candidateTrace' depen
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiNormalizationCandidate_produced' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -12283,7 +12253,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiNormalizationCandidate_produ
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.annotatedPiGenerationShapeCandidate_produced' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -12525,7 +12494,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.annotatedParam_addInductCertified' depe
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.annotatedParamAddInductTraceChecked' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,
@@ -12537,7 +12505,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.annotatedParamAddInductTraceChecked' de
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.annotatedParam_trEnv'_checked' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,

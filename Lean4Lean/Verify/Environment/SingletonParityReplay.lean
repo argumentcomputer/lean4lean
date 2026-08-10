@@ -2739,7 +2739,6 @@ example : singletonReplayMatrix.length = 19 := rfl
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.SingletonReplayArtifact.outputOrdered' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound]
 -/
@@ -2748,7 +2747,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.SingletonReplayArtifact.outputOrdered' 
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.singletonFixedReplays' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,

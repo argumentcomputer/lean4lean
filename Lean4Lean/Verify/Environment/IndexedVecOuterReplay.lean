@@ -1739,7 +1739,6 @@ theorem indexedVecNormalizationCandidateProduced :
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.indexedVecNormalizationCandidateProduced' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,

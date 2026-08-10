@@ -1724,15 +1724,14 @@ theorem roseFinalOrdered09 : roseFinalEnv09.Ordered :=
 
 The stored-metadata surface inserted by the trace is tied to the Theory
 artifact inventory, and the final map/environment pair carries the
-documented transitional closure (the checker-refinement frontier plus the
-compiler-trust axiom introduced by the `native_decide` observations). -/
+documented closure (persistent-map contracts plus the compiler-trust axioms
+introduced by the `native_decide` observations). -/
 
 #guard roseNestedC.elim.numNested == 1
 #guard roseRecV == roseRecVL && roseRec1V == roseRec1VL
 
 /--
 info: 'Lean4Lean.NestedReplayFixtures.roseTrEnv09' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,
@@ -3389,7 +3388,6 @@ theorem nvFinalOrdered09 : nvFinalEnv09.Ordered :=
 
 /--
 info: 'Lean4Lean.NestedReplayFixtures.nvTrEnv09' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,

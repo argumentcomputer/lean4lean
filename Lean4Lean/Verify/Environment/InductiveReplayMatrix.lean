@@ -699,7 +699,6 @@ end Lean4Lean
 
 /--
 info: 'Lean4Lean.CompleteInductiveReplay.BlockReplayArtifact.certificate' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound]
 -/
@@ -708,7 +707,6 @@ info: 'Lean4Lean.CompleteInductiveReplay.BlockReplayArtifact.certificate' depend
 
 /--
 info: 'Lean4Lean.CompleteInductiveReplay.NestedReplayArtifact.certificate' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound]
 -/

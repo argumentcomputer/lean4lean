@@ -6,6 +6,7 @@ import Lean4Lean.Theory.Literals
 import Lean4Lean.Theory.LocalContext
 import Lean4Lean.Theory.Meta
 import Lean4Lean.Theory.MutualInductiveFixtures
+import Lean4Lean.Theory.Projection
 import Lean4Lean.Theory.Quot
 import Lean4Lean.Theory.SingletonParity
 import Lean4Lean.Theory.Typing.Basic
@@ -131,9 +132,7 @@ private def surfacePrefixes : Array Lean.Name := #[`Lean4Lean.Theory, `Lean4Lean
 S (missing specification), P (stated but sorried, blocked on S), V (checker
 verification, blocked on S/P), R (research-grade metatheory, upstream-driven). -/
 private def allowlist : Array Lean.Name := #[
-  -- Tier S — missing specification
-  `Lean4Lean.TrProj,
-  -- Tier P — blocked only on Tier S
+  -- Tier P — projection structural laws (L4L-14)
   `Lean4Lean.TrProj.weak',
   `Lean4Lean.TrProj.weak'_inv,
   `Lean4Lean.TrProj.defeqDFC,
@@ -141,7 +140,7 @@ private def allowlist : Array Lean.Name := #[
   `Lean4Lean.TrProj.uniq,
   `Lean4Lean.TrProj.instN,
   `Lean4Lean.TrProj.instL,
-  -- Tier V — checker verification, blocked on Tiers S/P
+  -- Tier V — checker verification, blocked on Tier P
   -- (NormLevel.subsumption_eval and Level.isEquiv_wf were proved on the
   -- formalization line, 2026-08-05/07, and left the frontier.)
   `Lean4Lean.addDecl.WF,

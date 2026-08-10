@@ -5462,7 +5462,6 @@ info: 'Lean4Lean.TypeChecker.VEnv.addConst_other' depends on axioms: [propext, Q
 
 /--
 info: 'Lean4Lean.TypeChecker.AddInductConstant.safePrimitives' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,
@@ -5473,46 +5472,31 @@ info: 'Lean4Lean.TypeChecker.AddInductConstant.safePrimitives' depends on axioms
 #print axioms TypeChecker.AddInductConstant.safePrimitives
 
 /--
-info: 'Lean4Lean.TypeChecker.CandidateContextRun.context_env' depends on axioms: [propext,
- sorryAx,
- Classical.choice,
- Quot.sound]
+info: 'Lean4Lean.TypeChecker.CandidateContextRun.context_env' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms TypeChecker.CandidateContextRun.context_env
 
 /--
-info: 'Lean4Lean.TypeChecker.CandidateContextRun.context_lctx' depends on axioms: [propext,
- sorryAx,
- Classical.choice,
- Quot.sound]
+info: 'Lean4Lean.TypeChecker.CandidateContextRun.context_lctx' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms TypeChecker.CandidateContextRun.context_lctx
 
 /--
-info: 'Lean4Lean.TypeChecker.CandidateContextRun.context_safety' depends on axioms: [propext,
- sorryAx,
- Classical.choice,
- Quot.sound]
+info: 'Lean4Lean.TypeChecker.CandidateContextRun.context_safety' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms TypeChecker.CandidateContextRun.context_safety
 
 /--
-info: 'Lean4Lean.TypeChecker.CandidateContextRun.context_lparams' depends on axioms: [propext,
- sorryAx,
- Classical.choice,
- Quot.sound]
+info: 'Lean4Lean.TypeChecker.CandidateContextRun.context_lparams' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms TypeChecker.CandidateContextRun.context_lparams
 
 /--
-info: 'Lean4Lean.TypeChecker.CandidateContextRun.context_fuel' depends on axioms: [propext,
- sorryAx,
- Classical.choice,
- Quot.sound]
+info: 'Lean4Lean.TypeChecker.CandidateContextRun.context_fuel' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms TypeChecker.CandidateContextRun.context_fuel
@@ -5585,7 +5569,6 @@ info: 'Lean4Lean.TypeChecker.CandidateExprSemanticRootRun.source_isType_of_termi
 
 /--
 info: 'Lean4Lean.TypeChecker.CandidateExprSemanticRootRun.viewParameters' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound]
 -/
@@ -5594,7 +5577,6 @@ info: 'Lean4Lean.TypeChecker.CandidateExprSemanticRootRun.viewParameters' depend
 
 /--
 info: 'Lean4Lean.TypeChecker.CandidateExprSemanticRootRun.viewIndices' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound]
 -/
@@ -5602,7 +5584,7 @@ info: 'Lean4Lean.TypeChecker.CandidateExprSemanticRootRun.viewIndices' depends o
 #print axioms TypeChecker.CandidateExprSemanticRootRun.viewIndices
 
 /--
-info: 'Lean4Lean.VInductDecl.CandidateFamilyStagedInput' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.VInductDecl.CandidateFamilyStagedInput' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms CandidateFamilyStagedInput
@@ -6020,7 +6002,6 @@ info: 'Lean4Lean.VInductDecl.normalizationCandidateGenerationShape' depends on a
 
 /--
 info: 'Lean4Lean.VInductDecl.CandidateConstructorSemanticGenerationShapeList.ofCheck' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound]
 -/
@@ -6029,7 +6010,6 @@ info: 'Lean4Lean.VInductDecl.CandidateConstructorSemanticGenerationShapeList.ofC
 
 /--
 info: 'Lean4Lean.VInductDecl.NormalizationCandidateSemanticRun.generationShape' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound]
 -/
@@ -6115,7 +6095,6 @@ info: 'Lean4Lean.VInductDecl.GenerationCandidateSemanticRun.producedPackage' dep
 
 /--
 info: 'Lean4Lean.TypeChecker.VState.WF.empty_of_reserves' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -6136,7 +6115,6 @@ info: 'Lean4Lean.TypeChecker.candidateFreshFVarId_reserved' depends on axioms: [
 
 /--
 info: 'Lean4Lean.TypeChecker.CandidateContextRun.root' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -6148,7 +6126,6 @@ info: 'Lean4Lean.TypeChecker.CandidateContextRun.root' depends on axioms: [prope
 
 /--
 info: 'Lean4Lean.TypeChecker.CandidateContextRun.pushLocalDecl' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -6195,7 +6172,7 @@ info: 'Lean4Lean.TypeChecker.candidateCheckTypeStep_exists_translation' depends 
 #print axioms TypeChecker.candidateCheckTypeStep_exists_translation
 
 /--
-info: 'Lean4Lean.TypeChecker.IsDefEqRun.ofCandidateStep' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.TypeChecker.IsDefEqRun.ofCandidateStep' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms TypeChecker.IsDefEqRun.ofCandidateStep
@@ -6241,7 +6218,6 @@ info: 'Lean4Lean.TypeChecker.candidateTypeAnnotation_fvarsIn' does not depend on
 
 /--
 info: 'Lean4Lean.TypeChecker.candidateTypeAnnotation_exists_translation' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound]
 -/
@@ -6315,19 +6291,19 @@ info: 'Lean4Lean.TypeChecker.CandidateExprRun.exists_ofCandidateFVars' depends o
 #print axioms TypeChecker.CandidateExprRun.exists_ofCandidateFVars
 
 /--
-info: 'Lean4Lean.TypeChecker.WhnfRun.ofCandidateStep' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.TypeChecker.WhnfRun.ofCandidateStep' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms TypeChecker.WhnfRun.ofCandidateStep
 
 /--
-info: 'Lean4Lean.TypeChecker.CheckTypeRun.ofCandidateStep' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.TypeChecker.CheckTypeRun.ofCandidateStep' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms TypeChecker.CheckTypeRun.ofCandidateStep
 
 /--
-info: 'Lean4Lean.TypeChecker.CandidateNodeRun.ofCandidate' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.TypeChecker.CandidateNodeRun.ofCandidate' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms TypeChecker.CandidateNodeRun.ofCandidate
@@ -6432,7 +6408,7 @@ info: 'Lean4Lean.TypeChecker.CandidateExprRun.evidence' depends on axioms: [prop
 #print axioms TypeChecker.CandidateExprRun.evidence
 
 /--
-info: 'Lean4Lean.TypeChecker.CandidateExprRun.source_tr' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.TypeChecker.CandidateExprRun.source_tr' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms TypeChecker.CandidateExprRun.source_tr
@@ -6537,7 +6513,7 @@ info: 'Lean4Lean.TypeChecker.TelDefEqEvidence.telDefEq' depends on axioms: [prop
 #print axioms TypeChecker.TelDefEqEvidence.telDefEq
 
 /--
-info: 'Lean4Lean.TypeChecker.TelDefEqEvidence.ofTelDefEq' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.TypeChecker.TelDefEqEvidence.ofTelDefEq' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms TypeChecker.TelDefEqEvidence.ofTelDefEq
@@ -6643,7 +6619,6 @@ info: 'Lean4Lean.TypeChecker.CandidateExprSpineRun.evidenceAt' depends on axioms
 
 /--
 info: 'Lean4Lean.VInductDecl.GenerationCandidateRun.normalization_eq' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound]
 -/
@@ -6652,7 +6627,6 @@ info: 'Lean4Lean.VInductDecl.GenerationCandidateRun.normalization_eq' depends on
 
 /--
 info: 'Lean4Lean.VInductDecl.NormalizationCandidateRun.sourceType_eq' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound]
 -/
@@ -6661,7 +6635,6 @@ info: 'Lean4Lean.VInductDecl.NormalizationCandidateRun.sourceType_eq' depends on
 
 /--
 info: 'Lean4Lean.VInductDecl.NormalizationCandidateRun.familyViewType_eq' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound]
 -/
@@ -6669,10 +6642,7 @@ info: 'Lean4Lean.VInductDecl.NormalizationCandidateRun.familyViewType_eq' depend
 #print axioms NormalizationCandidateRun.familyViewType_eq
 
 /--
-info: 'Lean4Lean.VInductDecl.GenerationCandidateRun.familyView_eq' depends on axioms: [propext,
- sorryAx,
- Classical.choice,
- Quot.sound]
+info: 'Lean4Lean.VInductDecl.GenerationCandidateRun.familyView_eq' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms GenerationCandidateRun.familyView_eq
@@ -6777,10 +6747,7 @@ info: 'Lean4Lean.VInductDecl.CandidateNormalizedCtorRun.rightType_ofChecked' dep
 #print axioms CandidateNormalizedCtorRun.rightType_ofChecked
 
 /--
-info: 'Lean4Lean.VInductDecl.CandidateNormalizedCtorRun.viewTel_eq' depends on axioms: [propext,
- sorryAx,
- Classical.choice,
- Quot.sound]
+info: 'Lean4Lean.VInductDecl.CandidateNormalizedCtorRun.viewTel_eq' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms CandidateNormalizedCtorRun.viewTel_eq
@@ -6853,7 +6820,6 @@ info: 'Lean4Lean.VInductDecl.GenerationCandidateRun.wf' depends on axioms: [prop
 
 /--
 info: 'Lean4Lean.VInductDecl.CandidateConstructorListRun.sameHeaders' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound]
 -/
@@ -6895,7 +6861,6 @@ info: 'Lean4Lean.VInductDecl.CandidateConstructorListRun.evidence' depends on ax
 
 /--
 info: 'Lean4Lean.VInductDecl.NormalizationCandidateRun.normalization' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound]
 -/
@@ -7002,17 +6967,13 @@ info: 'Lean4Lean.VInductDecl.GenerationRun.wf' depends on axioms: [propext,
 #print axioms GenerationRun.wf
 
 /--
-info: 'Lean4Lean.VInductDecl.GenerationCandidateRun.package' depends on axioms: [propext,
- sorryAx,
- Classical.choice,
- Quot.sound]
+info: 'Lean4Lean.VInductDecl.GenerationCandidateRun.package' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms GenerationCandidateRun.package
 
 /--
 info: 'Lean4Lean.VInductDecl.GenerationCandidateRun.producedPackage' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound]
 -/

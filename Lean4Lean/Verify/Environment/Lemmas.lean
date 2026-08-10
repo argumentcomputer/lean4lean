@@ -415,13 +415,13 @@ theorem Aligned.addInductNested
   exact wfRecs.addDefEqFold _
 
 /--
-info: 'Lean4Lean.Aligned.addInduct' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.Aligned.addInduct' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms Aligned.addInduct
 
 /--
-info: 'Lean4Lean.Aligned.addInductBlock' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.Aligned.addInductBlock' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms Aligned.addInductBlock
@@ -439,7 +439,7 @@ theorem TrEnv'.aligned (H : TrEnv' safety C Q venv) : Aligned safety C venv := b
   | inductNested h _ ih => exact ih.addInductNested h
 
 /--
-info: 'Lean4Lean.TrEnv'.aligned' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.TrEnv'.aligned' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms TrEnv'.aligned

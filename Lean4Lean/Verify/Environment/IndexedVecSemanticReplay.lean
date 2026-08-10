@@ -3121,7 +3121,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.indexedVecReorderedView_rejected' depen
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.indexedVecSemanticCandidate_missingRawShape_rejected' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,
@@ -3153,7 +3152,6 @@ info: 'Lean4Lean.InductiveReplayFixtures.indexedVecSemanticCandidate_extraRawSha
 
 /--
 info: 'Lean4Lean.InductiveReplayFixtures.indexedVecSemanticGenerationShapeCandidate_produced' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Expr.eqv_eq,

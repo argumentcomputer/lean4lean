@@ -9147,7 +9147,6 @@ new universe bridge itself remains separately guarded above; staging does not
 hide the transitional dependencies already present in the semantic owner. -/
 /--
 info: 'Lean4Lean.VInductDecl.StagedNormalizationCandidateUniverseInput.semanticValidation' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound]
 -/
@@ -9156,7 +9155,6 @@ info: 'Lean4Lean.VInductDecl.StagedNormalizationCandidateUniverseInput.semanticV
 
 /--
 info: 'Lean4Lean.VInductDecl.StagedNormalizationCandidateUniverseInput.universeSemantics' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound]
 -/

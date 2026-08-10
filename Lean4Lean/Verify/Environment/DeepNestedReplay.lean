@@ -768,12 +768,11 @@ theorem deepAddInductNested_success :
     biBoxFinalEnv.addInductNested deepNestedC = some deepFinalEnv :=
   deepTrace.to_addInductNested
 
-/- The sole `sorryAx` is the already tracked Verify projection relation;
-the Theory certificate exported from this trace has the stricter guards in
-`InductiveCertificate`. -/
+/- The replay is now free of `sorryAx`; its remaining native-decision and
+persistent-map closure is recorded exactly below. The Theory certificate
+exported from this trace has the stricter guards in `InductiveCertificate`. -/
 /--
 info: 'Lean4Lean.DeepNestedReplayFixtures.deepTrEnv' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,

@@ -3120,12 +3120,11 @@ info: 'Lean4Lean.MutualInductiveReplayFixtures.indexedTreeFinalEnv_ordered' depe
 #guard_msgs in
 #print axioms indexedTreeFinalEnv_ordered
 
-/- The implementation metadata replay inherits only the already classified
-Verify relation and persistent-map contracts; fixture-local native-decision
+/- The implementation metadata replay is now `sorryAx`-free and inherits only
+the already classified persistent-map contracts; fixture-local native-decision
 axioms are deliberately absent. -/
 /--
 info: 'Lean4Lean.MutualInductiveReplayFixtures.treeAddInductBlock' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,
@@ -3137,7 +3136,6 @@ info: 'Lean4Lean.MutualInductiveReplayFixtures.treeAddInductBlock' depends on ax
 
 /--
 info: 'Lean4Lean.MutualInductiveReplayFixtures.indexedTreeAddInductBlock' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,
@@ -3149,7 +3147,6 @@ info: 'Lean4Lean.MutualInductiveReplayFixtures.indexedTreeAddInductBlock' depend
 
 /--
 info: 'Lean4Lean.MutualInductiveReplayFixtures.tree_verify_aligned' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,
@@ -3161,7 +3158,6 @@ info: 'Lean4Lean.MutualInductiveReplayFixtures.tree_verify_aligned' depends on a
 
 /--
 info: 'Lean4Lean.MutualInductiveReplayFixtures.indexedTree_verify_aligned' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  PersistentHashMap.findAux_isSome,

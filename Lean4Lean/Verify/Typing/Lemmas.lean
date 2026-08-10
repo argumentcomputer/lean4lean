@@ -525,10 +525,12 @@ inductive SortList : VLCtx → List VLevel → Prop
 end VLCtx
 
 theorem TrProj.weak' (W : Ctx.Lift' n Γ Γ')
-    (H : TrProj Γ s i e e') : TrProj Γ' s i (e.lift' n) (e'.lift' n) := sorry
+    (H : TrProj env U Γ s i e e') :
+    TrProj env U Γ' s i (e.lift' n) (e'.lift' n) := sorry
 
 theorem TrProj.weakN (W : Ctx.LiftN n k Γ Γ')
-    (H : TrProj Γ s i e e') : TrProj Γ' s i (e.liftN n k) (e'.liftN n k) := by
+    (H : TrProj env U Γ s i e e') :
+    TrProj env U Γ' s i (e.liftN n k) (e'.liftN n k) := by
   simpa [VExpr.lift'_consN_skipN] using H.weak' <| Ctx.liftN_iff_lift'.1 W
 
 /-! ## Replaying closed metadata types -/
@@ -579,10 +581,8 @@ theorem TrTypeExpr.to_trExprS
     exact .forallE ⟨u, hty⟩ ⟨v, hbody⟩
       (ihty hΔ ⟨_, hty⟩) (ihbody ⟨hΔ, ⟨u, hty⟩⟩ ⟨_, hbody⟩)
 
-/- `TrExprS` still contains the sorried `TrProj` branch, so even this
-projection-free fragment inherits that dependency through its result type. -/
 /--
-info: 'Lean4Lean.TrTypeExpr.to_trExprS' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.TrTypeExpr.to_trExprS' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms TrTypeExpr.to_trExprS
@@ -662,11 +662,18 @@ theorem HasType.skips (W : Ctx.LiftN n k Γ Γ')
   IsDefEq.skips henv hΓ' W h1 h2 h2
 
 theorem TrProj.weak'_inv (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U))
-    (W : Ctx.Lift' l Γ Γ') : TrProj Γ' s i (e.lift' l) e' → ∃ e', TrProj Γ s i e e' := sorry
+    (W : Ctx.Lift' l Γ Γ') :
+    TrProj env U Γ' s i (e.lift' l) e' →
+      ∃ e', TrProj env U Γ s i e e' := sorry
 
 theorem TrProj.defeqDFC (henv : VEnv.WF env) (hΓ : env.IsDefEqCtx U [] Γ₁ Γ₂)
-    (he : env.IsDefEqU U Γ₁ e₁ e₂) (H : TrProj Γ₁ s i e₁ e') :
-    ∃ e', TrProj Γ₂ s i e₂ e' := sorry
+    (he : env.IsDefEqU U Γ₁ e₁ e₂) (H : TrProj env U Γ₁ s i e₁ e') :
+    ∃ e', TrProj env U Γ₂ s i e₂ e' := sorry
+
+theorem TrProj.mono {env env' : VEnv} (henv : env ≤ env')
+    (H : TrProj env U Γ s i e e') : TrProj env' U Γ s i e e' := by
+  obtain ⟨view, levels, params, hname, hproj⟩ := H
+  exact ⟨view, levels, params, hname, hproj.mono henv⟩
 
 variable! {env env' : VEnv} (henv : env ≤ env') in
 theorem TrExprS.mono (H : TrExprS env Us Δ e e') : TrExprS env' Us Δ e e' := by
@@ -681,7 +688,7 @@ theorem TrExprS.mono (H : TrExprS env Us Δ e e') : TrExprS env' Us Δ e e' := b
   | letE h1 _ _ _ ih1 ih2 ih3 => exact .letE (h1.mono henv) ih1 ih2 ih3
   | lit h1 _ ih => refine .lit (h1.mono henv) ih
   | mdata _ ih => exact .mdata ih
-  | proj _ h2 ih => exact .proj ih h2
+  | proj _ h2 ih => exact .proj ih (h2.mono henv)
 
 variable! {env env' : VEnv} (henv : env ≤ env') in
 theorem TrExpr.mono (H : TrExpr env Us Δ e e') : TrExpr env' Us Δ e e' :=
@@ -904,7 +911,8 @@ theorem TrExpr.fvarsIn (H : TrExpr env Us Δ e e') : FVarsIn (· ∈ Δ.fvars) e
 theorem TrExpr.fvarsList (H : TrExpr env Us Δ e e') : e.fvarsList ⊆ Δ.fvars :=
   (fvarsIn_iff.1 H.fvarsIn).1
 
-theorem TrProj.wf (H1 : TrProj Δ s i e e') (H2 : VExpr.WF env U Γ e) : VExpr.WF env U Γ e' := sorry
+theorem TrProj.wf (H1 : TrProj env U Γ s i e e')
+    (H2 : VExpr.WF env U Γ e) : VExpr.WF env U Γ e' := sorry
 
 theorem TrExpr.wf (H : TrExpr env Us Δ e e') : VExpr.WF env Us.length Δ.toCtx e' :=
   let ⟨_, _, _, H⟩ := H; ⟨_, H.hasType.2⟩
@@ -947,7 +955,8 @@ theorem TrExpr.app (henv : VEnv.WF env) (hΔ : OnCtx Δ.toCtx (env.IsType Us.len
   ⟨_, .app h3.hasType.1 h4.hasType.1 s3 s4, _, h3.appDF h4⟩
 
 variable! (henv : VEnv.WF env) (hΓ : IsDefEqCtx env U [] Γ₁ Γ₂) in
-theorem TrProj.uniq (H1 : TrProj Γ₁ s₁ i e₁ e₁') (H2 : TrProj Γ₂ s₂ i e₂ e₂')
+theorem TrProj.uniq (H1 : TrProj env U Γ₁ s₁ i e₁ e₁')
+    (H2 : TrProj env U Γ₂ s₂ i e₂ e₂')
     (H : env.IsDefEqU U Γ₁ e₁ e₂) :
     env.IsDefEqU U Γ₁ e₁' e₂' := sorry
 
@@ -1182,7 +1191,8 @@ theorem TrExpr.mdata (h : TrExpr env Us Δ e e') : TrExpr env Us Δ (.mdata d e)
   let ⟨_, s2, h2⟩ := h; ⟨_, .mdata s2, h2⟩
 
 theorem TrExpr.proj {env Us Δ e e' s i e''} (henv : VEnv.WF env) (hΔ : VLCtx.WF env Us.length Δ)
-    (H : TrExpr env Us Δ e e') (H2 : TrProj Δ.toCtx s i e' e'') :
+    (H : TrExpr env Us Δ e e')
+    (H2 : TrProj env Us.length Δ.toCtx s i e' e'') :
     TrExpr env Us Δ (.proj s i e) e'' :=
   let ⟨_, s2, h2⟩ := H
   have ⟨_, H2'⟩ := H2.defeqDFC henv (.refl hΔ) h2.symm
@@ -1316,7 +1326,8 @@ theorem TrExprS.instN_var (W : VLCtx.InstN Δ₀ e₀' A₀ dk k Δ₁ Δ) (H : 
         cases d <;> simp [VLocalDecl.depth, VLocalDecl.inst, VExpr.lift_instN_lo]
 
 theorem TrProj.instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ)
-    (H : TrProj Γ₁ s i e e') : TrProj Γ s i (e.inst e₀ k) (e'.inst e₀ k) := sorry
+    (H : TrProj env U Γ₁ s i e e') :
+    TrProj env U Γ s i (e.inst e₀ k) (e'.inst e₀ k) := sorry
 
 variable! (henv : Ordered env) (h₀ : TrExprS env Us Δ₀ e₀ e₀')
   (t₀ : env.HasType Us.length Δ₀.toCtx e₀' A₀) in
@@ -1583,9 +1594,11 @@ theorem ofLevel_mkLevelIMax'
   · simp_all; exact VLevel.imax_self.symm
   simp [VLevel.ofLevel]; exact ⟨_, ⟨_, h1, _, h2, rfl⟩, rfl⟩
 
-variable! {ls : List VLevel} (hls : ∀ l ∈ ls, l.WF U') in
-theorem TrProj.instL (H : TrProj Γ s i e e') :
-    TrProj (Γ.map (VExpr.instL ls)) s i (e.instL ls) (e'.instL ls) := sorry
+variable! {ls : List VLevel} (hls : ∀ l ∈ ls, l.WF U')
+    (hU : U = ls.length) in
+theorem TrProj.instL (H : TrProj env U Γ s i e e') :
+    TrProj env U' (Γ.map (VExpr.instL ls)) s i
+      (e.instL ls) (e'.instL ls) := sorry
 
 section
 
@@ -1693,7 +1706,7 @@ theorem TrExprS.instL (H : TrExprS env ps Δ e e') :
   | mdata _ ih => exact .mdata (ih hΔ)
   | proj _ h2 ih =>
     exact .proj henv (hΔ.instL Hls') (ih hΔ)
-      (VLCtx.instL_toCtx _ ▸ h2.instL Hls')
+      (VLCtx.instL_toCtx _ ▸ h2.instL Hls' eq')
 
 theorem TrExpr.instL (H : TrExpr env ps Δ e e') :
     TrExpr env Us (Δ.instL ls') (e.instantiateLevelParams ps ls) (e'.instL ls') :=
@@ -2477,7 +2490,7 @@ theorem AppStack.build {e : Expr} (H : TrExprS env Us Δ (e.mkAppList as) e') :
     ∃ e', AppStack env Us Δ e e' as := by simpa using AppStack.append (.head H)
 
 /--
-info: 'Lean4Lean.TrExprS.toConstructor_ready' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.TrExprS.toConstructor_ready' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms TrExprS.toConstructor_ready

@@ -352,44 +352,41 @@ theorem AddInductNested.le
   obtain ⟨nested, -, hadd⟩ := H.to_addInductNested
   exact VEnv.addInductNested_le hadd
 
-/- The Verify relation currently mentions `TrExprS`, whose projection branch
-mentions the still-sorried `TrProj`. These guards make that inherited debt
-visible and will fail (intentionally) when Track P removes `sorryAx`. -/
+/- The projection relation is now a concrete Theory proposition, so merely
+mentioning `TrExprS` no longer contaminates these projection-free roots with
+the deferred structural-law sorries. -/
 /--
-info: 'Lean4Lean.AddInductTrace.to_addInductGeneration' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.AddInductTrace.to_addInductGeneration' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms AddInductTrace.to_addInductGeneration
 
 /--
-info: 'Lean4Lean.AddInduct.to_addInduct' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.AddInduct.to_addInduct' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms AddInduct.to_addInduct
 
 /--
-info: 'Lean4Lean.AddInduct.le' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.AddInduct.le' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms AddInduct.le
 
 /--
-info: 'Lean4Lean.AddInductBlockTrace.to_addInductBlockGeneration' depends on axioms: [propext,
- sorryAx,
- Classical.choice,
- Quot.sound]
+info: 'Lean4Lean.AddInductBlockTrace.to_addInductBlockGeneration' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms AddInductBlockTrace.to_addInductBlockGeneration
 
 /--
-info: 'Lean4Lean.AddInductBlock.to_addInductBlock' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.AddInductBlock.to_addInductBlock' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms AddInductBlock.to_addInductBlock
 
 /--
-info: 'Lean4Lean.AddInductBlock.le' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.AddInductBlock.le' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms AddInductBlock.le
@@ -482,7 +479,7 @@ theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
     exact ⟨_, H.decl <| .inductNested hwf hadd⟩
 
 /--
-info: 'Lean4Lean.TrEnv'.wf' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+info: 'Lean4Lean.TrEnv'.wf' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/
 #guard_msgs in
 #print axioms TrEnv'.wf
