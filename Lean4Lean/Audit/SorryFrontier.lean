@@ -2,6 +2,8 @@ import Lean4Lean.Theory
 import Lean4Lean.Theory.ConstructorValidityFixtures
 import Lean4Lean.Theory.Inductive
 import Lean4Lean.Theory.InductiveFixtures
+import Lean4Lean.Theory.Literals
+import Lean4Lean.Theory.LocalContext
 import Lean4Lean.Theory.Meta
 import Lean4Lean.Theory.MutualInductiveFixtures
 import Lean4Lean.Theory.Quot

@@ -4,7 +4,7 @@ This file tracks every deliberate semantic, API, build, or verification delta
 from `upstream/master` that must either be upstreamed or explicitly retained.
 It is the tracked counterpart to `plans/roadmap.md`.
 
-Audit baseline after the complete L4L-11 replay/certificate checkpoint
+Audit baseline after the complete L4L-12A Theory API extraction checkpoint
 (2026-08-10):
 
 - current upstream reconciliation parent: digama `upstream/master`
@@ -128,6 +128,9 @@ Audit baseline after the complete L4L-11 replay/certificate checkpoint
   certificates, complete 25-row actual-metadata replay matrix, real queued
   two-parameter nested replay, and 296-declaration notation-prelude replay
   described in D013. Publication is pending.
+- L4L-12A closure checkpoint: the Theory-only local-context and literal
+  encoding APIs plus Verify compatibility re-exports described in D014. It is
+  based on `0587b91a`; publication is pending.
 - fixed fork master: `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb`
   on local and `origin/master`
 - audited L4L-08C semantic base: the L4L-08C closure extends the
@@ -923,6 +926,34 @@ to the replacement.
 - **Removal condition:** upstream exposes equivalent consumer-neutral block
   consequences and actual-metadata replay breadth, all downstream users move
   to it, and the fork-only certificate/matrix can be deleted.
+
+## D014 — Theory local-context and literal API extraction
+
+- **Status:** local-committed at `jcb/formalization2`; publication to
+  `jcb/induct` is pending.
+- **Commit:** this L4L-12A extraction checkpoint, based on `0587b91a`.
+- **Delta:** move the consumer-neutral `VLocalDecl` data, VExpr-only
+  operations, WF/closure predicate, and structural/defeq laws to
+  `Theory/LocalContext.lean`. Move literal encodings, `ContainsLits`, the
+  implementation-independent primitive contracts, and lift/substitution laws
+  to `Theory/Literals.lean`. Keep `FVarId`, `VLCtx`, `Lean.Expr`, `TrExprS`,
+  and `Literal.toConstructor` traversal in Verify, whose old import paths
+  continue to expose the moved names.
+- **Ix impact:** Theory-only consumers can use local declarations and literal
+  syntax without importing consumer-specific implementation expressions;
+  existing Verify consumers retain source compatibility.
+- **Tests:** focused Theory local-context/literal and complete Verify builds;
+  aggregate and default Lake builds; unchanged exact sorry frontier; Nix
+  proof/dependency and flake checks; formatter, whitespace, exact-axiom, and
+  Theory import-boundary checks.
+- **Axiom note:** no project axiom or source `sorry` is added. Moved roots
+  retain their exact pre-existing closures; the named LocalContext guards make
+  the inherited unique-typing frontier explicit without widening it.
+- **Upstream issue/PR:** TBD; submit the consumer-neutral extraction before
+  the readiness extension where practical.
+- **Removal condition:** upstream owns equivalent Theory modules, downstream
+  users import them directly, and the Verify compatibility imports can be
+  retired after their deprecation window.
 
 ## Review checklist
 

@@ -144,56 +144,15 @@ theorem Closed.looseBVarRange_le : Closed e k → e.looseBVarRange' ≤ k := by
 theorem Closed.looseBVarRange_zero (H : Closed e) : e.looseBVarRange' = 0 := by
   simpa using H.looseBVarRange_le
 
-theorem VLocalDecl.lift'_consN_skipN {d : VLocalDecl} :
-    d.lift' (.consN (.skipN .refl n) k) = d.liftN n k := by
-  cases d <;> simp [VLocalDecl.lift', VLocalDecl.liftN, VExpr.lift'_consN_skipN]
-
 theorem VLocalDecl.WF.hasType : ∀ {d}, VLocalDecl.WF env U (VLCtx.toCtx Δ) d →
     env.HasType U (VLCtx.toCtx ((ofv, d) :: Δ)) d.value d.type
   | .vlam _, _ => .bvar .zero
   | .vlet .., hA => hA
 
-nonrec theorem VLocalDecl.WF.weakN (henv : env.Ordered) (W : Ctx.LiftN n k Γ Γ') :
-    ∀ {d}, WF env U Γ d → WF env U Γ' (d.liftN n k)
-  | .vlam _,  H | .vlet .., H => H.weakN henv W
-
-nonrec theorem VLocalDecl.WF.instN (henv : env.Ordered) (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ)
-    (h₀ : env.HasType U Γ₀ e₀ A₀) : ∀ {d}, WF env U Γ₁ d → WF env U Γ (d.inst e₀ k)
-  | .vlam _,  H | .vlet .., H => H.instN henv W h₀
-
-nonrec theorem VLocalDecl.WF.instL {env : VEnv} (hls : ∀ l ∈ ls, l.WF U') :
-    ∀ {d}, WF env ls.length Γ d → WF env U' (Γ.map (·.instL ls)) (d.instL ls)
-  | .vlam _,  H | .vlet .., H => H.instL hls
-
 theorem VLocalDecl.is_liftN {Δ : VLCtx} :
     ∀ {d}, Ctx.LiftN (VLocalDecl.depth d) 0 Δ.toCtx (VLCtx.toCtx ((ofv, d) :: Δ))
   | .vlam _ => .one
   | .vlet .. => .zero []
-
-variable! (env : VEnv) (U : Nat) (Γ : List VExpr) in
-inductive VLocalDecl.IsDefEq : VLocalDecl → VLocalDecl → Prop
-  | vlam : env.IsDefEq U Γ type₁ type₂ (.sort u) → VLocalDecl.IsDefEq (.vlam type₁) (.vlam type₂)
-  | vlet :
-    env.IsDefEq U Γ value₁ value₂ type₁ → env.IsDefEq U Γ type₁ type₂ (.sort u) →
-    VLocalDecl.IsDefEq (.vlet type₁ value₁) (.vlet type₂ value₂)
-
-@[simp] theorem VLocalDecl.lift'_depth {d : VLocalDecl} : (d.lift' n).depth = d.depth := by
-  cases d <;> rfl
-
-theorem VLocalDecl.lift'_comp {d : VLocalDecl} : d.lift' (.comp l₁ l₂) = (d.lift' l₁).lift' l₂ := by
-  cases d <;> simp [VLocalDecl.lift', VExpr.lift'_comp]
-
-variable! (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U)) (W : Ctx.Lift' n Γ Γ') in
-theorem VLocalDecl.weak'_iff : VLocalDecl.WF env U Γ' (d.lift' n) ↔ VLocalDecl.WF env U Γ d :=
-  match d with
-  | .vlam .. => IsType.weak'_iff henv hΓ' W
-  | .vlet .. => HasType.weak'_iff henv hΓ' W
-
-variable! (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U)) (W : Ctx.LiftN n k Γ Γ') in
-theorem VLocalDecl.weakN_iff : VLocalDecl.WF env U Γ' (d.liftN n k) ↔ VLocalDecl.WF env U Γ d :=
-  match d with
-  | .vlam .. => IsType.weakN_iff henv hΓ' W
-  | .vlet .. => HasType.weakN_iff henv hΓ' W
 
 namespace VLCtx
 
@@ -710,11 +669,6 @@ theorem TrProj.defeqDFC (henv : VEnv.WF env) (hΓ : env.IsDefEqCtx U [] Γ₁ Γ
     ∃ e', TrProj Γ₂ s i e₂ e' := sorry
 
 variable! {env env' : VEnv} (henv : env ≤ env') in
-nonrec theorem VEnv.ContainsLits.mono : ∀ {l}, env.ContainsLits l → env'.ContainsLits l
-  | .natVal _, ⟨_, H⟩ => ⟨_, henv.1 H⟩
-  | .strVal _, ⟨⟨_, H1⟩, ⟨_, H2⟩⟩ => ⟨⟨_, henv.1 H1⟩, ⟨_, henv.1 H2⟩⟩
-
-variable! {env env' : VEnv} (henv : env ≤ env') in
 theorem TrExprS.mono (H : TrExprS env Us Δ e e') : TrExprS env' Us Δ e e' := by
   induction H with
   | bvar h1 => exact .bvar h1
@@ -742,11 +696,6 @@ inductive VLCtx.IsDefEq : VLCtx → VLCtx → Prop
     VLocalDecl.IsDefEq env U Δ₁.toCtx d₁ d₂ →
     VLCtx.IsDefEq ((ofv, d₁) :: Δ₁) ((ofv, d₂) :: Δ₂)
 
-variable! (henv : Ordered env) (hΓ : OnCtx Γ (IsType env U)) in
-theorem VLocalDecl.IsDefEq.refl : ∀ {d}, VLocalDecl.WF env U Γ d → VLocalDecl.IsDefEq env U Γ d d
-  | .vlam _, ⟨_, h1⟩ => .vlam h1
-  | .vlet .., h1 => let ⟨_, h2⟩ := h1.isType henv hΓ; .vlet h1 h2
-
 variable! (henv : Ordered env) in
 theorem VLCtx.IsDefEq.refl : ∀ {Δ}, VLCtx.WF env U Δ → VLCtx.IsDefEq env U Δ Δ
   | [], _ => .nil
@@ -771,19 +720,9 @@ theorem VLCtx.IsDefEq.bvars : VLCtx.IsDefEq env U Δ₁ Δ₂ → Δ₁.bvars = 
   | .cons (ofv := some _) h1 _ _ => by
       simp only [VLCtx.bvars, h1.bvars]
 
-theorem VLocalDecl.IsDefEq.wf : VLocalDecl.IsDefEq env U Γ d₁ d₂ → VLocalDecl.WF env U Γ d₁
-  | .vlam h3 => ⟨_, h3.hasType.1⟩
-  | .vlet h3 _ => h3.hasType.1
-
 theorem VLCtx.IsDefEq.wf : VLCtx.IsDefEq env U Δ₁ Δ₂ → VLCtx.WF env U Δ₁
   | .nil => ⟨⟩
   | .cons h1 h2 h3 => ⟨h1.wf, h2, h3.wf⟩
-
-theorem VLocalDecl.IsDefEq.mono (henv : env ≤ env') :
-    VLocalDecl.IsDefEq env U Γ d₁ d₂ →
-      VLocalDecl.IsDefEq env' U Γ d₁ d₂
-  | .vlam h => .vlam (h.mono henv)
-  | .vlet h₁ h₂ => .vlet (h₁.mono henv) (h₂.mono henv)
 
 theorem VLCtx.IsDefEq.mono (henv : env ≤ env') :
     VLCtx.IsDefEq env U Δ₁ Δ₂ → VLCtx.IsDefEq env' U Δ₁ Δ₂
@@ -871,16 +810,6 @@ theorem VLCtx.IsDefEqFVars.find?_uniq (henv : VEnv.WF env)
               cases hd with
               | vlam => exact ⟨h₂.weakN henv .one, h₃.weak henv⟩
               | vlet => simpa [VLocalDecl.depth] using ⟨h₂, h₃⟩
-
-theorem VLocalDecl.IsDefEq.symm :
-    VLocalDecl.IsDefEq env U Δ d₁ d₂ → VLocalDecl.IsDefEq env U Δ d₂ d₁
-  | .vlam h1 => .vlam h1.symm
-  | .vlet h1 h2 => .vlet (h2.defeqDF h1.symm) h2.symm
-
-theorem VLocalDecl.IsDefEq.defeqDFC (henv : Ordered env) (hΓ : IsDefEqCtx env U Γ₀ Γ₁ Γ₂)
-    : VLocalDecl.IsDefEq env U Γ₁ d₁ d₂ → VLocalDecl.IsDefEq env U Γ₂ d₁ d₂
-  | .vlam h1 => .vlam (h1.defeqDFC henv hΓ)
-  | .vlet h1 h2 => .vlet (h1.defeqDFC henv hΓ) (h2.defeqDFC henv hΓ)
 
 variable! (henv : Ordered env) in
 theorem VLCtx.IsDefEq.symm : VLCtx.IsDefEq env U Δ₁ Δ₂ → VLCtx.IsDefEq env U Δ₂ Δ₁
@@ -2050,9 +1979,6 @@ theorem TrExprS.boolFalse (henv : env.HasPrimitives) (H : env.contains ``Bool) :
   cases henv.boolFalse H
   exact ⟨.const H rfl rfl, .const H nofun rfl⟩
 
-@[simp] theorem VExpr.instL_boolFalse : VExpr.boolFalse.instL ls = VExpr.boolFalse := by
-  simp [boolFalse, instL]
-
 theorem TrExprS.boolTrue (henv : env.HasPrimitives) (H : env.contains ``Bool) :
     TrExprS env Us Δ (toExpr true) .boolTrue ∧
     env.HasType Us.length Δ.toCtx .boolTrue .bool := by
@@ -2060,18 +1986,12 @@ theorem TrExprS.boolTrue (henv : env.HasPrimitives) (H : env.contains ``Bool) :
   cases henv.boolTrue H
   exact ⟨.const H rfl rfl, .const H nofun rfl⟩
 
-@[simp] theorem VExpr.instL_boolTrue : VExpr.boolTrue.instL ls = VExpr.boolTrue := by
-  simp [boolTrue, instL]
-
 theorem TrExprS.boolLit (henv : env.HasPrimitives) (H : env.contains ``Bool) (b : Bool) :
     TrExprS env Us Δ (toExpr b) (.boolLit b) ∧
     env.HasType Us.length Δ.toCtx (.boolLit b) .bool := by
   match b with
   | false => exact TrExprS.boolFalse henv H
   | true => exact TrExprS.boolTrue henv H
-
-@[simp] theorem VExpr.instL_boolLit : (VExpr.boolLit b).instL ls = VExpr.boolLit b := by
-  cases b <;> simp [boolLit]
 
 theorem FVarsIn.boolLit {b : Bool} : FVarsIn P (toExpr b) := by cases b <;> exact nofun
 
@@ -2101,9 +2021,6 @@ theorem TrExprS.natZero (henv : env.HasPrimitives) (H : env.contains ``Nat) :
   cases henv.natZero H
   exact ⟨.const H rfl rfl, .const H nofun rfl⟩
 
-@[simp] theorem VExpr.instL_natZero : VExpr.natZero.instL ls = .natZero := by
-  simp [natZero, instL]
-
 theorem TrExprS.natSucc (henv : env.HasPrimitives) (H : env.contains ``Nat) :
     TrExprS env Us Δ .natSucc .natSucc ∧
     env.HasType Us.length Δ.toCtx .natSucc (.forallE .nat .nat) := by
@@ -2111,18 +2028,12 @@ theorem TrExprS.natSucc (henv : env.HasPrimitives) (H : env.contains ``Nat) :
   cases henv.natSucc H
   exact ⟨.const H rfl rfl, .const H nofun rfl⟩
 
-@[simp] theorem VExpr.instL_natSucc : VExpr.natSucc.instL ls = .natSucc := by
-  simp [natSucc, instL]
-
 theorem TrExprS.natLit (henv : env.HasPrimitives) (H : env.contains ``Nat) (n) :
     TrExprS env Us Δ (.lit (.natVal n)) (.natLit n) ∧
     env.HasType Us.length Δ.toCtx (.natLit n) .nat := by
   induction n with
   | zero => exact let ⟨h1, h2⟩ := natZero henv H; ⟨.lit H h1, h2⟩
   | succ n ih => exact let ⟨h1, h2⟩ := natSucc henv H; ⟨.lit H (.app h2 ih.2 h1 ih.1), .app h2 ih.2⟩
-
-@[simp] theorem VExpr.instL_natLit : (VExpr.natLit n).instL ls = VExpr.natLit n := by
-  induction n <;> simp [*, natLit, instL]
 
 theorem TrExprS.stringOfList (henv : env.HasPrimitives) (H : env.contains ``String.ofList) :
     TrExprS env Us Δ (.const ``String.ofList []) .stringOfList ∧
@@ -2137,14 +2048,6 @@ theorem TrExprS.charOfNat (henv : env.HasPrimitives) (H : env.contains ``Char.of
   let ⟨_, H⟩ := H
   cases henv.charOfNat H
   exact ⟨.const H rfl rfl, .const H nofun rfl⟩
-
-theorem VEnv.HasPrimitives.nat_of_charOfNat (wf : Ordered env) (henv : env.HasPrimitives)
-    (H : env.contains ``Char.ofNat) : env.contains ``Nat := by
-  let ⟨_, H⟩ := H
-  have ⟨_, H⟩ := wf.constWF (henv.charOfNat H ▸ H)
-  let ⟨⟨_, H⟩, _⟩ := H.forallE_inv wf
-  let ⟨_, H, _⟩ := H.const_inv wf trivial
-  exact ⟨_, H⟩
 
 theorem TrExprS.listChar (wf : env.Ordered) (henv : env.HasPrimitives)
     (H : env.contains ``String.ofList) :
@@ -2215,10 +2118,6 @@ theorem TrExprS.trLiteral (wf : env.Ordered) (henv : env.HasPrimitives)
     have a := TrExprS.stringOfList henv H.2 (Us := Us) (Δ := Δ)
     have b := TrExprS.listCharLit wf henv H (Us := Us) (Δ := Δ) s.toList
     exact ⟨.lit H (.app a.2 b.2 a.1 (String.foldr_eq .. ▸ b.1)), a.2.app b.2⟩
-
-def VLocalDecl.ClosedN : VLocalDecl → (k : Nat := 0) → Prop
-  | .vlam A, k => A.ClosedN k
-  | .vlet A e, k => A.ClosedN k ∧ e.ClosedN k
 
 def VLCtx.Closed : VLCtx → Prop
   | [] => True

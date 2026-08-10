@@ -1,4 +1,5 @@
 import Lean4Lean.Theory.Typing.Basic
+import Lean4Lean.Theory.Literals
 import Lean4Lean.Verify.NameGenerator
 import Lean4Lean.Verify.VLCtx
 import Lean4Lean.Verify.Axioms
@@ -44,10 +45,6 @@ def FVarsIn : Expr → Prop
 
 nonrec abbrev _root_.Lean.Expr.FVarsIn := @FVarsIn
 
-def VLocalDecl.WF (env : VEnv) (U : Nat) (Γ : List VExpr) : VLocalDecl → Prop
-  | .vlam type => env.IsType U Γ type
-  | .vlet type value => env.HasType U Γ value type
-
 def VLCtx.FVWF : VLCtx → Prop
   | [] => True
   | (ofv, _) :: (Δ : VLCtx) =>
@@ -65,10 +62,6 @@ def VLCtx.WF.fvwf : ∀ {Δ}, VLCtx.WF env U Δ → Δ.FVWF
   | _ :: _, ⟨h1, h2, _⟩ => ⟨h1.fvwf, h2⟩
 
 def TrProj : ∀ (Γ : List VExpr) (structName : Name) (idx : Nat) (e : VExpr), VExpr → Prop := sorry
-
-def VEnv.ContainsLits (env : VEnv) : Literal → Prop
-  | .natVal _ => env.contains ``Nat
-  | .strVal _ => env.contains ``Char.ofNat ∧ env.contains ``String.ofList
 
 variable (env : VEnv) (Us : List Name) in
 inductive TrExprS : VLCtx → Expr → VExpr → Prop
@@ -105,35 +98,6 @@ inductive TrExprS : VLCtx → Expr → VExpr → Prop
 def TrExpr (env : VEnv) (Us : List Name) (Δ : VLCtx) (e : Expr) (e' : VExpr) : Prop :=
   ∃ e₂, TrExprS env Us Δ e e₂ ∧ env.IsDefEqU Us.length Δ.toCtx e₂ e'
 
-def VExpr.bool : VExpr := .const ``Bool []
-def VExpr.boolTrue : VExpr := .const ``Bool.true []
-def VExpr.boolFalse : VExpr := .const ``Bool.false []
-def VExpr.boolLit : Bool → VExpr
-  | .false => .boolFalse
-  | .true => .boolTrue
-
-def VExpr.nat : VExpr := .const ``Nat []
-def VExpr.natZero : VExpr := .const ``Nat.zero []
-def VExpr.natSucc : VExpr := .const ``Nat.succ []
-def VExpr.natLit : Nat → VExpr
-  | 0 => .natZero
-  | n+1 => .app .natSucc (.natLit n)
-
-def VExpr.char : VExpr := .const ``Char []
-def VExpr.string : VExpr := .const ``String []
-def VExpr.stringOfList : VExpr := .const ``String.ofList []
-def VExpr.listChar : VExpr := .app (.const ``List [.zero]) .char
-def VExpr.listCharNil : VExpr := .app (.const ``List.nil [.zero]) .char
-def VExpr.listCharCons : VExpr := .app (.const ``List.cons [.zero]) .char
-def VExpr.charOfNat : VExpr := .const ``Char.ofNat []
-def VExpr.listCharLit : List Char → VExpr
-  | [] => .listCharNil
-  | a :: as => .app (.app .listCharCons (.app .charOfNat (.natLit a.toNat))) (.listCharLit as)
-
-def VExpr.trLiteral : Literal → VExpr
-  | .natVal n => .natLit n
-  | .strVal s => .app .stringOfList (.listCharLit s.toList)
-
 /-- Deterministic shadow of `TrExprS`: compute the strict Theory translation
 of an expression syntactically.  Every semantic premise of `TrExprS` only
 validates a translation, it never selects between candidates, so on the
@@ -161,40 +125,3 @@ def trExprS? (Us : List Name) : VLCtx → Expr → Option VExpr
   | Δ, .mdata _ e => trExprS? Us Δ e
   | _, .proj .. => none
   | _, .mvar .. => none
-
-def VEnv.ReflectsNatNatNat (env : VEnv) (fc : Name) (f : Nat → Nat → Nat) :=
-  env.contains fc →
-  ∀ a b, env.IsDefEqU 0 [] (.app (.app (.const fc []) (.natLit a)) (.natLit b)) (.natLit (f a b))
-
-def VEnv.ReflectsNatNatBool (env : VEnv) (fc : Name) (f : Nat → Nat → Bool) :=
-  env.contains fc →
-  ∀ a b, env.IsDefEqU 0 [] (.app (.app (.const fc []) (.natLit a)) (.natLit b)) (.boolLit (f a b))
-
-structure VEnv.HasPrimitives (env : VEnv) : Prop where
-  bool : env.contains ``Bool → env.contains ``Bool.false ∧ env.contains ``Bool.true
-  boolFalse : env.constants ``Bool.false = some ci → ci = { uvars := 0, type := .bool }
-  boolTrue : env.constants ``Bool.true = some ci → ci = { uvars := 0, type := .bool }
-  nat : env.contains ``Nat → env.contains ``Nat.zero ∧ env.contains ``Nat.succ
-  natZero : env.constants ``Nat.zero = some ci → ci = { uvars := 0, type := .nat }
-  natSucc : env.constants ``Nat.succ = some ci →
-    ci = { uvars := 0, type := .forallE .nat .nat }
-  natAdd : env.ReflectsNatNatNat ``Nat.add Nat.add
-  natSub : env.ReflectsNatNatNat ``Nat.sub Nat.sub
-  natMul : env.ReflectsNatNatNat ``Nat.mul Nat.mul
-  natPow : env.ReflectsNatNatNat ``Nat.pow Nat.pow
-  natGcd : env.ReflectsNatNatNat ``Nat.gcd Nat.gcd
-  natMod : env.ReflectsNatNatNat ``Nat.mod Nat.mod
-  natDiv : env.ReflectsNatNatNat ``Nat.div Nat.div
-  natBEq : env.ReflectsNatNatBool ``Nat.beq Nat.beq
-  natBLE : env.ReflectsNatNatBool ``Nat.ble Nat.ble
-  natLAnd : env.ReflectsNatNatNat ``Nat.land Nat.land
-  natLOr : env.ReflectsNatNatNat ``Nat.lor Nat.lor
-  natXor : env.ReflectsNatNatNat ``Nat.xor Nat.xor
-  natShiftLeft : env.ReflectsNatNatNat ``Nat.shiftLeft Nat.shiftLeft
-  natShiftRight : env.ReflectsNatNatNat ``Nat.shiftRight Nat.shiftRight
-  charOfNat : env.constants ``Char.ofNat = some ci →
-    ci = { uvars := 0, type := .forallE .nat .char }
-  stringOfList : env.constants ``String.ofList = some ci →
-    ci = { uvars := 0, type := .forallE .listChar .string } ∧
-    env.HasType 0 [] .listCharNil .listChar ∧
-    env.HasType 0 [] .listCharCons (.forallE .char <| .forallE .listChar .listChar)
