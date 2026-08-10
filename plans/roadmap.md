@@ -67,8 +67,8 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-09C active**; L4L-09B and everything above it are complete and pruned from §5; everything below L4L-09C is queued |
-| Current formalization source | L4L-09B nested transformation on top of the L4L-09A design checkpoint `e0ee54ee` and the L4L-08C closure `ea733017`; this checkpoint adds the Theory flattening `nestedElimination?`/`nestedStage3` (`Lean4Lean/Theory/NestedInductive.lean`), its fixture pins, and the port/kernel differential (`Lean4Lean/Verify/Environment/NestedTransformation.lean`) at `jcb/formalization2`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
+| Ladder position | **L4L-09C active** (generic generation, transaction, preservation, alignment, and metadata round-trip landed through the `4b3d4498` sub-checkpoint; the WF-inhabited environment replay of both fixtures remains); L4L-09B and everything above it are complete and pruned from §5; everything below L4L-09C is queued |
+| Current formalization source | L4L-09C work in progress on top of the L4L-09B transformation checkpoint `b8899c7d`, the L4L-09A design checkpoint `e0ee54ee`, and the L4L-08C closure `ea733017`; the latest sub-checkpoint adds the total restoration substitution, restored generation artifacts, `addInductNested` with trace/preservation, and the `TrEnv'.inductNested` alignment layer at `jcb/formalization2`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 20 live source `sorry` tokens across 19 proof declarations, plus six kernel-rejection recovery declarations (25 compiled allowlist entries total), and 29 custom-axiom declarations; all are pinned by exact audits |
@@ -317,6 +317,34 @@ auxiliary-name collisions, and that σ over the existing flat-block
 generation artifacts reproduces every stored recursor type and rule RHS,
 with declaration-world values for constructor types and an `instL`
 elimination-offset splice for recursor-world artifacts.
+
+The restoration and its transaction are implemented and preserved:
+`restoreExpr` is the total bottom-up σ (firing where an auxiliary spine
+completes its parameter count, recursor renames checked before the
+constructor-prefix case), `NestedBlockChecked.recursors`/`generatedRules`
+restore the flattened block's generation artifacts onto the
+`appendIndexAfter` inventory, and `VEnv.addInductNested` inserts source
+families/constructors plus restored recursors/rules in the four block
+phases. `AddInductNestedTrace` and its lemma suite (recovery, atomicity,
+monotonicity, freshness, lookups, rule membership) mirror the block
+transaction; `NestedBlockChecked.WF` chains per-insertion constant and
+rule well-formedness along the deterministic phase folds and
+`addInductNested_WF` folds it into `Ordered` preservation, discharged
+through the new `VDecl.WF.inductNested` case and `VEnv.WF.ordered`.
+Verify's `AddInductNested`/`AddInductNestedTrace` and `TrEnv'.inductNested`
+extend the alignment layer (with `aligned`, `of_value`, `map_wf`,
+`sf_mono` cases). The restoration-parity differential proves the product
+σ equal to Lean's stored metadata — every restored recursor name,
+universe count, and type, and every rule RHS in globally flattened
+order — and the real-output round-trip runs the port's complete
+`Environment.addInductive` on dependency-only environments and compares
+its entire output against the Theory artifacts (payload constants,
+recursors, K flags, rule RHSs, and `numNested`), on the rose-tree,
+nested-indexed, and constant-universe fixtures. Outstanding for L4L-09C:
+inhabiting `NestedBlockChecked.WF` for both ladder fixtures (via
+checker-run certificates on the restored artifacts or the general
+σ-transport theorem) and driving the real replay through
+`TrEnv'.inductNested` into aligned final environments.
 
 The Theory flattening itself is implemented:
 `VInductDecl.nestedElimination?` (`Theory/NestedInductive.lean`) mirrors

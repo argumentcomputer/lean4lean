@@ -313,4 +313,71 @@ run_meta do
   checkRestoreParity "nv" ``NVTree [] 0 [pvecStoredTarget]
   checkRestoreParity "cu" ``CURose [] 0 [listTarget]
 
+/-! ## Real-output round-trip (L4L-09C)
+
+Run the port's complete `Environment.addInductive` on a dependency-only
+kernel environment and compare its entire output — not the ambient
+elaborator metadata — against the Theory nested artifacts: the stored
+payload against the source constants, and every emitted recursor's name,
+universe count, type, rule constructors, rule field counts, and rule RHSs
+against the restored inventory.  Nothing in this comparison is
+hand-authored: the left side is real `Inductive.Add.run`-derived output
+and the right side is computed by `nestedBlockChecked?`. -/
+
+open Elab in
+def checkOutputRoundTrip (label : String) (main : Name) (lparams : List Name)
+    (nparams : Nat) (deps : List Name) (targets : List NestedTargetBlock) :
+    MetaM Unit := do
+  let env ← getEnv
+  let src := sourceType09A env main
+  let kenv := Kernel.Environment.ofConstants (`_l4l09C ++ main) (depMap09A env deps)
+  let .ok kout := Lean4Lean.Environment.addInductive kenv lparams nparams [src] false false
+    | throwError "{label}: port addInductive failed"
+  let sourceV ← toVInductDecl09B lparams nparams [src]
+  let some nested := nestedBlockChecked? targets sourceV
+    | throwError "{label}: nested acceptance failed"
+  -- the stored payload: families and constructors
+  for tyV in sourceV.types do
+    let some (.inductInfo out) := kout.find? tyV.name
+      | throwError "{label}: output family {tyV.name} missing"
+    let outType ← Lean4Lean.Meta.ofExpr out.levelParams {} (← Lean4Lean.Meta.expandExpr out.type)
+    unless out.levelParams.length == tyV.uvars && outType == tyV.type do
+      throwError "{label}: output family metadata differs for {tyV.name}"
+    unless out.numNested == nested.elim.numNested do
+      throwError "{label}: output numNested {out.numNested} vs \
+        artifact {nested.elim.numNested}"
+    for cV in tyV.ctors do
+      let some (.ctorInfo outC) := kout.find? cV.name
+        | throwError "{label}: output constructor {cV.name} missing"
+      let outCType ← Lean4Lean.Meta.ofExpr outC.levelParams {}
+        (← Lean4Lean.Meta.expandExpr outC.type)
+      unless outC.levelParams.length == cV.uvars && outCType == cV.type do
+        throwError "{label}: output constructor metadata differs for {cV.name}"
+  -- the restored recursors and their rules, in inventory order
+  let mut ruleIdx := 0
+  let rules := nested.generatedRules
+  for r in nested.recursors do
+    let some (.recInfo out) := kout.find? r.name
+      | throwError "{label}: output recursor {r.name} missing"
+    let outType ← Lean4Lean.Meta.ofExpr out.levelParams {} (← Lean4Lean.Meta.expandExpr out.type)
+    unless out.levelParams.length == r.uvars && outType == r.type do
+      throwError "{label}: output recursor metadata differs for {r.name}"
+    unless out.k == nested.generation.kTarget do
+      throwError "{label}: output recursor K flag differs for {r.name}"
+    for rule in out.rules do
+      let some df := rules[ruleIdx]?
+        | throwError "{label}: more output rules than restored rules"
+      let outRhs ← Lean4Lean.Meta.ofExpr out.levelParams {}
+        (← Lean4Lean.Meta.expandExpr rule.rhs)
+      unless outRhs == df.rhs do
+        throwError "{label}: output rule RHS differs for {rule.ctor}"
+      ruleIdx := ruleIdx + 1
+  unless ruleIdx == rules.length do
+    throwError "{label}: {rules.length} restored rules, output consumed {ruleIdx}"
+
+run_meta do
+  checkOutputRoundTrip "rose" ``RoseTree [`u] 1 roseDeps [listTarget]
+  checkOutputRoundTrip "nv" ``NVTree [] 0 nvDeps [pvecStoredTarget]
+  checkOutputRoundTrip "cu" ``CURose [] 0 roseDeps [listTarget]
+
 end Lean4Lean.NestedTransformation
