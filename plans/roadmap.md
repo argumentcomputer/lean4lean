@@ -67,12 +67,12 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-09C active** (generic generation, transaction, preservation, alignment, and metadata round-trip landed through the `4b3d4498` sub-checkpoint; the WF-inhabited environment replay of both fixtures remains); L4L-09B and everything above it are complete and pruned from §5; everything below L4L-09C is queued |
-| Current formalization source | L4L-09C work in progress on top of the L4L-09B transformation checkpoint `b8899c7d`, the L4L-09A design checkpoint `e0ee54ee`, and the L4L-08C closure `ea733017`; the latest sub-checkpoint adds the total restoration substitution, restored generation artifacts, `addInductNested` with trace/preservation, and the `TrEnv'.inductNested` alignment layer at `jcb/formalization2`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
+| Ladder position | **L4L-10A active**; L4L-09C and everything above it are complete and pruned from §5; everything below L4L-10A is queued |
+| Current formalization source | L4L-09C nested generation and replay closure on top of its sub-checkpoints (`4b3d4498` generic layer, `34753706` round-trip, `b71ab5c2` σ̂ transport, `a77e358b` rose replay), the L4L-09B transformation checkpoint `b8899c7d`, the L4L-09A design checkpoint `e0ee54ee`, and the L4L-08C closure `ea733017`; the closing checkpoint adds the nested-indexed replay over a staged `PVec` boundary in `Lean4Lean/Verify/Environment/NestedReplay.lean` at `jcb/formalization2`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 20 live source `sorry` tokens across 19 proof declarations, plus six kernel-rejection recovery declarations (25 compiled allowlist entries total), and 29 custom-axiom declarations; all are pinned by exact audits |
-| Gates | the full §6 gate is green on the L4L-09B checkpoint source, including focused, aggregate, and default Lake builds, the Nix proof/dependency build, all native flake checks, sorry-frontier and Theory import-boundary audits, formatter check, and whitespace check |
+| Gates | the full §6 gate is green on the L4L-09C closure source, including focused, aggregate, and default Lake builds, the Nix proof/dependency build, all native flake checks, sorry-frontier and Theory import-boundary audits, formatter check, and whitespace check |
 
 ### 2.1 What is green
 
@@ -340,11 +340,29 @@ order — and the real-output round-trip runs the port's complete
 `Environment.addInductive` on dependency-only environments and compares
 its entire output against the Theory artifacts (payload constants,
 recursors, K flags, rule RHSs, and `numNested`), on the rose-tree,
-nested-indexed, and constant-universe fixtures. Outstanding for L4L-09C:
-inhabiting `NestedBlockChecked.WF` for both ladder fixtures (via
-checker-run certificates on the restored artifacts or the general
-σ-transport theorem) and driving the real replay through
-`TrEnv'.inductNested` into aligned final environments.
+nested-indexed, and constant-universe fixtures.
+
+**Nested environment replay.** Both ladder fixtures replay from real
+stored metadata through `TrEnv'.inductNested`
+(`Verify/Environment/NestedReplay.lean`): the rose tree over the
+completed `List` replay environment, and the nested-indexed family over
+a `PVec` boundary staged by `TrEnv'.inductStaging` on the completed
+`Nat` replay. Each replay inserts the stored `ConstantInfo`s with
+`tr_type_expr_tac` translations, exact freshness chains, K-flag
+agreement, and the literal rule fold, and proves the complete
+`NestedBlockChecked.WF` package by direct concrete typing derivations
+(`type_tac`) over the exact phase environments, with the printed
+artifact literals tied to the computed `nestedBlockChecked?` artifacts
+by named `native_decide` observations. The package closures are the
+standard logical baseline plus the persistent-map container axioms and
+those named observations — no `sorryAx`; the full `TrEnv'` roots carry
+the usual transitional checker closure, exactly guarded. The general σ̂
+typed transport (`Theory/Typing/NestedTransport.lean`: the `ConstInterp`
+environment morphism and `IsDefEq.substConst` with
+`HasType`/`IsType`/`VConstant.WF`/`VDefEq.WF` corollaries) is proved as
+the generic justification layer; its β-collapse bridge to the
+spine-collapsed artifact substitution on generated artifacts remains
+available future work, not a nested-coverage gap.
 
 The Theory flattening itself is implemented:
 `VInductDecl.nestedElimination?` (`Theory/NestedInductive.lean`) mirrors
@@ -369,11 +387,14 @@ applications, canonical-auxiliary-name collisions, and missing target
 declarations. Source declarations remain rejected by every raw analyzer;
 no generated recursor, rule, or replay is claimed for nested blocks yet.
 
-**Not claimed.** Nested blocks, generated patterns, projections, and the
-remaining metatheory/checker roots. The mutual fixtures prove the current
-non-nested block boundary; they do not claim the kernel's nested flattening or
-auxiliary-family transformation.
-Bare producer success is never generation-shape authority or Theory semantics.
+**Not claimed.** Generated patterns, projections, and the remaining
+metatheory/checker roots. The nested fixtures prove the current
+single-target nesting boundary (one auxiliary block per occurrence class,
+`nparams ≤ 1` exercised by the ladder fixtures); nesting classes beyond
+the accepted flattened-block analyzer remain rejected, and deep
+multi-parameter nesting breadth belongs to the L4L-11 replay-breadth
+matrix. Bare producer success is never generation-shape authority or
+Theory semantics.
 
 ### 2.2 Live debt
 
@@ -393,10 +414,11 @@ are not proof debt:
 The remaining v4.31-added sorry is classified:
 `Lean4Lean.addDecl.WF` → L4L-19B. Non-sorry debt:
 
-- The public inductive spec has complete one-family and non-nested mutual
-  generation, preservation, metadata parity, and environment replay, but
-  remains a growing subset rather than kernel-complete; nested,
-  generated-pattern, and projection coverage remain queued.
+- The public inductive spec has complete one-family, non-nested mutual,
+  and nested generation, preservation, metadata parity, and environment
+  replay, but remains a growing subset rather than kernel-complete;
+  generated-pattern and projection coverage remain queued, and nested
+  replay breadth beyond the two ladder fixtures belongs to L4L-11.
 - Consumer-neutral APIs (`VLocalDecl` core, literal encodings,
   `ContainsLits`, `HasPrimitives`, `TrProj`) still live under `Verify/`,
   forcing downstream checkers to import that layer (L4L-12A/L4L-15C).
@@ -568,19 +590,9 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Nested inductives (L4L-09C)
-
-**L4L-09C — nested generation and replay (active).** Generate every
-auxiliary declaration, recursor, and rule through the restoration
-substitution over the flattened block's generation artifacts; prove
-preservation and insertion order.
-*Exit:* both fixtures round-trip real `Inductive.Add.run` output through
-generic packaging and environment replay, comparing all raw metadata and
-rule RHSs rather than a hand-authored declaration.
-
 ### Generated patterns (L4L-10A–L4L-10B)
 
-**L4L-10A — generated iota pattern core.** Construct every generated iota LHS
+**L4L-10A — generated iota pattern core (active).** Construct every generated iota LHS
 through `SimplePattern.iota` or prove exact equality to its `Pattern`. Prove
 match inversion, rule-index/constructor recovery, rule distinctness, pairwise
 non-intersection, and the
