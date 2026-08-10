@@ -67,12 +67,12 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-09A active**; L4L-08C and everything above it are complete and pruned from §5; everything below L4L-09A is queued |
-| Current formalization source | L4L-08C mutual generation/preservation/replay implementation through `aa10005d`, built on the L4L-08A checked representation `79e1ae4f` and L4L-08B validation semantics; this closure checkpoint adds the migration shim and completion audit at `jcb/formalization`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
+| Ladder position | **L4L-09B active**; L4L-09A and everything above it are complete and pruned from §5; everything below L4L-09B is queued |
+| Current formalization source | L4L-09A nested representation decision on top of the L4L-08C closure `ea733017` (itself built on the L4L-08A checked representation `79e1ae4f` and L4L-08B validation semantics); this checkpoint adds the committed design note and executable nested-metadata probes in `Lean4Lean/Verify/Environment/NestedRepresentation.lean` at `jcb/formalization2`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 20 live source `sorry` tokens across 19 proof declarations, plus six kernel-rejection recovery declarations (25 compiled allowlist entries total), and 29 custom-axiom declarations; all are pinned by exact audits |
-| Gates | the full §6 gate is green on the L4L-08C closure source, including focused, aggregate, and default Lake builds, the Nix proof/dependency build, all native flake checks, sorry-frontier and Theory import-boundary audits, formatter check, and whitespace check |
+| Gates | the full §6 gate is green on the L4L-09A checkpoint source, including focused, aggregate, and default Lake builds, the Nix proof/dependency build, all native flake checks, sorry-frontier and Theory import-boundary audits, formatter check, and whitespace check |
 
 ### 2.1 What is green
 
@@ -299,6 +299,27 @@ fixture still spells indices as `Nat.zero`/`Nat.succ`, deliberately excluding
 notation's `OfNat`/`HAdd` instance closure — a reduced dependency claim, not
 full prelude replay.
 
+**Nested representation decision.** The committed design note and
+executable metadata probes in
+`Lean4Lean/Verify/Environment/NestedRepresentation.lean` pin how the
+implementation stores nested inductives (restored source families carrying
+`numNested`, auxiliary recursors named by `appendIndexAfter` whose rules
+are keyed by previously declared inductives' constructors, flattened
+motive/minor counts, no surviving `_nested.*` constant) and fix the L4L-09
+representation: the stored Theory payload is the source `VInductDecl`
+unchanged, and nested support is an additive artifact coupling the
+flattened block (already accepted by the existing arbitrary-block
+machinery, per probe) with per-auxiliary specifications — the Theory
+analog of `aux2nested` — and a restoration substitution σ. Probes verify
+on rose-tree, nested-indexed, and constant-universe fixtures that the
+port's nested path reproduces Lean's stored metadata exactly, that final
+metadata is independent of auxiliary-name collisions, and that σ over the
+existing flat-block generation artifacts reproduces every stored recursor
+type and rule RHS, with declaration-world values for constructor types and
+an `instL` elimination-offset splice for recursor-world artifacts. The
+source declarations remain rejected by every current analyzer; acceptance
+behavior is unchanged at this checkpoint.
+
 **Not claimed.** Nested blocks, generated patterns, projections, and the
 remaining metatheory/checker roots. The mutual fixtures prove the current
 non-nested block boundary; they do not claim the kernel's nested flattening or
@@ -498,21 +519,12 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Nested inductives (L4L-09A–L4L-09C)
+### Nested inductives (L4L-09B–L4L-09C)
 
-**L4L-09A — nested representation decision (active).** Audit how translated
-`inductInfo` represents flattened nested auxiliaries even though the producer
-receives `numNested` and `VInductDecl` does not. Commit a design note plus
-executable metadata probes. Choose an additive metadata/checked-block type or
-proved pre-flattening relation; change existing `VInductDecl` fields only if
-neither can express real output, with downstream compatibility evidence
-first.
-*Exit:* the design is sufficient for real rose-tree and nested-indexed
-metadata; no acceptance behavior or public field changes without demonstrated
-need; this checkpoint changes no acceptance behavior.
-
-**L4L-09B — nested transformation and positivity.** Implement the chosen
-pre-flattening/auxiliary relation, the kernel nested transformation, and its
+**L4L-09B — nested transformation and positivity (active).** Implement the
+chosen pre-flattening/auxiliary relation from the committed L4L-09A design
+(flattened block plus per-auxiliary specifications and the restoration
+substitution), the kernel nested transformation, and its
 positivity/validation obligations.
 *Exit:* the transformed family and auxiliary descriptors for a rose tree
 through List and one nested indexed family, plus nearest rejection
