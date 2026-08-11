@@ -1760,6 +1760,17 @@ theorem SpineWF.append {env : VEnv} {U : Nat} {Γ : List VExpr} :
   | _ :: _, _, _, ⟨A₁, A₂, rfl, he, hrest⟩, _, _, h' =>
       ⟨A₁, A₂, rfl, he, SpineWF.append hrest h'⟩
 
+/-- Split a well-typed application spine at an explicit list prefix. -/
+theorem SpineWF.split {env : VEnv} {U : Nat} {Γ : List VExpr} :
+    ∀ {front suffix : List VExpr} {A B : VExpr},
+      env.SpineWF U Γ A (front ++ suffix) B →
+      ∃ cursor, env.SpineWF U Γ A front cursor ∧
+        env.SpineWF U Γ cursor suffix B
+  | [], suffix, A, B, h => ⟨A, rfl, by simpa using h⟩
+  | _ :: front, suffix, _, _, ⟨A₁, A₂, rfl, he, hrest⟩ => by
+      obtain ⟨cursor, hfront, hsuffix⟩ := SpineWF.split hrest
+      exact ⟨cursor, ⟨A₁, A₂, rfl, he, hfront⟩, hsuffix⟩
+
 /-- Extend a well-typed application spine by one final argument. -/
 theorem SpineWF.snoc {env : VEnv} {U : Nat} {Γ : List VExpr} {e D C : VExpr} :
     ∀ {es : List VExpr} {A : VExpr}, env.SpineWF U Γ A es (.forallE D C) →

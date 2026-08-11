@@ -653,7 +653,8 @@ private theorem VEnv.OnSortTel.instRevParams {env : VEnv}
       rw [← hparams, VExpr.instRevAt_instTelN_cons] at hout
       exact hout
 
-private theorem VEnv.OnTel.toOnCtx {env : VEnv} {U : Nat} :
+/-- Extend a well-formed ambient context by a well-formed telescope. -/
+theorem VEnv.OnTel.toOnCtx {env : VEnv} {U : Nat} :
     ∀ {As Γ}, env.OnTel U Γ As → OnCtx Γ (env.IsType U) →
       OnCtx (As.reverse ++ Γ) (env.IsType U)
   | [], _, _, hΓ => by simpa using hΓ
@@ -1784,6 +1785,28 @@ theorem WF.rule_mem (self : VStructureView.WF view env) {df : VDefEq}
     VEnv.defeqs env df :=
   self.rules df h
 
+/-- The semantic capability required by structure-eta consumers.
+
+`VStructureView.WF` and `ProgramsWF` account for the registered structure
+artifact and the typing of its generated projectors.  This property records
+only the additional equality that those rule-independent certificates do not
+derive: rebuilding every canonical projection is definitionally equal to the
+original major premise.  Keeping it as an explicit environment capability
+prevents checker verification from silently extending `VEnv.IsDefEq`. -/
+def _root_.Lean4Lean.VEnv.HasStructureEta (env : VEnv) : Prop :=
+  ∀ (view : VStructureView), view.WF env → view.ProgramsWF env →
+    ∀ {U : Nat} {Γ : List VExpr} {levels : List VLevel}
+      {params : List VExpr} {major : VExpr},
+      OnCtx Γ (env.IsType U) →
+      (∀ level ∈ levels, level.WF U) →
+      levels.length = view.uvars →
+      params.length = view.nparams →
+      (∃ resultLevel, env.SpineWF U Γ (view.familyType.instL levels)
+        params (.sort resultLevel)) →
+      env.HasType U Γ major (view.structureType levels params) →
+      env.IsDefEq U Γ (view.etaRebuild levels params major) major
+        (view.structureType levels params)
+
 theorem Registered.mono {env env' : VEnv} (henv : env ≤ env')
     (self : VStructureView.Registered view env) :
     VStructureView.Registered view env' where
@@ -2139,6 +2162,103 @@ theorem _root_.Lean4Lean.VStructureView.WF.constructorParamsSpine
   exact hout.retarget
     (by simpa [VStructureView.constructorParams] using
       hparamsLength.trans hconstructorShape.2.2.1.symm) target
+
+/-- Recover the structure-family parameter spine from the corresponding
+constructor-parameter prefix.  This is the converse consumer bridge needed
+when a checker recognizes a fully applied constructor before it knows the
+family application carried by its result type. -/
+theorem _root_.Lean4Lean.VStructureView.WF.familyParamsSpine_of_constructor
+    (self : VStructureView.WF view env) (henv : env.Ordered)
+    {U : Nat} {Γ : List VExpr} (levels : List VLevel)
+    (hlevels : ∀ level ∈ levels, level.WF U)
+    (hlevelsLength : levels.length = view.uvars)
+    (params : List VExpr) (hparamsLength : params.length = view.nparams)
+    {target cursor : VExpr}
+    (constructorSpine : env.SpineWF U Γ
+      (VExpr.forallN
+        (view.constructorParams.map (VExpr.instL levels)) target)
+      params cursor)
+    (resultLevel : VLevel)
+    (hresult : view.generation.block.rawResult = .sort resultLevel) :
+    env.SpineWF U Γ (view.familyType.instL levels) params
+      (.sort (resultLevel.inst levels)) := by
+  let S := self.toGenerationEnv henv
+  have hrawLength :
+      view.generation.block.rawParams.length = view.nparams :=
+    view.generation.shape.1
+  have hconstructorMem :
+      view.constructor ∈ view.generation.block.ctorPairs := by
+    simp [view.constructor_eq]
+  have hconstructorShape :=
+    view.generation.shape.2.2.2.2.2 view.constructor hconstructorMem
+  have hconstructorLength : params.length =
+      (view.constructorParams.map (VExpr.instL levels)).length := by
+    simpa [VStructureView.constructorParams] using
+      hparamsLength.trans hconstructorShape.2.2.1.symm
+  have hparamsConstructor : env.SpineWF U Γ
+      (VExpr.forallN
+        (view.constructorParams.map (VExpr.instL levels)) (.sort .zero))
+      params (.sort .zero) := by
+    have hout := constructorSpine.retarget hconstructorLength (.sort .zero)
+    rw [VExpr.instRev_closedN params (by trivial)] at hout
+    exact hout
+  have hfamilyDefEq := S.rawParams_defeq.instL hlevels
+  have hrawLift : VExpr.liftTelN Γ.length
+      (view.generation.block.rawParams.map (VExpr.instL levels)) 0 =
+      view.generation.block.rawParams.map (VExpr.instL levels) := by
+    simpa using VEnv.OnTel.liftTelN_eq henv
+      hfamilyDefEq.raw_onTel (by trivial) Γ.length
+  have hcheckedLift : VExpr.liftTelN Γ.length
+      (view.generation.block.checked.params.map (VExpr.instL levels)) 0 =
+      view.generation.block.checked.params.map (VExpr.instL levels) := by
+    simpa using VEnv.OnTel.liftTelN_eq henv
+      (hfamilyDefEq.view_onTel henv) (by trivial) Γ.length
+  have hfamilyDefEqΓ := hfamilyDefEq.weakN henv
+    (Ctx.LiftN.zero (n := Γ.length) (Γ := []) Γ)
+  rw [hrawLift, hcheckedLift] at hfamilyDefEqΓ
+  simp only [List.append_nil] at hfamilyDefEqΓ
+  have hconstructorDefEq₀ :=
+    ((S.ctorWF view.constructor hconstructorMem).declaredTel.take
+      view.nparams).instL hlevels
+  have hconstructorDefEq : env.TelDefEq U []
+      (view.constructorParams.map (VExpr.instL levels))
+      (view.generation.block.checked.params.map (VExpr.instL levels)) := by
+    simpa [VStructureView.constructorParams,
+      VInductDecl.NormalizedCtor.declaredBinders,
+      VInductDecl.NormalizedCtor.viewBinders,
+      hconstructorShape.2.2.1, self.parameters_length] using
+        hconstructorDefEq₀
+  have hconstructorRawLift : VExpr.liftTelN Γ.length
+      (view.constructorParams.map (VExpr.instL levels)) 0 =
+      view.constructorParams.map (VExpr.instL levels) := by
+    simpa using VEnv.OnTel.liftTelN_eq henv
+      hconstructorDefEq.raw_onTel (by trivial) Γ.length
+  have hconstructorDefEqΓ := hconstructorDefEq.weakN henv
+    (Ctx.LiftN.zero (n := Γ.length) (Γ := []) Γ)
+  rw [hconstructorRawLift, hcheckedLift] at hconstructorDefEqΓ
+  simp only [List.append_nil] at hconstructorDefEqΓ
+  have hparamsChecked : env.SpineWF U Γ
+      (VExpr.forallN
+        (view.generation.block.checked.params.map (VExpr.instL levels))
+        (.sort .zero)) params (.sort .zero) :=
+    VEnv.TelDefEq.spine_sort_view henv hconstructorDefEqΓ
+      hparamsConstructor hconstructorLength
+  have hrawParamsLength : params.length =
+      (view.generation.block.rawParams.map (VExpr.instL levels)).length := by
+    simpa [hrawLength] using hparamsLength
+  have hparamsRaw : env.SpineWF U Γ
+      (VExpr.forallN
+        (view.generation.block.rawParams.map (VExpr.instL levels))
+        (.sort .zero)) params (.sort .zero) :=
+    VEnv.TelDefEq.spine_sort henv hfamilyDefEqΓ hparamsChecked
+      hrawParamsLength
+  have hout := hparamsRaw.retarget hrawParamsLength
+    (.sort (resultLevel.inst levels))
+  rw [VExpr.instRev_closedN params (by trivial)] at hout
+  simpa [VStructureView.familyType,
+    VInductDecl.NormalizedChecked.rawType_eq,
+    view.raw_indices_eq, hresult, VExpr.instL_forallN,
+    VExpr.forallN, VExpr.instL] using hout
 
 theorem _root_.Lean4Lean.VStructureView.WF.specializedFields_onSortTel
     (self : VStructureView.WF view env) (henv : env.Ordered)

@@ -537,6 +537,19 @@ def tryEtaExpansionCore (t s : Expr) : RecM Bool := do
 def tryEtaExpansion (t s : Expr) : RecM Bool :=
   tryEtaExpansionCore t s <||> tryEtaExpansionCore s t
 
+/-- One field comparison in the structure-eta fast path.  Naming the
+callback keeps the executable range loop and its verification aligned without
+depending on proof terms synthesized by `for` notation. -/
+def tryEtaStructFieldStep (t : Expr) (induct : Name) (numParams : Nat)
+    (args : Array Expr) (i : Nat) (_ : i ∈ [numParams:args.size])
+    (_ : Option Bool × PUnit) :
+    RecM (ForInStep (Option Bool × PUnit)) := do
+  let b ← isDefEq (.proj induct (i - numParams) t) args[i]
+  if b = true then
+    pure (.yield ⟨none, PUnit.unit⟩)
+  else
+    pure (.done ⟨some false, PUnit.unit⟩)
+
 def tryEtaStructCore (t s : Expr) : RecM Bool := do
   let .const f _ := s.getAppFn | return false
   let env ← getEnv
@@ -545,9 +558,11 @@ def tryEtaStructCore (t s : Expr) : RecM Bool := do
   unless env.isNonRecStructure fInfo.induct do return false
   unless ← isDefEq (← inferType t) (← inferType s) do return false
   let args := s.getAppArgs
-  for h : i in [fInfo.numParams:args.size] do
-    unless ← isDefEq (.proj fInfo.induct (i - fInfo.numParams) t) args[i] do return false
-  return true
+  let r ← forIn' [fInfo.numParams:args.size] ⟨none, PUnit.unit⟩
+    (tryEtaStructFieldStep t fInfo.induct fInfo.numParams args)
+  match r.1 with
+  | none => return true
+  | some b => return b
 
 def tryEtaStruct (t s : Expr) : RecM Bool :=
   tryEtaStructCore t s <||> tryEtaStructCore s t

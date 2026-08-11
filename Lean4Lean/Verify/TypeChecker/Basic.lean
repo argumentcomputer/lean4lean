@@ -139,6 +139,57 @@ structure ProjectionReady (env : Environment) (venv : VEnv) : Prop where
     env.find? view.constructorName = some (.ctorInfo info) →
     info.numParams = view.nparams
 
+/-- Exact host/Theory alignment for one constructor/family pair accepted by
+the runtime structure-eta heuristics.  The underlying projection artifact
+supplies the registered Theory view and its typed projector programs; the two
+equalities identify that artifact with the precise host constructor lookup
+which triggered the heuristic. -/
+structure StructureEtaArtifact (env : Environment) (familyName : Name)
+    (familyInfo : InductiveVal) (constructorName : Name)
+    (constructorInfo : ConstructorVal) (venv : VEnv) where
+  projection : ProjectionArtifact env familyName familyInfo venv
+  constructor_name_eq : projection.view.constructorName = constructorName
+  constructor_info_eq : projection.constructorInfo = constructorInfo
+
+/-- Host-metadata coherence required whenever the executable checker accepts
+a family/constructor pair as a nonrecursive structure.  This deliberately
+contains no Theory equality: `VEnv.HasStructureEta` is the separate semantic
+capability consumed by the verification theorem. -/
+structure StructureEtaReady (env : Environment) (venv : VEnv) : Prop where
+  resolve : ∀ familyName familyInfo constructorName constructorInfo,
+    env.find? familyName = some (.inductInfo familyInfo) →
+    env.find? constructorName = some (.ctorInfo constructorInfo) →
+    env.isNonRecStructure familyName = true →
+    Nonempty (StructureEtaArtifact env familyName familyInfo
+      constructorName constructorInfo venv)
+
+/-- Resolve the family artifact named by a constructor lookup after the
+runtime nonrecursive-structure test has succeeded. -/
+theorem StructureEtaReady.resolveConstructor
+    (self : StructureEtaReady env venv)
+    (hctor : env.find? constructorName = some (.ctorInfo constructorInfo))
+    (hnonrec : env.isNonRecStructure constructorInfo.induct = true) :
+    ∃ familyInfo,
+      env.find? constructorInfo.induct = some (.inductInfo familyInfo) ∧
+      Nonempty (StructureEtaArtifact env constructorInfo.induct familyInfo
+        constructorName constructorInfo venv) := by
+  have hshape := hnonrec
+  unfold Kernel.Environment.isNonRecStructure at hshape
+  generalize hfamily : env.find? constructorInfo.induct = found at hshape
+  cases found with
+  | none => simp at hshape
+  | some info => cases info with
+    | inductInfo familyInfo =>
+      exact ⟨familyInfo, rfl,
+        self.resolve _ _ _ _ hfamily hctor hnonrec⟩
+    | axiomInfo _ => simp at hshape
+    | defnInfo _ => simp at hshape
+    | thmInfo _ => simp at hshape
+    | opaqueInfo _ => simp at hshape
+    | quotInfo _ => simp at hshape
+    | ctorInfo _ => simp at hshape
+    | recInfo _ => simp at hshape
+
 /-- Environments which contain no constructor metadata satisfy projection
 readiness vacuously.  This is the common staging case for validation fixtures:
 families may already be present, but their constructors have not been

@@ -574,6 +574,18 @@ test pins all three public names and their exact transitive axiom closures.
 This adds no `sorry` and, deliberately, proves no reconstruction equality:
 that last step is precisely the pending semantic decision.
 
+The checker-side derivations are also staged completely behind that decision.
+`VEnv.HasStructureEta` names only the missing reconstruction equality;
+`StructureEtaReady` aligns the exact host family/constructor metadata with a
+registered Theory view; and the sorry-free proof bodies
+`tryEtaStructCore.WF_of_structureEta` and
+`isDefEqUnitLike.WF_of_structureEta` discharge every remaining executable,
+typing, parameter-spine, and zero-field obligation under those explicit
+premises.  Their exact transitive axiom closures are guarded in
+`Tests/StructureEtaCapability.lean` (including already-tracked L4L-17 and
+projection-frontier `sorryAx` dependencies).  The unconditional roots remain
+unchanged at the approval gate, and `VEnv.IsDefEq` remains untouched.
+
 The proposed upstream decision is an explicit registered structure-eta rule,
 restricted to checked nonrecursive, single-constructor, zero-index structure
 views. Acceptance requires: subject reduction from the registered constructor

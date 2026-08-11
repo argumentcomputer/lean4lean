@@ -234,6 +234,40 @@ theorem VEnv.IsDefEq.appN_lamN {env : VEnv} (henv : env.Ordered) {U : Nat} :
     rw [hlen2]
     exact hstep.trans IH
 
+/-- Instantiate a terminal definitional equality through a saturated telescope spine. -/
+theorem VEnv.SpineWF.instRev_defeq
+    {env : VEnv} (henv : env.Ordered) {U : Nat} {Γ : List VExpr} :
+    ∀ {As : List VExpr} {C C' T : VExpr} {es : List VExpr} {B : VExpr},
+      env.SpineWF U Γ (VExpr.forallN As C) es B →
+      es.length = As.length →
+      env.IsDefEq U (As.reverse ++ Γ) C C' T →
+      env.IsDefEq U Γ (VExpr.instRev C es) (VExpr.instRev C' es)
+        (VExpr.instRev T es)
+  | [], C, C', T, [], B, hspine, _, hterminal => by
+      simpa [VExpr.instRev] using hterminal
+  | [], _, _, _, _ :: _, _, _, hlen, _ => by simp at hlen
+  | _ :: _, _, _, _, [], _, _, hlen, _ => by simp at hlen
+  | A :: As, C, C', T, e :: es, B,
+      ⟨A₁, A₂, hshape, he, hrest⟩, hlen, hterminal => by
+      change VExpr.forallE A (VExpr.forallN As C) =
+        VExpr.forallE A₁ A₂ at hshape
+      injection hshape with hA htail
+      subst A₁
+      subst A₂
+      have hlen' : es.length = As.length := by simpa using hlen
+      have W := Ctx.InstN.consTel (Γ₀ := Γ) (e₀ := e) (A₀ := A) As .zero
+      have hterminal₀ : env.IsDefEq U (As.reverse ++ A :: Γ) C C' T := by
+        simpa [List.reverse_cons, List.append_assoc] using hterminal
+      have hterminal' := hterminal₀.instN henv he W
+      have hrest' : env.SpineWF U Γ
+          (VExpr.forallN (VExpr.instTelN e As 0)
+            (C.inst e As.length)) es B := by
+        rw [VExpr.instN_forallN] at hrest
+        simpa using hrest
+      have hout := VEnv.SpineWF.instRev_defeq henv hrest'
+        (by simpa [VExpr.instTelN_length] using hlen') hterminal'
+      simpa [VExpr.instRev, hlen'] using hout
+
 /-- Iterated inversion of a lambda tower's typing: the telescope is
 well-formed and the body is typed under it. -/
 theorem VEnv.HasType.lamN_wf {env : VEnv} {U : Nat} (henv : env.Ordered) :
