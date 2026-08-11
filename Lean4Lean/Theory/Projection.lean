@@ -1274,6 +1274,16 @@ def projectionArgs (view : VStructureView) (levels : List VLevel)
   (view.projectionCodes levels params).take count |>.map fun code =>
     .app code.projector major
 
+/-- Rebuild a structure value from all of its canonical generated
+projections.  This is syntax only: `ProgramsWF.projectionArgsSpine` below
+supplies the rule-independent typing evidence, while any equality between
+this term and `major` remains an explicit definitional-equality capability. -/
+def etaRebuild (view : VStructureView) (levels : List VLevel)
+    (params : List VExpr) (major : VExpr) : VExpr :=
+  VExpr.appN (.const view.constructorName levels)
+    (params ++ view.projectionArgs levels params
+      (view.specializedFields levels params).length major)
+
 @[simp] theorem projectionArgs_length (view : VStructureView)
     (levels : List VLevel) (params : List VExpr) (count : Nat)
     (major : VExpr) (hcount : count ≤
@@ -1562,6 +1572,163 @@ theorem ProgramsWF.projector_hasType_field
   rw [htypeBody] at hout
   refine ⟨field, typeBody, hfield, htypeFn, ?_⟩
   simpa [projectionArgs] using hout
+
+private theorem ProgramsWF.projectionArgsSpineAux
+    {view : VStructureView} {env : VEnv}
+    (self : view.ProgramsWF env) (henv : env.WF)
+    {U : Nat} {Γ : List VExpr} {levels : List VLevel}
+    {params : List VExpr}
+    (hΓ : OnCtx Γ (env.IsType U))
+    (hlevels : ∀ level ∈ levels, level.WF U)
+    (hlevelsLength : levels.length = view.uvars)
+    (hparamsLength : params.length = view.nparams)
+    (hparamsSpine : ∃ resultLevel,
+      env.SpineWF U Γ (view.familyType.instL levels)
+        params (.sort resultLevel))
+    {major : VExpr}
+    (hmajor : env.HasType U Γ major (view.structureType levels params))
+    (tailResult : VExpr) :
+    ∀ {count : Nat},
+      count ≤ (view.specializedFields levels params).length →
+      ∃ cursor,
+        VExpr.consumeForalls?
+            (VExpr.forallN (view.specializedFields levels params) tailResult)
+            (view.projectionArgs levels params count major) = some cursor ∧
+          env.SpineWF U Γ
+            (VExpr.forallN (view.specializedFields levels params) tailResult)
+            (view.projectionArgs levels params count major) cursor := by
+  intro count hcount
+  induction count with
+  | zero =>
+      exact ⟨_, rfl, rfl⟩
+  | succ count ih =>
+      have hcountLt : count <
+          (view.specializedFields levels params).length := by omega
+      have hcodeIdx : count <
+          (view.projectionCodes levels params).length := by
+        simpa using hcountLt
+      let code := (view.projectionCodes levels params)[count]
+      have hcode :
+          (view.projectionCodes levels params)[count]? = some code :=
+        List.getElem?_eq_getElem hcodeIdx
+      have hargsLength :
+          (view.projectionArgs levels params count major).length = count :=
+        view.projectionArgs_length levels params count major
+          (Nat.le_of_lt hcodeIdx)
+      obtain ⟨cursor, hconsume, hspine⟩ :=
+        ih (Nat.le_of_lt hcountLt)
+      obtain ⟨field, semanticBody, hfield, hconsumeDomain⟩ :=
+        VExpr.consumeForalls?_forallN_domain
+          (view.specializedFields levels params) tailResult
+          (view.projectionArgs levels params count major)
+          (by simpa [hargsLength] using hcountLt)
+      have hcursorShape : cursor =
+          .forallE
+            (field.instRevAt
+              (view.projectionArgs levels params count major) 0)
+            semanticBody :=
+        Option.some.inj (hconsume.symm.trans hconsumeDomain)
+      subst cursor
+      obtain ⟨field', _, hfield', _, hprojectorField⟩ :=
+        self.projector_hasType_field henv hΓ hlevels hlevelsLength
+          hparamsLength hparamsSpine hcode hmajor
+      have hfieldEq : field' = field :=
+        Option.some.inj
+          (hfield'.symm.trans (by simpa [hargsLength] using hfield))
+      subst field'
+      refine ⟨semanticBody.inst (.app code.projector major), ?_, ?_⟩
+      · rw [view.projectionArgs_succ levels params count major hcode]
+        rw [VExpr.consumeForalls?_append, hconsumeDomain]
+        rfl
+      · rw [view.projectionArgs_succ levels params count major hcode]
+        exact hspine.snoc hprojectorField
+
+/-- All canonical generated projections of a well-typed major form a single
+well-typed dependent constructor-field spine.  This theorem deliberately
+stops at typing: it does not assert structure eta. -/
+theorem ProgramsWF.projectionArgsSpine
+    {view : VStructureView} {env : VEnv}
+    (self : view.ProgramsWF env) (henv : env.WF)
+    {U : Nat} {Γ : List VExpr} {levels : List VLevel}
+    {params : List VExpr}
+    (hΓ : OnCtx Γ (env.IsType U))
+    (hlevels : ∀ level ∈ levels, level.WF U)
+    (hlevelsLength : levels.length = view.uvars)
+    (hparamsLength : params.length = view.nparams)
+    (hparamsSpine : ∃ resultLevel,
+      env.SpineWF U Γ (view.familyType.instL levels)
+        params (.sort resultLevel))
+    {major : VExpr}
+    (hmajor : env.HasType U Γ major (view.structureType levels params))
+    (tailResult : VExpr) :
+    env.SpineWF U Γ
+      (VExpr.forallN (view.specializedFields levels params) tailResult)
+      (view.projectionArgs levels params
+        (view.specializedFields levels params).length major)
+      (VExpr.instRev tailResult
+        (view.projectionArgs levels params
+          (view.specializedFields levels params).length major)) := by
+  obtain ⟨_, _, hspine⟩ := self.projectionArgsSpineAux henv hΓ hlevels
+    hlevelsLength hparamsLength hparamsSpine hmajor tailResult
+    (Nat.le_refl _)
+  apply hspine.retarget
+  · exact view.projectionArgs_length levels params
+      (view.specializedFields levels params).length major (by simp)
+
+/-- Applying the complete canonical projection spine to a constructor prefix
+is well typed.  The constructor-prefix premise is kept explicit so this
+lemma remains independent of any proposed structure-eta equality rule. -/
+theorem ProgramsWF.etaRebuild_hasType_of_constructorPrefix
+    {view : VStructureView} {env : VEnv}
+    (self : view.ProgramsWF env) (henv : env.WF)
+    {U : Nat} {Γ : List VExpr} {levels : List VLevel}
+    {params : List VExpr}
+    (hΓ : OnCtx Γ (env.IsType U))
+    (hlevels : ∀ level ∈ levels, level.WF U)
+    (hlevelsLength : levels.length = view.uvars)
+    (hparamsLength : params.length = view.nparams)
+    (hparamsSpine : ∃ resultLevel,
+      env.SpineWF U Γ (view.familyType.instL levels)
+        params (.sort resultLevel))
+    {major : VExpr}
+    (hmajor : env.HasType U Γ major (view.structureType levels params))
+    (hconstructorPrefix : env.HasType U Γ
+      (VExpr.appN (.const view.constructorName levels) params)
+      (VExpr.forallN (view.specializedFields levels params)
+        ((view.structureType levels params).liftN
+          (view.specializedFields levels params).length))) :
+    env.HasType U Γ (view.etaRebuild levels params major)
+      (view.structureType levels params) := by
+  have hfields := self.projectionArgsSpine henv hΓ hlevels hlevelsLength
+    hparamsLength hparamsSpine hmajor
+    ((view.structureType levels params).liftN
+      (view.specializedFields levels params).length)
+  have hrebuild := hfields.hasType_appN hconstructorPrefix
+  let args := view.projectionArgs levels params
+    (view.specializedFields levels params).length major
+  have hargsLength :
+      args.length = (view.specializedFields levels params).length :=
+    view.projectionArgs_length levels params
+      (view.specializedFields levels params).length major (by simp)
+  have hlift :
+      (view.structureType levels params).liftN
+          (view.specializedFields levels params).length =
+        (view.structureType levels params).liftN args.length :=
+    congrArg (view.structureType levels params).liftN hargsLength.symm
+  have hresult :
+      VExpr.instRev
+        ((view.structureType levels params).liftN
+          (view.specializedFields levels params).length)
+        args =
+        view.structureType levels params := by
+    calc
+      _ = VExpr.instRev
+          ((view.structureType levels params).liftN args.length) args :=
+        congrArg (VExpr.instRev · args) hlift
+      _ = view.structureType levels params :=
+        VExpr.instRev_liftN_len args _
+  rw [hresult] at hrebuild
+  simpa [etaRebuild, VExpr.appN_append] using hrebuild
 
 /-- Exact registration of the checked structure artifact in a Theory
 environment.  These are concrete lookups and generated iota rules, not an

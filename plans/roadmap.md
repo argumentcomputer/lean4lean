@@ -563,6 +563,17 @@ missing reconstruction equation
 not apply, proof irrelevance covers only `Prop`, and projection uniqueness is
 not structure extensionality. No `IsDefEq` rule has been changed.
 
+The rule-independent subject-reduction prerequisite is now explicit in
+`Theory/Projection.lean`. `VStructureView.etaRebuild` is the canonical
+constructor applied to every generated projector;
+`ProgramsWF.projectionArgsSpine` assembles the pointwise projector
+certificates into the exact dependent field `SpineWF`; and
+`etaRebuild_hasType_of_constructorPrefix` proves the rebuild well typed from
+the registered constructor-prefix typing judgment. The Theory-only consumer
+test pins all three public names and their exact transitive axiom closures.
+This adds no `sorry` and, deliberately, proves no reconstruction equality:
+that last step is precisely the pending semantic decision.
+
 The proposed upstream decision is an explicit registered structure-eta rule,
 restricted to checked nonrecursive, single-constructor, zero-index structure
 views. Acceptance requires: subject reduction from the registered constructor

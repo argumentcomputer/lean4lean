@@ -211,6 +211,15 @@ example : dependentRecordView.projectionLevels valueCode.fieldSort symbolicLevel
 example : dependentRecordView.project? symbolicLevels symbolicParams 2 (.bvar 0) =
     none := rfl
 
+/-- Eta reconstruction uses every generated projector in constructor-field
+order, including the projector whose motive depends on the earlier field. -/
+example : dependentRecordView.etaRebuild symbolicLevels symbolicParams
+    (.bvar 0) =
+      VExpr.appN (.const ``DependentRecord.mk symbolicLevels)
+        (symbolicParams ++
+          [.app keyCode.projector (.bvar 0),
+            .app valueCode.projector (.bvar 0)]) := rfl
+
 /-! A fully constrained `VEnv.TrProj` witness in a universe-polymorphic
 local context. -/
 

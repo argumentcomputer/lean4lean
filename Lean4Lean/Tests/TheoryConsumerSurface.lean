@@ -1,4 +1,5 @@
 import Lean4Lean.Theory.Literals
+import Lean4Lean.Theory.Projection
 import Lean4Lean.Theory.Typing.InductiveLemmas
 import Lean4Lean.Theory.Typing.UniqueTyping
 
@@ -24,6 +25,9 @@ namespace Lean4Lean.Tests.TheoryConsumerSurface
 #check VEnv.SpineWF.weakN_inv
 #check VEnv.SpineWF.weak'_inv
 #check VInductDecl.ElimMode.ofBool
+#check VStructureView.etaRebuild
+#check VStructureView.ProgramsWF.projectionArgsSpine
+#check VStructureView.ProgramsWF.etaRebuild_hasType_of_constructorPrefix
 
 /--
 info: 'Lean4Lean.VEnv.reflectedPrimitiveNames' does not depend on any axioms
@@ -90,5 +94,29 @@ info: 'Lean4Lean.VInductDecl.ElimMode.ofBool' does not depend on any axioms
 -/
 #guard_msgs in
 #print axioms VInductDecl.ElimMode.ofBool
+
+/--
+info: 'Lean4Lean.VStructureView.etaRebuild' depends on axioms: [propext, Quot.sound]
+-/
+#guard_msgs in
+#print axioms VStructureView.etaRebuild
+
+/--
+info: 'Lean4Lean.VStructureView.ProgramsWF.projectionArgsSpine' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms VStructureView.ProgramsWF.projectionArgsSpine
+
+/--
+info: 'Lean4Lean.VStructureView.ProgramsWF.etaRebuild_hasType_of_constructorPrefix' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms VStructureView.ProgramsWF.etaRebuild_hasType_of_constructorPrefix
 
 end Lean4Lean.Tests.TheoryConsumerSurface
