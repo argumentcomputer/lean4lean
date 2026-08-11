@@ -5,7 +5,7 @@ namespace Lean4Lean
 
 open Lean (FVarId Expr)
 
-def VLCtx := List (Option (FVarId × List FVarId) × VLocalDecl)
+@[reducible] def VLCtx := List (Option (FVarId × List FVarId) × VLocalDecl)
 
 namespace VLCtx
 

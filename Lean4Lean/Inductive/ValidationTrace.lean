@@ -38,7 +38,7 @@ inductive ConstructorUniverseTrace (resultLevel fieldLevel : Level) : Type where
       ConstructorUniverseTrace resultLevel fieldLevel
   | fallback
       (structuralFailed : levelStructGe resultLevel fieldLevel = false)
-      (valid : (resultLevel.isZero || resultLevel.geq fieldLevel) = true) :
+      (valid : (resultLevel.isAlwaysZero || resultLevel.geq fieldLevel) = true) :
       ConstructorUniverseTrace resultLevel fieldLevel
 
 namespace ConstructorUniverseTrace
@@ -48,7 +48,7 @@ successful universe trace. -/
 theorem not_nonempty_of_rejected
     (structuralRejected : levelStructGe resultLevel fieldLevel = false)
     (fallbackRejected :
-      (resultLevel.isZero || resultLevel.geq fieldLevel) = false) :
+      (resultLevel.isAlwaysZero || resultLevel.geq fieldLevel) = false) :
     ¬ Nonempty (ConstructorUniverseTrace resultLevel fieldLevel) := by
   rintro ⟨trace⟩
   cases trace with
@@ -678,7 +678,7 @@ theorem exists_of_run
                     rw [hstruct] at success
                     simp only [Bool.false_eq_true, if_false] at success
                     cases hfallback :
-                        (stats.resultLevel.isZero ||
+                        (stats.resultLevel.isAlwaysZero ||
                           stats.resultLevel.geq sortResult.sortLevel!) with
                     | false =>
                         rw [hfallback] at success
@@ -766,7 +766,7 @@ def buildExecution (stats : InductiveStats) (isUnsafe : Bool)
                           sortResult.sortLevel! with
                       | true => finish (.structural hstruct)
                       | false =>
-                          match hfallback : stats.resultLevel.isZero ||
+                          match hfallback : stats.resultLevel.isAlwaysZero ||
                               stats.resultLevel.geq sortResult.sortLevel! with
                           | false => .error <| .other
                               s!"universe level of type_of(arg #{argIdx + 1}) of '{ctor}' is too big for the corresponding inductive datatype"
@@ -1044,17 +1044,11 @@ theorem checkConstructors_singleton_eq_checkConstructorList
           context.lparams context.fuel TypeChecker.getEnv =
         .ok context.env := by rfl
   rw [hget]
-  simp only [Except.bind,
-    Std.Legacy.Range.forIn'_eq_forIn'_range', Std.Legacy.Range.size,
-    List.range', List.forIn'_cons, List.forIn'_nil,
-    List.size_toArray, List.length_cons, List.length_nil,
-    List.getElem_toArray, List.getElem_cons_zero,
-    Nat.sub_zero, Nat.zero_add, Nat.add_sub_cancel, Nat.div_one]
+  simp only [Except.bind]
+  simp only [checkConstructorsLoop]
   unfold checkConstructorList
   simp only [ReaderT.bind, Bind.bind, ReaderT.pure, Pure.pure,
     Except.bind, Except.pure]
-  cases checkConstructorFold context.env stats isUnsafe 0 {} indType.ctors context <;>
-    rfl
 
 namespace ConstructorListValidationTrace
 

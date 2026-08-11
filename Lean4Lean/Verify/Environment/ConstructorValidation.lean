@@ -892,13 +892,13 @@ def build :
       let viewDomainCheck ← checkConstructorAlignedExpr context viewDomain
       let parameterTypeCheck ← checkConstructorAlignedExpr context
         parameterType
-      match param with
+      match hparam : param with
       | .fvar fv =>
         if parameterPresent : (context.lctx.find? fv).isSome = true then
           let tail ← build tailTrace
-            (viewBody.instantiate1 (.fvar fv))
+            (viewBody.instantiate1 param)
           pure <| .parameter domainCheck viewDomainCheck parameterTypeCheck
-            rfl parameterPresent tailTrace tail
+            hparam parameterPresent tailTrace tail
         else
           throw <| .other
             "constructor parameter is absent from validation context"
@@ -1895,7 +1895,8 @@ theorem ConstructorUniverseTrace.nonempty_of_semanticGe
   · cases hstruct : levelStructGe resultLevel fieldLevel with
     | true => exact ⟨.structural hstruct⟩
     | false =>
-        exact ⟨.fallback hstruct (by simp [prop])⟩
+        exact ⟨.fallback hstruct
+          (by cases resultLevel <;> simp_all [Level.isZero, Level.isAlwaysZero])⟩
   · cases hstruct : levelStructGe resultLevel fieldLevel with
     | true => exact ⟨.structural hstruct⟩
     | false =>
@@ -1914,7 +1915,7 @@ theorem constructorUniverseSemanticGe_ofLevel
   rcases valid with structural | prop | ⟨_core, verified⟩
   · exact .inr (levelStructGe_ofLevel structural result_tr field_tr)
   · exact .inl (ofLevel_eq_zero_of_isZero prop result_tr)
-  · exact .inr (Level.geq'_wf verified result_tr field_tr)
+  · exact .inr (Level.geq'_wf result_tr field_tr verified)
 
 /-- Agreement between the ordinary and verified normalized comparisons opens
 the semantic fallback without weakening the ordinary acceptance boundary. -/
@@ -1977,7 +1978,11 @@ info: 'Lean4Lean.AddInductive.levelStructGe_ofLevel' depends on axioms: [propext
 /--
 info: 'Lean4Lean.AddInductive.constructorUniverseSemanticGe_ofLevel' depends on axioms: [propext,
  Classical.choice,
- Quot.sound]
+ Quot.sound,
+ Level.instLawfulBEqLevel,
+ Level.isExplicitSubsumedAux_eq,
+ Level.normalize_eq,
+ Std.TreeMap.all_eq_all_toList]
 -/
 #guard_msgs in
 #print axioms constructorUniverseSemanticGe_ofLevel
@@ -7143,9 +7148,7 @@ theorem constructorFields_exactAnalyzer
                     have nextWF := nextD3ContextRun.candidate.context.Δwf
                     rw [nextD3ContextRun.venv_eq,
                       nextD3ContextRun.lparams_eq] at nextWF
-                    simpa only [nextD3ContextRun,
-                      AddInductive.ConstructorContextRun.pushLocalDecl,
-                      CandidateContextRun.pushLocalDecl_vlctx] using nextWF
+                    exact nextWF
                   have postViewTr : TrExprS typeEnv Us
                       d2ContextRun.candidate.context.vlctx domain
                       viewDomainRun₂.source' := by
@@ -7256,10 +7259,7 @@ theorem constructorFields_exactAnalyzer
                           (consumeTypeAnnotations domain).fvarsList),
                         .vlam (commonDomain.lift' viewLift)) :: d3ViewContext)
                       (.consN fullLift 1) (.consN viewLift 1) := by
-                    simpa only [vlctxCons, nextD3ContextRun,
-                      AddInductive.ConstructorContextRun.pushLocalDecl,
-                      CandidateContextRun.pushLocalDecl_vlctx] using
-                      nextD3State
+                    exact nextD3State
                   have nextAnalyzerState' : AnalyzerPostContextState
                       typeEnv Us
                       ((some (context.freshFVarId,
@@ -8745,9 +8745,12 @@ info: 'Lean4Lean.VInductDecl.StagedNormalizationCandidatePreFamilyInput.checkedW
  Level.hasMVar_eq,
  Level.hasParam_eq,
  Level.instLawfulBEqLevel,
+ Level.isExplicitSubsumedAux_eq,
+ Level.normalize_eq,
  PersistentArray.toList'_push,
  PersistentHashMap.findAux_isSome,
  Syntax.structEq_eq,
+ Std.TreeMap.all_eq_all_toList,
  PersistentHashMap.WF.find?_eq,
  PersistentHashMap.WF.toList'_insert]
 -/
@@ -8778,9 +8781,12 @@ info: 'Lean4Lean.VInductDecl.StagedNormalizationCandidatePreFamilyInput.viewDecl
  Level.hasMVar_eq,
  Level.hasParam_eq,
  Level.instLawfulBEqLevel,
+ Level.isExplicitSubsumedAux_eq,
+ Level.normalize_eq,
  PersistentArray.toList'_push,
  PersistentHashMap.findAux_isSome,
  Syntax.structEq_eq,
+ Std.TreeMap.all_eq_all_toList,
  PersistentHashMap.WF.find?_eq,
  PersistentHashMap.WF.toList'_insert]
 -/
@@ -8811,9 +8817,12 @@ info: 'Lean4Lean.VInductDecl.GenerationCandidateSemanticRun.ofGenerationShape' d
  Level.hasMVar_eq,
  Level.hasParam_eq,
  Level.instLawfulBEqLevel,
+ Level.isExplicitSubsumedAux_eq,
+ Level.normalize_eq,
  PersistentArray.toList'_push,
  PersistentHashMap.findAux_isSome,
  Syntax.structEq_eq,
+ Std.TreeMap.all_eq_all_toList,
  PersistentHashMap.WF.find?_eq,
  PersistentHashMap.WF.toList'_insert]
 -/
@@ -8844,9 +8853,12 @@ info: 'Lean4Lean.VInductDecl.NormalizationCandidateSemanticRun.producedPackageOf
  Level.hasMVar_eq,
  Level.hasParam_eq,
  Level.instLawfulBEqLevel,
+ Level.isExplicitSubsumedAux_eq,
+ Level.normalize_eq,
  PersistentArray.toList'_push,
  PersistentHashMap.findAux_isSome,
  Syntax.structEq_eq,
+ Std.TreeMap.all_eq_all_toList,
  PersistentHashMap.WF.find?_eq,
  PersistentHashMap.WF.toList'_insert]
 -/
@@ -8877,9 +8889,12 @@ info: 'Lean4Lean.VInductDecl.ProducedGenerationShapeCandidate.producedPackage' d
  Level.hasMVar_eq,
  Level.hasParam_eq,
  Level.instLawfulBEqLevel,
+ Level.isExplicitSubsumedAux_eq,
+ Level.normalize_eq,
  PersistentArray.toList'_push,
  PersistentHashMap.findAux_isSome,
  Syntax.structEq_eq,
+ Std.TreeMap.all_eq_all_toList,
  PersistentHashMap.WF.find?_eq,
  PersistentHashMap.WF.toList'_insert]
 -/
@@ -8910,9 +8925,12 @@ info: 'Lean4Lean.VInductDecl.ProducedGenerationShapeCandidate.exactProducedPacka
  Level.hasMVar_eq,
  Level.hasParam_eq,
  Level.instLawfulBEqLevel,
+ Level.isExplicitSubsumedAux_eq,
+ Level.normalize_eq,
  PersistentArray.toList'_push,
  PersistentHashMap.findAux_isSome,
  Syntax.structEq_eq,
+ Std.TreeMap.all_eq_all_toList,
  PersistentHashMap.WF.find?_eq,
  PersistentHashMap.WF.toList'_insert]
 -/
@@ -8943,9 +8961,12 @@ info: 'Lean4Lean.VInductDecl.StagedNormalizationCandidatePreFamilyInput.exists' 
  Level.hasMVar_eq,
  Level.hasParam_eq,
  Level.instLawfulBEqLevel,
+ Level.isExplicitSubsumedAux_eq,
+ Level.normalize_eq,
  PersistentArray.toList'_push,
  PersistentHashMap.findAux_isSome,
  Syntax.structEq_eq,
+ Std.TreeMap.all_eq_all_toList,
  PersistentHashMap.WF.find?_eq,
  PersistentHashMap.WF.toList'_insert]
 -/
@@ -8976,9 +8997,12 @@ info: 'Lean4Lean.VInductDecl.StagedNormalizationCandidatePostFamilyInput.exists'
  Level.hasMVar_eq,
  Level.hasParam_eq,
  Level.instLawfulBEqLevel,
+ Level.isExplicitSubsumedAux_eq,
+ Level.normalize_eq,
  PersistentArray.toList'_push,
  PersistentHashMap.findAux_isSome,
  Syntax.structEq_eq,
+ Std.TreeMap.all_eq_all_toList,
  PersistentHashMap.WF.find?_eq,
  PersistentHashMap.WF.toList'_insert]
 -/
@@ -9028,9 +9052,12 @@ info: 'Lean4Lean.VInductDecl.StagedNormalizationCandidateUniverseInput.exists' d
  Level.hasMVar_eq,
  Level.hasParam_eq,
  Level.instLawfulBEqLevel,
+ Level.isExplicitSubsumedAux_eq,
+ Level.normalize_eq,
  PersistentArray.toList'_push,
  PersistentHashMap.findAux_isSome,
  Syntax.structEq_eq,
+ Std.TreeMap.all_eq_all_toList,
  PersistentHashMap.WF.find?_eq,
  PersistentHashMap.WF.toList'_insert]
 -/

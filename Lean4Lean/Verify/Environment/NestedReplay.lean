@@ -1821,7 +1821,7 @@ theorem pvecCtorMapWF09 : pvecCtorMap09.WF :=
   pvecNilMapWF09.insert _ _ pvecConsFresh09
 
 theorem natFinalOrdered09 : natFinalEnv.Ordered :=
-  nat_trEnv'.wf.ordered
+  (nat_trEnv' (safety := .safe)).wf.ordered
 
 theorem pvecFamilyWF09 : pvecFamilyVL.toVConstant.WF natFinalEnv := by
   have hNat : natFinalEnv.constants ``Nat = some ⟨0, .sort (.succ .zero)⟩ := rfl

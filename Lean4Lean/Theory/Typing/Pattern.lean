@@ -9,7 +9,7 @@ inductive Pattern where
   | app (f a : Pattern)
   | var (f : Pattern)
 
-def Pattern.varN (p : Pattern) : Nat → Pattern
+@[reducible] def Pattern.varN (p : Pattern) : Nat → Pattern
   | 0 => p
   | n+1 => (p.varN n).var
 
@@ -19,7 +19,7 @@ inductive Subpattern (p : Pattern) : Pattern → Prop where
   | appR : Subpattern p a → Subpattern p (.app f a)
   | varL : Subpattern p f → Subpattern p (.var f)
 
-def Subpattern.varN (h : Subpattern p f) : ∀ {n}, Subpattern p (.varN f n)
+theorem Subpattern.varN (h : Subpattern p f) : ∀ {n}, Subpattern p (.varN f n)
   | 0 => h
   | _+1 => .varL (.varN h)
 
@@ -70,7 +70,7 @@ inductive Pattern.LE : Pattern → Pattern → Prop where
   | app : LE f f' → LE a a' → LE (.app f a) (.app f' a')
   | app_var : LE f f' → LE (.app f a) (.var f')
 
-def Pattern.Path : Pattern → Type
+@[reducible] def Pattern.Path : Pattern → Type
   | .const _ => Empty
   | .app f a => f.Path ⊕ a.Path
   | .var f => Option f.Path
@@ -227,7 +227,7 @@ inductive SimplePattern where
   | iota (recursor : Name) (major : Nat) (constr : Name) (args : Nat)
   | defn (head : Name)
 
-def SimplePattern.toPattern : SimplePattern → Pattern
+@[reducible] def SimplePattern.toPattern : SimplePattern → Pattern
   | .defn c => .const c
   | .iota r m c n => .app (.varN (.const r) m) (.varN (.const c) n)
 

@@ -68,12 +68,12 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-15R active** (v4.33 upstream reconciliation, integration-only); L4L-14, L4L-15A, and L4L-15C are complete and pruned from §5; L4L-15B is queued next with its former upstream-approval gate replaced by the documented-divergence policy (2026-08-11) |
-| Current formalization source | the structure-eta staging checkpoint `ae6ee9d6` at `jcb/formalization2` (L4L-15A closure `e8ccc70f`, L4L-15C migration `867675ad`); `origin/jcb/formalization2` is the live publication bookmark and lags the local head |
-| Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
+| Ladder position | **L4L-15B active** (structure eta and unit-like comparison, proceeding as a documented divergence); the L4L-15R v4.33 reconciliation is complete and pruned from §5 (2026-08-11) |
+| Current formalization source | this v4.33 reconciliation merge checkpoint (jj change `zxwpwkpp`) at `jcb/formalization2` (first parent the L4L-15R planning commit `c22d790d` atop the structure-eta staging checkpoint `ae6ee9d6`); `origin/jcb/formalization2` is the live publication bookmark and lags the local head |
+| Parent lineage | this upstream-reconciliation merge (second parent: digama `upstream/master` `b292275c`, which superseded the planned `1a16b72d` before execution); Lean on v4.33.0 final, lean4-nix on `argumentcomputer/lean4-nix` (upstream pins v4.33.0-rc2 — ledger D018) |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
-| Trust frontier | exactly 11 live source `sorry` tokens across 10 proof declarations, plus six kernel-rejection recovery declarations (16 compiled allowlist entries total), and 29 custom-axiom declarations; all are pinned by exact audits |
-| Gates | the full §6 gate is green on this checkpoint: the 198-job default Lake build, all nine Nix flake checks, the 16-entry exact sorry frontier, the Theory-only import/axiom audit, downstream-consumer and CLI checks, and whitespace hygiene |
+| Trust frontier | exactly 18 sorried proof declarations (12 Tier V, 6 Tier R; `NormalEq.parRed` carries two tokens) plus six kernel-rejection recovery declarations — 24 compiled allowlist entries — and 34 custom-axiom declarations; all are pinned by exact audits. Eight Tier V entries are new at this checkpoint: upstream's `checkPrimitiveDef.WF` boundary, the six D017 front-end/`ProjectionReady`-transport and quotient-initialization entries, and the `aliasFormerAlignmentRun` fixture repair debt |
+| Gates | the full §6 gate is green on this checkpoint: the 212-job default Lake build, the Nix flake checks, the 24-entry exact sorry frontier, the Theory-only import/axiom audit, downstream-consumer and CLI checks, and whitespace hygiene |
 
 ### 2.1 What is green
 
@@ -317,18 +317,17 @@ never generation-shape authority or Theory semantics.
 
 The sorry audit (`Lean4Lean/Audit/SorryFrontier.lean`, a declaration-level
 `sorryAx` allowlist over the compiled Theory/Verify surface) currently
-accepts exactly 11 live source tokens across 10 proof declarations
-(`NormalEq.parRed` carries two), plus six deliberately kernel-rejected
-fixture recoveries that are not proof debt. The compiled allowlist therefore
-contains 16 declarations:
+accepts exactly 18 sorried proof declarations (`NormalEq.parRed` carries two
+tokens), plus six deliberately kernel-rejected fixture recoveries that are
+not proof debt. The compiled allowlist therefore contains 24 declarations:
 
 | Area | Live debt |
 |---|---|
-| Core metatheory | `Injectivity.lean` x3; `UniqueTyping.lean` x1; `Projection.lean` x1; `ChurchRosser.lean` x2 |
-| Checker verification | `Verify/Environment.lean` x1; `WHNF.lean` x1; `IsDefEq.lean` x2 |
+| Core metatheory (Tier R) | `Injectivity.lean` x3; `UniqueTyping.lean` x1; `Projection.lean` x1; `ChurchRosser.lean` x2 |
+| Checker verification (Tier V) | `Verify/Environment.lean` x2 (`addDecl.WF` — now only its `inductDecl` case — and the re-sorried `addQuot.WF`); `Boundaries.lean` x1 (upstream's `checkPrimitiveDef.WF`); `Extension.lean` x5 (the D017 `ProjectionReady` transports); `WHNF.lean` x1; `IsDefEq.lean` x2; `InductiveFixtures.lean` x1 (`aliasFormerAlignmentRun` repair debt) |
 
-The remaining v4.31-added sorry is classified:
-`Lean4Lean.addDecl.WF` → L4L-19B. Non-sorry debt:
+All Tier V entries are L4L-19A/19B territory; the eight added at the v4.33
+reconciliation are classified in ledger row D017. Non-sorry debt:
 
 - The public inductive spec has complete one-family, non-nested mutual,
   and nested generation, preservation, metadata parity, environment
@@ -338,32 +337,34 @@ The remaining v4.31-added sorry is classified:
   inductive language remains a growing subset rather than kernel-complete;
   projection semantics landed at L4L-13A/B and projection structural/checker
   verification closed at L4L-14/L4L-15A; structure eta and unit-like
-  comparison are queued as L4L-15B behind the L4L-15R reconciliation,
-  proceeding as a documented divergence. `pat_wf` carries
+  comparison are the active L4L-15B milestone, proceeding as a documented
+  divergence on the reconciled v4.33 base. `pat_wf` carries
   the Church–Rosser
   development's transitional unique-typing closure until L4L-16/17 close it.
 - The L4L-15C consumer-neutral audit is complete. Generic spine laws,
   primitive-environment extension, literal typing, containment/absence, and
   elimination-mode conversion now have Theory-only homes, with a dedicated
   import-boundary/axiom audit and deprecated Verify shims only where needed.
-- 29 project-specific `axiom` declarations outside `Experimental/`: 27 in
+- 34 project-specific `axiom` declarations outside `Experimental/`: 32 in
   `Verify/Axioms.lean` and two pointer-equality contracts in `PtrEq.lean`.
-  Three cached-field equations from the group once false on older pins
-  (`lean4#8554`) remain unproved and therefore forbidden contracts even though
-  v4.31 fixed the underlying cache bug. A 2026-08-10 reachability audit
-  added: four axioms are dead — `TreeMap.all_eq_all_toList`,
-  `Level.mkLevelIMaxCore_eq`, `Expr.liftLooseBVars_eq`, `Expr.equal_eq`
-  have zero uses and appear in none of the 436 pinned closures — and are
-  removable at the next checkpoint; 19 of the 27 still carry `@[simp]`,
-  so §3's simp ban is containment work not yet done. The L4L-13A/B
-  `sorryAx` shed then moved a large population of candidate/fixture
-  roots into the sorry-free set with the cached-field trio (and other
-  reference equations) still in their closures — hundreds of sorry-free
-  guard lines now name the trio — so the pre-L4L-13 "clear two roots"
-  shortcut is gone: enforcing the "no forbidden axiom in a sorry-free
-  supported root" CI rule now waits on the actual L4L-20A retirement
-  (prove the equations for the pinned implementation or take them off
-  the trace-proof simp path).
+  The v4.33 reconciliation added five upstream reference equations for core
+  level operations (`Level.normalize_eq`, `Level.mkMaxAux_eq`,
+  `Level.skipExplicit_eq`, `Level.isExplicitSubsumedAux_eq`,
+  `TreeMap.any_eq_any_toList`) consumed by upstream's `LevelStd`
+  verification. Three cached-field equations from the group once false on
+  older pins (`lean4#8554`) remain unproved and therefore forbidden
+  contracts. The 2026-08-10 dead-axiom finding shrank: upstream's merged
+  proofs use `TreeMap.all_eq_all_toList` again, so only
+  `Level.mkLevelIMaxCore_eq`, `Expr.liftLooseBVars_eq`, and `Expr.equal_eq`
+  remain deletion candidates, and their reachability must be re-run on the
+  v4.33 tree at L4L-20A before deleting. 28 of the 32 carry `@[simp]`, so
+  §3's simp ban is containment work not yet done. The L4L-13A/B `sorryAx`
+  shed moved a large population of candidate/fixture roots into the
+  sorry-free set with the cached-field trio (and other reference equations)
+  still in their closures, so enforcing the "no forbidden axiom in a
+  sorry-free supported root" CI rule waits on the actual L4L-20A retirement
+  (prove the equations for the pinned implementation or take them off the
+  trace-proof simp path).
 - `addInductSingleton` (deprecated 2026-08-07) has zero callers outside
   its own shim block and is deletable as one self-contained block; the
   deprecation has not yet appeared in any published checkpoint, so time
@@ -394,14 +395,14 @@ migrate, not foundations. Returning assembled hierarchies under `Nonempty` is
 deliberate: it states semantic existence without using choice to extract a
 data-bearing checker-selected view.
 
-Current custom-axiom inventory (29 declarations; classification records
+Current custom-axiom inventory (34 declarations; classification records
 intended release treatment, not evidence the equations are true):
 
 | Class | Count | Declarations | Release treatment |
 |---|---:|---|---|
 | Unproved cached-field equations, once false on older pins | 3 | `Level.hasParam_eq`, `Level.hasMVar_eq`, `Expr.looseBVarRange_eq` | Forbidden from every supported theorem root until proved for the pinned implementation |
-| Reference equations documented as `@[implemented_by]` candidates | 13 | `Expr.replace_eq`, lift/lower, instantiate/range/reverse, abstract/range, `hasLooseBVar_eq`, `eqv_eq`, `equal_eq` | Replace axioms with logical reference definitions and separately justified implementations |
-| Persistent collection semantics | 5 | `TreeMap.all_eq_all_toList`; `PersistentArray.toList'_push`; hash-map insert, find, and contains/find agreement | Prove upstream or narrow to the actual WF/reachable-state invariant |
+| Reference equations documented as `@[implemented_by]` candidates | 17 | `Expr.replace_eq`, lift/lower, instantiate/range/reverse, abstract/range, `hasLooseBVar_eq`, `eqv_eq`, `equal_eq`; the v4.33 core level-operation equations `Level.normalize_eq`, `Level.mkMaxAux_eq`, `Level.skipExplicit_eq`, `Level.isExplicitSubsumedAux_eq` | Replace axioms with logical reference definitions and separately justified implementations |
+| Persistent collection semantics | 6 | `TreeMap.all_eq_all_toList`, `TreeMap.any_eq_any_toList`; `PersistentArray.toList'_push`; hash-map insert, find, and contains/find agreement | Prove upstream or narrow to the actual WF/reachable-state invariant |
 | Other opaque or representation-layout bridges | 5 | `Syntax.structEq_eq`; Level and Expr data-layout equations; `Level.mkLevelIMaxCore_eq` | Expose/prove upstream, narrow to the properties actually needed, or reject |
 | Candidate platform contracts | 3 | `ptrEqExpr_eq`, `ptrEqConstantInfo_eq`, `Level.instLawfulBEqLevel` | May remain only in a named, version-pinned platform manifest with differential tests |
 
@@ -540,55 +541,13 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Upstream reconciliation (L4L-15R)
-
-**L4L-15R — v4.33 upstream reconciliation (active, integration-only).**
-lean4-nix landed v4.33 support (2026-08-11), unblocking the deferred
-digama0 sync. Merge upstream `master` head `1a16b72d` as an
-integration-only checkpoint — first parent this line's head, second
-parent the upstream commit, following the v4.31 precedent `7f864b45` —
-with no semantic milestone work riding in the merge.
-
-Scope:
-
-- Toolchain: bump the Lean and lean4-nix pins to v4.33, drop the
-  `batteries431CycleFix` override (the fix ships in batteries ≥ v4.32),
-  run `lake update batteries`, and refresh `flake.lock`
-  (`nix flake lock --update-input lean4-nix`).
-- Banked from the abandoned v4.32-era attempt (recoverable via
-  `jj op log`, merge `9c326a2a`): only three files overlapped through
-  upstream `408edad8` — `Verify/TypeChecker/Reduce.lean` (take
-  upstream's do-elaborator-shaped `reduceNat.WF`, then port our
-  `Expr.eqv_const` → `Expr.structuralEq_const` rename at the relocated
-  unary case), `divergences.md` (keep our NormLevel wording, bump the
-  source link), and `EquivManager.lean` (auto-merges).
-- The five upstream commits above the v4.33 bump carry real Verify
-  overlap and need a fresh conflict survey against the L4L-14/15 work:
-  front-end declaration checking #28 (`cbb70bc`, `addDecl.WF`
-  territory, L4L-19B), unsafe/mutual definition blocks (`bd9e576`),
-  dead `cheapRec` removal (`88cade6` — touches the freshly certified
-  WHNF/projection-reduction proofs), stdlib level-ops verification #23
-  (`1a16b72d` — overlaps our verified level comparator; reconcile,
-  do not duplicate), and docs/workflow changes.
-- Post-merge re-audit: the full §6 gate on v4.33; the exact sorry
-  frontier with any upstream-added sorries classified into tiers; the
-  divergence ledger (retire rows upstream absorbed, add rows the merge
-  creates — including the outstanding rows for the concrete
-  `TrProj`/`Theory/Projection.lean` API and the executable
-  `inferProj`/`tryEtaStructCore` changes); the cached-field axiom
-  classification against the v4.33 implementation; and this file's
-  lineage/toolchain rows.
-*Exit:* the merge checkpoint is green on v4.33 with all §6 gates; the
-frontier and ledger are re-audited; no semantic work is mixed into the
-merge.
-
 ### Structures (L4L-15B)
 
 Projection semantics, structural laws, and checker verification are complete;
 their current claim surface is recorded in §2.1 and their checkpoint evidence
 lives in history. The remaining structure work is the kernel's eta behavior.
 
-**L4L-15B — structure eta and unit-like comparison (queued; divergence
+**L4L-15B — structure eta and unit-like comparison (active; divergence
 approved).** Derive `tryEtaStructCore.WF` and `isDefEqUnitLike.WF` on the
 reconciled v4.33 base. Adding the structure-eta rule is a metatheory
 change; upstream agreement is no longer an implementation blocker —

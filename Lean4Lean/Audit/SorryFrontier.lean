@@ -87,7 +87,7 @@ token), so it can never drift from Lean's lexer over comments, string/char
 literals, or nested block comments. Attribution is by SOURCE MODULE via
 `getModuleIdxFor?`, so a declaration is charged to the file that defines it even
 when it sits in a foreign namespace (e.g. `Lean.Level.isEquiv_wf` lives in
-`Lean4Lean.Verify.Level`).
+`Lean4Lean.Verify.LevelStd`).
 
 The audited surface is exactly the modules reachable from this file's imports:
 importing a `Theory`/`Verify` module here is what brings it into scope. A sorry
@@ -133,9 +133,37 @@ S (missing specification), P (stated but sorried, blocked on S), V (checker
 verification, blocked on S/P), R (research-grade metatheory, upstream-driven). -/
 private def allowlist : Array Lean.Name := #[
   -- Tier V — checker verification, blocked on Tier P
-  -- (NormLevel.subsumption_eval and Level.isEquiv_wf were proved on the
-  -- formalization line, 2026-08-05/07, and left the frontier.)
+  -- (NormLevel.subsumption_eval and the primed-comparator soundness were
+  -- proved on the formalization line, 2026-08-05/07, and left the frontier;
+  -- the v4.33 reconciliation then absorbed upstream's stronger level
+  -- verification.)
+  -- After upstream #28 (v4.33 reconciliation), `addDecl.WF` is proved for
+  -- every declaration kind except `inductDecl`, whose case is the remaining
+  -- sorry (L4L-19B territory).
   `Lean4Lean.addDecl.WF,
+  -- Upstream's front-end trust boundary for the syntactic primitive-definition
+  -- recognizer (Verify/Environment/Boundaries.lean), added by #28 at the
+  -- v4.33 reconciliation.
+  `Lean4Lean.checkPrimitiveDef.WF,
+  -- `ProjectionReady` transport across the front-end environment extensions
+  -- (Verify/Environment/Extension.lean): upstream's proved v4.33 declaration
+  -- chains meet this fork's projection-readiness obligation on `VContext`;
+  -- the transport proofs are L4L-19B content. The mutual-block entry is the
+  -- compiled recursive functional of `VEnvAt.addAxioms`.
+  `Lean4Lean.VEnvAt.addAxioms._f,
+  `Lean4Lean.addConstCore.WF,
+  `Lean4Lean.addDef.WF,
+  `Lean4Lean.addMutualBlock.WF,
+  `Lean4Lean.addUnsafeDef.WF,
+  -- Quotient initialization (Verify/Environment.lean): upstream's v4.33
+  -- proof was vacuous via the fork-refutable `TrEnv'.no_inductInfo`; the
+  -- constructive connection to the Theory quotient transaction is L4L-19B
+  -- content.
+  `Lean4Lean.addQuot.WF,
+  -- v4.33 reconciliation repair debt: the exact alignment-run fixture's
+  -- `build.eq_def` stepping no longer elaborates; the closed checker-run
+  -- statement is unchanged (Verify/Environment/InductiveFixtures.lean).
+  `Lean4Lean.InductiveReplayFixtures.aliasFormerAlignmentRun,
   `Lean4Lean.TypeChecker.Inner.reduceRecursor.WF,
   `Lean4Lean.TypeChecker.Inner.tryEtaStructCore.WF,
   `Lean4Lean.TypeChecker.Inner.isDefEqUnitLike.WF,

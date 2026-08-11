@@ -571,7 +571,7 @@ def indexedTreeReplay11 : BlockReplayArtifact where
   outputMap := indexedReplayMap
   outputEnv := indexedTreeFinalEnv
   inputMapWF := nat_aligned.map_wf
-  inputWF := nat_trEnv'.wf
+  inputWF := (nat_trEnv' (safety := .safe)).wf
   candidate := {
     nparams := 1
     kernelTypes := indexedTreeKernelTypes
@@ -737,9 +737,12 @@ info: 'Lean4Lean.CompleteInductiveReplay.completeReplayMatrix_metadataComplete' 
  Lean.Level.hasMVar_eq,
  Lean.Level.hasParam_eq,
  Lean.Level.instLawfulBEqLevel,
+ Lean.Level.isExplicitSubsumedAux_eq,
+ Lean.Level.normalize_eq,
  Lean.PersistentArray.toList'_push,
  Lean.PersistentHashMap.findAux_isSome,
  Lean.Syntax.structEq_eq,
+ Std.TreeMap.all_eq_all_toList,
  Lean.PersistentHashMap.WF.find?_eq,
  Lean.PersistentHashMap.WF.toList'_insert,
  Lean4Lean.CompleteInductiveReplay.singletonCandidateReplayMatrix._native.native_decide.ax_1,

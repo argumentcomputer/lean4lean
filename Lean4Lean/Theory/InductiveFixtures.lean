@@ -1982,11 +1982,11 @@ theorem normalizationMatrixPiAliasEnv_ordered :
               intro ls
               simp only [VLevel.eval, Nat.zero_add]
               let n := ls.getD 0 0
-              change Nat.imax 1 n = n
+              change Lean.Nat.imax 1 n = n
               by_cases h : n = 0
-              · simp [Nat.imax, h]
+              · simp [Lean.Nat.imax, h]
               · have hn : 1 ≤ n := Nat.one_le_iff_ne_zero.mpr h
-                simp [Nat.imax, h, Nat.max_eq_right hn]))
+                simp [Lean.Nat.imax, h, Nat.max_eq_right hn]))
         exact VEnv.HasType.forallE
           (VEnv.HasType.sort (by decide))
           (VEnv.HasType.bvar (.succ .zero))
@@ -2153,11 +2153,11 @@ private theorem normalizationMatrix_one_imax_equiv (u : VLevel) :
   intro ls
   simp only [VLevel.eval, Nat.zero_add]
   let n := u.eval ls
-  change Nat.imax 1 n = n
+  change Lean.Nat.imax 1 n = n
   by_cases h : n = 0
-  · simp [Nat.imax, h]
+  · simp [Lean.Nat.imax, h]
   · have hn : 1 ≤ n := Nat.one_le_iff_ne_zero.mpr h
-    simp [Nat.imax, h, Nat.max_eq_right hn]
+    simp [Lean.Nat.imax, h, Nat.max_eq_right hn]
 
 theorem normalizationMatrixPiAlias_app_defeq {env : VEnv} {U : Nat}
     {Γ : List VExpr} {u : VLevel} {A : VExpr} (hu : u.WF U)

@@ -618,7 +618,8 @@ theorem pat_wf {env : VEnv} (henv : env.WF) {univs : Nat} {Γ : List VExpr}
       VExpr.appN ((gen.rule i c).rhs.instL m1)
         (fArgs.take (source.nparams + gen.familyCount + gen.minorCount) ++
           aArgs.drop source.nparams) := by
-    rw [ruleRHS, Pattern.RHS.appN_apply, hcapsVals]
+    rw [ruleRHS]
+    simp only [Pattern.RHS.appN_apply, hcapsVals]
     rfl
   -- typing of the rule type's index spine
   obtain ⟨u₀, htypeT⟩ := hlhsT.isType henvo hΓ
@@ -650,7 +651,7 @@ theorem pat_wf {env : VEnv} (henv : env.WF) {univs : Nat} {Γ : List VExpr}
             aArgs.drop source.nparams)) := by
     intro x hx
     have hfact := hidxs x hx
-    rw [Pattern.RHS.appN_apply, hcapsVals] at hfact
+    simp only [Pattern.RHS.appN_apply, hcapsVals] at hfact
     have htower : Pattern.RHS.apply (p := (gen.rulePattern c).toPattern) m1
         (Sum.elim g1 g2)
         (.fixed (VExpr.lamN (gen.ruleBinders c) x.1.1)

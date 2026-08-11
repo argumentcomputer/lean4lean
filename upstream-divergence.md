@@ -64,17 +64,17 @@ Audit baseline after the complete L4L-12B literal-readiness checkpoint
   `a246c048390c7f3c3a06f87fdb94b23ef671681f`
   (`proof: establish constructor universe foundation`; 5 files changed,
   1,686 insertions, and 3,608 deletions, including the roadmap rewrite).
-  Publication to the fork's `jcb/induct` branch is pending.
+  Publication to the fork's `jcb/formalization2` branch is pending.
 - local-committed post-family constructor semantic checkpoint:
   `37d2dd998e626e25cda8874d9f6a32f85288bb91`
   (`proof: establish post-family constructor semantics`; 5 files changed,
-  3,963 insertions, and 1 deletion). Publication to the fork's `jcb/induct`
+  3,963 insertions, and 1 deletion). Publication to the fork's `jcb/formalization2`
   branch is pending.
 - local-committed pre-family constructor safety checkpoint:
   `9e40cbe00e9c6fe808ebb0720c912bba21aa1b06`
   (`proof: establish pre-family constructor safety`; 5 files changed,
   3,482 insertions, and 1 deletion; 67 commits ahead of the reconciled
-  upstream). Publication to the fork's `jcb/induct` branch is pending.
+  upstream). Publication to the fork's `jcb/formalization2` branch is pending.
 - local-committed analyzer-owned constructor view-WF checkpoint:
   `98921daf15aa` (`proof: establish analyzer-owned constructor view WF`)
 - local-committed generic singleton package checkpoint:
@@ -85,13 +85,13 @@ Audit baseline after the complete L4L-12B literal-readiness checkpoint
 - local-committed constructor level-comparison checkpoint:
   `de3d98c9fc5fd066b2ab88ec450e01402ed38357`
   (`proof: verify constructor level comparison`). Publication to the fork's
-  `jcb/induct` branch is pending.
+  `jcb/formalization2` branch is pending.
 - remote development checkpoints for L4L-03 at `jcb/formalization`:
   `3e6efcce` (`proof: widen D3 constructor replay`), `53d5f923`
   (`fix: emit recursors over checked parameters`), `bb883178`
   (`test: cover definitionally equal constructor parameters`), and
   `04a1a4f29de4` (`proof: certify definitionally equal parameter replay`).
-  Publication to the fork's `jcb/induct` branch is pending.
+  Publication to the fork's `jcb/formalization2` branch is pending.
 - remote development elimination/K checkpoints at `jcb/formalization`:
   `37e2ada60b04` (`proof: certify elimination mode and recursor levels`) and
   `41e1126bb587` (`proof: certify recursor K-target metadata`), followed by
@@ -103,7 +103,7 @@ Audit baseline after the complete L4L-12B literal-readiness checkpoint
   and `fefb93fe15e9` (`verify: replay all fixed singleton families`), followed
   by `9910e14e8cdf` (`verify: close L4L-07 singleton parity`) with the exact
   trust manifests and ledger closure.
-  Publication to the fork's `jcb/induct` branch is pending.
+  Publication to the fork's `jcb/formalization2` branch is pending.
 - remote development mutual-block checkpoints at `jcb/formalization`:
   `79e1ae4f697c` adds the L4L-08A source-indexed dependent family spine,
   shared block parameters, per-family indices/results/constructors, and
@@ -218,6 +218,21 @@ Audit baseline after the complete L4L-12B literal-readiness checkpoint
   checkpoint. Use the branch ref, not a detached Git `HEAD`, for published-fork
   comparisons.
 
+- upstream v4.33 reconciliation checkpoint (L4L-15R, 2026-08-11): the
+  working-copy merge on `jcb/formalization2` whose second parent is digama
+  `upstream/master` `b292275c` ("perf: skip the NormLevel for levels with no
+  essential imax"; upstream advanced past the planned `1a16b72d` before the
+  merge executed, so the reconciliation took the actual head). Toolchain
+  v4.33.0 final (upstream pins v4.33.0-rc2 — see D018); lean4-nix input
+  repointed to `argumentcomputer/lean4-nix` (`fromToolchainFile` API).
+  Upstream absorbed since `ef849dfb`: verified standard-library level
+  operations (`Verify/LevelStd.lean`) plus sound-and-complete primed
+  comparators; front-end declaration checking #28 (`addDecl.WF` proved for
+  every kind except `inductDecl`, `VEnvAt`, `Environment/Checker.lean`,
+  `Extension.lean`, `Boundaries.lean`); unsafe/mutual definition blocks
+  (`TrEnv'.ignore`/`mutualDef`/`thm`); dead `cheapRec` removal; the new do
+  elaborator; and `isZero → isAlwaysZero` in inductive universe checks.
+
 Status vocabulary: `worktree`, `local-committed`, `published-fork`, `submitted`,
 `upstreamed`, or `intentional-fork`. `published-fork` means pushed to an
 Argument Computer fork branch but not yet submitted upstream. An entry is
@@ -307,7 +322,7 @@ to the replacement.
 
 - **Status:** remote-development (the earlier checkpoints are published-fork
   or pushed to `jcb/formalization`; the L4L-09 through L4L-11 extensions are
-  checkpointed at `jcb/formalization2`, while publication to `jcb/induct`
+  checkpointed at `jcb/formalization2`, while publication to `jcb/formalization2`
   remains pending)
 - **Commits:** `71f2eae`, `06e904d`, `201c12f`, `efb2a2b`, the generalized
   single-family integration in `472a6f0`, the L4L-06A/B checkpoints
@@ -539,7 +554,7 @@ to the replacement.
 ## D010 — executable normalization and certified producer boundary
 
 - **Status:** remote-development (the earlier checkpoints are published-fork;
-  L4L-03 is pushed at `jcb/formalization`, while publication to `jcb/induct`
+  L4L-03 is pushed at `jcb/formalization`, while publication to `jcb/formalization2`
   remains pending)
 - **Commits:** `1fb7d6e`, `9fde4c6`, `b283912`, `a84aa19`, `c2b1c4f`,
   `a1d8943`, `6a77882`, `bc37d43`, `5e5bb76`, `33b99f4`, `a3ff992`,
@@ -843,6 +858,12 @@ to the replacement.
 - **Removal condition:** an equivalent verified fast path lands upstream, or
   the fork removes this behavior and all candidate-replay fixtures pass against
   the upstream state transition instead.
+- **v4.33 note:** upstream's new `Tests/KernelHardening.lean` fuel probe
+  assumed `checkType (deepNat 100)` consumes recursion fuel through the
+  per-argument `isDefEq` dispatch; this fast path answers those identical
+  comparisons without dispatch, so the fork's copy of the probe reduces the
+  term (`whnf`) instead of type-checking it. Same lean4#13956 property, a
+  fast-path-immune trigger.
 
 ## D012 — verified project universe-level comparison
 
@@ -882,11 +903,27 @@ to the replacement.
 - **Removal condition:** upstream provides an equivalent standard-only
   mvar-free level-order theorem and constructor semantic validation consumes it
   without a fork-only comparator.
+- **v4.33 note (partially absorbed):** upstream now verifies the standard
+  library level operations (`Verify/LevelStd.lean`) and proves the primed
+  comparators sound *and* complete with core `isEquiv`/`geq` as verified fast
+  paths, superseding this row's fork-local normalizer proofs — the merge took
+  upstream's `Level.lean`/`Verify/Level.lean` machinery wholesale. What
+  remains fork-only: routing the typechecker's sort comparison through
+  `isEquiv'` and constant-level lists through `isEquivList := all2 isEquiv'`
+  (upstream keeps core `isEquiv` on both paths); the transparent
+  `Level.isStructEq` test plus `isStructEq_eq`/`isStructEq_iff_eq` (fixture
+  consumers); and the constructor-validation bridge, which now consumes
+  upstream's `geq'_wf`/`isEquiv'_wf` instead of the retired fork lemmas.
+  Upstream's reference equations for core ops (`Level.normalize_eq`,
+  `Level.mkMaxAux_eq`, `Level.skipExplicit_eq`,
+  `Level.isExplicitSubsumedAux_eq`, `TreeMap.any_eq_any_toList`) joined
+  `Verify/Axioms.lean`, and `TreeMap.all_eq_all_toList` is live again in
+  upstream's proofs (no longer a deletable dead axiom).
 
 ## D013 — complete inductive replay and consumer certificates
 
 - **Status:** remote-development at `jcb/formalization2`; publication to
-  `jcb/induct` is pending.
+  `jcb/formalization2` is pending.
 - **Commit:** this L4L-11 closure checkpoint, based on `bc51f980`.
 - **Delta:** add the Theory-only `VInductDecl.BlockCertificate` and
   `NestedBlockCertificate` façades over successful proof-carrying
@@ -933,7 +970,7 @@ to the replacement.
 ## D014 — Theory local-context and literal readiness API
 
 - **Status:** local-committed at `jcb/formalization2`; publication to
-  `jcb/induct` is pending.
+  `jcb/formalization2` is pending.
 - **Commit:** L4L-12A extraction is `958d03b7`, based on `0587b91a`; this
   L4L-12B readiness checkpoint is its independently gated child.
 - **Delta:** move the consumer-neutral `VLocalDecl` core and its VExpr-only
@@ -971,12 +1008,100 @@ to the replacement.
   and exact typed-literal readiness APIs, Verify consumers migrate to them,
   and the compatibility-only fork delta can be deleted.
 
+## D015 — consumer-neutral projection semantics
+
+- **Status:** local-committed (L4L-13A/B through L4L-15A checkpoints);
+  publication is pending
+- **Delta:** `Theory/Projection.lean` is a new consumer-neutral projection
+  boundary: `VStructureView` restricts the one-family `GenerationChecked`
+  artifact to the kernel structure class, `projectionCodes` encodes projections
+  as recursor programs with dependent motives, and
+  `VEnv.TrProj env U Γ view levels params idx major result` is the registered
+  projection judgment with syntactic determinism, environment monotonicity, the
+  L4L-14 structural-law bundle (`TrProj.structuralLaws`), and the staged
+  structure-eta typing infrastructure (`etaRebuild`,
+  `etaRebuild_hasType_of_constructorPrefix`). Verify's `TrProj` became a fully
+  constrained existential wrapper over the Theory judgment (no invented
+  metadata), and `inferProj.WF`/`reduceProj.WF` are proved against it.
+  Upstream has no counterpart; its projection handling is unverified executable
+  code only.
+- **Ix impact:** downstream checkers obtain a concrete projection-laws package
+  from published Theory APIs alone.
+- **Tests:** `Tests/ProjectionExpressibility.lean` (`DependentRecord`),
+  `Tests/StructureEtaCapability.lean`, `Tests/TheoryConsumerSurface.lean`, and
+  the projection-reduction paths of the L4L-15A WHNF proofs.
+- **Axiom note:** Theory roots close at `propext`/`Quot.sound`
+  (`Classical.choice` where staged); no new axiom.
+- **Upstream issue/PR:** TBD — PR 7 of the planned L4L-20C series.
+- **Removal condition:** upstream adopts the projection structure view, laws,
+  and checker proofs (or an agreed equivalent) and consumers migrate.
+
+## D016 — executable checker refactors for verification
+
+- **Status:** local-committed; publication is pending
+- **Delta:** behavior-preserving reshapes of executable checker code so exact
+  proofs can name its intermediate steps: `inferProj` uses extracted
+  `invalidProj`/`inferProjParams`/`inferProjFields` helpers and adds the
+  `isProjectionReadyStructure` and `idx < ctorInfo.numFields` guards (error
+  path only); `tryEtaStructCore`'s field loop is the named
+  `tryEtaStructFieldStep` callback; `whnfCore`/`reduceNative`/`reduceNat` use
+  the transparent `Expr.structuralEq` where upstream uses the `BEq` `==`; and
+  `checkConstructors` iterates families through the named
+  `checkConstructorsLoop` recursion instead of `for`-notation (the v4.33 do
+  elaborator synthesizes membership proofs that block exact-run rewriting).
+- **Ix impact:** none directly; keeps checker-run certificates replayable.
+- **Tests:** the executable-mirror fixtures in `Inductive/ValidationTrace.lean`
+  and `Verify/Environment/*Replay*.lean`; kernel differential matrices.
+- **Axiom note:** no new axiom; the guards reject strictly more, never accept
+  more.
+- **Upstream issue/PR:** TBD; mostly mechanical, submit alongside the proofs
+  that need each reshape.
+- **Removal condition:** upstream adopts the reshapes or the proofs stop
+  needing named intermediate steps.
+
+## D017 — projection readiness meets the v4.33 front-end chains
+
+- **Status:** intentional-fork (transitional), created by the v4.33
+  reconciliation
+- **Delta:** this fork's `VContext`/`VEnvs.WF` carry a `ProjectionReady`
+  obligation that upstream's newly proved front-end declaration chains (#28)
+  do not establish. The merge added the field to upstream's `VEnvAt`
+  (supplied honestly by `VEnvs.WF.toVEnvAt`) and left the extension-transport
+  obligations as five named Tier V sorries (`VEnvAt.addAxioms._f`,
+  `addConstCore.WF`, `addDef.WF`, `addMutualBlock.WF`, `addUnsafeDef.WF`).
+  Upstream's vacuous quotient-initialization proof (`checkEqType.WF` via
+  `TrEnv'.no_inductInfo`) is refutable on this fork — the inductive boundary
+  is implemented, so a translated environment can contain the real `Eq` — and
+  was deleted; `addQuot.WF` is re-sorried with its true statement.
+  `TrEnv'.sf_mono` was deleted (upstream's `ignore` constructor makes blanket
+  safety-lowering unsound); the fixture `TrEnv'` derivations are now stated
+  parametrically in `safety` instead.
+- **Ix impact:** none; `addDecl`-chain roots were transitional premerge and
+  remain transitional, now at finer grain.
+- **Tests:** the sorry-frontier audit pins all six entries exactly.
+- **Axiom note:** no new axiom; six new classified `sorryAx` entries
+  (L4L-19B territory), plus upstream's `checkPrimitiveDef.WF` boundary.
+- **Upstream issue/PR:** not applicable upstream (the obligation is
+  fork-only); resolved by the L4L-19B transport proofs.
+- **Removal condition:** L4L-19B proves `ProjectionReady` transport across
+  `Environment.add`/`addConsts` and the constructive quotient initialization,
+  emptying the six entries.
+
+## D018 — v4.33.0 final toolchain (upstream pins v4.33.0-rc2)
+
+- **Status:** intentional-fork (temporary)
+- **Delta:** `lean-toolchain` pins `leanprover/lean4:v4.33.0` and batteries
+  `v4.33.0` because `argumentcomputer/lean4-nix` vendors released toolchains
+  only; upstream pins `v4.33.0-rc2`.
+- **Removal condition:** upstream bumps to the final release (expected
+  imminently); no code delta is attached to this row.
+
 ## Review checklist
 
 At each publish or ix pin boundary:
 
 1. Refresh both baseline hashes and
-   `git log upstream/master..jcb/induct`; do not use a detached `HEAD` as the
+   `git log upstream/master..jcb/formalization2`; do not use a detached `HEAD` as the
    published-fork baseline.
 2. Add an entry before landing any new semantic/API delta.
 3. Record the upstream issue or PR as soon as one exists.

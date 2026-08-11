@@ -284,7 +284,7 @@ def ruleArgArity (constructor : NormalizedBlockCtor) : Nat :=
   source.nparams + gen.ruleFieldCount constructor
 
 /-- The `SimplePattern` of one generated iota rule. -/
-def rulePattern (constructor : NormalizedBlockCtor) : SimplePattern :=
+@[reducible] def rulePattern (constructor : NormalizedBlockCtor) : SimplePattern :=
   .iota (gen.ruleRecName constructor) (gen.ruleMajorArity constructor)
     constructor.ctor.raw.name (gen.ruleArgArity constructor)
 
