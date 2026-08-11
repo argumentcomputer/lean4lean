@@ -1704,8 +1704,17 @@ theorem SpineWF.hasType_appN {env : VEnv} {U : Nat} {Γ : List VExpr} :
   induction es with intro A B f h hf
   | nil => exact h ▸ hf
   | cons e es ih =>
-    obtain ⟨A₁, A₂, rfl, he, hrest⟩ := h
-    exact ih hrest (hf.app he)
+      obtain ⟨A₁, A₂, rfl, he, hrest⟩ := h
+      exact ih hrest (hf.app he)
+
+/-- Concatenate two adjacent, well-typed application spines. -/
+theorem SpineWF.append {env : VEnv} {U : Nat} {Γ : List VExpr} :
+    ∀ {es : List VExpr} {A B : VExpr}, env.SpineWF U Γ A es B →
+      ∀ {es' : List VExpr} {C : VExpr}, env.SpineWF U Γ B es' C →
+        env.SpineWF U Γ A (es ++ es') C
+  | [], _, _, h, _, _, h' => h ▸ h'
+  | _ :: _, _, _, ⟨A₁, A₂, rfl, he, hrest⟩, _, _, h' =>
+      ⟨A₁, A₂, rfl, he, SpineWF.append hrest h'⟩
 
 /-- Extend a well-typed application spine by one final argument. -/
 theorem SpineWF.snoc {env : VEnv} {U : Nat} {Γ : List VExpr} {e D C : VExpr} :
