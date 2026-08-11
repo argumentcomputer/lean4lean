@@ -2,7 +2,8 @@
 
 **Status:** authoritative local roadmap, audited 2026-08-11 against the
 committed fork and the current `jcb/formalization2` development bookmark;
-publication to `jcb/induct` remains a separate boundary.
+publication (pushing `jcb/formalization2` to origin) remains a separate
+boundary.
 
 **Versioning.** `plans/roadmap.md` is intentionally tracked so the
 status-bearing milestone ladder travels with each checkpoint; other files
@@ -67,8 +68,8 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-15B active at its required upstream decision gate**; L4L-14 and L4L-15A are complete and pruned from §5; the independent L4L-15C Theory-only surface migration is complete in this checkpoint |
-| Current formalization source | the L4L-15A projection-checker checkpoint `e8ccc70f` at `jcb/formalization2`, plus this checkpoint's L4L-15C ownership migration; publication to `argumentcomputer/lean4lean` `jcb/induct` remains pending |
+| Ladder position | **L4L-15R active** (v4.33 upstream reconciliation, integration-only); L4L-14, L4L-15A, and L4L-15C are complete and pruned from §5; L4L-15B is queued next with its former upstream-approval gate replaced by the documented-divergence policy (2026-08-11) |
+| Current formalization source | the structure-eta staging checkpoint `ae6ee9d6` at `jcb/formalization2` (L4L-15A closure `e8ccc70f`, L4L-15C migration `867675ad`); `origin/jcb/formalization2` is the live publication bookmark and lags the local head |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
 | Trust frontier | exactly 11 live source `sorry` tokens across 10 proof declarations, plus six kernel-rejection recovery declarations (16 compiled allowlist entries total), and 29 custom-axiom declarations; all are pinned by exact audits |
@@ -337,7 +338,8 @@ The remaining v4.31-added sorry is classified:
   inductive language remains a growing subset rather than kernel-complete;
   projection semantics landed at L4L-13A/B and projection structural/checker
   verification closed at L4L-14/L4L-15A; structure eta and unit-like
-  comparison remain at the L4L-15B decision gate. `pat_wf` carries
+  comparison are queued as L4L-15B behind the L4L-15R reconciliation,
+  proceeding as a documented divergence. `pat_wf` carries
   the Church–Rosser
   development's transitional unique-typing closure until L4L-16/17 close it.
 - The L4L-15C consumer-neutral audit is complete. Generic spine laws,
@@ -528,8 +530,9 @@ it changes the active design. Implementation and publication normally stay
 serial; an explicitly independent later milestone may close as its own
 audited checkpoint while the active milestone waits at a mandatory external
 approval gate, provided this exception is recorded here and does not change
-the blocked semantics. L4L-15C is such an exception while L4L-15B awaits the
-structure-eta decision. This keeps one auditable claim per checkpoint and
+the blocked semantics. L4L-15C closed under this exception while L4L-15B
+stood at the former structure-eta approval gate. This keeps one auditable
+claim per checkpoint and
 prevents several half-migrated public artifact paths from being live
 simultaneously.
 
@@ -537,20 +540,60 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
+### Upstream reconciliation (L4L-15R)
+
+**L4L-15R — v4.33 upstream reconciliation (active, integration-only).**
+lean4-nix landed v4.33 support (2026-08-11), unblocking the deferred
+digama0 sync. Merge upstream `master` head `1a16b72d` as an
+integration-only checkpoint — first parent this line's head, second
+parent the upstream commit, following the v4.31 precedent `7f864b45` —
+with no semantic milestone work riding in the merge.
+
+Scope:
+
+- Toolchain: bump the Lean and lean4-nix pins to v4.33, drop the
+  `batteries431CycleFix` override (the fix ships in batteries ≥ v4.32),
+  run `lake update batteries`, and refresh `flake.lock`
+  (`nix flake lock --update-input lean4-nix`).
+- Banked from the abandoned v4.32-era attempt (recoverable via
+  `jj op log`, merge `9c326a2a`): only three files overlapped through
+  upstream `408edad8` — `Verify/TypeChecker/Reduce.lean` (take
+  upstream's do-elaborator-shaped `reduceNat.WF`, then port our
+  `Expr.eqv_const` → `Expr.structuralEq_const` rename at the relocated
+  unary case), `divergences.md` (keep our NormLevel wording, bump the
+  source link), and `EquivManager.lean` (auto-merges).
+- The five upstream commits above the v4.33 bump carry real Verify
+  overlap and need a fresh conflict survey against the L4L-14/15 work:
+  front-end declaration checking #28 (`cbb70bc`, `addDecl.WF`
+  territory, L4L-19B), unsafe/mutual definition blocks (`bd9e576`),
+  dead `cheapRec` removal (`88cade6` — touches the freshly certified
+  WHNF/projection-reduction proofs), stdlib level-ops verification #23
+  (`1a16b72d` — overlaps our verified level comparator; reconcile,
+  do not duplicate), and docs/workflow changes.
+- Post-merge re-audit: the full §6 gate on v4.33; the exact sorry
+  frontier with any upstream-added sorries classified into tiers; the
+  divergence ledger (retire rows upstream absorbed, add rows the merge
+  creates — including the outstanding rows for the concrete
+  `TrProj`/`Theory/Projection.lean` API and the executable
+  `inferProj`/`tryEtaStructCore` changes); the cached-field axiom
+  classification against the v4.33 implementation; and this file's
+  lineage/toolchain rows.
+*Exit:* the merge checkpoint is green on v4.33 with all §6 gates; the
+frontier and ledger are re-audited; no semantic work is mixed into the
+merge.
+
 ### Structures (L4L-15B)
 
 Projection semantics, structural laws, and checker verification are complete;
 their current claim surface is recorded in §2.1 and their checkpoint evidence
 lives in history. The remaining structure work is the kernel's eta behavior.
 
-**L4L-15B — structure eta and unit-like comparison (active, decision
-gate).** Derive
-`tryEtaStructCore.WF` and `isDefEqUnitLike.WF`. First attempt derivation from
-the recursor/iota package, proof irrelevance, and projection uniqueness. If
-Lean's structure eta requires a new primitive Theory defeq rule, write a
-design note covering subject reduction, injectivity, confluence, and
-downstream impact, and obtain upstream agreement before changing `IsDefEq` —
-this is a metatheory change, not a local checker lemma.
+**L4L-15B — structure eta and unit-like comparison (queued; divergence
+approved).** Derive `tryEtaStructCore.WF` and `isDefEqUnitLike.WF` on the
+reconciled v4.33 base. Adding the structure-eta rule is a metatheory
+change; upstream agreement is no longer an implementation blocker —
+proceeding as a tracked, documented fork divergence was approved
+2026-08-11, with upstream review deferred to the L4L-20C PR series.
 
 The 2026-08-11 derivability audit reached that gate. The pinned Lean sources
 implement eta for nonrecursive, single-constructor, zero-index structures as
@@ -583,21 +626,41 @@ registered Theory view; and the sorry-free proof bodies
 typing, parameter-spine, and zero-field obligation under those explicit
 premises.  Their exact transitive axiom closures are guarded in
 `Tests/StructureEtaCapability.lean` (including already-tracked L4L-17 and
-projection-frontier `sorryAx` dependencies).  The unconditional roots remain
-unchanged at the approval gate, and `VEnv.IsDefEq` remains untouched.
+projection-frontier `sorryAx` dependencies).  The unconditional roots and
+`VEnv.IsDefEq` remain untouched until the steps below run.
 
-The proposed upstream decision is an explicit registered structure-eta rule,
-restricted to checked nonrecursive, single-constructor, zero-index structure
-views. Acceptance requires: subject reduction from the registered constructor
-and projector typing package; updated injectivity/discrimination arguments;
-confluence/standardization critical-pair coverage against beta, iota, proof
-irrelevance, and registered extra rules; and an audit of every exhaustive
-`IsDefEq` consumer plus environment monotonicity. If upstream declines that
-Theory change, the faithful alternative is to disable the two executable
-heuristics rather than certify them from an absent rule. Upstream agreement is
-required before implementation proceeds.
-*Exit:* both roots are sorry-free and audited; any Theory-rule change has
-subject-reduction/injectivity/confluence and downstream-impact evidence.
+The decided rule is an explicit registered structure-eta rule, restricted
+to checked nonrecursive, single-constructor, zero-index structure views.
+The mandatory order of work:
+
+1. **Design note first.** The exact rule form; subject reduction from the
+   registered constructor/projector typing package (the rule-independent
+   half, `etaRebuild_hasType_of_constructorPrefix`, is already proved);
+   updated injectivity/discrimination arguments; confluence and
+   standardization critical-pair coverage against beta, iota, proof
+   irrelevance, and registered extra rules; and a complete inventory of
+   every exhaustive `IsDefEq` consumer and environment-monotonicity
+   proof that gains a case arm — including how the Tier R statements
+   (`parRed`, the inversion family) and the generic `[Params]`
+   development absorb the rule.
+2. **Ledger entry before the rule lands.** Record the divergence in
+   `upstream-divergence.md`: owner, rule, downstream impact, the
+   parallel upstream conversation, and the removal condition — upstream
+   adopts the rule or an agreed alternative by the L4L-20C series,
+   revisited at every reconciliation checkpoint. If upstream ultimately
+   declines any Theory change, the recorded fallback is disabling the
+   two executable heuristics rather than certifying them from an absent
+   rule.
+3. **Implementation.** Add the rule, derive `VEnv.HasStructureEta` for
+   registered views, let the staged conditional proofs close both
+   unconditional Tier V roots, and repair every case arm from the
+   inventory. No existing proved root may regress silently: any proof
+   that cannot yet absorb its new case is re-sorried into the frontier
+   with an explicit tier, and this milestone does not close over it.
+*Exit:* both roots are sorry-free and audited on the v4.33 base; the
+design note and ledger entry are committed with
+subject-reduction/injectivity/confluence and downstream-impact evidence;
+the `IsDefEq` case inventory shows no silent regression.
 
 ### Metatheory closure (L4L-16–L4L-18B)
 
@@ -751,9 +814,9 @@ slice and fixtures; (4) indexed/normalization/small-elimination/
 recursive-argument support; (5) mutual and nested support; (6) the pattern
 package and Verify `AddInduct` alignment; (7) the projection structure view,
 laws, and checker proofs; (8) injectivity/Church-Rosser completion; (9) the
-remaining checker and axiom-minimization work. Do not rewrite the published
-`jcb/induct` checkpoints: each PR series is extracted onto a fresh review
-branch rebased on its current upstream target. Do not mix the large
+remaining checker and axiom-minimization work. Do not rewrite published
+`jcb/formalization2` checkpoints: each PR series is extracted onto a fresh
+review branch rebased on its current upstream target. Do not mix the large
 Nix/fork-infrastructure delta into proof PRs unless upstream asks. Record
 every PR in the divergence ledger.
 *Exit:* the final release revision is green; every fork delta is upstreamed
@@ -803,8 +866,9 @@ Additionally:
 
 **Publication.** Publish only after the complete gate passes on one committed
 checkpoint; never publish a red or semantically split state (for example
-midway through an artifact or transaction switch). Only `origin/jcb/induct`
-moves; local/remote `master` and every digama/upstream ref stay fixed, and
+midway through an artifact or transaction switch). Only
+`origin/jcb/formalization2` moves; local/remote `master` and every
+digama/upstream ref move only at explicit reconciliation checkpoints, and
 remote-ref verification is part of each publication. Keep published
 checkpoints recoverable, and refresh the divergence ledger and sorry-frontier
 wording with each checkpoint.
@@ -824,9 +888,11 @@ assume an oracle or axiom.
 
 ## 7. Principal risks and decision points
 
-- **Checkpoint drift.** The published `jcb/induct` line is ahead of `master`.
-  Keep published checkpoints recoverable, require Linux/Darwin CI builds at
-  release boundaries, and record any replacement hash here.
+- **Checkpoint drift.** The `jcb/formalization2` line is ahead of `master`,
+  and the local head runs ahead of `origin/jcb/formalization2` between
+  publications. Keep published checkpoints recoverable, require
+  Linux/Darwin CI builds at release boundaries, and record any replacement
+  hash here.
 - **A subset masquerading as the spec.** A sorry-free `stageN` definition can
   still be incomplete. Final acceptance is kernel coverage plus negative
   agreement, not the absence of sorries.
@@ -846,9 +912,11 @@ assume an oracle or axiom.
 - **Raw de Bruijn scaling.** Indexed, mutual, and recursive-Pi rules multiply
   lift/inst arithmetic. Keep moving normalized evidence into the descriptor
   and telescope lemmas rather than duplicating index calculations.
-- **Structure eta may change Theory.** A new defeq constructor would affect
-  injectivity, confluence, standardization, and downstream consumers. Require
-  a design proof and upstream agreement first.
+- **Structure eta changes Theory as a tracked divergence.** The new defeq
+  constructor affects injectivity, confluence, standardization, and
+  downstream consumers. The design note and ledger entry come first
+  (decision 2026-08-11); upstream review moves to the L4L-20C PR series,
+  and every reconciliation checkpoint revisits the divergence.
 - **Pattern-interface mismatch.** The upstream `Params` fields
   (`extra_pat`'s syntactic match, `pat_wf`'s bare-`HasType` premise)
   cannot be satisfied by tower-registered environments, including
