@@ -2161,16 +2161,6 @@ theorem TrExprS.boolLit (henv : env.HasPrimitives) (H : env.contains ``Bool) (b 
 
 theorem FVarsIn.boolLit {b : Bool} : FVarsIn P (toExpr b) := by cases b <;> exact nofun
 
-theorem VExpr.WF.boolLit_has_type (wf : env.Ordered) (henv : env.HasPrimitives)
-    (hΓ : OnCtx Γ (env.IsType U)) (H : VExpr.WF env U Γ (.boolLit b)) : env.contains ``Bool := by
-  suffices env.HasType U Γ (.boolLit b) .bool by
-    have ⟨_, H⟩ := this.isType wf hΓ
-    have ⟨_, H, _⟩ := HasType.const_inv wf hΓ H
-    exact ⟨_, H⟩
-  cases b with have ⟨_, h1, h2, h3⟩ := let ⟨_, H⟩ := H; HasType.const_inv wf hΓ H
-  | false => cases henv.boolFalse h1; exact .const h1 h2 h3
-  | true => cases henv.boolTrue h1; exact .const h1 h2 h3
-
 theorem TrExprS.lit_has_type (H : TrExprS env Us Δ (.lit l) e') : env.ContainsLits l :=
   let .lit H _ := H; H
 

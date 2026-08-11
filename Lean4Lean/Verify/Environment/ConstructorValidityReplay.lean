@@ -57,7 +57,7 @@ def l4l05EmptyVEnvs : VEnvs where
   venv _ := VEnv.empty
 
 theorem l4l05EmptyHasPrimitives : VEnv.HasPrimitives VEnv.empty := by
-  apply TypeChecker.VEnv.HasPrimitives.of_avoids
+  apply VEnv.HasPrimitives.of_avoids
   intro name membership
   rfl
 

@@ -1,7 +1,7 @@
 # Lean4Lean completion roadmap
 
-**Status:** authoritative local roadmap, audited 2026-08-10 against the
-committed fork and the current `jcb/formalization` development bookmark;
+**Status:** authoritative local roadmap, audited 2026-08-11 against the
+committed fork and the current `jcb/formalization2` development bookmark;
 publication to `jcb/induct` remains a separate boundary.
 
 **Versioning.** `plans/roadmap.md` is intentionally tracked so the
@@ -67,12 +67,12 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-14 active**; L4L-13A/B and everything above it are complete and pruned from §5; everything below L4L-14 is queued |
-| Current formalization source | the L4L-13A/B projection-semantics checkpoint `de7eef78` at `jcb/formalization2` (lineage: L4L-12B `a6ea75fc` ← L4L-12A `958d03b7` ← L4L-11 `0587b91a`), with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
+| Ladder position | **L4L-15B active at its required upstream decision gate**; L4L-14 and L4L-15A are complete and pruned from §5; the independent L4L-15C Theory-only surface migration is complete in this checkpoint |
+| Current formalization source | the L4L-15A projection-checker checkpoint `e8ccc70f` at `jcb/formalization2`, plus this checkpoint's L4L-15C ownership migration; publication to `argumentcomputer/lean4lean` `jcb/induct` remains pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
-| Trust frontier | exactly 19 live source `sorry` tokens across 18 proof declarations, plus six kernel-rejection recovery declarations (24 compiled allowlist entries total), and 29 custom-axiom declarations; all are pinned by exact audits |
-| Gates | the full §6 gate is green on the current L4L-13A/B closure checkpoint: focused/aggregate/default Lake builds, Nix proof and dependency builds, clean-source `nix flake check`, the 24-entry sorry frontier, Theory import-boundary and exact-axiom audits, formatter and whitespace checks |
+| Trust frontier | exactly 11 live source `sorry` tokens across 10 proof declarations, plus six kernel-rejection recovery declarations (16 compiled allowlist entries total), and 29 custom-axiom declarations; all are pinned by exact audits |
+| Gates | the full §6 gate is green on this checkpoint: the 198-job default Lake build, all nine Nix flake checks, the 16-entry exact sorry frontier, the Theory-only import/axiom audit, downstream-consumer and CLI checks, and whitespace hygiene |
 
 ### 2.1 What is green
 
@@ -281,9 +281,26 @@ longer inherit `sorryAx` through the projection branch. The
 universe-polymorphic, and dependent — pins the complete encoding
 (`Tests/ProjectionExpressibility.lean`).
 
-**Not claimed.** The seven projection structural laws and the
-projection/eta checker proofs (L4L-14–L4L-15B), and the remaining
-metatheory/checker roots.
+The L4L-14 structural package is proved: weakening, inverse weakening,
+context-defeq transport, WF, uniqueness, term substitution, and universe
+instantiation retain their compatibility names and are bundled by
+`TrProj.structuralLaws`. L4L-15A proves `inferProj.WF`, both constructor and
+string branches of `reduceProj.WF`, and the enclosing WHNF/translation
+projection paths. Their exact guards distinguish the remaining inherited
+Tier-R inversion dependency from projection-specific proof debt.
+
+**Theory-only consumer surface.** The L4L-15C audit moved the generic
+`SpineWF` weakening/inversion laws to `Theory/Typing/UniqueTyping.lean`,
+primitive-environment extension and Bool-literal typing to
+`Theory/Literals.lean`, constant-absence and containment facts to their
+Theory owners, and the Bool-to-elimination-mode conversion to
+`Theory/Inductive.lean`. Verify keeps only deprecated compatibility shims
+where a public name existed. `Tests/TheoryConsumerSurface.lean` imports no
+Verify module and pins the availability and exact axiom closure of every
+migrated API.
+
+**Not claimed.** Structure eta and unit-like checker verification (L4L-15B),
+and the remaining metatheory/checker roots.
 The upstream `Params.extra_pat` field demands that registered defeqs match
 patterns syntactically, which lambda-tower registrations (including
 `quotDefEq`) never do; the assembler therefore exposes spine-level coverage
@@ -299,15 +316,15 @@ never generation-shape authority or Theory semantics.
 
 The sorry audit (`Lean4Lean/Audit/SorryFrontier.lean`, a declaration-level
 `sorryAx` allowlist over the compiled Theory/Verify surface) currently
-accepts exactly 19 live sorries across 18 declarations (`NormalEq.parRed`
-carries two), plus six deliberately kernel-rejected fixture recoveries that
-are not proof debt:
+accepts exactly 11 live source tokens across 10 proof declarations
+(`NormalEq.parRed` carries two), plus six deliberately kernel-rejected
+fixture recoveries that are not proof debt. The compiled allowlist therefore
+contains 16 declarations:
 
 | Area | Live debt |
 |---|---|
-| Projection structural laws (L4L-14) | seven sites in `Verify/Typing/Lemmas.lean`: `weak'`, inverse weakening, `defeqDFC`, `wf`, `uniq`, `instN`, `instL` |
-| Core metatheory | `Injectivity.lean` x3, `UniqueTyping.lean` x1, `ChurchRosser.lean` x2 |
-| Checker verification | `Verify/Environment.lean` x1; `InferType.lean` x1; `WHNF.lean` x2; `IsDefEq.lean` x2 |
+| Core metatheory | `Injectivity.lean` x3; `UniqueTyping.lean` x1; `Projection.lean` x1; `ChurchRosser.lean` x2 |
+| Checker verification | `Verify/Environment.lean` x1; `WHNF.lean` x1; `IsDefEq.lean` x2 |
 
 The remaining v4.31-added sorry is classified:
 `Lean4Lean.addDecl.WF` → L4L-19B. Non-sorry debt:
@@ -318,14 +335,15 @@ The remaining v4.31-added sorry is classified:
   the block-local pattern environment assembler. The complete supported
   replay matrix and consumer certificate API are now closed, but the accepted
   inductive language remains a growing subset rather than kernel-complete;
-  projection semantics landed at L4L-13A/B while the seven structural laws
-  and the checker proofs remain queued (L4L-14–L4L-15B). `pat_wf` carries
+  projection semantics landed at L4L-13A/B and projection structural/checker
+  verification closed at L4L-14/L4L-15A; structure eta and unit-like
+  comparison remain at the L4L-15B decision gate. `pat_wf` carries
   the Church–Rosser
   development's transitional unique-typing closure until L4L-16/17 close it.
-- The projection structural laws, checker verification, and a final audit
-  of consumer-neutral lemmas remain under `Verify/` (L4L-14–L4L-15C). The
-  local-context
-  and literal/prelude APIs now have Theory-only homes.
+- The L4L-15C consumer-neutral audit is complete. Generic spine laws,
+  primitive-environment extension, literal typing, containment/absence, and
+  elimination-mode conversion now have Theory-only homes, with a dedicated
+  import-boundary/axiom audit and deprecated Verify shims only where needed.
 - 29 project-specific `axiom` declarations outside `Experimental/`: 27 in
   `Verify/Axioms.lean` and two pointer-equality contracts in `PtrEq.lean`.
   Three cached-field equations from the group once false on older pins
@@ -506,84 +524,57 @@ from this ladder, with their record kept in git history. Earlier partial
 implementation counts as a prerequisite, never as partial credit. A suffixed
 identifier such as L4L-01D2 is a full checkpoint with its own commit and
 gates. Read-only design reconnaissance for a later milestone is allowed when
-it changes the active design, but implementation and publication stay serial:
-this keeps one auditable claim per checkpoint and prevents several
-half-migrated public artifact paths from being live simultaneously.
+it changes the active design. Implementation and publication normally stay
+serial; an explicitly independent later milestone may close as its own
+audited checkpoint while the active milestone waits at a mandatory external
+approval gate, provided this exception is recorded here and does not change
+the blocked semantics. L4L-15C is such an exception while L4L-15B awaits the
+structure-eta decision. This keeps one auditable claim per checkpoint and
+prevents several half-migrated public artifact paths from being live
+simultaneously.
 
 If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Projections and structures (L4L-14–L4L-15C)
+### Structures (L4L-15B)
 
-The L4L-13A/B design gate is resolved: the env-indexed
-`VEnv.TrProj`/`VStructureView` recursor-encoded semantics landed, the
-seven frozen structural-law statements were restated against it, and
-Verify's `TrProj` is a fully constrained compatibility wrapper. The
-operational facts recorded during that decision stay binding on the
-proofs below: `reduceProj` never consults the projection's structure
-name — it whnfs to a constructor application and indexes by that
-constructor's `numParams + idx`; `isDefEq` projection congruence
-compares only indices; `inferProj` substitutes earlier projections into
-dependent field types under Prop/proof-irrelevance guards.
+Projection semantics, structural laws, and checker verification are complete;
+their current claim surface is recorded in §2.1 and their checkpoint evidence
+lives in history. The remaining structure work is the kernel's eta behavior.
 
-**L4L-14 — projection structural laws (active).** Prove the seven upstream
-obligations — weakening, inverse weakening, context-defeq transport, WF,
-uniqueness, term substitution, and universe instantiation — and expose one
-bundled structural-laws theorem while preserving the individual compatibility
-theorem names for upstream Verify. Add projection-bearing end-to-end
-fixtures. The concrete relation splits the work: `weak'`, `instN`, and
-`instL` are commutation of `projectionCodes` with lift/inst/instL plus
-transport of the WF components (`SpineWF`, `OnSortTel`, `OnTel`,
-`HasType`); `wf` is the real content — typing the projector program from
-the registered recursor's generated type; `weak'_inv`, `defeqDFC`, and
-`uniq` need inversion facts (`weakN_iff`, and constant-head injectivity
-to recover the view and instantiation from a defeq major type) and
-should be proved now against the public Tier R statements, inheriting
-the transitional closure that sheds automatically when L4L-16/17 land —
-the `pat_wf` precedent. `TrProj.mono` and syntactic `result_eq` are
-already proved.
-*Exit:* all seven structural-law sorries are gone from the frontier;
-projection fixtures pass; compatibility names are preserved.
-
-**L4L-15A — projection checker verification.** Use the structure view to
-prove `inferProj.WF`, `reduceProj.WF` for constructor applications and
-strings, and the projection branches of WHNF and translation congruence.
-Re-run the enclosing `inferType`, `whnfCore`, and `isDefEq` theorems so the
-absence of a local sorry also removes it from every exported root. String
-branch input: `reduceProj` whnfs `.lit (.strVal s)` through
-`Expr.strLitToConstructor`, whose `String.ofList` head must delta-unfold
-before the constructor guard succeeds, and `VEnv.PreludeReady`
-deliberately keeps `Char`/`String` opaque (function constants only, no
-constructor/recursor/iota) — the string case therefore needs either a
-certified structure artifact for `String` consistent with the literal
-encoding or a route through checker defeq evidence. The L4L-13B
-representation left this open; decide it at the start of this milestone.
-*Exit:* focused structure/string fixtures and enclosing checker roots pass
-with exact axiom closures; eta/unit-like roots remain queued.
-
-**L4L-15B — structure eta and unit-like comparison.** Derive
+**L4L-15B — structure eta and unit-like comparison (active, decision
+gate).** Derive
 `tryEtaStructCore.WF` and `isDefEqUnitLike.WF`. First attempt derivation from
 the recursor/iota package, proof irrelevance, and projection uniqueness. If
 Lean's structure eta requires a new primitive Theory defeq rule, write a
 design note covering subject reduction, injectivity, confluence, and
 downstream impact, and obtain upstream agreement before changing `IsDefEq` —
 this is a metatheory change, not a local checker lemma.
+
+The 2026-08-11 derivability audit reached that gate. The pinned Lean sources
+implement eta for nonrecursive, single-constructor, zero-index structures as
+special kernel support: comparison checks the common structure type and its
+fields, while the unit-like path is the zero-field specialization. Existing
+Theory rules can derive equality of every projected field and can reduce a
+projection whose major is already constructor-headed, but cannot derive the
+missing reconstruction equation
+`C params (proj₀ t) ... (projₙ t) ≡ t` for a neutral `t`. Function eta does
+not apply, proof irrelevance covers only `Prop`, and projection uniqueness is
+not structure extensionality. No `IsDefEq` rule has been changed.
+
+The proposed upstream decision is an explicit registered structure-eta rule,
+restricted to checked nonrecursive, single-constructor, zero-index structure
+views. Acceptance requires: subject reduction from the registered constructor
+and projector typing package; updated injectivity/discrimination arguments;
+confluence/standardization critical-pair coverage against beta, iota, proof
+irrelevance, and registered extra rules; and an audit of every exhaustive
+`IsDefEq` consumer plus environment monotonicity. If upstream declines that
+Theory change, the faithful alternative is to disable the two executable
+heuristics rather than certify them from an absent rule. Upstream agreement is
+required before implementation proceeds.
 *Exit:* both roots are sorry-free and audited; any Theory-rule change has
 subject-reduction/injectivity/confluence and downstream-impact evidence.
-
-**L4L-15C — Theory-only consumer import surface.** Audit the consumer-neutral
-lemmas still living under Verify after the literal migration and L4L-15B; give each a
-Theory home and deprecate the corresponding Verify compatibility shims.
-A 2026-08-10 scan already identified first candidates: the `VEnv.SpineWF`
-weakening/inversion cluster in
-`Verify/Environment/ConstructorValidation.lean`; the
-`VEnv.HasPrimitives.of_avoids`/`addConst`/`addConst_other` cluster in
-`Verify/Environment/Normalization.lean` (natural home
-`Theory/Literals.lean`); `VEnv.HasType.hasConst_false_of_absent`;
-`VExpr.WF.boolLit_has_type`; and the `checkerElimMode` shim.
-*Exit:* no consumer-neutral lemma requires a `Lean4Lean.Verify` import;
-compatibility re-exports are removable without loss.
 
 ### Metatheory closure (L4L-16–L4L-18B)
 

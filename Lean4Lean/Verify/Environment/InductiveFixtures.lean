@@ -2537,9 +2537,9 @@ private theorem outParam_trEnv :
 
 private theorem outParam_hasPrimitives :
     VEnv.HasPrimitives outParamEnv := by
-  apply TypeChecker.VEnv.HasPrimitives.of_avoids
+  apply VEnv.HasPrimitives.of_avoids
   intro n hn
-  simp only [TypeChecker.reflectedPrimitiveNames, List.mem_cons,
+  simp only [VEnv.reflectedPrimitiveNames, List.mem_cons,
     List.not_mem_nil, or_false] at hn
   rcases hn with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
       rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
@@ -3399,9 +3399,9 @@ private theorem aliasFormerNormalization_trEnv :
 
 private theorem aliasFormerNormalization_hasPrimitives :
     VEnv.HasPrimitives typeFamilyAliasEnv := by
-  apply TypeChecker.VEnv.HasPrimitives.of_avoids
+  apply VEnv.HasPrimitives.of_avoids
   intro n hn
-  simp only [TypeChecker.reflectedPrimitiveNames, List.mem_cons,
+  simp only [VEnv.reflectedPrimitiveNames, List.mem_cons,
     List.not_mem_nil, or_false] at hn
   rcases hn with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
       rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
@@ -3514,9 +3514,9 @@ private theorem aliasRecNormalization_trEnv :
 
 private theorem aliasRecNormalization_hasPrimitives :
     VEnv.HasPrimitives aliasRecTypeEnv := by
-  apply TypeChecker.VEnv.HasPrimitives.of_avoids
+  apply VEnv.HasPrimitives.of_avoids
   intro n hn
-  simp only [TypeChecker.reflectedPrimitiveNames, List.mem_cons,
+  simp only [VEnv.reflectedPrimitiveNames, List.mem_cons,
     List.not_mem_nil, or_false] at hn
   rcases hn with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
       rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |

@@ -5313,29 +5313,6 @@ theorem forall₂_tr_mono
   | nil => exact .nil
   | cons head tail ih => exact .cons (head.mono add) ih
 
-/-- General verified context weakening for an application spine. -/
-theorem VEnv.SpineWF.weak'
-    {env : VEnv} (henv : env.Ordered)
-    {U : Nat} {lift : Lift} {context enlarged : List VExpr}
-    (extension : Ctx.Lift' lift context enlarged) :
-    ∀ {arguments : List VExpr} {source target : VExpr},
-      env.SpineWF U context source arguments target →
-      env.SpineWF U enlarged (source.lift' lift)
-        (arguments.map fun argument => argument.lift' lift)
-        (target.lift' lift) := by
-  intro arguments
-  induction arguments with
-  | nil =>
-      intro source target run
-      exact congrArg (fun expression => expression.lift' lift) run
-  | cons argument arguments ih =>
-      intro source target run
-      obtain ⟨domain, body, rfl, argumentType, tail⟩ := run
-      refine ⟨domain.lift' lift, body.lift' lift.cons, rfl,
-        argumentType.weak' henv extension, ?_⟩
-      have weakened := ih tail
-      rwa [VExpr.lift'_inst_hi] at weakened
-
 theorem isValidIndAppIdx_shape
     {stats : AddInductive.InductiveStats} {source : Expr}
     {familyIdx : Nat}
@@ -5505,74 +5482,6 @@ theorem TrExprS.forall₂_weakFV_inv_defeq
       subst target
       exact ⟨headBase :: tailBase, .cons headBaseRun tailBaseRuns, by
         simp only [List.map_cons, tailEq]⟩
-
-/-- Invert weakening of every component of an application-spine judgment when
-the enlarged context is well formed. -/
-theorem VEnv.SpineWF.weakN_inv
-    {env : VEnv} {U n k : Nat} {context enlarged : List VExpr}
-    (henv : VEnv.WF env) (enlargedWF : OnCtx enlarged (env.IsType U))
-    (extension : Ctx.LiftN n k context enlarged) :
-    ∀ {arguments : List VExpr} {source target : VExpr},
-      env.SpineWF U enlarged (source.liftN n k)
-        (arguments.map fun argument => argument.liftN n k)
-        (target.liftN n k) →
-      env.SpineWF U context source arguments target := by
-  intro arguments
-  induction arguments with
-  | nil =>
-      intro source target run
-      exact VExpr.liftN_inj.1 run
-  | cons argument arguments ih =>
-      intro source target run
-      obtain ⟨domain', body', sourceEq, argumentType, tail⟩ := run
-      cases source with
-      | bvar index => cases sourceEq
-      | sort level => cases sourceEq
-      | const name levels => cases sourceEq
-      | app fn argument => cases sourceEq
-      | lam domain body => cases sourceEq
-      | forallE domain body =>
-        injection sourceEq with domainEq bodyEq
-        subst domain'
-        subst body'
-        refine ⟨domain, body, rfl,
-          (HasType.weakN_iff henv enlargedWF extension).1 argumentType, ?_⟩
-        rw [← VExpr.liftN_inst_hi] at tail
-        exact ih tail
-
-/-- Invert a general verified context lift componentwise across an
-application-spine judgment. -/
-theorem VEnv.SpineWF.weak'_inv
-    {env : VEnv} {U : Nat} {lift : Lift} {context enlarged : List VExpr}
-    (henv : VEnv.WF env) (enlargedWF : OnCtx enlarged (env.IsType U))
-    (extension : Ctx.Lift' lift context enlarged) :
-    ∀ {arguments : List VExpr} {source target : VExpr},
-      env.SpineWF U enlarged (source.lift' lift)
-        (arguments.map fun argument => argument.lift' lift)
-        (target.lift' lift) →
-      env.SpineWF U context source arguments target := by
-  intro arguments
-  induction arguments with
-  | nil =>
-      intro source target run
-      exact VExpr.lift'_inj.1 run
-  | cons argument arguments ih =>
-      intro source target run
-      obtain ⟨domain', body', sourceEq, argumentType, tail⟩ := run
-      cases source with
-      | bvar index => cases sourceEq
-      | sort level => cases sourceEq
-      | const name levels => cases sourceEq
-      | app fn argument => cases sourceEq
-      | lam domain body => cases sourceEq
-      | forallE domain body =>
-        injection sourceEq with domainEq bodyEq
-        subst domain'
-        subst body'
-        refine ⟨domain, body, rfl,
-          (HasType.weak'_iff henv enlargedWF extension).1 argumentType, ?_⟩
-        rw [← VExpr.lift'_inst_hi] at tail
-        exact ih tail
 
 theorem ConstructorPreFamilyIndexSpineSemanticRun.expected_eq_of_family_lift
     {env : VEnv} {Us : List Name} {context : AddInductive.Context}
@@ -6544,57 +6453,6 @@ private theorem forallN_hasConst_of_terminal
   | cons binder binders ih =>
       simp only [VExpr.forallN, VExpr.hasConst, Bool.or_eq_true]
       exact .inr ih
-
-/-- Context lifting changes only bound-variable indices and therefore
-preserves the set of constants occurring in a Theory expression. -/
-private theorem VExpr.hasConst_lift' (expression : VExpr) (lift : Lift)
-    (name : Name) :
-    (expression.lift' lift).hasConst name = expression.hasConst name := by
-  induction expression generalizing lift <;>
-    simp [VExpr.hasConst, *]
-
-/-- A typed Theory expression cannot mention a constant absent from its
-environment. -/
-theorem VEnv.HasType.hasConst_false_of_absent
-    {env : VEnv} {U : Nat} {context : List VExpr}
-    {familyName : Name} {expression type : VExpr}
-    (henv : env.Ordered) (contextWF : OnCtx context (env.IsType U))
-    (absent : env.constants familyName = none)
-    (typed : env.HasType U context expression type) :
-    expression.hasConst familyName = false := by
-  induction expression generalizing context type with
-  | bvar | sort => rfl
-  | const name levels =>
-      by_cases equality : name = familyName
-      · subst name
-        obtain ⟨constant, present, levelWF, arity⟩ :=
-          typed.const_inv henv contextWF
-        rw [absent] at present
-        contradiction
-      · simpa [VExpr.hasConst, equality]
-  | app function argument functionIH argumentIH =>
-      obtain ⟨domain, body, functionType, argumentType⟩ :=
-        typed.app_inv henv contextWF
-      simp only [VExpr.hasConst, functionIH contextWF functionType,
-        argumentIH contextWF argumentType, Bool.false_or]
-  | lam domain body domainIH bodyIH =>
-      obtain ⟨domainType, bodyWF⟩ := typed.lam_inv henv contextWF
-      obtain ⟨domainLevel, domainHasType⟩ := domainType
-      obtain ⟨bodyType, bodyHasType⟩ := bodyWF
-      have nextContextWF : OnCtx (domain :: context) (env.IsType U) := by
-        change OnCtx context (env.IsType U) ∧ env.IsType U context domain
-        exact ⟨contextWF, ⟨domainLevel, domainHasType⟩⟩
-      simp only [VExpr.hasConst, domainIH contextWF domainHasType,
-        bodyIH nextContextWF bodyHasType, Bool.false_or]
-  | forallE domain body domainIH bodyIH =>
-      obtain ⟨domainType, bodyType⟩ := typed.forallE_inv henv
-      obtain ⟨domainLevel, domainHasType⟩ := domainType
-      obtain ⟨bodyLevel, bodyHasType⟩ := bodyType
-      have nextContextWF : OnCtx (domain :: context) (env.IsType U) := by
-        change OnCtx context (env.IsType U) ∧ env.IsType U context domain
-        exact ⟨contextWF, ⟨domainLevel, domainHasType⟩⟩
-      simp only [VExpr.hasConst, domainIH contextWF domainHasType,
-        bodyIH nextContextWF bodyHasType, Bool.false_or]
 
 theorem recArg?_eq_none_of_hasConst_false
     (free : field.hasConst familyName = false) :

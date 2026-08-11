@@ -1,6 +1,7 @@
 import Lean4Lean.Theory.Typing.Lemmas
 import Lean4Lean.Theory.Typing.Env
 import Lean4Lean.Theory.Typing.Meta
+import Lean4Lean.Theory.Typing.Strong
 
 namespace Lean4Lean
 
@@ -1528,6 +1529,49 @@ theorem getElem?_stack_mid {α} (Δ mid Γ : List α) {i : Nat}
     List.getElem?_append_left h2]
 
 namespace VEnv
+
+/-- A typed Theory expression cannot mention a constant absent from its
+environment. -/
+theorem HasType.hasConst_false_of_absent
+    {env : VEnv} {U : Nat} {Γ : List VExpr}
+    {name : Name} {e A : VExpr}
+    (henv : env.Ordered) (hΓ : OnCtx Γ (env.IsType U))
+    (absent : env.constants name = none)
+    (typed : env.HasType U Γ e A) :
+    e.hasConst name = false := by
+  induction e generalizing Γ A with
+  | bvar | sort => rfl
+  | const constant levels =>
+      by_cases equality : constant = name
+      · subst constant
+        obtain ⟨ci, present, levelWF, arity⟩ :=
+          typed.const_inv henv hΓ
+        rw [absent] at present
+        contradiction
+      · simpa [VExpr.hasConst, equality]
+  | app function argument functionIH argumentIH =>
+      obtain ⟨domain, body, functionType, argumentType⟩ :=
+        typed.app_inv henv hΓ
+      simp only [VExpr.hasConst, functionIH hΓ functionType,
+        argumentIH hΓ argumentType, Bool.false_or]
+  | lam domain body domainIH bodyIH =>
+      obtain ⟨domainType, bodyWF⟩ := typed.lam_inv henv hΓ
+      obtain ⟨domainLevel, domainHasType⟩ := domainType
+      obtain ⟨bodyType, bodyHasType⟩ := bodyWF
+      have nextContextWF : OnCtx (domain :: Γ) (env.IsType U) := by
+        change OnCtx Γ (env.IsType U) ∧ env.IsType U Γ domain
+        exact ⟨hΓ, ⟨domainLevel, domainHasType⟩⟩
+      simp only [VExpr.hasConst, domainIH hΓ domainHasType,
+        bodyIH nextContextWF bodyHasType, Bool.false_or]
+  | forallE domain body domainIH bodyIH =>
+      obtain ⟨domainType, bodyType⟩ := typed.forallE_inv henv
+      obtain ⟨domainLevel, domainHasType⟩ := domainType
+      obtain ⟨bodyLevel, bodyHasType⟩ := bodyType
+      have nextContextWF : OnCtx (domain :: Γ) (env.IsType U) := by
+        change OnCtx Γ (env.IsType U) ∧ env.IsType U Γ domain
+        exact ⟨hΓ, ⟨domainLevel, domainHasType⟩⟩
+      simp only [VExpr.hasConst, domainIH hΓ domainHasType,
+        bodyIH nextContextWF bodyHasType, Bool.false_or]
 
 /-- The spine `bvarRevRange Δ.length As.length` selects exactly the binders
 `As` (reversed into the context past `Δ`), when all of `As` are closed. -/

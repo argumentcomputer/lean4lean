@@ -33,6 +33,14 @@ def VExpr.hasConst (n : Name) : VExpr → Bool
   | .const c _ => c == n
   | .app e1 e2 | .lam e1 e2 | .forallE e1 e2 => e1.hasConst n || e2.hasConst n
 
+/-- Context lifting changes only bound-variable indices and therefore
+preserves the constants occurring in a Theory expression. -/
+@[simp] theorem VExpr.hasConst_lift' (expression : VExpr) (lift : Lift)
+    (name : Name) :
+    (expression.lift' lift).hasConst name = expression.hasConst name := by
+  induction expression generalizing lift <;>
+    simp [VExpr.hasConst, *]
+
 def VExpr.appN (f : VExpr) : List VExpr → VExpr
   | [] => f
   | a :: as => (f.app a).appN as
@@ -649,6 +657,15 @@ inductive ElimMode where
   | large
   | small
   deriving DecidableEq, Repr
+
+/-- Interpret the ordinary checker's Boolean large-elimination result in the
+consumer-neutral Theory representation. -/
+def ElimMode.ofBool : Bool → ElimMode
+  | false => .small
+  | true => .large
+
+@[simp] theorem ElimMode.ofBool_false : ElimMode.ofBool false = .small := rfl
+@[simp] theorem ElimMode.ofBool_true : ElimMode.ofBool true = .large := rfl
 
 /-- Universe-slot offset used by recursor metadata. Large elimination inserts
 the fresh motive universe before the declaration universes; small elimination

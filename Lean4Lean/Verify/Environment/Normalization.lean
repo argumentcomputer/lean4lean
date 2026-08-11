@@ -7,190 +7,37 @@ open Kernel
 
 namespace TypeChecker
 
-/-- The primitive constants whose Theory reflections are required by the
-verified checker. `Nat.pred` and `Nat.bitwise` are kernel primitive names too,
-but they have no dedicated fields in `VEnv.HasPrimitives`. -/
-def reflectedPrimitiveNames : List Name := [
-  ``Bool, ``Bool.false, ``Bool.true,
-  ``Nat, ``Nat.zero, ``Nat.succ,
-  ``Nat.add, ``Nat.sub, ``Nat.mul, ``Nat.pow,
-  ``Nat.gcd, ``Nat.mod, ``Nat.div, ``Nat.beq, ``Nat.ble,
-  ``Nat.land, ``Nat.lor, ``Nat.xor,
-  ``Nat.shiftLeft, ``Nat.shiftRight,
-  ``Char.ofNat, ``String.ofList]
+/-- Compatibility name for the consumer-neutral reflected-primitive list. -/
+@[deprecated Lean4Lean.VEnv.reflectedPrimitiveNames (since := "2026-08-11")]
+abbrev reflectedPrimitiveNames : List Name :=
+  Lean4Lean.VEnv.reflectedPrimitiveNames
 
-/-- A small Theory environment that contains none of Lean's hard-coded
-primitive names satisfies the primitive-reflection contract vacuously. This is
-useful for isolated staged checker contexts. -/
+/-- Compatibility shim for the consumer-neutral Theory theorem. -/
+@[deprecated Lean4Lean.VEnv.HasPrimitives.of_avoids (since := "2026-08-11")]
 theorem VEnv.HasPrimitives.of_avoids
     {env : VEnv}
     (h : ∀ n ∈ reflectedPrimitiveNames, env.constants n = none) :
-    env.HasPrimitives := by
-  have noContains (n) (hn : n ∈ reflectedPrimitiveNames) :
-      ¬env.contains n := by
-    rintro ⟨ci, hci⟩
-    rw [h n hn] at hci
-    contradiction
-  have noLookup (n) (hn : n ∈ reflectedPrimitiveNames)
-      {ci} (hci : env.constants n = some ci) : False := by
-    rw [h n hn] at hci
-    contradiction
-  exact {
-    bool := fun hc =>
-      (noContains ``Bool (by simp [reflectedPrimitiveNames]) hc).elim
-    boolFalse := fun hci =>
-      (noLookup ``Bool.false (by simp [reflectedPrimitiveNames]) hci).elim
-    boolTrue := fun hci =>
-      (noLookup ``Bool.true (by simp [reflectedPrimitiveNames]) hci).elim
-    nat := fun hc =>
-      (noContains ``Nat (by simp [reflectedPrimitiveNames]) hc).elim
-    natZero := fun hci =>
-      (noLookup ``Nat.zero (by simp [reflectedPrimitiveNames]) hci).elim
-    natSucc := fun hci =>
-      (noLookup ``Nat.succ (by simp [reflectedPrimitiveNames]) hci).elim
-    natAdd := fun hc =>
-      (noContains ``Nat.add (by simp [reflectedPrimitiveNames]) hc).elim
-    natSub := fun hc =>
-      (noContains ``Nat.sub (by simp [reflectedPrimitiveNames]) hc).elim
-    natMul := fun hc =>
-      (noContains ``Nat.mul (by simp [reflectedPrimitiveNames]) hc).elim
-    natPow := fun hc =>
-      (noContains ``Nat.pow (by simp [reflectedPrimitiveNames]) hc).elim
-    natGcd := fun hc =>
-      (noContains ``Nat.gcd (by simp [reflectedPrimitiveNames]) hc).elim
-    natMod := fun hc =>
-      (noContains ``Nat.mod (by simp [reflectedPrimitiveNames]) hc).elim
-    natDiv := fun hc =>
-      (noContains ``Nat.div (by simp [reflectedPrimitiveNames]) hc).elim
-    natBEq := fun hc =>
-      (noContains ``Nat.beq (by simp [reflectedPrimitiveNames]) hc).elim
-    natBLE := fun hc =>
-      (noContains ``Nat.ble (by simp [reflectedPrimitiveNames]) hc).elim
-    natLAnd := fun hc =>
-      (noContains ``Nat.land (by simp [reflectedPrimitiveNames]) hc).elim
-    natLOr := fun hc =>
-      (noContains ``Nat.lor (by simp [reflectedPrimitiveNames]) hc).elim
-    natXor := fun hc =>
-      (noContains ``Nat.xor (by simp [reflectedPrimitiveNames]) hc).elim
-    natShiftLeft := fun hc =>
-      (noContains ``Nat.shiftLeft
-        (by simp [reflectedPrimitiveNames]) hc).elim
-    natShiftRight := fun hc =>
-      (noContains ``Nat.shiftRight
-        (by simp [reflectedPrimitiveNames]) hc).elim
-    charOfNat := fun hci =>
-      (noLookup ``Char.ofNat (by simp [reflectedPrimitiveNames]) hci).elim
-    stringOfList := fun hci =>
-      (noLookup ``String.ofList
-        (by simp [reflectedPrimitiveNames]) hci).elim }
+    env.HasPrimitives :=
+  Lean4Lean.VEnv.HasPrimitives.of_avoids h
 
-/-- A fresh Theory constant leaves every other lookup unchanged. -/
+/-- Compatibility shim for the consumer-neutral Theory theorem. -/
+@[deprecated Lean4Lean.VEnv.addConst_other (since := "2026-08-11")]
 theorem VEnv.addConst_other
     {env env' : VEnv} {name other : Name} {ci : VConstant}
     (hadd : env.addConst name ci = some env')
     (hne : name ≠ other) :
-    env'.constants other = env.constants other := by
-  unfold Lean4Lean.VEnv.addConst at hadd
-  split at hadd <;> cases hadd
-  simp [hne]
+    env'.constants other = env.constants other :=
+  Lean4Lean.VEnv.addConst_other hadd hne
 
-/-- Inserting a non-primitive constant preserves the verified checker's
-primitive-reflection contract. The computational reflection equations are
-transported monotonically; the primitive constant lookups themselves are
-unchanged. -/
+/-- Compatibility shim for the consumer-neutral Theory theorem. -/
+@[deprecated Lean4Lean.VEnv.HasPrimitives.addConst (since := "2026-08-11")]
 theorem VEnv.HasPrimitives.addConst
     {env env' : VEnv} {name : Name} {ci : VConstant}
     (H : env.HasPrimitives)
     (hname : name ∉ reflectedPrimitiveNames)
     (hadd : env.addConst name ci = some env') :
-    env'.HasPrimitives := by
-  have lookup (other : Name) (hother : other ∈ reflectedPrimitiveNames) :
-      env'.constants other = env.constants other :=
-    VEnv.addConst_other hadd (by
-      intro h
-      apply hname
-      simpa only [h] using hother)
-  have oldContains (other : Name)
-      (hother : other ∈ reflectedPrimitiveNames) :
-      env'.contains other → env.contains other := by
-    rintro ⟨value, hvalue⟩
-    exact ⟨value, by simpa only [lookup other hother] using hvalue⟩
-  have newContains (other : Name) :
-      env.contains other → env'.contains other := by
-    rintro ⟨value, hvalue⟩
-    exact ⟨value, (VEnv.addConst_le hadd).constants hvalue⟩
-  have hle := VEnv.addConst_le hadd
-  exact {
-    bool := fun h => by
-      obtain ⟨hfalse, htrue⟩ := H.bool (oldContains ``Bool
-        (by simp [reflectedPrimitiveNames]) h)
-      exact ⟨newContains _ hfalse, newContains _ htrue⟩
-    boolFalse := fun h => H.boolFalse (by
-      simpa only [lookup ``Bool.false
-        (by simp [reflectedPrimitiveNames])] using h)
-    boolTrue := fun h => H.boolTrue (by
-      simpa only [lookup ``Bool.true
-        (by simp [reflectedPrimitiveNames])] using h)
-    nat := fun h => by
-      obtain ⟨hzero, hsucc⟩ := H.nat (oldContains ``Nat
-        (by simp [reflectedPrimitiveNames]) h)
-      exact ⟨newContains _ hzero, newContains _ hsucc⟩
-    natZero := fun h => H.natZero (by
-      simpa only [lookup ``Nat.zero
-        (by simp [reflectedPrimitiveNames])] using h)
-    natSucc := fun h => H.natSucc (by
-      simpa only [lookup ``Nat.succ
-        (by simp [reflectedPrimitiveNames])] using h)
-    natAdd := fun h a b =>
-      (H.natAdd (oldContains ``Nat.add
-        (by simp [reflectedPrimitiveNames]) h) a b).mono hle
-    natSub := fun h a b =>
-      (H.natSub (oldContains ``Nat.sub
-        (by simp [reflectedPrimitiveNames]) h) a b).mono hle
-    natMul := fun h a b =>
-      (H.natMul (oldContains ``Nat.mul
-        (by simp [reflectedPrimitiveNames]) h) a b).mono hle
-    natPow := fun h a b =>
-      (H.natPow (oldContains ``Nat.pow
-        (by simp [reflectedPrimitiveNames]) h) a b).mono hle
-    natGcd := fun h a b =>
-      (H.natGcd (oldContains ``Nat.gcd
-        (by simp [reflectedPrimitiveNames]) h) a b).mono hle
-    natMod := fun h a b =>
-      (H.natMod (oldContains ``Nat.mod
-        (by simp [reflectedPrimitiveNames]) h) a b).mono hle
-    natDiv := fun h a b =>
-      (H.natDiv (oldContains ``Nat.div
-        (by simp [reflectedPrimitiveNames]) h) a b).mono hle
-    natBEq := fun h a b =>
-      (H.natBEq (oldContains ``Nat.beq
-        (by simp [reflectedPrimitiveNames]) h) a b).mono hle
-    natBLE := fun h a b =>
-      (H.natBLE (oldContains ``Nat.ble
-        (by simp [reflectedPrimitiveNames]) h) a b).mono hle
-    natLAnd := fun h a b =>
-      (H.natLAnd (oldContains ``Nat.land
-        (by simp [reflectedPrimitiveNames]) h) a b).mono hle
-    natLOr := fun h a b =>
-      (H.natLOr (oldContains ``Nat.lor
-        (by simp [reflectedPrimitiveNames]) h) a b).mono hle
-    natXor := fun h a b =>
-      (H.natXor (oldContains ``Nat.xor
-        (by simp [reflectedPrimitiveNames]) h) a b).mono hle
-    natShiftLeft := fun h a b =>
-      (H.natShiftLeft (oldContains ``Nat.shiftLeft
-        (by simp [reflectedPrimitiveNames]) h) a b).mono hle
-    natShiftRight := fun h a b =>
-      (H.natShiftRight (oldContains ``Nat.shiftRight
-        (by simp [reflectedPrimitiveNames]) h) a b).mono hle
-    charOfNat := fun h => H.charOfNat (by
-      simpa only [lookup ``Char.ofNat
-        (by simp [reflectedPrimitiveNames])] using h)
-    stringOfList := fun h => by
-      obtain ⟨hconstant, hnil, hcons⟩ := H.stringOfList (by
-        simpa only [lookup ``String.ofList
-          (by simp [reflectedPrimitiveNames])] using h)
-      exact ⟨hconstant, hnil.mono hle, hcons.mono hle⟩ }
+    env'.HasPrimitives :=
+  Lean4Lean.VEnv.HasPrimitives.addConst H hname hadd
 
 /-- A verified implementation local context remains verified when the Theory
 environment grows.  Kernel local declarations and their free-variable names
@@ -3634,7 +3481,7 @@ structure CandidateFamilyStagedInput
     { familyContext with env := constructorContext.env }
   quotInit_eq : constructorContext.env.quotInit =
     familyContext.env.quotInit
-  name_not_reflected : raw.name ∉ TypeChecker.reflectedPrimitiveNames
+  name_not_reflected : raw.name ∉ VEnv.reflectedPrimitiveNames
   name_not_primitive :
     Environment.primitives.contains raw.name = false
 
@@ -3666,7 +3513,7 @@ def CandidateFamilyStagedInput.postContext
     have H : env.HasPrimitives := by
       simpa only [preFamily.venv_eq] using
         preFamily.contextRun.context.hasPrimitives
-    exact TypeChecker.VEnv.HasPrimitives.addConst H
+    exact VEnv.HasPrimitives.addConst H
       input.name_not_reflected input.addInduct.env_add
   safePrimitives := by
     intro n ci
@@ -5449,22 +5296,12 @@ def GenerationCandidateSemanticRun.producedPackage
   run.run.producedPackage context nparams numNested isUnsafe produced
 
 /-
-The evidence types mention exact verifier executions, so these semantic
-interpretation roots intentionally inherit the same transitional Verify
+The evidence types mention exact verifier executions, so the semantic
+interpretation roots below intentionally inherit the same transitional Verify
 closure as `WhnfRun.isDefEq`. Exact guards ensure that the generic assembler
-does not silently widen it.
+does not silently widen it. Theory-only helper closures are guarded by
+`Tests.TheoryConsumerSurface` without importing Verify.
 -/
-/--
-info: 'Lean4Lean.TypeChecker.VEnv.HasPrimitives.addConst' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in
-#print axioms TypeChecker.VEnv.HasPrimitives.addConst
-
-/--
-info: 'Lean4Lean.TypeChecker.VEnv.addConst_other' depends on axioms: [propext, Quot.sound]
--/
-#guard_msgs in
-#print axioms TypeChecker.VEnv.addConst_other
 
 /--
 info: 'Lean4Lean.TypeChecker.AddInductConstant.safePrimitives' depends on axioms: [propext,

@@ -240,6 +240,221 @@ structure VEnv.HasPrimitives (env : VEnv) : Prop where
     env.HasType 0 [] .listCharNil .listChar ∧
     env.HasType 0 [] .listCharCons (.forallE .char <| .forallE .listChar .listChar)
 
+/-- A well-formed Boolean literal can only occur when the corresponding
+Boolean declaration is present. -/
+theorem VExpr.WF.boolLit_has_type (wf : env.Ordered)
+    (henv : env.HasPrimitives) (hΓ : OnCtx Γ (env.IsType U))
+    (H : VExpr.WF env U Γ (.boolLit b)) : env.contains ``Bool := by
+  suffices env.HasType U Γ (.boolLit b) .bool by
+    have ⟨_, H⟩ := this.isType wf hΓ
+    have ⟨_, H, _⟩ := VEnv.HasType.const_inv wf hΓ H
+    exact ⟨_, H⟩
+  cases b with
+    have ⟨_, h1, h2, h3⟩ :=
+      let ⟨_, H⟩ := H
+      VEnv.HasType.const_inv wf hΓ H
+  | false => cases henv.boolFalse h1; exact .const h1 h2 h3
+  | true => cases henv.boolTrue h1; exact .const h1 h2 h3
+
+/-- The primitive constants whose Theory reflections are tracked by
+`VEnv.HasPrimitives`. `Nat.pred` and `Nat.bitwise` are kernel primitive names
+too, but they have no dedicated fields in that contract. -/
+def VEnv.reflectedPrimitiveNames : List Name := [
+  ``Bool, ``Bool.false, ``Bool.true,
+  ``Nat, ``Nat.zero, ``Nat.succ,
+  ``Nat.add, ``Nat.sub, ``Nat.mul, ``Nat.pow,
+  ``Nat.gcd, ``Nat.mod, ``Nat.div, ``Nat.beq, ``Nat.ble,
+  ``Nat.land, ``Nat.lor, ``Nat.xor,
+  ``Nat.shiftLeft, ``Nat.shiftRight,
+  ``Char.ofNat, ``String.ofList]
+
+/-- An environment containing none of the hard-coded reflected primitive
+names satisfies the primitive-reflection contract vacuously. -/
+theorem VEnv.HasPrimitives.of_avoids
+    {env : VEnv}
+    (h : ∀ n ∈ VEnv.reflectedPrimitiveNames, env.constants n = none) :
+    env.HasPrimitives := by
+  have noContains (n) (hn : n ∈ VEnv.reflectedPrimitiveNames) :
+      ¬env.contains n := by
+    rintro ⟨ci, hci⟩
+    rw [h n hn] at hci
+    contradiction
+  have noLookup (n) (hn : n ∈ VEnv.reflectedPrimitiveNames)
+      {ci} (hci : env.constants n = some ci) : False := by
+    rw [h n hn] at hci
+    contradiction
+  exact {
+    bool := fun hc =>
+      (noContains ``Bool (by simp [VEnv.reflectedPrimitiveNames]) hc).elim
+    boolFalse := fun hci =>
+      (noLookup ``Bool.false
+        (by simp [VEnv.reflectedPrimitiveNames]) hci).elim
+    boolTrue := fun hci =>
+      (noLookup ``Bool.true
+        (by simp [VEnv.reflectedPrimitiveNames]) hci).elim
+    nat := fun hc =>
+      (noContains ``Nat (by simp [VEnv.reflectedPrimitiveNames]) hc).elim
+    natZero := fun hci =>
+      (noLookup ``Nat.zero
+        (by simp [VEnv.reflectedPrimitiveNames]) hci).elim
+    natSucc := fun hci =>
+      (noLookup ``Nat.succ
+        (by simp [VEnv.reflectedPrimitiveNames]) hci).elim
+    natAdd := fun hc =>
+      (noContains ``Nat.add
+        (by simp [VEnv.reflectedPrimitiveNames]) hc).elim
+    natSub := fun hc =>
+      (noContains ``Nat.sub
+        (by simp [VEnv.reflectedPrimitiveNames]) hc).elim
+    natMul := fun hc =>
+      (noContains ``Nat.mul
+        (by simp [VEnv.reflectedPrimitiveNames]) hc).elim
+    natPow := fun hc =>
+      (noContains ``Nat.pow
+        (by simp [VEnv.reflectedPrimitiveNames]) hc).elim
+    natGcd := fun hc =>
+      (noContains ``Nat.gcd
+        (by simp [VEnv.reflectedPrimitiveNames]) hc).elim
+    natMod := fun hc =>
+      (noContains ``Nat.mod
+        (by simp [VEnv.reflectedPrimitiveNames]) hc).elim
+    natDiv := fun hc =>
+      (noContains ``Nat.div
+        (by simp [VEnv.reflectedPrimitiveNames]) hc).elim
+    natBEq := fun hc =>
+      (noContains ``Nat.beq
+        (by simp [VEnv.reflectedPrimitiveNames]) hc).elim
+    natBLE := fun hc =>
+      (noContains ``Nat.ble
+        (by simp [VEnv.reflectedPrimitiveNames]) hc).elim
+    natLAnd := fun hc =>
+      (noContains ``Nat.land
+        (by simp [VEnv.reflectedPrimitiveNames]) hc).elim
+    natLOr := fun hc =>
+      (noContains ``Nat.lor
+        (by simp [VEnv.reflectedPrimitiveNames]) hc).elim
+    natXor := fun hc =>
+      (noContains ``Nat.xor
+        (by simp [VEnv.reflectedPrimitiveNames]) hc).elim
+    natShiftLeft := fun hc =>
+      (noContains ``Nat.shiftLeft
+        (by simp [VEnv.reflectedPrimitiveNames]) hc).elim
+    natShiftRight := fun hc =>
+      (noContains ``Nat.shiftRight
+        (by simp [VEnv.reflectedPrimitiveNames]) hc).elim
+    charOfNat := fun hci =>
+      (noLookup ``Char.ofNat
+        (by simp [VEnv.reflectedPrimitiveNames]) hci).elim
+    stringOfList := fun hci =>
+      (noLookup ``String.ofList
+        (by simp [VEnv.reflectedPrimitiveNames]) hci).elim }
+
+/-- A fresh Theory constant leaves every other lookup unchanged. -/
+theorem VEnv.addConst_other
+    {env env' : VEnv} {name other : Name} {ci : VConstant}
+    (hadd : env.addConst name ci = some env')
+    (hne : name ≠ other) :
+    env'.constants other = env.constants other := by
+  unfold VEnv.addConst at hadd
+  split at hadd <;> cases hadd
+  simp [hne]
+
+/-- Inserting a non-reflected constant preserves the primitive-reflection
+contract. -/
+theorem VEnv.HasPrimitives.addConst
+    {env env' : VEnv} {name : Name} {ci : VConstant}
+    (H : env.HasPrimitives)
+    (hname : name ∉ VEnv.reflectedPrimitiveNames)
+    (hadd : env.addConst name ci = some env') :
+    env'.HasPrimitives := by
+  have lookup (other : Name) (hother : other ∈ VEnv.reflectedPrimitiveNames) :
+      env'.constants other = env.constants other :=
+    VEnv.addConst_other hadd (by
+      intro equality
+      apply hname
+      simpa only [equality] using hother)
+  have oldContains (other : Name)
+      (hother : other ∈ VEnv.reflectedPrimitiveNames) :
+      env'.contains other → env.contains other := by
+    rintro ⟨value, hvalue⟩
+    exact ⟨value, by simpa only [lookup other hother] using hvalue⟩
+  have newContains (other : Name) :
+      env.contains other → env'.contains other := by
+    rintro ⟨value, hvalue⟩
+    exact ⟨value, (VEnv.addConst_le hadd).constants hvalue⟩
+  have hle := VEnv.addConst_le hadd
+  exact {
+    bool := fun h => by
+      obtain ⟨hfalse, htrue⟩ := H.bool (oldContains ``Bool
+        (by simp [VEnv.reflectedPrimitiveNames]) h)
+      exact ⟨newContains _ hfalse, newContains _ htrue⟩
+    boolFalse := fun h => H.boolFalse (by
+      simpa only [lookup ``Bool.false
+        (by simp [VEnv.reflectedPrimitiveNames])] using h)
+    boolTrue := fun h => H.boolTrue (by
+      simpa only [lookup ``Bool.true
+        (by simp [VEnv.reflectedPrimitiveNames])] using h)
+    nat := fun h => by
+      obtain ⟨hzero, hsucc⟩ := H.nat (oldContains ``Nat
+        (by simp [VEnv.reflectedPrimitiveNames]) h)
+      exact ⟨newContains _ hzero, newContains _ hsucc⟩
+    natZero := fun h => H.natZero (by
+      simpa only [lookup ``Nat.zero
+        (by simp [VEnv.reflectedPrimitiveNames])] using h)
+    natSucc := fun h => H.natSucc (by
+      simpa only [lookup ``Nat.succ
+        (by simp [VEnv.reflectedPrimitiveNames])] using h)
+    natAdd := fun h a b =>
+      (H.natAdd (oldContains ``Nat.add
+        (by simp [VEnv.reflectedPrimitiveNames]) h) a b).mono hle
+    natSub := fun h a b =>
+      (H.natSub (oldContains ``Nat.sub
+        (by simp [VEnv.reflectedPrimitiveNames]) h) a b).mono hle
+    natMul := fun h a b =>
+      (H.natMul (oldContains ``Nat.mul
+        (by simp [VEnv.reflectedPrimitiveNames]) h) a b).mono hle
+    natPow := fun h a b =>
+      (H.natPow (oldContains ``Nat.pow
+        (by simp [VEnv.reflectedPrimitiveNames]) h) a b).mono hle
+    natGcd := fun h a b =>
+      (H.natGcd (oldContains ``Nat.gcd
+        (by simp [VEnv.reflectedPrimitiveNames]) h) a b).mono hle
+    natMod := fun h a b =>
+      (H.natMod (oldContains ``Nat.mod
+        (by simp [VEnv.reflectedPrimitiveNames]) h) a b).mono hle
+    natDiv := fun h a b =>
+      (H.natDiv (oldContains ``Nat.div
+        (by simp [VEnv.reflectedPrimitiveNames]) h) a b).mono hle
+    natBEq := fun h a b =>
+      (H.natBEq (oldContains ``Nat.beq
+        (by simp [VEnv.reflectedPrimitiveNames]) h) a b).mono hle
+    natBLE := fun h a b =>
+      (H.natBLE (oldContains ``Nat.ble
+        (by simp [VEnv.reflectedPrimitiveNames]) h) a b).mono hle
+    natLAnd := fun h a b =>
+      (H.natLAnd (oldContains ``Nat.land
+        (by simp [VEnv.reflectedPrimitiveNames]) h) a b).mono hle
+    natLOr := fun h a b =>
+      (H.natLOr (oldContains ``Nat.lor
+        (by simp [VEnv.reflectedPrimitiveNames]) h) a b).mono hle
+    natXor := fun h a b =>
+      (H.natXor (oldContains ``Nat.xor
+        (by simp [VEnv.reflectedPrimitiveNames]) h) a b).mono hle
+    natShiftLeft := fun h a b =>
+      (H.natShiftLeft (oldContains ``Nat.shiftLeft
+        (by simp [VEnv.reflectedPrimitiveNames]) h) a b).mono hle
+    natShiftRight := fun h a b =>
+      (H.natShiftRight (oldContains ``Nat.shiftRight
+        (by simp [VEnv.reflectedPrimitiveNames]) h) a b).mono hle
+    charOfNat := fun h => H.charOfNat (by
+      simpa only [lookup ``Char.ofNat
+        (by simp [VEnv.reflectedPrimitiveNames])] using h)
+    stringOfList := fun h => by
+      obtain ⟨hconstant, hnil, hcons⟩ := H.stringOfList (by
+        simpa only [lookup ``String.ofList
+          (by simp [VEnv.reflectedPrimitiveNames])] using h)
+      exact ⟨hconstant, hnil.mono hle, hcons.mono hle⟩ }
+
 variable! {env env' : VEnv} (henv : env ≤ env') in
 theorem VEnv.ContainsLits.mono : ∀ {l}, env.ContainsLits l → env'.ContainsLits l
   | .natVal _, ⟨_, H⟩ => ⟨_, henv.constants H⟩
