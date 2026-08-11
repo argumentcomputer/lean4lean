@@ -67,424 +67,223 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-13A active**; L4L-12 and everything above it are complete and pruned from §5; everything below L4L-13A is queued |
-| Current formalization source | the complete L4L-12B literal-readiness checkpoint (`Theory/Literals.lean`, the Verify literal bridge, and `Tests/LiteralReadiness.lean`) layered on the independently gated L4L-12A extraction checkpoint `958d03b7` (itself based on the L4L-11 closure `0587b91a`), at `jcb/formalization2`, with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
+| Ladder position | **L4L-14 active**; L4L-13A/B and everything above it are complete and pruned from §5; everything below L4L-14 is queued |
+| Current formalization source | the L4L-13A/B projection-semantics checkpoint `de7eef78` at `jcb/formalization2` (lineage: L4L-12B `a6ea75fc` ← L4L-12A `958d03b7` ← L4L-11 `0587b91a`), with publication to `argumentcomputer/lean4lean` `jcb/induct` pending |
 | Parent lineage | upstream-reconciliation merge `7f864b459e4a6062b468d6e5416688feac0f9f99` (second parent: digama `upstream/master` `ef849dfbd94a`); Lean and lean4-nix on v4.31 |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
-| Trust frontier | exactly 20 live source `sorry` tokens across 19 proof declarations, plus six kernel-rejection recovery declarations (25 compiled allowlist entries total), and 29 custom-axiom declarations; all are pinned by exact audits |
-| Gates | the full §6 gate is green independently on the L4L-12A extraction checkpoint and the L4L-12B readiness checkpoint, including focused, aggregate, and default Lake builds, the Nix proof/dependency build, clean-source `nix flake check`, the unchanged 25-entry sorry frontier, Theory import-boundary and exact-axiom audits, formatter check, and whitespace check |
+| Trust frontier | exactly 19 live source `sorry` tokens across 18 proof declarations, plus six kernel-rejection recovery declarations (24 compiled allowlist entries total), and 29 custom-axiom declarations; all are pinned by exact audits |
+| Gates | the full §6 gate is green on the current L4L-13A/B closure checkpoint: focused/aggregate/default Lake builds, Nix proof and dependency builds, clean-source `nix flake check`, the 24-entry sorry frontier, Theory import-boundary and exact-axiom audits, formatter and whitespace checks |
 
 ### 2.1 What is green
 
-**Theory.** Dependent `VInductDecl.Checked`/`checked?` analysis with
-environment-free closure/universe/name/anatomy checks and an
-environment-indexed `Checked.WF env` (including Lean's impredicative Prop
-exception `l = .zero ∨ u ≤ l`); the raw/view `Normalization source` boundary
-with computed `normalizationShape` and semantic `Normalization.WF env`;
-`NormalizedChecked` and `GenerationChecked` paired raw/view blocks; mixed
-motive/minor/recursor/rule generation that retains raw binder syntax while
-consulting the checked view for recursive classification, proved well formed
-through the complete ordered rule fold. The one-family transaction
-`VEnv.addInductGeneration` and its proof-carrying
-`GenerationCertificate`/`addInductCertified` boundary remain available.
-`BlockGenerationChecked` generalizes the same artifact path: it emits one
-motive and recursor per family, globally flattens constructor minors and rules
-in family/source order, and routes recursive hypotheses and rule calls by the
-checked target-family ordinal. `VEnv.addInductBlockGeneration` inserts all
-families, then all constructors, then all recursors, then all rules; its exact
-trace supplies atomicity, freshness, lookups/membership, monotonicity, and
-`Ordered` preservation through every phase. The raw public `addInduct` now
-selects this block descriptor without singleton projection. A deprecated
-`addInductSingleton` wrapper retains the former raw one-family transaction for
-the migration window without becoming a competing block path. The shared
-checked/generation artifact retains the exact K-target decision separately
-from its elimination mode. The slice covers parameters, per-family indices,
-direct and sibling recursion, recursive targets below Pi telescopes, small
-elimination, subsingleton large elimination, K-target metadata, and exact
-zero-/one-constructor generation.
+Completed-milestone narratives, hashes, and gate evidence live in this
+file's git history and the checkpoint commit messages; this section keeps
+only the current claim surface and where each piece lives.
 
-The consumer-neutral local-context core now lives in
-`Theory/LocalContext.lean`. `Theory/Literals.lean` owns literal encodings,
-containment, primitive descriptors, and `VEnv.PreludeReady`: an ordered exact
-Bool/Nat/Char/List/String contract including generated recursors and iota
-rules. Readiness derives direct literal WF, is stable under ordered
-environment extension and fresh constants, and remains independent of
-`Lean.Expr`; Verify retains only traversal and proves its constructor result
-equal to the direct Theory encoding.
+**Inductive Theory: analysis, generation, transactions.** One artifact
+path runs from the raw/view `Normalization` boundary (computed shape plus
+semantic `Normalization.WF env`) through dependent `Checked`/`CheckedBlock`
+analysis — arbitrary nonempty non-nested mutual blocks, block-wide
+target-family ordinals, generated-name uniqueness, the impredicative-Prop
+exception — into mixed generation and the four-phase block transaction:
+the public raw `addInduct` selects the block descriptor, its exact trace
+supplies atomicity, freshness, lookups, monotonicity, and `Ordered`/WF
+preservation, and the proof-carrying `GenerationCertificate`/
+`addInductCertified` and `ValidationCertificate` boundaries remain
+available (`addInductSingleton` survives only as a deprecated migration
+wrapper). The accepted slice covers parameters, per-family indices,
+direct and sibling recursion, recursive targets below Pi telescopes,
+small and subsingleton-large elimination, exact K-target metadata, and
+zero-/one-constructor generation. The consumer-neutral local-context
+core lives in `Theory/LocalContext.lean`; `Theory/Literals.lean` owns
+literal encodings, containment, primitive descriptors, and
+`VEnv.PreludeReady` — an ordered exact Bool/Nat/Char/List/String
+contract (generated recursors and iota rules for Bool/Nat/List;
+`Char`/`String` opaque behind `Char.ofNat`/`String.ofList`) that derives
+direct literal WF, is stable under ordered extension and fresh
+constants, and stays independent of `Lean.Expr`; Verify retains only
+traversal and proves its constructor result equal to the direct Theory
+encoding.
 
-**Mutual validation, generation, and replay.** `VInductDecl.CheckedBlock` and
-`checkedBlock?` analyze an arbitrary nonempty `decl.types` list without
-singleton destructuring. Shared parameters are retained once, while
-`CheckedFamilies source params ordinal types` is indexed simultaneously by
-the exact remaining source-family list and its starting ordinal. Each
-`CheckedFamily` retains its per-family indices, result level, and ordered
-constructors; every `RecArg.targetType` is computed from the block-wide family
-header order, including targets beneath positive Pi telescopes. Block-family
-mentions are excluded from family formers, recursive domains, and recursive
-indices, and generated-name uniqueness is checked across all families,
-constructors, and future recursor names.
+**Mutual blocks.** `Normalization.BlockWF`, `CheckedBlock.WF`,
+`ValidatedBlock.WF`, and `ValidationCertificate` give arbitrary blocks an
+exact environment-indexed semantic package: shared-parameter agreement,
+one semantic result universe, staged family constants, and a complete
+source-order constructor trace including sibling recursion and recursion
+beneath Pi binders. The real Tree/TreeList and IndexedTree/IndexedTreeList
+fixtures run the ordinary kernel validators, inhabit every WF certificate,
+compare all generated metadata with the kernel field by field, and replay
+the four phase boundaries through `AddInductBlockTrace`,
+`TrEnv'.inductBlock`, and `Aligned.addInductBlock` to actual
+implementation `ConstMap`s; exact negatives pin the parameter-mismatch,
+result-universe-mismatch, and reordered-family validation phases.
 
-`Normalization.BlockWF`, `CheckedBlock.WF`, `ValidatedBlock.WF`, and
-`ValidationCertificate` give the arbitrary-block representation an exact
-environment-indexed semantic package. Family validation retains shared
-parameter agreement and one semantic result universe, then all raw family
-constants are staged before constructor validation. The block constructor
-trace records every family/constructor/ordinary-field target in source order,
-including sibling recursion and recursion beneath Pi binders. The real
-Tree/TreeList and indexed IndexedTree/IndexedTreeList fixtures execute the
-ordinary kernel validators, compute the exact target matrices, and inhabit
-complete normalization, checked-block, and block-generation WF certificates.
-Their generated inventories have respectively two motives, five/four globally
-ordered minors, two recursors, and five/four rules. Exact kernel comparisons
-cover every `InductiveVal`, `ConstructorVal`, `RecursorVal`, and
-`RecursorRule` field represented by the Theory boundary, including constructor
-indices, block-wide recursion/reflexivity flags, recursor motives/minors/K,
-translated types in metadata universe order, rule ownership/field counts, and
-every RHS. Both raw `addInduct` and the proof-carrying block transaction produce
-the same final Theory environments. The four phase boundaries replay through
-`AddInductBlockTrace`, `TrEnv'.inductBlock`, and `Aligned.addInductBlock` to
-actual implementation `ConstMap`s, with exact final ordering, lookup, rule
-membership, and guarded trust closures. Exact negatives still pin the
-parameter-mismatch, result-universe-mismatch, and reordered-family validation
-phases, including host Lean diagnostics and transparent validator errors.
+**Kernel parity and differential fixtures.** One integrated 14-row
+positive matrix (Nat, Bool, List, Option, Prod, Unit — honestly
+represented by the kernel's `PUnit` — Empty, Or, And, Eq, HEq, Fin,
+Vector, Acc) reruns the ordinary producer and definitionally compares
+every represented metadata field, recursor type, rule count, and iota
+RHS; the consolidated 32-row rejection matrix covers the closure,
+collision, universe/result-shape, raw/view-incoherence, normalization,
+negativity/recursive-target, field-universe, and elimination/K failure
+space. `AliasFormer`, `AliasRec`, and `NormalizationMatrix` prove
+normalization is necessary and exactly aligned across alias positions,
+with fuel-boundary, opaque, and non-defeq rejections. Elimination and
+K-target decisions retain exact operational traces differentially
+aligned with Theory generation, pinned by the
+`Eq`/`And`/`Or`/`Nat`/source-universe fixtures and the `PUnit`/`Empty`
+one-/zero-constructor boundary; Verify's `RecursorKMatches` makes a
+type-correct recursor with wrong K metadata fail alignment.
 
-**Kernel parity fixtures.** One integrated 14-row matrix covers Nat, Bool,
-List, Option, Prod, Unit (honestly represented by the kernel's `PUnit`), Empty,
-Or, And, Eq, HEq, Fin, Vector, and Acc. Every row reruns the ordinary producer
-and definitionally compares the stored family/constructor types in their
-metadata universe order, names, parameter/index/field counts, recursive rule
-metadata, elimination/K behavior, recursor type, rule count, and every iota
-RHS. The consolidated 32-row rejection matrix covers closure, internal and
-pre-existing name collisions, universe and result-shape failures, parameter
-and universe-count mismatches, raw/view incoherence, non-defeq normalization,
-nested negativity and illegal recursive targets, field-universe boundaries,
-and invalid elimination/K expectations. The earlier `IndexedVec` regression
-remains as a supporting indexed two-constructor fixture outside this fixed
-singleton inventory. `AliasFormer` and `AliasRec` prove normalization is
-necessary, not hypothetical: real metadata
-retains reducible aliases at the family result and around a recursive field;
-their raw declarations fail `checked?` while their certified views succeed.
-`NormalizationMatrix` closes the differential breadth for reducible aliases
-in family, parameter/index, ordinary-field, direct-recursive, and
-Pi-hidden-recursive positions, including retained beta/let bodies. Its exact
-kernel candidate succeeds at fuel 10 and fails at 9, opaque and non-defeq
-variants reject, and the actual family/constructor/recursor/rule metadata
-replays through the final aligned Theory environment.
-The edge fixtures additionally pin every `PUnit` and `Empty` inductive,
-constructor, and recursor metadata field, exact motive/minor/major order,
-zero-field recursive-argument data, rule counts, and every available iota RHS.
-They record `Unit` itself as the reducible `PUnit` definition metadata Lean
-actually supplies, rather than inventing alias-level inductive metadata.
+**Verify refinement layer.** Checker-run certificates (`WhnfRun`,
+`CheckTypeRun`, `IsDefEqRun`, `DefEqEvidence`, `TelDefEqEvidence`,
+`NormalizedCtorRun`, `GenerationRun`) turn exact ordinary-checker
+executions into Theory typing and definitional equality. The level
+normalizer, subsumption, and equivalence layer is proved sound through
+the verified project comparator (`NormLevel.le_eval`, `geq'_wf`,
+`isEquiv_wf`) at standard-only closures with all-pairs core/project
+differentials; the constructor-universe audit's non-Prop branch keeps
+Lean's core `Level.geq` decision inside the ordinary validator's
+existing acceptance boundary. The executable candidate producer
+(`buildNormalizationCandidate`) retains recursively indexed traces,
+structurally certified annotation consumption (runtime producer
+validation, never a semantic proof field), and arbitrary-length
+dependent `Produced` witnesses. Semantic-hierarchy assembly is automatic
+under `Nonempty`: the staged owners — generation readiness, post-family
+alignment independent of fresh-FVar identities, and the executable
+pre-family replay with omitted recursive locals — close structurally on
+real metadata (`ConstructorValidityMatrix`, `PropRecursiveBoundary`)
+with nearest-kernel negatives, at the guarded transitional closure plus
+the single exact L4L-01E producer-execution witness.
 
-**Elimination and K-target parity.** The ordinary large-eliminator decision,
-elimination-level run, and independent K-target decision now retain exact
-operational traces, including inferred singleton field sorts, occurrence
-tests, the K constructor walk, the fresh elimination parameter, and both
-recursor level orders. Theory generation constructs both elimination modes and
-the K flag and is differentially aligned with those executions. Exact kernel
-fixtures pin `Eq` as K/large with fresh-first parameters `[u, u_1]`; `And` as
-non-K yet legitimately large through its singleton proof fields; `Or` and a
-source-universe-bearing family as non-K/small; and `Nat` as non-K/large through
-the never-zero branch. The source-universe fixture retains its source
-parameter without adding a fresh one. Their exact kernel K flags, recursor
-metadata, universe order, and every focused rule RHS match Theory generation.
-Verify's `RecursorKMatches` makes a type-correct recursor with the wrong K
-metadata fail environment alignment.
-The `PUnit`/`Empty` executions close the one-/zero-constructor boundary:
-`PUnit` traverses a singleton with no parameter, proof, or data fields and
-retains fresh-first recursor levels, while `Empty` takes the ordinary
-never-zero large-elimination branch with no singleton, minor, or rule. Both
-align with the shared checked generation and remain non-K.
-
-**Verify.** A checker-run certificate layer (`WhnfRun`, `CheckTypeRun`,
-`IsDefEqRun`, `DefEqEvidence`, `TelDefEqEvidence`, `NormalizedCtorRun`,
-`GenerationRun`) turns exact ordinary-checker executions into Theory typing
-and definitional equality through the existing refinement theorems. Level
-subsumption is evaluation-preserving for every raw `NormLevel`: active-path
-witnesses now guard constant removal, and the proof follows both nested map
-folds. Valid normalizer output remains unchanged under the differential audit;
-the theorem's exact closure is only `propext`, `Classical.choice`, and
-`Quot.sound`, with no project-specific axiom. Level equivalence soundness now
-closes the typechecker sort and dependent constant-level-list paths through
-the verified project comparator: a transparent structural fast path reflects
-equality, canonical ordered-entry comparison gives `NormLevel` evaluator
-congruence, and `isEquiv_wf` plus its list theorem have the same standard-only
-axiom closure. The executable normalizer is unchanged, and a generated
-differential compares the former map-extensional equality with ordered-entry
-equality across normalized zero, successor, max, imax, and parameter forms. The
-executable candidate producer (`AddInductive.normalizeCandidateExpr`,
-`buildNormalizationCandidate`) retains recursively context- and source-indexed
-traces with exact full-check/WHNF/binder-equality runs at every node,
-structurally certified annotation consumption (agreement with Lean's opaque
-`consumeTypeAnnotations` is runtime producer validation, never a semantic
-proof field), a `storedSpine` invariant, and arbitrary-length dependent
-`Produced` list witnesses. Semantic-hierarchy assembly is automatic under
-`Nonempty`; the consolidated generation-readiness gate plus exact dependent
-analysis and analyzer-owned view WF derive checked WF and every per-position
-shape record, so fixtures supply no component equations. The generic singleton
-closure combines that staged owner, the exact dependent analysis, and the
-produced generation shape into an exact package while deriving its public
-package; no caller supplies a view, view-WF proof, or per-component equation.
-The staged semantic-input owner, family-validation semantics with post-family
-staging, and the complete retained constructor-validation trace (with
-source-list inversion and phase-local failure theorems) are in place. The
-source-ordered constructor-universe audit admits structural order and the
-impredicative-Prop exception directly; its normalized non-Prop branch requires
-both Lean's unchanged core `Level.geq` decision and the verified project
-`geq'` decision. `NormLevel.le_eval` and `geq'_wf` prove the project half
-semantically, while the core half keeps every accepted audit node inside the
-ordinary validator's existing acceptance boundary. The exact proof closure is
-only `propext`, `Classical.choice`, and `Quot.sound`; an all-pairs mvar-free
-core/project differential covers zero, successor, max, imax, parameters, and
-nested combinations, and the former max/parameter exclusion is now a positive
-regression. The post-family constructor owner
-aligns the retained validator and candidate telescopes by source position,
-independent of their fresh-FVar identities, and interprets root, parameter,
-field, positivity, and terminal checks in the actual verified post-family
-context without claiming pre-family `fieldsWF`.
-The executable pre-family owner instantiates the retained family parameters
-and replays every analyzer-owned constructor in the exact verified pre-family
-context. Ordinary fields are rechecked and retained; recursive outer locals
-are omitted while nested Pi binders and recursive/result index spines receive
-verified semantic interpretations and proved prefix weakening. Independent
-ordinary fields may now follow an omitted recursive outer field and continue
-through the generalized semantic replay. The actual `ConstructorValidityMatrix`
-metadata now closes this path structurally across its two parameters and six
-fields: dependent data/proof fields, direct recursion, recursive-function
-recursion, and an independent dependent data/proof suffix after both omitted
-recursive locals. The proof derives the retained constructor-validation trace,
-universe run, post-family alignment, exact fresh-name independence, zero-index
-terminal spine, and final pre-family safety result without a stage-local
-decision oracle. Its guarded axiom closure contains only the pre-existing
-verified-checker frontier and the single exact L4L-01E producer-execution
-witness. `PropRecursiveBoundary` separately pins the impredicative-Prop branch
-with recursive-function and index structure. Nearest-kernel negatives reject
-nested negativity, family occurrences in nonrecursive and proof fields,
-dependency on an omitted recursive local, and an excessive constructor
-universe with the exact ordinary-producer errors; the omitted-local case also
-reaches and pins the strengthened pre-family rejection.
-
-**Three positive regressions, end to end.** AliasFormer (terminal alias),
-AnnotatedPi (nested recursive-Π with retained `outParam Prop`, generated
-recursor and iota rule), and `IndexedVec` (one parameter, one index, ordered
-`nil`/`cons`, identity normalization) each prove the exact successful whole
-`buildNormalizationCandidate` call, inhabit
-`ExactProducedGenerationCandidatePackage` through the generic closure, erase
-it to `ProducedGenerationCandidatePackage`, and route both the certified
-Theory transaction and the checked replay through that package. All three also
-pass the strengthened constructor-universe gate and inhabit both produced
-post-family and pre-family semantic owners. `IndexedVec` additionally proves
-that validator and candidate field FVars differ while their Theory positions
-still align. Negatives stay sharp: opaque-`outParam` whole-candidate rejection,
-truncated and reordered views, missing/extra constructors, recursive-local
-dependency, and the environment-free
+**End-to-end producer regressions.** AliasFormer, AnnotatedPi, and
+`IndexedVec` each prove the exact successful whole
+`buildNormalizationCandidate` call, inhabit the exact produced package
+through the generic closure, and route both the certified Theory
+transaction and the checked replay through it; `AnnotatedParam` closes
+constructor-parameter parity against real kernel metadata, with a
+well-typed but genuinely non-defeq prefix rejected at the exact
+kernel-facing error. The operational L4L-01E package authority remains
+the exact AnnotatedPi producer case. Negatives stay sharp: opaque
+annotations, truncated/reordered views, missing/extra constructors,
+recursive-local dependency, and the environment-free
 closure/universe/name/result/collision matrix.
 
-**Constructor-parameter parity.** `AnnotatedParam` is built from Lean's actual
-kernel family, constructor, recursor, and rule metadata. Its complete ordinary
-metadata call accepts the stored `outParam Type` constructor prefix against the
-annotation-consumed `Type` family local by definitional equality; a closed,
-well-typed but genuinely non-defeq prefix reaches the same check and is
-rejected with the exact kernel-facing error. Mixed generation retains the raw
-constructor surface while using checked family parameters for emitted recursor
-binders, and the resulting recursor and iota RHS are definitionally equal to
-kernel metadata. The proof-carrying transaction and real-`ConstantInfo` replay
-then establish final lookup, WF, alignment, uniqueness, and rule membership.
-The operational L4L-01E package authority remains the exact AnnotatedPi
-producer case; the parameter fixture deliberately does not claim a second
-independently assembled produced package.
+**Replay and the consumer certificate API.** The supported replay matrix
+executes 25 actual-metadata transactions: the 19-row L4L-07 singleton
+inventory (the 14 fixed rows plus the alias/normalization/annotation
+fixtures, with Fin and Vector replaying over their real dependency
+slices) plus the two-parameter `BiBox` dependency, both mutual tree
+blocks, and three nested blocks. Every row retains its exact
+input/output `ConstMap` and `VEnv`, input-map WF and dependency
+ordering, data-bearing transaction trace, final roles, and recursor
+lookup uniqueness. The consumer-neutral Theory API
+`VInductDecl.BlockCertificate`/`NestedBlockCertificate` reconstructs the
+raw `addInduct` result, `addInduct_le`, `addInduct_WF`, exact lookups,
+freshness, uniqueness, registered rule membership/WF, rule closure, and
+the L4L-10 recursor-pattern facts from one checked transaction; it
+imports no Verify state, `Lean.Expr`, normalization oracle, or kernel
+object, its WF root closes at the standard baseline (the rule/pattern
+root adds `Classical.choice`), and neither reaches `sorryAx`. Verify's
+unified matrix keeps one exact guarded `sorryAx`, solely through the
+separately tracked projection/refinement frontier. A separate fresh
+replay loads the 296-declaration compiled dependency closure of the
+notation-heavy fixture into an empty kernel environment and checks every
+declaration, so numerals, notation, lists, arrays, products,
+conditionals, and strings exercise real compiled prelude dependencies.
 
-**Environment replay.** The sole public L4L-07 inventory contains 19
-actual-metadata transactions: all 14 fixed rows plus AliasFormer, AliasRec,
-NormalizationMatrix, AnnotatedPi, and AnnotatedParam. Every
-`SingletonReplayArtifact` carries its exact input/output `ConstMap` and `VEnv`,
-input ordering, the proof-carrying `AddInduct` transaction, final alignment,
-and derived output ordering. Fin replays over the real Nat/LT dependency
-slice; Vector replays over Nat/Eq/Array/`Array.size`, including the stored
-metadata annotation on `Array.size`'s borrowed argument. The fixed and
-normalization inventories are definitionally tied to the Theory inventories,
-and their 14/5/19 cardinalities are executable. The older `IndexedVec`
-fixture still spells indices as `Nat.zero`/`Nat.succ`, deliberately excluding
-notation's `OfNat`/`HAdd` instance closure — a reduced dependency claim, not
-full prelude replay.
-
-**Complete replay matrix and consumer certificates.** The supported replay
-matrix now executes 25 actual-metadata transactions rather than merely
-packaging abstract witnesses: 20 automatically constructed singleton
-candidates (the L4L-07 inventory plus the two-parameter `BiBox` dependency),
-both mutual tree blocks, and three nested blocks. Every row retains its exact
-input/output `ConstMap` and `VEnv`, input-map WF and dependency ordering,
-producer result, data-bearing transaction trace, final translated
-type/constructor/recursor roles, and recursor lookup uniqueness. The mutual
-and nested rows expose the same
-metadata-completeness predicate through one sum artifact, while their
-certificates separately derive environment growth and block WF.
-
-The consumer-neutral Theory API is
-`VInductDecl.BlockCertificate`/`NestedBlockCertificate`. It reconstructs the
-raw `addInduct` result, `addInduct_le`, `addInduct_WF`, exact family and every
-constructor/recursor lookup, freshness, lookup uniqueness, registered rule
-membership/WF, rule closure, and L4L-10 recursor-pattern facts from one checked
-transaction. The API imports no Verify state, `Lean.Expr`, normalization
-oracle, or kernel implementation object. Its WF root has only the standard
-logical baseline, and its rule/pattern root additionally uses
-`Classical.choice`; in particular neither reaches `sorryAx`. Verify's unified
-matrix has one exact guarded `sorryAx`, solely through the separately tracked
-projection/refinement frontier.
-
-A separate fresh replay loads the compiled dependency closure of the
-notation-heavy fixture into an empty kernel environment and checks all 296
-declarations. Numerals, arithmetic and comparison notation, lists, arrays,
-products, conditionals, and strings therefore exercise their real compiled
-prelude dependencies rather than a hand-built Theory environment.
-
-**Nested representation and flattening.** The committed design note and
-executable metadata probes in
-`Lean4Lean/Verify/Environment/NestedRepresentation.lean` pin how the
-implementation stores nested inductives (restored source families carrying
-`numNested`, auxiliary recursors named by `appendIndexAfter` whose rules
-are keyed by previously declared inductives' constructors, flattened
-motive/minor counts, no surviving `_nested.*` constant) and fix the L4L-09
-representation: the stored Theory payload is the source `VInductDecl`
-unchanged, and nested support is an additive artifact coupling the
-flattened block (accepted by the unchanged arbitrary-block machinery) with
-per-auxiliary specifications — the Theory analog of `aux2nested` — and a
-restoration substitution σ. Probes verify on rose-tree, nested-indexed,
-and constant-universe fixtures that the port's nested path reproduces
-Lean's stored metadata exactly, that final metadata is independent of
-auxiliary-name collisions, and that σ over the existing flat-block
-generation artifacts reproduces every stored recursor type and rule RHS,
-with declaration-world values for constructor types and an `instL`
-elimination-offset splice for recursor-world artifacts.
-
-The restoration and its transaction are implemented and preserved:
-`restoreExpr` is the total bottom-up σ (firing where an auxiliary spine
-completes its parameter count, recursor renames checked before the
-constructor-prefix case), `NestedBlockChecked.recursors`/`generatedRules`
-restore the flattened block's generation artifacts onto the
-`appendIndexAfter` inventory, and `VEnv.addInductNested` inserts source
-families/constructors plus restored recursors/rules in the four block
-phases. `AddInductNestedTrace` and its lemma suite (recovery, atomicity,
-monotonicity, freshness, lookups, rule membership) mirror the block
-transaction; `NestedBlockChecked.WF` chains per-insertion constant and
-rule well-formedness along the deterministic phase folds and
-`addInductNested_WF` folds it into `Ordered` preservation, discharged
-through the new `VDecl.WF.inductNested` case and `VEnv.WF.ordered`.
-Verify's `AddInductNested`/`AddInductNestedTrace` and `TrEnv'.inductNested`
-extend the alignment layer (with `aligned`, `of_value`, `map_wf`,
-`sf_mono` cases). The restoration-parity differential proves the product
-σ equal to Lean's stored metadata — every restored recursor name,
-universe count, and type, and every rule RHS in globally flattened
-order — and the real-output round-trip runs the port's complete
-`Environment.addInductive` on dependency-only environments and compares
-its entire output against the Theory artifacts (payload constants,
-recursors, K flags, rule RHSs, and `numNested`), on the rose-tree,
-nested-indexed, and constant-universe fixtures.
-
-**Nested environment replay.** All three ladder fixtures replay from real
-stored metadata through `TrEnv'.inductNested`
-(`Verify/Environment/NestedReplay.lean`): the rose tree over the
-completed `List` replay environment, and the nested-indexed family over
-a `PVec` boundary staged by `TrEnv'.inductStaging` on the completed
-`Nat` replay, plus `DeepBi α β` over the actual two-parameter `BiBox α β`
-dependency. `DeepBi.node` contains two queued nested occurrences,
-`BiBox (DeepBi α β) (BiBox α (DeepBi α β))`; the analyzer produces all
-three auxiliary recursors/rules and their RHSs agree with the real stored
-kernel metadata. Each replay inserts the stored `ConstantInfo`s with
-`tr_type_expr_tac` translations, exact freshness chains, K-flag
-agreement, and the literal rule fold, and proves the complete
-`NestedBlockChecked.WF` package by direct concrete typing derivations
-(`type_tac`) over the exact phase environments, with the printed
-artifact literals tied to the computed `nestedBlockChecked?` artifacts
-by named `native_decide` observations. The package closures are the
-standard logical baseline plus the persistent-map container axioms and
-those named observations — no `sorryAx`; the full `TrEnv'` roots carry
-the usual transitional checker closure, exactly guarded. The general σ̂
-typed transport (`Theory/Typing/NestedTransport.lean`: the `ConstInterp`
-environment morphism and `IsDefEq.substConst` with
-`HasType`/`IsType`/`VConstant.WF`/`VDefEq.WF` corollaries) is proved as
-the generic justification layer; its β-collapse bridge to the
-spine-collapsed artifact substitution on generated artifacts remains
-available future work, not a nested-coverage gap.
-
-The Theory flattening itself is implemented:
+**Nested inductives.** The stored Theory payload is the source
+`VInductDecl` unchanged; nested support is additive.
 `VInductDecl.nestedElimination?` (`Theory/NestedInductive.lean`) mirrors
-`ElimNestedInductive` phase for phase — target-block recognition against
-caller-supplied environment-free metadata copies (`NestedTargetBlock`,
-with `NestedTargetBlock.WF` tying the copy to a `VEnv`), the
-local-variable rejection, replace-without-descending rewriting,
-value-keyed deduplication, whole-target-block auxiliary creation with
-level instantiation and simultaneous parameter substitution, canonical
-`appendIndexAfter` naming, and the fixpoint over queued auxiliary
-constructors. `nestedStage3` gates acceptance by flattening success plus
-generation readiness of the flattened block through the unchanged L4L-08
-analyzers. Theory fixtures pin the exact flattened blocks and
-specifications for the rose-tree and nested-indexed fixtures, and the
-Verify differential (`Verify/Environment/NestedTransformation.lean`)
-proves the Theory flattening equal to the port's on all three real
-fixtures (families, constructors, specifications, `numNested`), ties the
-hand-written `List` target to stored metadata, and matches kernel
-accept/reject on four nearest negatives: local-variable parametric
-arguments (with the kernel's exact diagnostic), off-spine parametric
-applications, canonical-auxiliary-name collisions, and missing target
-declarations. Source declarations remain rejected by the non-nested raw
-analyzer; the dedicated nested analyzer and transaction own their
-flattened/restored recursors, rules, and replay.
+`ElimNestedInductive` phase for phase against caller-supplied
+environment-free target metadata, and `nestedStage3` gates acceptance by
+flattening success plus generation readiness of the flattened block
+through the unchanged block analyzers. The restoration σ (`restoreExpr`)
+rebuilds the flattened block's generation artifacts onto the
+`appendIndexAfter` inventory (`NestedBlockChecked`),
+`VEnv.addInductNested` inserts source families/constructors plus
+restored recursors/rules through the four block phases, and
+`AddInductNestedTrace`, `NestedBlockChecked.WF`, and
+`addInductNested_WF` mirror the block transaction's lemma suite through
+`Ordered` preservation. Verify proves the Theory flattening equal to the
+port's on the rose-tree, nested-indexed, and `DeepBi`/`BiBox` fixtures,
+matches kernel accept/reject on four nearest negatives, and round-trips
+the port's complete `Environment.addInductive` output against the Theory
+artifacts (payload constants, recursors, K flags, rule RHSs,
+`numNested`).
 
-**Generated iota patterns.** Every certified block's iota rules are exact
-`SimplePattern.iota` patterns (`Theory/Typing/InductivePattern.lean`): the
-generated left body is the owning recursor applied to the shared parameters,
-all motives, all minors, and the constructor's result indices with a
-constructor-headed major premise, and `ruleLhsBody_matches` matches it
-against `rulePattern` at the rule's recursor levels. The block's pattern set
-`IotaPat` couples each rule's pattern with an RHS template — the registered
-right tower applied to the captured common arguments and fields — and a
-check list demanding parameter and result-index agreement between the
-recursor spine and the major premise, with payload closedness carried by a
-`RuleClosure` bundle that fixtures discharge by evaluation. The complete
-generic `Params` obligations — `pat_simple`, match inversion with
-rule-index/constructor recovery, rule distinctness, and the
+All three nested fixtures also replay from real stored metadata through
+`TrEnv'.inductNested` (`Verify/Environment/NestedReplay.lean`), with
+exact freshness chains, K-flag agreement, the literal rule fold, and
+complete `NestedBlockChecked.WF` packages proved by direct concrete
+typing derivations; the package closures are the standard baseline plus
+the persistent-map container axioms and named `native_decide`
+observations — no `sorryAx` — while the full `TrEnv'` roots carry the
+usual guarded transitional checker closure. The generic σ̂ typed
+transport (`Theory/Typing/NestedTransport.lean`: the `ConstInterp`
+environment morphism and `IsDefEq.substConst` with its
+`HasType`/`IsType`/`VConstant.WF`/`VDefEq.WF` corollaries) is proved as
+the justification layer; its β-collapse bridge to the spine-collapsed
+artifact substitution on generated artifacts remains available future
+work, not a nested-coverage gap. Source nested declarations remain
+rejected by the non-nested raw analyzer; the dedicated nested analyzer
+and transaction own their flattened/restored recursors, rules, and
+replay.
+
+**Patterns.** Every certified block's iota rules are exact
+`SimplePattern.iota` patterns with RHS templates, check lists, and
+`RuleClosure` payload closedness (`Theory/Typing/InductivePattern.lean`;
+implementation-independent shape layer in `Theory/Typing/Pattern.lean`).
+The complete generic `Params` obligations — `pat_simple`, match inversion
+with rule-index/constructor recovery, rule distinctness, and the
 `pat_uniq`/`pat_app_l`/`pat_app_l_uniq`/`pat_app_uniq` non-intersection
-laws — are proved for one certified block from the certified
-`blockGeneratedNames` inventory (nodup transported across the normalization
-boundary) and the analyzer's terminal `blockTarget?` arity equation, at
-guarded `propext`/`Quot.sound`-level closures. The implementation-independent
-shape layer (`HeadConstN`, `HeadConst`, `of_varN_matches`,
-`RecursorIotaPattern`, `matches_shape`, tower intersection laws,
-`varNPaths`) lives in `Theory/Typing/Pattern.lean`; a mutual tree/forest
-block and a `Nat`-indexed vector fixture pin the pattern inventories and
-closedness by kernel evaluation. No open-environment `Params` instance is
-installed.
-
-**Pattern soundness and the assembler.** The typed β-collapse layer
-(`Theory/Typing/InductivePatternWF.lean`) proves, at a sorry-free
-`propext`/`Quot.sound` closure, that applying a lambda telescope to a full
-well-typed spine is definitionally equal to the iterated instantiation of
-its body (`IsDefEq.appN_lamN` over `instRev`, with `SpineDefEq` pointwise
-application congruence, telescope instantiation, and lambda/pi tower
-inversions `lamN_wf`/`forallN_wf`), and that a matched pattern's captures
-are exactly the spine arguments (`varN_matches_paths`). `pat_wf` composes
-these into pattern soundness for one certified block: a successful match of
-a rule's pattern whose parameter and index checks hold is definitionally
-equal to the instantiated RHS template, derived from the exact rule defeq
-registered by `addInduct` — the redex arrives decomposed into its recursor
-and constructor spines with spine-form typing and pinned source levels,
-which is precisely what a verified reduction site holds, and the theorem's
-guarded closure is exactly the Church–Rosser development's own transitional
-unique-typing closure, shedding `sorryAx` automatically when L4L-16/17
-land. The block-local assembler
-(`Theory/Typing/InductivePatternEnv.lean`) builds an environment whose
-defeq set is exactly one certified block's generated rules plus separately
-certified extension rules over a constant base: `assembleEnv_defeqs`
-inverts the defeq set exactly, `assembleEnv_WF` preserves ordering through
-the block phases and the extension fold, and the union pattern set
-`AssembledPat` couples the block's L4L-10A facts with each
+laws — are proved for one certified block from the certified inventories
+at guarded `propext`/`Quot.sound`-level closures. The typed β-collapse
+layer (`Theory/Typing/InductivePatternWF.lean`: `IsDefEq.appN_lamN`,
+`varN_matches_paths`) is sorry-free, and `pat_wf` composes it into
+pattern soundness: a successful match whose parameter and index checks
+hold is definitionally equal to the instantiated RHS template, derived
+from the exact rule defeq registered by `addInduct`, with the redex
+arriving decomposed into recursor and constructor spines — precisely
+what a verified reduction site holds — at exactly the Church–Rosser
+development's transitional unique-typing closure, shedding `sorryAx`
+automatically when L4L-16/17 land. The block-local assembler
+(`Theory/Typing/InductivePatternEnv.lean`) builds environments whose
+defeq set is exactly one certified block's generated rules plus
+separately certified extension rules over a constant base
+(`assembleEnv_defeqs`, `assembleEnv_WF`), and the union pattern set
+`AssembledPat` couples the block's facts with each
 `CertifiedExtension`'s payload and spine-level `extra_pat` coverage
-equation. No global open-environment `Params` instance is installed; both
-fixture blocks assemble over the empty base with their defeq sets pinned to
-their generated rules.
+equation. No open-environment `Params` instance is installed; both
+fixture blocks assemble over the empty base with their defeq sets pinned
+to their generated rules.
 
-**Not claimed.** Projections, and the remaining metatheory/checker roots.
+**Projections.** `Theory/Projection.lean` is the consumer-neutral
+projection boundary decided at L4L-13A/B. `VStructureView` restricts the
+same one-family `GenerationChecked` artifact used by inductive
+generation to the kernel structure class — exactly one constructor, no
+indices, no recursive fields — and retains per-field sort levels.
+Projections are recursor-encoded: `projectionCodes` computes, per field,
+a dependent motive (`typeFn`, with earlier projections substituted into
+later field types), the selecting minor, and the projector program,
+with `projectionType?`/`project?` derived. `Registered`/`WF` tie a view
+to exact environment lookups and generated iota rules, and
+`VEnv.TrProj env U Γ view levels params idx major result` demands level
+WF and arities, a well-formed parameter spine, the exact instantiated
+major type, and the computed program; syntactic determinism
+(`result_eq`) and environment extension (`mono`) are proved at
+`propext`/`Quot.sound`. Verify's `TrProj` is now a fully constrained
+compatibility wrapper (existential view/levels/params with
+`view.name = structName`; no invented metadata), so the former Tier S
+specification sorry is gone and roots that merely mention `TrExprS` no
+longer inherit `sorryAx` through the projection branch. The
+`DependentRecord` fixture — simultaneously parameterized,
+universe-polymorphic, and dependent — pins the complete encoding
+(`Tests/ProjectionExpressibility.lean`).
+
+**Not claimed.** The seven projection structural laws and the
+projection/eta checker proofs (L4L-14–L4L-15B), and the remaining
+metatheory/checker roots.
 The upstream `Params.extra_pat` field demands that registered defeqs match
 patterns syntactically, which lambda-tower registrations (including
 `quotDefEq`) never do; the assembler therefore exposes spine-level coverage
@@ -500,14 +299,13 @@ never generation-shape authority or Theory semantics.
 
 The sorry audit (`Lean4Lean/Audit/SorryFrontier.lean`, a declaration-level
 `sorryAx` allowlist over the compiled Theory/Verify surface) currently
-accepts exactly 20 live sorries across 19 declarations (`NormalEq.parRed`
+accepts exactly 19 live sorries across 18 declarations (`NormalEq.parRed`
 carries two), plus six deliberately kernel-rejected fixture recoveries that
 are not proof debt:
 
 | Area | Live debt |
 |---|---|
-| Projection specification | `Verify/Typing/Expr.lean:67`, `TrProj` |
-| Projection structural laws | seven sites in `Verify/Typing/Lemmas.lean`: `weak'`, inverse weakening, `defeqDFC`, `wf`, `uniq`, `instN`, `instL` |
+| Projection structural laws (L4L-14) | seven sites in `Verify/Typing/Lemmas.lean`: `weak'`, inverse weakening, `defeqDFC`, `wf`, `uniq`, `instN`, `instL` |
 | Core metatheory | `Injectivity.lean` x3, `UniqueTyping.lean` x1, `ChurchRosser.lean` x2 |
 | Checker verification | `Verify/Environment.lean` x1; `InferType.lean` x1; `WHNF.lean` x2; `IsDefEq.lean` x2 |
 
@@ -520,16 +318,39 @@ The remaining v4.31-added sorry is classified:
   the block-local pattern environment assembler. The complete supported
   replay matrix and consumer certificate API are now closed, but the accepted
   inductive language remains a growing subset rather than kernel-complete;
-  projection coverage remains queued. `pat_wf` carries the Church–Rosser
+  projection semantics landed at L4L-13A/B while the seven structural laws
+  and the checker proofs remain queued (L4L-14–L4L-15B). `pat_wf` carries
+  the Church–Rosser
   development's transitional unique-typing closure until L4L-16/17 close it.
-- Projection semantics and a final audit of consumer-neutral structure and
-  checker lemmas remain under `Verify/` (L4L-13A--L4L-15C). The local-context
+- The projection structural laws, checker verification, and a final audit
+  of consumer-neutral lemmas remain under `Verify/` (L4L-14–L4L-15C). The
+  local-context
   and literal/prelude APIs now have Theory-only homes.
 - 29 project-specific `axiom` declarations outside `Experimental/`: 27 in
   `Verify/Axioms.lean` and two pointer-equality contracts in `PtrEq.lean`.
   Three cached-field equations from the group once false on older pins
   (`lean4#8554`) remain unproved and therefore forbidden contracts even though
-  v4.31 fixed the underlying cache bug.
+  v4.31 fixed the underlying cache bug. A 2026-08-10 reachability audit
+  added: four axioms are dead — `TreeMap.all_eq_all_toList`,
+  `Level.mkLevelIMaxCore_eq`, `Expr.liftLooseBVars_eq`, `Expr.equal_eq`
+  have zero uses and appear in none of the 436 pinned closures — and are
+  removable at the next checkpoint; 19 of the 27 still carry `@[simp]`,
+  so §3's simp ban is containment work not yet done. The L4L-13A/B
+  `sorryAx` shed then moved a large population of candidate/fixture
+  roots into the sorry-free set with the cached-field trio (and other
+  reference equations) still in their closures — hundreds of sorry-free
+  guard lines now name the trio — so the pre-L4L-13 "clear two roots"
+  shortcut is gone: enforcing the "no forbidden axiom in a sorry-free
+  supported root" CI rule now waits on the actual L4L-20A retirement
+  (prove the equations for the pinned implementation or take them off
+  the trace-proof simp path).
+- `addInductSingleton` (deprecated 2026-08-07) has zero callers outside
+  its own shim block and is deletable as one self-contained block; the
+  deprecation has not yet appeared in any published checkpoint, so time
+  the removal against the consumer window.
+- `NestedBlockCertificate` exposes the full lookup/freshness/WF/rule
+  surface but no `ruleClosure`/`IotaPat` pattern facts; pattern facts are
+  block-certificate-only until the σ̂ β-collapse bridge lands (L4L-19A).
 - The fetched `logrel@upstream` branch at `e431dad8` is a serious experimental
   route to injectivity/unique typing, but it depends on unfinished
   `ShapeLogRel`/adequacy work and cannot be merged as a completed proof.
@@ -693,54 +514,51 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Projections and structures (L4L-13A–L4L-15C)
+### Projections and structures (L4L-14–L4L-15C)
 
-The current API needs a design gate first. `TrProj Γ structName idx e e'` has
-no environment, universe count, structure descriptor, constructor metadata,
-or projection-name map; `TrProj.uniq` is even stated for unrelated `s₁` and
-`s₂`. A recursor encoding cannot simply be dropped into that signature.
+The L4L-13A/B design gate is resolved: the env-indexed
+`VEnv.TrProj`/`VStructureView` recursor-encoded semantics landed, the
+seven frozen structural-law statements were restated against it, and
+Verify's `TrProj` is a fully constrained compatibility wrapper. The
+operational facts recorded during that decision stay binding on the
+proofs below: `reduceProj` never consults the projection's structure
+name — it whnfs to a constructor application and indexes by that
+constructor's `numParams + idx`; `isDefEq` projection congruence
+compares only indices; `inferProj` substitutes earlier projections into
+dependent field types under Prop/proof-irrelevance guards.
 
-**L4L-13A — projection expressibility decision (active).** Freeze the seven current
-lemma statements as regression tests, then check whether a meaningful
-relation can satisfy them without strengthening their premises — in
-particular structure-name dependence, parameter offsets, dependent fields,
-universe instantiation, and uniqueness. If the signature is inadequate, add a
-Theory-level env-indexed API such as a `VStructureView` plus
-`VEnv.TrProj U Γ view idx e e'`, changing Verify's `TrExprS.proj` through a
-compatibility wrapper. Do not encode the missing metadata as unconstrained
-existential witnesses.
-*Exit:* real parameterized/dependent/universe fixtures demonstrate
-representability; the API decision is recorded.
-
-**L4L-13B — projection semantics.** Default to a recursor encoding because it
-reuses generated iota rules and is consumer-neutral; compare against applying
-a registered projection-function constant, which matches Lean metadata more
-directly but requires a projection-name map in Theory. Choose the
-representation that makes all of the following derivable from one
-`VStructureView`: projection field type (including dependencies on earlier
-projections); constructor projection/iota behavior; congruence under defeq
-and environment extension; lift, substitution, and universe instantiation;
-and structure eta / zero-field behavior, or a precise statement of what
-additional Theory rule is required.
-*Exit:* the representation computes on real structures and makes every
-L4L-14 premise expressible; no structural law or checker proof is claimed
-early.
-
-**L4L-14 — projection structural laws.** Prove the seven upstream
+**L4L-14 — projection structural laws (active).** Prove the seven upstream
 obligations — weakening, inverse weakening, context-defeq transport, WF,
 uniqueness, term substitution, and universe instantiation — and expose one
 bundled structural-laws theorem while preserving the individual compatibility
 theorem names for upstream Verify. Add projection-bearing end-to-end
-fixtures.
-*Exit:* the projection relation and all seven structural-law sorries are
-gone from the frontier; projection fixtures pass; compatibility names are
-preserved.
+fixtures. The concrete relation splits the work: `weak'`, `instN`, and
+`instL` are commutation of `projectionCodes` with lift/inst/instL plus
+transport of the WF components (`SpineWF`, `OnSortTel`, `OnTel`,
+`HasType`); `wf` is the real content — typing the projector program from
+the registered recursor's generated type; `weak'_inv`, `defeqDFC`, and
+`uniq` need inversion facts (`weakN_iff`, and constant-head injectivity
+to recover the view and instantiation from a defeq major type) and
+should be proved now against the public Tier R statements, inheriting
+the transitional closure that sheds automatically when L4L-16/17 land —
+the `pat_wf` precedent. `TrProj.mono` and syntactic `result_eq` are
+already proved.
+*Exit:* all seven structural-law sorries are gone from the frontier;
+projection fixtures pass; compatibility names are preserved.
 
 **L4L-15A — projection checker verification.** Use the structure view to
 prove `inferProj.WF`, `reduceProj.WF` for constructor applications and
 strings, and the projection branches of WHNF and translation congruence.
 Re-run the enclosing `inferType`, `whnfCore`, and `isDefEq` theorems so the
-absence of a local sorry also removes it from every exported root.
+absence of a local sorry also removes it from every exported root. String
+branch input: `reduceProj` whnfs `.lit (.strVal s)` through
+`Expr.strLitToConstructor`, whose `String.ofList` head must delta-unfold
+before the constructor guard succeeds, and `VEnv.PreludeReady`
+deliberately keeps `Char`/`String` opaque (function constants only, no
+constructor/recursor/iota) — the string case therefore needs either a
+certified structure artifact for `String` consistent with the literal
+encoding or a route through checker defeq evidence. The L4L-13B
+representation left this open; decide it at the start of this milestone.
 *Exit:* focused structure/string fixtures and enclosing checker roots pass
 with exact axiom closures; eta/unit-like roots remain queued.
 
@@ -757,6 +575,13 @@ subject-reduction/injectivity/confluence and downstream-impact evidence.
 **L4L-15C — Theory-only consumer import surface.** Audit the consumer-neutral
 lemmas still living under Verify after the literal migration and L4L-15B; give each a
 Theory home and deprecate the corresponding Verify compatibility shims.
+A 2026-08-10 scan already identified first candidates: the `VEnv.SpineWF`
+weakening/inversion cluster in
+`Verify/Environment/ConstructorValidation.lean`; the
+`VEnv.HasPrimitives.of_avoids`/`addConst`/`addConst_other` cluster in
+`Verify/Environment/Normalization.lean` (natural home
+`Theory/Literals.lean`); `VEnv.HasType.hasConst_false_of_absent`;
+`VExpr.WF.boolLit_has_type`; and the `checkerElimMode` shim.
 *Exit:* no consumer-neutral lemma requires a `Lean4Lean.Verify` import;
 compatibility re-exports are removable without loss.
 
@@ -790,7 +615,18 @@ affected Theory and checker roots have exact accepted closures.
 are the constant/application cases where a parallel step meets a user
 defeq-pattern step. Use the generic `Params` interface, L4L-10B's match
 inversion/non-overlap library, and rule RHS congruence to prove the
-commuting diagrams, keeping the theorem generic in `[Params]`.
+commuting diagrams, keeping the theorem generic in `[Params]`. Both holes
+are provable without inhabiting `Params` (the theorem is generic, and
+`extra_pat` is consumed only by `IsDefEq.church_rosser`);
+`ParRed.triangle`'s `.extra` case is the working template. The concrete
+missing lemmas: (1) `NormalEq` match inversion/spine descent — the `≡ₚ`
+analogue of the existing `ParRed` inversion, with proof irrelevance at a
+pattern-spine head the genuinely open sub-case; (2) `Check.OK` transport
+along `≡ₚ` and `≈`-equivalent level lists, extending `Check.OK.map`;
+(3) level-congruence for `RHS.apply` on closed templates under
+`Forall₂ (· ≈ ·)` — bridge `EqUpToLevels.instL` into a
+`NormalEq`/`IsDefEq` congruence; (4) routine typing side conditions at
+the transported match.
 *Exit:* `ParRed.church_rosser`, normal-form uniqueness, and the live
 standardization/head-reduction endpoints contain no hidden placeholder
 assumptions.
@@ -799,7 +635,16 @@ assumptions.
 consumer-certified defeqs and add the missing monotonicity/transport lemmas
 under `VEnv.LE`. State exactly what a consumer-certified extension oracle
 must prove (typedness, symmetry/closure as needed, pattern compatibility) and
-what lean4lean does not trust automatically.
+what lean4lean does not trust automatically. This milestone also owns the
+`Params` interface decision: `extra_pat` demands a syntactic `Matches` on
+`df.lhs`, which no lambda-tower registration (generated iota rules,
+`quotDefEq`) can satisfy, and `Params.pat_wf` takes a bare `HasType`
+where the proved `pat_wf` needs the redex pre-decomposed into typed
+spines. Resolve both by weakening the interface to spine-level/
+β-collapsed obligations (the shape `CertifiedExtension.covers` plus
+`IsDefEq.appN_lamN` already provide) or by re-keying `.extra` on the
+collapsed redex — coordinate with upstream, since this edits the
+Church–Rosser hypotheses.
 *Exit:* generic lemmas build; the consumer extension contract is documented;
 no external defeq is trusted automatically or smuggled through generated
 `Params`.
@@ -809,7 +654,12 @@ no external defeq is trusted automatically or smuggled through generated
 **L4L-19A — recursor reduction verification.** Prove `reduceRecursor.WF` for
 Quot and certified inductive rules, obtaining the selected rule, match,
 checks, RHS translation, and result typing from the generated/translated
-metadata — not from a global oracle.
+metadata — not from a global oracle. For nested blocks this requires the
+σ̂ β-collapse bridge left open in `NestedTransport` — transporting the
+flattened block's rule defeqs and pattern facts onto the restored
+`appendIndexAfter` artifacts — and extending the certificate pattern
+surface accordingly (`NestedBlockCertificate` currently exposes no
+`ruleClosure`/`IotaPat` facts).
 *Exit:* Quot, singleton, mutual, and nested recursor reductions pass;
 enclosing WHNF roots have exact guards.
 
@@ -850,7 +700,14 @@ stated, manifested, version-pinned, tested, absent from Theory roots;
 silent release assumption; (4) forbidden — known false on a supported
 toolchain or unproved after the implementation changed.
 
-Retire in risk order: the three remaining cached-field equations; the
+Immediate pre-work is already scoped by the 2026-08-10 audit: delete the
+four dead axioms (`TreeMap.all_eq_all_toList`, `Level.mkLevelIMaxCore_eq`,
+`Expr.liftLooseBVars_eq`, `Expr.equal_eq`). After the L4L-13A/B `sorryAx`
+shed the forbidden cached-field trio sits in many sorry-free closures, so
+the forbidden-axiom CI rule waits on their actual retirement rather than
+a two-root cleanup. Then retire in risk order: the three remaining
+cached-field
+equations; the
 thirteen reference equations (convert to logical definitions with
 `@[implemented_by]` only when extensionally correct); the collection and
 opaque/layout equations (replace with upstream theorems or narrowly bounded
@@ -975,12 +832,16 @@ assume an oracle or axiom.
 - **Raw de Bruijn scaling.** Indexed, mutual, and recursive-Pi rules multiply
   lift/inst arithmetic. Keep moving normalized evidence into the descriptor
   and telescope lemmas rather than duplicating index calculations.
-- **Projection API insufficiency.** The present `TrProj` signature may make a
-  faithful semantics impossible. Resolve L4L-13A explicitly instead of hiding
-  metadata in an oracle or preserving a false “frozen statement” rule.
 - **Structure eta may change Theory.** A new defeq constructor would affect
   injectivity, confluence, standardization, and downstream consumers. Require
   a design proof and upstream agreement first.
+- **Pattern-interface mismatch.** The upstream `Params` fields
+  (`extra_pat`'s syntactic match, `pat_wf`'s bare-`HasType` premise)
+  cannot be satisfied by tower-registered environments, including
+  `quotDefEq`. If upstream declines an interface change, instantiating
+  the Church–Rosser development for real environments stays blocked even
+  with every block-local fact proved. Raise the L4L-18B design early with
+  Mario.
 - **Research-branch optimism.** `logrel@upstream` is evidence of a viable
   path, not a drop-in solution; measure its remaining adequacy/bridge debt
   with the exact live theorem as the spike gate.
