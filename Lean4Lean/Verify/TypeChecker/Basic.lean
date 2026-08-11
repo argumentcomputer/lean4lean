@@ -101,6 +101,37 @@ theorem WF.weak' (wf : WF env Us Δ m) : WF env Us Δ' m where
 
 end EquivManager
 
+/-- Exact alignment between one host structure record and the registered
+Theory artifact used to interpret primitive projections.  The positional
+metadata is retained explicitly because ordinary constant translation checks
+types but does not identify the kernel's parameter/constructor roles. -/
+structure ProjectionArtifact (env : Environment) (name : Name)
+    (info : InductiveVal) (venv : VEnv) where
+  view : VStructureView
+  name_eq : view.name = name
+  viewWF : view.WF venv
+  constructorInfo : ConstructorVal
+  constructor_find : env.find? view.constructorName =
+    some (.ctorInfo constructorInfo)
+  constructor_numParams_eq : constructorInfo.numParams = view.nparams
+  constructor_numFields_eq : constructorInfo.numFields = view.fields.length
+  levelParams_length : info.levelParams.length = view.uvars
+  numParams_eq : info.numParams = view.nparams
+  numIndices_eq : info.numIndices = 0
+  ctors_eq : info.ctors = [view.constructorName]
+  rawResult_sort : ∃ resultLevel,
+    view.generation.block.rawResult = .sort resultLevel
+  programsWF : view.ProgramsWF venv
+
+/-- Every complete host structure accepted by projection inference is backed
+by one coherent registered Theory artifact.  This is deliberately separate
+from constant translation: individually translated family, constructor, and
+recursor constants do not by themselves identify one generation artifact. -/
+def ProjectionReady (env : Environment) (venv : VEnv) : Prop :=
+  ∀ name info, env.find? name = some (.inductInfo info) →
+    env.isProjectionReadyStructure name = true →
+    Nonempty (ProjectionArtifact env name info venv)
+
 namespace TypeChecker
 
 inductive MLCtx where
@@ -193,6 +224,7 @@ structure VContext extends Context where
   safePrimitives : env.find? n = some ci →
     Environment.primitives.contains n → ci.safety = .safe ∧ ci.levelParams = []
   trenv : TrEnv safety env venv
+  projectionReady : ProjectionReady env venv
   mlctx : MLCtx
   mlctx_wf : mlctx.WF venv lparams
   lctx_eq : mlctx.lctx = lctx
@@ -954,3 +986,19 @@ theorem ensureSortCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
   · let .sort _ := e
     exact .pure ⟨⟨_, rfl⟩, he, hb⟩
   exact .getEnv <| .getLCtx .throw
+
+theorem getSortLevel.WF
+    (he : c.TrExprS e e') : (getSortLevel e).WF c s fun l _ =>
+      ∃ u', VLevel.ofLevel c.lparams l = some u' ∧ c.HasType e' (.sort u') := by
+  refine (inferType.WF he).bind fun ty _ le ⟨ty', _, _, h1, h2⟩ => ?_
+  refine (ensureSortCore.WF h1).bind fun ty _ le h => ?_
+  obtain ⟨⟨u, rfl⟩, ⟨ty₂, h3, h4⟩, _⟩ := h
+  let .sort hu := h3
+  exact .pure ⟨_, hu, h2.defeqU_r c.Ewf c.Δwf h4.symm⟩
+
+theorem isProp.WF
+    (he : c.TrExprS e e') : (isProp e).WF c s fun b _ =>
+      b → c.HasType e' (.sort .zero) := by
+  refine (getSortLevel.WF he).bind fun l _ le ⟨u', hu, h⟩ => .pure fun H => ?_
+  exact h.defeqU_r c.Ewf c.Δwf
+    ⟨_, .sortDF (.of_ofLevel hu) trivial (ofLevel_isAlwaysZero hu H)⟩

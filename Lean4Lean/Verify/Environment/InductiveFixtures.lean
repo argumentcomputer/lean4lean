@@ -2569,6 +2569,14 @@ private theorem outParamVEnvs_wf : outParamVEnvs.WF outParamKernelEnv where
   hasPrimitives := outParam_hasPrimitives
   safePrimitives := outParam_safePrimitives
   mono := fun _ => .rfl
+  projectionReady := by
+    intro _ name _ _ h
+    simp only [Kernel.Environment.isProjectionReadyStructure,
+      outParamKernelEnv, Kernel.Environment.ofConstants] at h
+    simp only [outParamMap_wf.find?'_eq_find?] at h
+    simp only [outParamMap, SMap.WF.find?_insert
+      (s := ({} : ConstMap)) SMap.WF.empty] at h
+    simp [SMap.find?, annotationOutParamInfo] at h
 
 /-! ## Definitionally equal constructor parameters -/
 
@@ -3428,6 +3436,15 @@ private theorem aliasFormerNormalizationVEnvs_wf :
   hasPrimitives := aliasFormerNormalization_hasPrimitives
   safePrimitives := aliasFormerNormalization_safePrimitives
   mono := fun _ => .rfl
+  projectionReady := by
+    intro _ name _ _ h
+    simp only [Kernel.Environment.isProjectionReadyStructure,
+      aliasFormerNormalizationKernelEnv,
+      Kernel.Environment.ofConstants] at h
+    simp only [typeFamilyAliasMap_wf.find?'_eq_find?] at h
+    simp only [typeFamilyAliasMap, SMap.WF.find?_insert
+      (s := ({} : ConstMap)) SMap.WF.empty] at h
+    simp [SMap.find?, typeFamilyAliasInfo] at h
 
 private def aliasFormerNormalizationContext : TypeChecker.VContext :=
   TypeChecker.VContext.mk' aliasFormerNormalizationVEnvs_wf
@@ -3542,6 +3559,19 @@ private theorem aliasRecNormalizationVEnvs_wf :
   hasPrimitives := aliasRecNormalization_hasPrimitives
   safePrimitives := aliasRecNormalization_safePrimitives
   mono := fun _ => .rfl
+  projectionReady := by
+    intro _ name _ _ h
+    simp only [Kernel.Environment.isProjectionReadyStructure,
+      aliasRecNormalizationKernelEnv,
+      Kernel.Environment.ofConstants] at h
+    simp only [aliasRecTypeMap_wf.find?'_eq_find?] at h
+    simp only [aliasRecTypeMap, recAliasMap_wf.find?_insert] at h
+    simp only [recAliasMap, SMap.WF.find?_insert
+      (s := ({} : ConstMap)) SMap.WF.empty] at h
+    by_cases hAliasRec : ``AliasRec = name <;>
+      by_cases hRecAlias : ``RecAlias = name <;>
+      simp +decide [hAliasRec, hRecAlias, SMap.find?, aliasRecInfo,
+        recAliasInfo] at h
 
 private def aliasRecNormalizationContext : TypeChecker.VContext :=
   TypeChecker.VContext.mk' aliasRecNormalizationVEnvs_wf
@@ -7440,6 +7470,25 @@ private def aliasFormerFamilyStage :
   validation := aliasFormerFamilyValidationRun
   typeEnv := aliasFormerTypeEnv
   addInduct := aliasFormerCtorNormalizationAddType
+  projectionReady := by
+    intro name _ _ h
+    simp only [aliasFormerCtorCandidateContext,
+      aliasFormerCtorNormalizationKernelEnv,
+      Kernel.Environment.isProjectionReadyStructure,
+      Kernel.Environment.ofConstants] at h
+    simp only [aliasFormerTypeMap_wf.find?'_eq_find?] at h
+    simp only [aliasFormerTypeMap, typeFamilyAliasMap_wf.find?_insert] at h
+    simp only [typeFamilyAliasMap, SMap.WF.find?_insert
+      (s := ({} : ConstMap)) SMap.WF.empty] at h
+    by_cases hAliasFormer : ``AliasFormer = name
+    · subst name
+      simp [SMap.find?, aliasFormerInfo, typeFamilyAliasInfo] at h
+    · by_cases hTypeFamilyAlias : ``TypeFamilyAlias = name
+      · subst name
+        simp [hAliasFormer, SMap.find?, aliasFormerInfo,
+          typeFamilyAliasInfo] at h
+      · simp [hAliasFormer, hTypeFamilyAlias, SMap.find?, aliasFormerInfo,
+          typeFamilyAliasInfo] at h
   family_lctx_eq := rfl
   constructorContext_eq := rfl
   quotInit_eq := rfl
@@ -8379,6 +8428,19 @@ private def annotatedPiFamilyStage :
   validation := annotatedPiFamilyValidationRun
   typeEnv := annotatedPiTypeEnv
   addInduct := annotatedPiAddType
+  projectionReady := by
+    intro name _ _ h
+    simp only [annotatedPiCtorCandidateContext, annotatedPiTypeKernelEnv,
+      Kernel.Environment.isProjectionReadyStructure,
+      Kernel.Environment.ofConstants] at h
+    simp only [annotatedPiTypeMap_wf.find?'_eq_find?] at h
+    simp only [annotatedPiTypeMap, outParamMap_wf.find?_insert] at h
+    simp only [outParamMap, SMap.WF.find?_insert
+      (s := ({} : ConstMap)) SMap.WF.empty] at h
+    by_cases hAnnotatedPi : ``AnnotatedPi = name <;>
+      by_cases hOutParam : ``outParam = name <;>
+      simp +decide [hAnnotatedPi, hOutParam, SMap.find?, annotatedPiInfo,
+        annotationOutParamInfo] at h
   family_lctx_eq := rfl
   constructorContext_eq := rfl
   quotInit_eq := rfl

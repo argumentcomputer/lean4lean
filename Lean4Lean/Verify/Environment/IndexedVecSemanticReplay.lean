@@ -103,6 +103,60 @@ theorem indexedVecSemanticNatSafePrimitives :
           exact ⟨rfl, rfl⟩
         · simp [SMap.find?] at hfind
 
+theorem indexedVecKernelEnv_noProjectionReady (name : Name) :
+    indexedVecKernelEnv.isProjectionReadyStructure name = false := by
+  simp only [indexedVecKernelEnv,
+    Kernel.Environment.isProjectionReadyStructure,
+    Kernel.Environment.ofConstants]
+  simp only [natMap_wf.find?'_eq_find?]
+  simp only [natMap, natCtorMap_wf.find?_insert]
+  simp only [natCtorMap, natZeroMap_wf.find?_insert]
+  simp only [natZeroMap, natTypeMap_wf.find?_insert]
+  simp only [natTypeMap, SMap.WF.find?_insert
+    (s := ({} : ConstMap)) SMap.WF.empty]
+  by_cases hRec : ``Nat.rec = name
+  · subst name
+    simp [SMap.find?, natRecInfo]
+  · by_cases hSucc : ``Nat.succ = name
+    · subst name
+      simp [hRec, SMap.find?, natSuccInfo]
+    · by_cases hZero : ``Nat.zero = name
+      · subst name
+        simp [hRec, hSucc, SMap.find?, natZeroInfo]
+      · by_cases hNat : ``Nat = name
+        · subst name
+          simp [hRec, hSucc, hZero, SMap.find?, natInfo]
+        · simp [hRec, hSucc, hZero, hNat, SMap.find?]
+
+theorem indexedVecTypeEnv_noProjectionReady (name : Name) :
+    ctorContext.env.isProjectionReadyStructure name = false := by
+  simp only [ctorContext, ctorEnv,
+    Kernel.Environment.isProjectionReadyStructure,
+    Kernel.Environment.ofConstants]
+  simp only [indexedVecTypeMap_wf.find?'_eq_find?]
+  simp only [indexedVecTypeMap, natMap_wf.find?_insert]
+  simp only [natMap, natCtorMap_wf.find?_insert]
+  simp only [natCtorMap, natZeroMap_wf.find?_insert]
+  simp only [natZeroMap, natTypeMap_wf.find?_insert]
+  simp only [natTypeMap, SMap.WF.find?_insert
+    (s := ({} : ConstMap)) SMap.WF.empty]
+  by_cases hVec : ``IndexedVec = name
+  · subst name
+    simp [SMap.find?, indexedVecInfo]
+  · by_cases hRec : ``Nat.rec = name
+    · subst name
+      simp [hVec, SMap.find?, natRecInfo]
+    · by_cases hSucc : ``Nat.succ = name
+      · subst name
+        simp [hVec, hRec, SMap.find?, natSuccInfo]
+      · by_cases hZero : ``Nat.zero = name
+        · subst name
+          simp [hVec, hRec, hSucc, SMap.find?, natZeroInfo]
+        · by_cases hNat : ``Nat = name
+          · subst name
+            simp [hVec, hRec, hSucc, hZero, SMap.find?, natInfo]
+          · simp [hVec, hRec, hSucc, hZero, hNat, SMap.find?]
+
 def indexedVecSemanticNatVEnvs : VEnvs where
   venv _ := natFinalEnv
 
@@ -114,6 +168,10 @@ theorem indexedVecSemanticNatVEnvsWF : indexedVecSemanticNatVEnvs.WF indexedVecK
   hasPrimitives := indexedVecSemanticNatHasPrimitives
   safePrimitives := indexedVecSemanticNatSafePrimitives
   mono := fun _ => .rfl
+  projectionReady := by
+    intro _ name _ _ h
+    rw [indexedVecKernelEnv_noProjectionReady] at h
+    contradiction
 
 def indexedVecSemanticAddType :
     AddInductConstant .induct natMap natFinalEnv
@@ -172,6 +230,10 @@ def indexedVecFamilyStage :
   validation := indexedVecFamilyValidationRun
   typeEnv := indexedVecTypeEnv
   addInduct := indexedVecSemanticAddType
+  projectionReady := by
+    intro name _ _ h
+    rw [indexedVecTypeEnv_noProjectionReady] at h
+    contradiction
   family_lctx_eq := rfl
   constructorContext_eq := rfl
   quotInit_eq := rfl

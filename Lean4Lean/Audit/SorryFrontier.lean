@@ -136,7 +136,6 @@ private def allowlist : Array Lean.Name := #[
   -- (NormLevel.subsumption_eval and Level.isEquiv_wf were proved on the
   -- formalization line, 2026-08-05/07, and left the frontier.)
   `Lean4Lean.addDecl.WF,
-  `Lean4Lean.TypeChecker.Inner.inferProj.WF,
   `Lean4Lean.TypeChecker.Inner.reduceRecursor.WF,
   `Lean4Lean.TypeChecker.Inner.reduceProj.WF,
   `Lean4Lean.TypeChecker.Inner.tryEtaStructCore.WF,

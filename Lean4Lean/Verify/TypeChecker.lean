@@ -16,6 +16,7 @@ structure VEnvs.WF (env : Environment) (ves : VEnvs) where
   safePrimitives : env.find? n = some ci →
     Environment.primitives.contains n → ci.safety = .safe ∧ ci.levelParams = []
   mono : safety ≤ safety' → ves.venv safety' ≤ ves.venv safety
+  projectionReady : ProjectionReady env (ves.venv safety)
 
 
 namespace TypeChecker
@@ -45,6 +46,7 @@ def VContext.mk' {env : Environment} {ves : VEnvs} (wf : ves.WF env)
   hasPrimitives := wf.hasPrimitives
   safePrimitives := wf.safePrimitives
   trenv := wf.tr
+  projectionReady := wf.projectionReady
   mlctx := .nil
   mlctx_wf := trivial
   lctx_eq := rfl

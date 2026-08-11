@@ -5215,21 +5215,6 @@ theorem Closed.getAppArgsList
   | bvar | fvar | mvar | sort | const | lit | mdata | proj | lam | forallE |
       letE => simp [Expr.getAppArgsList]
 
-theorem FVarsIn.getAppArgsList
-    (fvars : FVarsIn predicate expression) :
-    ∀ argument ∈ expression.getAppArgsList,
-      FVarsIn predicate argument := by
-  induction expression with
-  | app function argument functionIH argumentIH =>
-      intro candidate member
-      rw [Expr.getAppArgsList, expr_getAppArgsList_acc] at member
-      simp only [List.mem_append, List.mem_singleton] at member
-      rcases member with member | rfl
-      · exact functionIH fvars.1 candidate member
-      · exact fvars.2
-  | bvar | fvar | mvar | sort | const | lit | mdata | proj | lam | forallE |
-      letE => simp [Expr.getAppArgsList]
-
 private theorem vexpr_appHead_appN (head : VExpr) (arguments : List VExpr) :
     VExpr.appHead (VExpr.appN head arguments) = VExpr.appHead head := by
   induction arguments generalizing head with

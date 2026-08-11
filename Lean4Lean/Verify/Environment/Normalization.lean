@@ -3625,6 +3625,10 @@ structure CandidateFamilyStagedInput
   typeEnv : VEnv
   addInduct : AddInductConstant .induct familyContext.env.constants env
     raw.toVConstVal constructorContext.env.constants typeEnv
+  /-- The staged family environment has not yet completed a new projection
+  artifact; any already-complete host structure remains backed by a registered
+  Theory view. -/
+  projectionReady : ProjectionReady constructorContext.env typeEnv
   family_lctx_eq : familyContext.lctx = {}
   constructorContext_eq : constructorContext =
     { familyContext with env := constructorContext.env }
@@ -3688,6 +3692,7 @@ def CandidateFamilyStagedInput.postContext
       rw [input.constructorContext_eq]]
     rw [input.quotInit_eq]
     exact postTr
+  projectionReady := input.projectionReady
   mlctx := .nil
   mlctx_wf := trivial
   lctx_eq := by
@@ -3805,6 +3810,7 @@ theorem CandidateFamilyStagedInput.validationContextRunFromPre
         have postVenv : input.postContext.venv = input.typeEnv := rfl
         simpa only [validationSafety, postEnv, postVenv] using
           input.postContext.trenv
+      projectionReady := input.postContext.projectionReady
       mlctx_wf := by
         simpa only [terminalLparams] using postMLWF }
   have validationContextEq : validationContext.toContext =

@@ -136,6 +136,17 @@ theorem Closed.getAppArgsList {e} (h : Closed e)
     {{a}} (ha : a ∈ e.getAppArgsList) : Closed a :=
   h.getAppArgsRevList (by simpa [← Expr.getAppArgsList_reverse])
 
+theorem FVarsIn.getAppArgsRevList {e} (h : FVarsIn P e)
+    {{a}} (ha : a ∈ e.getAppArgsRevList) : FVarsIn P a := by
+  revert a
+  unfold Expr.getAppArgsRevList
+  split <;> simp
+  exact ⟨h.2, FVarsIn.getAppArgsRevList h.1⟩
+
+theorem FVarsIn.getAppArgsList {e} (h : FVarsIn P e)
+    {{a}} (ha : a ∈ e.getAppArgsList) : FVarsIn P a :=
+  h.getAppArgsRevList (by simpa [← Expr.getAppArgsList_reverse])
+
 theorem Closed.looseBVarRange_le : Closed e k → e.looseBVarRange' ≤ k := by
   induction e generalizing k <;>
     simp +contextual [*, Closed, Expr.looseBVarRange', Nat.max_le]

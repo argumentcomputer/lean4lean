@@ -79,6 +79,13 @@ theorem cvmEmptyVEnvsWF :
   hasPrimitives := l4l05EmptyHasPrimitives
   safePrimitives := cvmEmptySafePrimitives
   mono := fun _ => .rfl
+  projectionReady := by
+    intro _ name _ _ h
+    simp only [constructorValidityMatrixContext,
+      Kernel.Environment.isProjectionReadyStructure,
+      Kernel.Environment.ofConstants] at h
+    simp only [SMap.WF.find?'_eq_find? SMap.WF.empty] at h
+    simp [SMap.find?] at h
 
 theorem prbEmptySafePrimitives :
     propRecursiveBoundaryContext.env.find? name = some info →
@@ -98,6 +105,13 @@ theorem prbEmptyVEnvsWF :
   hasPrimitives := l4l05EmptyHasPrimitives
   safePrimitives := prbEmptySafePrimitives
   mono := fun _ => .rfl
+  projectionReady := by
+    intro _ name _ _ h
+    simp only [propRecursiveBoundaryContext,
+      Kernel.Environment.isProjectionReadyStructure,
+      Kernel.Environment.ofConstants] at h
+    simp only [SMap.WF.find?'_eq_find? SMap.WF.empty] at h
+    simp [SMap.find?] at h
 
 def cvmExecutionResult :=
   AddInductive.buildNormalizationCandidateExecution 2
@@ -544,6 +558,24 @@ def cvmDeclaredInfo : ConstantInfo :=
     0 false
     cvmCandidate.families.singleton.familyType.type.trace.terminalContext
 
+theorem cvmDeclaredInfo_isRec :
+    (AddInductive.singletonDeclaredInfo
+      cvmFamilyValidationRun.stats 2 0 constructorValidityMatrixKernelType
+      0 false
+      cvmCandidate.families.singleton.familyType.type.trace.terminalContext).isRec =
+      true := by
+  simp only [AddInductive.singletonDeclaredInfo]
+  rw [cvmFamilyValidationRun.stats_eq]
+  simp [cvmFamilyValidationRun,
+    AddInductive.CandidateExprTrace.singletonCandidateInductiveStats,
+    AddInductive.isRec, AddInductive.isRec.loop,
+    AddInductive.hasIndOcc,
+    constructorValidityMatrixKernelType,
+    constructorValidityMatrixKernelCtor,
+    constructorValidityMatrixInfo, constructorValidityMatrixMkInfo,
+    ConstantInfo.name, ConstantInfo.type, ConstantInfo.toConstantVal,
+    Expr.constName!]
+
 theorem cvmFamilyNames_eq :
     constructorValidityMatrixKernelType.name =
       constructorValidityMatrixType.name := by
@@ -562,6 +594,43 @@ theorem cvmFamilyMap_add :
       0 false
       cvmCandidate.families.singleton.familyType.type.trace.terminalContext
       cvmExecution.familyEnv cvmStatsNindices_eq h
+
+theorem cvmConstructorContext_noProjectionReady (name : Name) :
+    cvmConstructorContext.env.isProjectionReadyStructure name = false := by
+  have hConstants :
+      cvmConstructorContext.env.constants =
+        ({} : ConstMap).insert constructorValidityMatrixType.name
+          cvmDeclaredInfo := by
+    simp only [cvmConstructorContext]
+    rw [cvmFamilyMap_add, cvmTerminalEnv_eq]
+    rfl
+  have hMap :
+      (({} : ConstMap).insert constructorValidityMatrixType.name
+        cvmDeclaredInfo).WF :=
+    SMap.WF.empty.insert _ _ (by simp [SMap.find?])
+  by_cases hName : constructorValidityMatrixType.name = name
+  · subst name
+    apply Kernel.Environment.isProjectionReadyStructure_false_of_no_ctorInfo
+      (info := AddInductive.singletonDeclaredInfo
+        cvmFamilyValidationRun.stats 2 0 constructorValidityMatrixKernelType
+        0 false
+        cvmCandidate.families.singleton.familyType.type.trace.terminalContext)
+    · rw [hConstants, hMap.find?'_eq_find?,
+        SMap.WF.find?_insert
+          (s := ({} : ConstMap)) SMap.WF.empty]
+      simp [cvmDeclaredInfo]
+    · intro ctor ctorInfo hctor
+      rw [hConstants, hMap.find?'_eq_find?,
+        SMap.WF.find?_insert
+          (s := ({} : ConstMap)) SMap.WF.empty] at hctor
+      split at hctor
+      · cases hctor
+      · simp [SMap.find?] at hctor
+  · apply Kernel.Environment.isProjectionReadyStructure_false_of_not_found
+    rw [hConstants, hMap.find?'_eq_find?,
+      SMap.WF.find?_insert
+        (s := ({} : ConstMap)) SMap.WF.empty]
+    simp [hName, SMap.find?]
 
 def cvmTypeEnv : VEnv :=
   (VEnv.empty.addConst constructorValidityMatrixType.name
@@ -626,6 +695,10 @@ def cvmFamilyStage :
   validation := cvmFamilyValidationRun
   typeEnv := cvmTypeEnv
   addInduct := cvmAddType
+  projectionReady := by
+    intro name _ _ h
+    rw [cvmConstructorContext_noProjectionReady] at h
+    contradiction
   family_lctx_eq := rfl
   constructorContext_eq := rfl
   quotInit_eq := by
@@ -1789,6 +1862,37 @@ theorem prbTerminalEnv_eq :
       congrArg AddInductive.Context.env prbFamilyCandidateContext_eq
     _ = propRecursiveBoundaryContext.env := rfl
 
+theorem prbConstructorContext_noProjectionReady (name : Name) :
+    prbConstructorContext.env.isProjectionReadyStructure name = false := by
+  have hConstants :
+      prbConstructorContext.env.constants =
+        ({} : ConstMap).insert propRecursiveBoundaryType.name
+          prbDeclaredInfo := by
+    simp only [prbConstructorContext]
+    rw [prbFamilyMap_add, prbTerminalEnv_eq]
+    rfl
+  have hMap :
+      (({} : ConstMap).insert propRecursiveBoundaryType.name
+        prbDeclaredInfo).WF :=
+    SMap.WF.empty.insert _ _ (by simp [SMap.find?])
+  by_cases hName : propRecursiveBoundaryType.name = name
+  · subst name
+    apply Kernel.Environment.isProjectionReadyStructure_false_of_numIndices_ne
+      (info := AddInductive.singletonDeclaredInfo
+        prbFamilyValidationRun.stats 1 1 propRecursiveBoundaryKernelType
+        0 false
+        prbCandidate.families.singleton.familyType.type.trace.terminalContext)
+    · rw [hConstants, hMap.find?'_eq_find?,
+        SMap.WF.find?_insert
+          (s := ({} : ConstMap)) SMap.WF.empty]
+      simp [prbDeclaredInfo]
+    · simp [AddInductive.singletonDeclaredInfo]
+  · apply Kernel.Environment.isProjectionReadyStructure_false_of_not_found
+    rw [hConstants, hMap.find?'_eq_find?,
+      SMap.WF.find?_insert
+        (s := ({} : ConstMap)) SMap.WF.empty]
+    simp [hName, SMap.find?]
+
 theorem prbDeclaredInfo_tr :
     TrConstVal .safe VEnv.empty prbDeclaredInfo
       propRecursiveBoundaryType.toVConstVal := by
@@ -1842,6 +1946,10 @@ def prbFamilyStage :
   validation := prbFamilyValidationRun
   typeEnv := prbTypeEnv
   addInduct := prbAddType
+  projectionReady := by
+    intro name _ _ h
+    rw [prbConstructorContext_noProjectionReady] at h
+    contradiction
   family_lctx_eq := rfl
   constructorContext_eq := rfl
   quotInit_eq := by

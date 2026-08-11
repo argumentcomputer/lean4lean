@@ -200,32 +200,46 @@ def getSortLevel (e : Expr) : RecM Level := do
 
 def isProp (e : Expr) : RecM Bool := return (← getSortLevel e).isAlwaysZero
 
+def invalidProj (e : Expr) : RecM α := do
+  throw <| .invalidProj (← getEnv) (← getLCtx) e
+
+def inferProjParams (proj : Expr) : List Expr → Expr → RecM Expr
+  | [], r => pure r
+  | arg :: args, r => do
+    let .forallE _ _ body _ ← whnf r | invalidProj proj
+    inferProjParams proj args (body.instantiate1 arg)
+
+def inferProjFields (proj : Expr) (typeName : Name)
+    (struct : Expr) (maybePropType : Bool) :
+    Nat → Nat → Expr → RecM Expr
+  | _, 0, r => pure r
+  | fieldIdx, count + 1, r => do
+    let .forallE _ dom body _ ← whnf r | invalidProj proj
+    if body.hasLooseBVars && maybePropType then
+      if !(← isProp dom) then invalidProj proj
+    inferProjFields proj typeName struct maybePropType (fieldIdx + 1) count
+      (body.instantiate1 (.proj typeName fieldIdx struct))
+
 def inferProj (typeName : Name) (idx : Nat) (struct structType : Expr) : RecM Expr := do
   let e := Expr.proj typeName idx struct
   let type ← whnf structType
   type.withApp fun I args => do
   let env ← getEnv
-  let fail {_} := do throw <| .invalidProj env (← getLCtx) e
-  let .const I_name I_levels := I | fail
-  if typeName != I_name then fail
-  let .inductInfo I_val ← env.get I_name | fail
-  let [c] := I_val.ctors | fail
-  if args.size != I_val.numParams + I_val.numIndices then fail
+  let .const I_name I_levels := I | invalidProj e
+  if typeName != I_name then invalidProj e
+  let .inductInfo I_val ← env.get I_name | invalidProj e
+  let [c] := I_val.ctors | invalidProj e
+  unless env.isProjectionReadyStructure I_name do invalidProj e
+  if args.size != I_val.numParams + I_val.numIndices then invalidProj e
   let c_info ← env.get c
-  let mut r := c_info.instantiateTypeLevelParams I_levels
-  for i in [:I_val.numParams] do
-    let .forallE _ _ b _ ← whnf r | fail
-    r := b.instantiate1 args[i]!
+  let .ctorInfo ctorInfo := c_info | invalidProj e
+  unless idx < ctorInfo.numFields do invalidProj e
+  let r ← inferProjParams e (args.toList.take I_val.numParams)
+    (c_info.instantiateTypeLevelParams I_levels)
   let maybePropType := !(← getSortLevel type).isNeverZero
-  for i in [:idx] do
-    let .forallE _ dom b _ ← whnf r | fail
-    if b.hasLooseBVars then
-      if maybePropType then if !(← isProp dom) then fail
-      r := b.instantiate1 (.proj I_name i struct)
-    else
-      r := b
-  let .forallE _ dom _ _ ← whnf r | fail
-  if maybePropType then if !(← isProp dom) then fail
+  let r ← inferProjFields e I_name struct maybePropType 0 idx r
+  let .forallE _ dom _ _ ← whnf r | invalidProj e
+  if maybePropType then if !(← isProp dom) then invalidProj e
   return dom
 
 def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do

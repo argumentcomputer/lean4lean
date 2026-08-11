@@ -281,21 +281,6 @@ theorem isDefEqApp.WF {c : VContext} {s : VState}
   simp [Expr.getAppArgs_toList, Expr.mkAppList_getAppArgsList] at h2
   exact h2 hb _ he₁ _ he₂
 
-theorem getSortLevel.WF
-    (he : c.TrExprS e e') : (getSortLevel e).WF c s fun l _ =>
-      ∃ u', VLevel.ofLevel c.lparams l = some u' ∧ c.HasType e' (.sort u') := by
-  refine (inferType.WF he).bind fun ty _ le ⟨ty', _, _, h1, h2⟩ => ?_
-  refine (ensureSortCore.WF h1).bind fun ty _ le h => ?_
-  obtain ⟨⟨u, rfl⟩, ⟨ty₂, h3, h4⟩, _⟩ := h
-  let .sort hu := h3
-  exact .pure ⟨_, hu, h2.defeqU_r c.Ewf c.Δwf h4.symm⟩
-
-theorem isProp.WF
-    (he : c.TrExprS e e') : (isProp e).WF c s fun b _ => b → c.HasType e' (.sort .zero) := by
-  refine (getSortLevel.WF he).bind fun l _ le ⟨u', hu, h⟩ => .pure fun H => ?_
-  exact h.defeqU_r c.Ewf c.Δwf
-    ⟨_, .sortDF (.of_ofLevel hu) trivial (ofLevel_isAlwaysZero hu H)⟩
-
 theorem isDefEqProofIrrel.WF {c : VContext} {s : VState}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (isDefEqProofIrrel e₁ e₂) fun b _ => b = .true → c.IsDefEqU e₁' e₂' := by
