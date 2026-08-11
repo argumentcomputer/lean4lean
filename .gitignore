@@ -4,3 +4,4 @@
 # Keep scratch plans local while versioning the authoritative execution ladder.
 /plans/*
 !/plans/roadmap.md
+!/plans/l4l-15-structure-eta-design.md

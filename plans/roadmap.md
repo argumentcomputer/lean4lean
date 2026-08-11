@@ -602,6 +602,8 @@ The mandatory order of work:
    proof that gains a case arm — including how the Tier R statements
    (`parRed`, the inversion family) and the generic `[Params]`
    development absorb the rule.
+   The committed design record is
+   `plans/l4l-15-structure-eta-design.md`.
 2. **Ledger entry before the rule lands.** Record the divergence in
    `upstream-divergence.md`: owner, rule, downstream impact, the
    parallel upstream conversation, and the removal condition — upstream
@@ -610,6 +612,7 @@ The mandatory order of work:
    declines any Theory change, the recorded fallback is disabling the
    two executable heuristics rather than certifying them from an absent
    rule.
+   This is ledger entry D019.
 3. **Implementation.** Add the rule, derive `VEnv.HasStructureEta` for
    registered views, let the staged conditional proofs close both
    unconditional Tier V roots, and repair every case arm from the

@@ -1096,6 +1096,42 @@ to the replacement.
 - **Removal condition:** upstream bumps to the final release (expected
   imminently); no code delta is attached to this row.
 
+## D019 — registered structure eta in Theory
+
+- **Status:** approved intentional fork divergence; L4L-15B implementation
+  in progress on the reconciled v4.33 base.
+- **Owner:** John C. Burnham; semantic review is part of the L4L-20C PR
+  series.
+- **Delta:** extend Theory with an explicit environment-registered
+  structure-eta descriptor and a typed `VEnv.IsDefEq.structEta` rule for the
+  same nonrecursive, single-constructor, zero-index structures accepted by
+  Lean's kernel. The descriptor fixes the family and constructor heads and
+  the deterministic recursor-encoded projector list, and carries syntactic
+  lift/substitution laws. Registration is monotone and ordered; the equality
+  constructor retains an exact family parameter spine and both endpoint
+  typings. The complete design and case inventory are recorded in
+  `plans/l4l-15-structure-eta-design.md`.
+- **Downstream impact:** every exhaustive `IsDefEq` consumer gains a case,
+  including strong typing/inversion, weakening and substitution, environment
+  monotonicity, Church--Rosser/parallel reduction, head standardization,
+  nested transport, and the Verify structure-artifact bridge. Downstream
+  Theory consumers see an additive descriptor/registry API and one additional
+  definitional-equality constructor.
+- **Tests:** dependent parameterized, zero-field parameterized, proof-field,
+  and Prop-valued positive fixtures; recursive, multi-constructor, and indexed
+  negative fixtures; exact axiom guards for registration, subject reduction,
+  Church--Rosser, `tryEtaStructCore.WF`, and `isDefEqUnitLike.WF`; full sorry
+  frontier and release gate.
+- **Axiom note:** no new project axiom or source `sorry` is permitted. Existing
+  L4L-16--L4L-18 frontier dependencies remain explicit in per-root manifests.
+- **Parallel upstream conversation:** implementation is intentionally allowed
+  to proceed in the fork as of 2026-08-11; upstream review is deferred to the
+  L4L-20C proof-PR sequence. Record the issue/PR URL here when opened.
+- **Removal condition:** upstream adopts the registered rule or an agreed
+  equivalent and the fork migrates. If upstream rejects a Theory eta rule,
+  disable the two executable structure-eta heuristics and remove this
+  divergence rather than retaining an unsound verifier claim.
+
 ## Review checklist
 
 At each publish or ix pin boundary:
