@@ -157,6 +157,118 @@ theorem indexedVecTypeEnv_noProjectionReady (name : Name) :
             simp [hVec, hRec, hSucc, hZero, SMap.find?, natInfo]
           · simp [hVec, hRec, hSucc, hZero, hNat, SMap.find?]
 
+private theorem addConst_constants {env env' : VEnv} {name : Name}
+    {ci : VConstant} (hadd : env.addConst name ci = some env') (query : Name) :
+    env'.constants query =
+      if name = query then some ci else env.constants query := by
+  unfold VEnv.addConst at hadd
+  split at hadd <;> cases hadd
+  rfl
+
+private theorem structureView_nparams_eq_zero_of_nat
+    {env : VEnv} {view : VStructureView} (hview : view.WF env)
+    (hname : ``Nat = view.name)
+    (hNat : env.constants ``Nat = some natType.toVConstant) :
+    view.nparams = 0 := by
+  have hfamily := hview.family
+  rw [← hname, hNat] at hfamily
+  have hsourceType : view.generation.block.sourceType.type = natType.type :=
+    congrArg VConstant.type (Option.some.inj hfamily).symm
+  have hshape := view.generation.shape_eq
+  simp only [VInductDecl.NormalizedChecked.generationShape, Bool.and_eq_true,
+    beq_iff_eq] at hshape
+  have hrawParamsLength := hshape.1.1.1.1.1
+  have hNatType : natType.type = .sort (.succ .zero) := rfl
+  rw [VInductDecl.NormalizedChecked.rawParams, hsourceType,
+    hNatType] at hrawParamsLength
+  cases hnp : view.source.nparams with
+  | zero => simpa using hnp
+  | succ _ =>
+    rw [hnp] at hrawParamsLength
+    simp [VExpr.telN] at hrawParamsLength
+
+private theorem natFinalEnv_structureView_nparams_eq_zero
+    {view : VStructureView} (hview : view.WF natFinalEnv) :
+    view.nparams = 0 := by
+  have hrec := hview.recursor
+  change natRecEnv.constants view.recursorName =
+    some view.generation.recursor at hrec
+  rw [addConst_constants
+      (show natCtorEnv.addConst ``Nat.rec
+        (VInductDecl.recConst 0 ``Nat 0 natType) = some natRecEnv from rfl),
+    addConst_constants
+      (show natZeroEnv.addConst natType.ctors[1].name
+        natType.ctors[1].toVConstant = some natCtorEnv from rfl),
+    addConst_constants
+      (show natTypeEnv.addConst natType.ctors[0].name
+        natType.ctors[0].toVConstant = some natZeroEnv from rfl),
+    addConst_constants
+      (show VEnv.empty.addConst natType.name natType.toVConstant =
+        some natTypeEnv from rfl)] at hrec
+  have hNatName : natType.name = ``Nat := rfl
+  have hZeroName : natType.ctors[0].name = ``Nat.zero := rfl
+  have hSuccName : natType.ctors[1].name = ``Nat.succ := rfl
+  rw [hNatName, hZeroName, hSuccName] at hrec
+  simp [VEnv.empty, VStructureView.recursorName] at hrec
+  exact structureView_nparams_eq_zero_of_nat hview hrec.1
+    nat_type_env_lookup
+
+private theorem indexedVecTypeEnv_structureView_nparams_eq_zero
+    {view : VStructureView} (hview : view.WF indexedVecTypeEnv) :
+    view.nparams = 0 := by
+  have hrec := hview.recursor
+  rw [addConst_constants
+      (show natFinalEnv.addConst indexedVecType.name
+        indexedVecType.toVConstant = some indexedVecTypeEnv from rfl)] at hrec
+  change (if indexedVecType.name = view.recursorName then
+      some indexedVecType.toVConstant else
+      natRecEnv.constants view.recursorName) =
+    some view.generation.recursor at hrec
+  rw [addConst_constants
+      (show natCtorEnv.addConst ``Nat.rec
+        (VInductDecl.recConst 0 ``Nat 0 natType) = some natRecEnv from rfl),
+    addConst_constants
+      (show natZeroEnv.addConst natType.ctors[1].name
+        natType.ctors[1].toVConstant = some natCtorEnv from rfl),
+    addConst_constants
+      (show natTypeEnv.addConst natType.ctors[0].name
+        natType.ctors[0].toVConstant = some natZeroEnv from rfl),
+    addConst_constants
+      (show VEnv.empty.addConst natType.name natType.toVConstant =
+        some natTypeEnv from rfl)] at hrec
+  have hVecName : indexedVecType.name = ``IndexedVec := rfl
+  have hNatName : natType.name = ``Nat := rfl
+  have hZeroName : natType.ctors[0].name = ``Nat.zero := rfl
+  have hSuccName : natType.ctors[1].name = ``Nat.succ := rfl
+  rw [hVecName, hNatName, hZeroName, hSuccName] at hrec
+  simp [VEnv.empty, VStructureView.recursorName] at hrec
+  exact structureView_nparams_eq_zero_of_nat hview hrec.1 rfl
+
+private theorem natMap_constructor_numParams
+    {view : VStructureView} {info : ConstructorVal}
+    (hzero : view.nparams = 0)
+    (hfind : natMap.find? view.constructorName = some (.ctorInfo info)) :
+    info.numParams = view.nparams := by
+  rw [natMap, natCtorMap_wf.find?_insert] at hfind
+  split at hfind
+  · cases hfind
+  · rw [natCtorMap, natZeroMap_wf.find?_insert] at hfind
+    split at hfind
+    · simp [natSuccInfo] at hfind
+      cases hfind
+      exact hzero.symm
+    · rw [natZeroMap, natTypeMap_wf.find?_insert] at hfind
+      split at hfind
+      · simp [natZeroInfo] at hfind
+        cases hfind
+        exact hzero.symm
+      · rw [natTypeMap,
+          SMap.WF.find?_insert (s := ({} : ConstMap)) SMap.WF.empty]
+          at hfind
+        split at hfind
+        · cases hfind
+        · simp [SMap.find?] at hfind
+
 def indexedVecSemanticNatVEnvs : VEnvs where
   venv _ := natFinalEnv
 
@@ -168,10 +280,18 @@ theorem indexedVecSemanticNatVEnvsWF : indexedVecSemanticNatVEnvs.WF indexedVecK
   hasPrimitives := indexedVecSemanticNatHasPrimitives
   safePrimitives := indexedVecSemanticNatSafePrimitives
   mono := fun _ => .rfl
-  projectionReady := by
-    intro _ name _ _ h
-    rw [indexedVecKernelEnv_noProjectionReady] at h
-    contradiction
+  projectionReady := {
+    infer := by
+      intro name _info _hfind hready
+      rw [indexedVecKernelEnv_noProjectionReady] at hready
+      contradiction
+    constructorNumParams := by
+      intro view info hview hfind
+      change natMap.find?' view.constructorName =
+        some (.ctorInfo info) at hfind
+      rw [natMap_wf.find?'_eq_find?] at hfind
+      exact natMap_constructor_numParams
+        (natFinalEnv_structureView_nparams_eq_zero hview) hfind }
 
 def indexedVecSemanticAddType :
     AddInductConstant .induct natMap natFinalEnv
@@ -230,10 +350,21 @@ def indexedVecFamilyStage :
   validation := indexedVecFamilyValidationRun
   typeEnv := indexedVecTypeEnv
   addInduct := indexedVecSemanticAddType
-  projectionReady := by
-    intro name _ _ h
-    rw [indexedVecTypeEnv_noProjectionReady] at h
-    contradiction
+  projectionReady := {
+    infer := by
+      intro name _info _hfind hready
+      rw [indexedVecTypeEnv_noProjectionReady] at hready
+      contradiction
+    constructorNumParams := by
+      intro view info hview hfind
+      change indexedVecTypeMap.find?' view.constructorName =
+        some (.ctorInfo info) at hfind
+      rw [indexedVecTypeMap_wf.find?'_eq_find?, indexedVecTypeMap,
+        natMap_wf.find?_insert] at hfind
+      split at hfind
+      · cases hfind
+      · exact natMap_constructor_numParams
+          (indexedVecTypeEnv_structureView_nparams_eq_zero hview) hfind }
   family_lctx_eq := rfl
   constructorContext_eq := rfl
   quotInit_eq := rfl

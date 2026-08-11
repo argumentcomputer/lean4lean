@@ -40,10 +40,6 @@ theorem inferFVar.WF {c : VContext} :
     c.trlctx.find?_of_mem c.Ewf (List.mem_of_find?_eq_some h)
   exact ⟨_, _, h2, .fvar h1, h3, c.Δwf.find?_wf c.Ewf h1⟩
 
-theorem envGet.WF {c : VContext} :
-    (c.env.get name).WF fun ci => c.env.find? name = some ci := by
-  simp [Environment.get]; split <;> [refine .pure ‹_›; exact .throw]
-
 theorem inferConstant.WF {c : VContext}
     (H : ∀ l ∈ ls, l.hasMVar' = false)
     (hinf : inferOnly = true → ∃ e', c.TrExprS (.const name ls) e') :
@@ -639,7 +635,7 @@ theorem inferProj.WF
             · exact invalidProj.WF
             · rename_i hargs
               obtain ⟨artifact⟩ :=
-                c.projectionReady familyName info hfind hready
+                c.projectionReady.infer familyName info hfind hready
               have hhead := hstack.tr
               rw [hfamilyShape] at hhead
               let .const (us' := levels') hfamilyConst hlevelsMap

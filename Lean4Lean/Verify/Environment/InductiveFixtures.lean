@@ -2569,11 +2569,10 @@ private theorem outParamVEnvs_wf : outParamVEnvs.WF outParamKernelEnv where
   hasPrimitives := outParam_hasPrimitives
   safePrimitives := outParam_safePrimitives
   mono := fun _ => .rfl
-  projectionReady := by
-    intro _ name _ _ h
-    simp only [Kernel.Environment.isProjectionReadyStructure,
-      outParamKernelEnv, Kernel.Environment.ofConstants] at h
-    simp only [outParamMap_wf.find?'_eq_find?] at h
+  projectionReady := ProjectionReady.of_no_ctorInfo <| by
+    intro name _info h
+    change outParamMap.find?' name = some (.ctorInfo _info) at h
+    rw [outParamMap_wf.find?'_eq_find?] at h
     simp only [outParamMap, SMap.WF.find?_insert
       (s := ({} : ConstMap)) SMap.WF.empty] at h
     simp [SMap.find?, annotationOutParamInfo] at h
@@ -3436,12 +3435,10 @@ private theorem aliasFormerNormalizationVEnvs_wf :
   hasPrimitives := aliasFormerNormalization_hasPrimitives
   safePrimitives := aliasFormerNormalization_safePrimitives
   mono := fun _ => .rfl
-  projectionReady := by
-    intro _ name _ _ h
-    simp only [Kernel.Environment.isProjectionReadyStructure,
-      aliasFormerNormalizationKernelEnv,
-      Kernel.Environment.ofConstants] at h
-    simp only [typeFamilyAliasMap_wf.find?'_eq_find?] at h
+  projectionReady := ProjectionReady.of_no_ctorInfo <| by
+    intro name _info h
+    change typeFamilyAliasMap.find?' name = some (.ctorInfo _info) at h
+    rw [typeFamilyAliasMap_wf.find?'_eq_find?] at h
     simp only [typeFamilyAliasMap, SMap.WF.find?_insert
       (s := ({} : ConstMap)) SMap.WF.empty] at h
     simp [SMap.find?, typeFamilyAliasInfo] at h
@@ -3559,12 +3556,10 @@ private theorem aliasRecNormalizationVEnvs_wf :
   hasPrimitives := aliasRecNormalization_hasPrimitives
   safePrimitives := aliasRecNormalization_safePrimitives
   mono := fun _ => .rfl
-  projectionReady := by
-    intro _ name _ _ h
-    simp only [Kernel.Environment.isProjectionReadyStructure,
-      aliasRecNormalizationKernelEnv,
-      Kernel.Environment.ofConstants] at h
-    simp only [aliasRecTypeMap_wf.find?'_eq_find?] at h
+  projectionReady := ProjectionReady.of_no_ctorInfo <| by
+    intro name _info h
+    change aliasRecTypeMap.find?' name = some (.ctorInfo _info) at h
+    rw [aliasRecTypeMap_wf.find?'_eq_find?] at h
     simp only [aliasRecTypeMap, recAliasMap_wf.find?_insert] at h
     simp only [recAliasMap, SMap.WF.find?_insert
       (s := ({} : ConstMap)) SMap.WF.empty] at h
@@ -7470,13 +7465,10 @@ private def aliasFormerFamilyStage :
   validation := aliasFormerFamilyValidationRun
   typeEnv := aliasFormerTypeEnv
   addInduct := aliasFormerCtorNormalizationAddType
-  projectionReady := by
-    intro name _ _ h
-    simp only [aliasFormerCtorCandidateContext,
-      aliasFormerCtorNormalizationKernelEnv,
-      Kernel.Environment.isProjectionReadyStructure,
-      Kernel.Environment.ofConstants] at h
-    simp only [aliasFormerTypeMap_wf.find?'_eq_find?] at h
+  projectionReady := ProjectionReady.of_no_ctorInfo <| by
+    intro name _info h
+    change aliasFormerTypeMap.find?' name = some (.ctorInfo _info) at h
+    rw [aliasFormerTypeMap_wf.find?'_eq_find?] at h
     simp only [aliasFormerTypeMap, typeFamilyAliasMap_wf.find?_insert] at h
     simp only [typeFamilyAliasMap, SMap.WF.find?_insert
       (s := ({} : ConstMap)) SMap.WF.empty] at h
@@ -8428,12 +8420,10 @@ private def annotatedPiFamilyStage :
   validation := annotatedPiFamilyValidationRun
   typeEnv := annotatedPiTypeEnv
   addInduct := annotatedPiAddType
-  projectionReady := by
-    intro name _ _ h
-    simp only [annotatedPiCtorCandidateContext, annotatedPiTypeKernelEnv,
-      Kernel.Environment.isProjectionReadyStructure,
-      Kernel.Environment.ofConstants] at h
-    simp only [annotatedPiTypeMap_wf.find?'_eq_find?] at h
+  projectionReady := ProjectionReady.of_no_ctorInfo <| by
+    intro name _info h
+    change annotatedPiTypeMap.find?' name = some (.ctorInfo _info) at h
+    rw [annotatedPiTypeMap_wf.find?'_eq_find?] at h
     simp only [annotatedPiTypeMap, outParamMap_wf.find?_insert] at h
     simp only [outParamMap, SMap.WF.find?_insert
       (s := ({} : ConstMap)) SMap.WF.empty] at h

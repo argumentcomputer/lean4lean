@@ -123,14 +123,38 @@ structure ProjectionArtifact (env : Environment) (name : Name)
     view.generation.block.rawResult = .sort resultLevel
   programsWF : view.ProgramsWF venv
 
-/-- Every complete host structure accepted by projection inference is backed
-by one coherent registered Theory artifact.  This is deliberately separate
-from constant translation: individually translated family, constructor, and
-recursor constants do not by themselves identify one generation artifact. -/
-def ProjectionReady (env : Environment) (venv : VEnv) : Prop :=
-  ∀ name info, env.find? name = some (.inductInfo info) →
+/-- Host/Theory coherence needed by primitive projections.
+
+Inference obtains one complete registered artifact from ready family
+metadata. Reduction additionally relies on the positional host fact that a
+constructor's cached `numParams` agrees with the registered Theory view;
+ordinary constant translation checks the constructor type but does not
+identify which leading binders the host metadata classifies as parameters. -/
+structure ProjectionReady (env : Environment) (venv : VEnv) : Prop where
+  infer : ∀ name info, env.find? name = some (.inductInfo info) →
     env.isProjectionReadyStructure name = true →
     Nonempty (ProjectionArtifact env name info venv)
+  constructorNumParams : ∀ (view : VStructureView) (info : ConstructorVal),
+    view.WF venv →
+    env.find? view.constructorName = some (.ctorInfo info) →
+    info.numParams = view.nparams
+
+/-- Environments which contain no constructor metadata satisfy projection
+readiness vacuously.  This is the common staging case for validation fixtures:
+families may already be present, but their constructors have not been
+installed yet. -/
+theorem ProjectionReady.of_no_ctorInfo
+    (hnoCtor : ∀ name info,
+      env.find? name ≠ some (.ctorInfo info)) :
+    ProjectionReady env venv where
+  infer name _info hfind hready := by
+    have hfalse :=
+      Kernel.Environment.isProjectionReadyStructure_false_of_no_ctorInfo
+        hfind hnoCtor
+    rw [hfalse] at hready
+    contradiction
+  constructorNumParams _view info _hview hfind :=
+    (hnoCtor _ info hfind).elim
 
 namespace TypeChecker
 
@@ -878,6 +902,13 @@ theorem MLCtx.WF.mkLambda_eq {c : MLCtx} (wf : c.WF env Us) (n hn)
   · exact List.nodup_reverse.2 (wf.fvarRevList_nodup ..)
 
 namespace Inner
+
+/-- A successful host-environment lookup returns exactly the constant found
+at the requested name.  Kept in the common checker layer so both inference
+and WHNF reduction can consume the same lookup certificate. -/
+theorem envGet.WF {c : VContext} :
+    (c.env.get name).WF fun ci => c.env.find? name = some ci := by
+  simp [Environment.get]; split <;> [refine .pure ‹_›; exact .throw]
 
 theorem whnf.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     RecM.WF c s (whnf e) fun e₁ _ => c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' :=

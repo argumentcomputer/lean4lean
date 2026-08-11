@@ -2631,6 +2631,38 @@ theorem AppStack.append {e : Expr} (H : AppStack env Us Δ (e.mkAppList as) e' b
 theorem AppStack.build {e : Expr} (H : TrExprS env Us Δ (e.mkAppList as) e') :
     ∃ e', AppStack env Us Δ e e' as := by simpa using AppStack.append (.head H)
 
+/-- Recover the pointwise strict translations of an application spine and
+rebuild the complete translated application.  Unlike the checker-facing
+`AppStack.toSpineWF`, this purely syntactic projection needs no expected
+function type and is therefore available to WHNF reduction. -/
+theorem AppStack.argsTranslation
+    (H : AppStack env Us Δ f f' args) :
+    ∃ args', args.Forall₂ (TrExprS env Us Δ) args' ∧
+      TrExprS env Us Δ (f.mkAppList args) (VExpr.appN f' args') := by
+  induction H with
+  | head h => exact ⟨[], .nil, by simpa⟩
+  | app hfun harg hf ha H ih =>
+    obtain ⟨args', hargs, hfull⟩ := ih
+    refine ⟨_ :: args', .cons ha hargs, ?_⟩
+    simpa [Expr.mkAppList, VExpr.appN] using hfull
+
+/-- A successful lookup on the left side of a pointwise list relation has a
+related lookup at the same position on the right. -/
+theorem List.Forall₂.getElem?_left
+    {α : Type u} {β : Type v} {R : α → β → Prop}
+    {xs : List α} {ys : List β} {i : Nat} {x : α}
+    (H : List.Forall₂ R xs ys) (hx : xs[i]? = some x) :
+    ∃ y : β, ys[i]? = some y ∧ R x y := by
+  induction H generalizing i with
+  | nil => simp at hx
+  | cons hxy _ ih =>
+    cases i with
+    | zero =>
+      simp at hx
+      subst x
+      exact ⟨_, rfl, hxy⟩
+    | succ i => simpa using ih (i := i) (by simpa using hx)
+
 /--
 info: 'Lean4Lean.TrExprS.toConstructor_ready' depends on axioms: [propext, Classical.choice, Quot.sound]
 -/

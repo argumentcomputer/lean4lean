@@ -2871,7 +2871,8 @@ structure ProjectionConstructorAlignment (env : VEnv) (U : Nat)
     (Γ : List VExpr) (view : VStructureView) (levels : List VLevel)
     (params : List VExpr) (idx : Nat)
     (code : VStructureView.ProjectionCode)
-    (runtimeMajor runtimeField : VExpr) where
+    (runtimeConstructorName : Name) (runtimeMajor runtimeField : VExpr) where
+  constructor_name_eq : runtimeConstructorName = view.constructorName
   fields : List VExpr
   field : VExpr
   fields_length :
@@ -2903,8 +2904,9 @@ theorem TrProj.projector_constructor_aligned
       (.forallE (view.structureType levels params)
         (.app code.typeFn.lift (.bvar 0))))
     {runtimeMajor runtimeField : VExpr}
-    (alignment : ProjectionConstructorAlignment env U Γ view levels
-      params idx code runtimeMajor runtimeField) :
+    {runtimeConstructorName : Name}
+    (alignment : ProjectionConstructorAlignment env U Γ view levels params idx
+      code runtimeConstructorName runtimeMajor runtimeField) :
     env.IsDefEqU U Γ (.app code.projector runtimeMajor) runtimeField := by
   have hmajorEq := alignment.major_eq.of_r henv hΓ
     alignment.constructorType
@@ -3109,14 +3111,15 @@ theorem TrProj.instL {ls : List VLevel}
 
 /-- The registered-structure constant-head inversion boundary.
 
-The three conclusions are the projection-specific eliminators supplied by
+The four conclusions are the projection-specific eliminators supplied by
 constant-head injectivity: a type assigned to a syntactically weakened major
 recovers an instantiation below the inserted context; definitionally equal
 majors recover the same registered view/instantiation strongly enough for the
-generated projector programs to be definitionally equal; and a runtime
-constructor head is aligned with the registered constructor and selected
-field.  The last conclusion deliberately provides only typed alignment—the
-iota step remains the proved `projector_constructor_exact` theorem.
+generated projector programs to be definitionally equal; a runtime
+constructor head recovers the registered constructor name; and that head plus
+one selected argument is aligned with the registered constructor and field.
+The last conclusion deliberately provides only typed alignment—the iota step
+remains the proved `projector_constructor_exact` theorem.
 
 Its eventual proof uses `IsDefEqU.weakN_iff` together with injectivity of
 registered inductive heads.  Keeping the boundary in Theory makes the
@@ -3142,6 +3145,18 @@ structure RegisteredStructureHeadInversion (env : VEnv) : Prop where
       env.TrProj U Γ₂ view₂ levels₂ params₂ idx major₂ result₂ →
       env.IsDefEqU U Γ₁ major₁ major₂ →
       env.IsDefEqU U Γ₁ result₁ result₂
+  constructor_name_inv :
+    ∀ {U : Nat} {Γ : List VExpr} {view : VStructureView}
+      {levels : List VLevel} {params : List VExpr} {idx : Nat}
+      {major result runtimeMajor : VExpr}
+      {constructorName : Name} {constructorLevels : List VLevel}
+      {constructorArgs : List VExpr},
+      OnCtx Γ (env.IsType U) →
+      env.TrProj U Γ view levels params idx major result →
+      runtimeMajor = VExpr.appN
+        (.const constructorName constructorLevels) constructorArgs →
+      env.IsDefEqU U Γ runtimeMajor major →
+      constructorName = view.constructorName
   constructor_inv :
     ∀ {U : Nat} {Γ : List VExpr} {view : VStructureView}
       {levels : List VLevel} {params : List VExpr} {idx : Nat}
@@ -3157,7 +3172,7 @@ structure RegisteredStructureHeadInversion (env : VEnv) : Prop where
       constructorArgs[view.nparams + idx]? = some runtimeField →
       env.IsDefEqU U Γ runtimeMajor major →
       Nonempty (ProjectionConstructorAlignment env U Γ view levels params idx
-        code runtimeMajor runtimeField)
+        code constructorName runtimeMajor runtimeField)
 
 /-- Public Tier-R registered-head inversion statement.  L4L-16/17 discharge
 the underlying constant-head theorem; projection structural laws consume only

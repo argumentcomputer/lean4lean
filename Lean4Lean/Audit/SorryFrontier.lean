@@ -137,7 +137,6 @@ private def allowlist : Array Lean.Name := #[
   -- formalization line, 2026-08-05/07, and left the frontier.)
   `Lean4Lean.addDecl.WF,
   `Lean4Lean.TypeChecker.Inner.reduceRecursor.WF,
-  `Lean4Lean.TypeChecker.Inner.reduceProj.WF,
   `Lean4Lean.TypeChecker.Inner.tryEtaStructCore.WF,
   `Lean4Lean.TypeChecker.Inner.isDefEqUnitLike.WF,
   -- Tier R — research-grade metatheory (upstream-driven, not scheduled)
