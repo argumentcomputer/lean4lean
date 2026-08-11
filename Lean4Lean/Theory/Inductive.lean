@@ -41,10 +41,6 @@ preserves the constants occurring in a Theory expression. -/
   induction expression generalizing lift <;>
     simp [VExpr.hasConst, *]
 
-def VExpr.appN (f : VExpr) : List VExpr → VExpr
-  | [] => f
-  | a :: as => (f.app a).appN as
-
 /-- `[.bvar (off+m-1), ..., .bvar off]`: the spine referring to the last `m`
 binders, skipping the innermost `off`. -/
 def VExpr.bvarRevRange (off : Nat) : Nat → List VExpr
@@ -116,16 +112,6 @@ def VEnv.TelDefEq (env : VEnv) (U : Nat) :
     (∃ u, env.IsDefEq U Γ A A' (.sort u)) ∧
       TelDefEq env U (A :: Γ) As As'
   | _, _, _ => False
-
-/-- Typing of an application spine against an iterated pi type: peeling the
-expressions of `es` off `A` one instantiation at a time ends at `B`. This is
-the pointwise typing evidence for index spines; `addInduct_WF` consumes it
-wherever a recursive field or a constructor result applies the block to
-index arguments. -/
-def VEnv.SpineWF (env : VEnv) (U : Nat) (Γ : List VExpr) : VExpr → List VExpr → VExpr → Prop
-  | A, [], B => A = B
-  | A, e :: es, B => ∃ A₁ A₂, A = .forallE A₁ A₂ ∧ env.HasType U Γ e A₁ ∧
-    SpineWF env U Γ (A₂.inst e) es B
 
 namespace VInductDecl
 

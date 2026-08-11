@@ -477,6 +477,7 @@ theorem IsDefEq.reduce_sort (H : Γ ⊢ e ≡ .sort u : A) :
     | refl => exact ⟨_, rfl, rfl⟩
     | sortDF _ _ h => exact ⟨_, rfl, h⟩
     | etaL h => cases ((HasType.sort hu).uniqU henv hΓ h).sort_forallE_inv henv hΓ
+    | structural hs => exact (hs.not_sort_r hΓ hu).elim
     | proofIrrel h1 _ h3 =>
       have := h1.defeqU_l henv hΓ ((HasType.sort hu).uniqU henv hΓ h3).symm
       have := ((HasType.sort (by exact hu)).uniqU henv hΓ this).sort_inv henv hΓ
@@ -497,6 +498,7 @@ theorem IsDefEq.reduce_forallE (H : Γ ⊢ e ≡ .forallE A B : V) :
     | refl
     | forallEDF _ _ h => exact ⟨_, _, rfl⟩
     | etaL h => cases ((hA₁.hasType.2.forallE hB₁).uniqU henv hΓ h).sort_forallE_inv henv hΓ
+    | structural hs => exact (hs.not_forallE_r hΓ (hA₁.hasType.2.forallE hB₁)).elim
     | proofIrrel h1 _ h3 =>
       have := h1.defeqU_l henv hΓ ((hA₁.hasType.2.forallE hB₁).uniqU henv hΓ h3).symm
       have := ((HasType.sort (by exact this.sort_inv henv)).uniqU henv hΓ this).sort_inv henv hΓ

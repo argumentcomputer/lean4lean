@@ -84,6 +84,11 @@ theorem cvmEmptyVEnvsWF :
     change ({} : ConstMap).find?' name = some (.ctorInfo info) at h
     rw [SMap.WF.find?'_eq_find? SMap.WF.empty] at h
     simp [SMap.find?] at h
+  structureEtaReady := StructureEtaReady.of_no_ctorInfo <| by
+    intro name info h
+    change ({} : ConstMap).find?' name = some (.ctorInfo info) at h
+    rw [SMap.WF.find?'_eq_find? SMap.WF.empty] at h
+    simp [SMap.find?] at h
 
 theorem prbEmptySafePrimitives :
     propRecursiveBoundaryContext.env.find? name = some info →
@@ -104,6 +109,11 @@ theorem prbEmptyVEnvsWF :
   safePrimitives := prbEmptySafePrimitives
   mono := fun _ => .rfl
   projectionReady := ProjectionReady.of_no_ctorInfo <| by
+    intro name info h
+    change ({} : ConstMap).find?' name = some (.ctorInfo info) at h
+    rw [SMap.WF.find?'_eq_find? SMap.WF.empty] at h
+    simp [SMap.find?] at h
+  structureEtaReady := StructureEtaReady.of_no_ctorInfo <| by
     intro name info h
     change ({} : ConstMap).find?' name = some (.ctorInfo info) at h
     rw [SMap.WF.find?'_eq_find? SMap.WF.empty] at h
@@ -715,6 +725,8 @@ def cvmFamilyStage :
   typeEnv := cvmTypeEnv
   addInduct := cvmAddType
   projectionReady := ProjectionReady.of_no_ctorInfo
+    cvmConstructorContext_noCtorInfo
+  structureEtaReady := StructureEtaReady.of_no_ctorInfo
     cvmConstructorContext_noCtorInfo
   family_lctx_eq := rfl
   constructorContext_eq := rfl
@@ -1987,6 +1999,8 @@ def prbFamilyStage :
   typeEnv := prbTypeEnv
   addInduct := prbAddType
   projectionReady := ProjectionReady.of_no_ctorInfo
+    prbConstructorContext_noCtorInfo
+  structureEtaReady := StructureEtaReady.of_no_ctorInfo
     prbConstructorContext_noCtorInfo
   family_lctx_eq := rfl
   constructorContext_eq := rfl

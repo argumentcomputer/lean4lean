@@ -280,12 +280,12 @@ theorem SpineWF.weak' {env : VEnv} (henv : env.Ordered)
   induction es with
   | nil =>
       intro A B h
-      exact congrArg (fun e => e.lift' lift) h
+      cases h
+      exact .nil
   | cons e es ih =>
       intro A B h
-      obtain ⟨A₁, A₂, rfl, he, hrest⟩ := h
-      refine ⟨A₁.lift' lift, A₂.lift' lift.cons, rfl,
-        he.weak' henv W, ?_⟩
+      obtain ⟨A₁, A₂, rfl, he, hrest⟩ := h.cons_inv
+      refine .cons (he.weak' henv W) ?_
       have weakened := ih hrest
       rwa [VExpr.lift'_inst_hi] at weakened
 
@@ -302,10 +302,12 @@ theorem SpineWF.weakN_inv {env : VEnv} {U n k : Nat} {Γ Γ' : List VExpr}
   induction es with
   | nil =>
       intro A B h
-      exact VExpr.liftN_inj.1 h
+      have hab := VExpr.liftN_inj.1 h.nil_inv
+      subst B
+      exact .nil
   | cons e es ih =>
       intro A B h
-      obtain ⟨A₁', A₂', sourceEq, he, hrest⟩ := h
+      obtain ⟨A₁', A₂', sourceEq, he, hrest⟩ := h.cons_inv
       cases A with
       | bvar index => cases sourceEq
       | sort level => cases sourceEq
@@ -316,8 +318,7 @@ theorem SpineWF.weakN_inv {env : VEnv} {U n k : Nat} {Γ Γ' : List VExpr}
         injection sourceEq with domainEq bodyEq
         subst A₁'
         subst A₂'
-        refine ⟨A₁, A₂, rfl,
-          (HasType.weakN_iff henv hΓ' W).1 he, ?_⟩
+        refine .cons ((HasType.weakN_iff henv hΓ' W).1 he) ?_
         rw [← VExpr.liftN_inst_hi] at hrest
         exact ih hrest
 
@@ -335,10 +336,12 @@ theorem SpineWF.weak'_inv {env : VEnv} {U : Nat} {lift : Lift}
   induction es with
   | nil =>
       intro A B h
-      exact VExpr.lift'_inj.1 h
+      have hab := VExpr.lift'_inj.1 h.nil_inv
+      subst B
+      exact .nil
   | cons e es ih =>
       intro A B h
-      obtain ⟨A₁', A₂', sourceEq, he, hrest⟩ := h
+      obtain ⟨A₁', A₂', sourceEq, he, hrest⟩ := h.cons_inv
       cases A with
       | bvar index => cases sourceEq
       | sort level => cases sourceEq
@@ -349,8 +352,7 @@ theorem SpineWF.weak'_inv {env : VEnv} {U : Nat} {lift : Lift}
         injection sourceEq with domainEq bodyEq
         subst A₁'
         subst A₂'
-        refine ⟨A₁, A₂, rfl,
-          (HasType.weak'_iff henv hΓ' W).1 he, ?_⟩
+        refine .cons ((HasType.weak'_iff henv hΓ' W).1 he) ?_
         rw [← VExpr.lift'_inst_hi] at hrest
         exact ih hrest
 

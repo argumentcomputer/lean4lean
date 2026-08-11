@@ -186,8 +186,7 @@ theorem punitDecl_wf : punitDecl.WF VEnv.empty := by
     constructor
     · change True
       trivial
-    · change VExpr.sort (.param 0) = VExpr.sort (.param 0)
-      rfl
+    · exact .nil
 
 def punitEnv : VEnv :=
   (VEnv.empty.addInduct punitDecl).get (by decide)
@@ -626,7 +625,7 @@ theorem accDecl_wf : accDecl.WF VEnv.empty := by
                   (.forallE (.bvar 4) (.sort .zero)) [.bvar 1] (.sort .zero)
             constructor
             · exact ⟨⟨_, by type_tac⟩, ⟨⟨_, by type_tac⟩, trivial⟩⟩
-            · exact ⟨_, _, rfl, by type_tac, rfl⟩
+            · exact .cons (by type_tac) .nil
         · intro h
           change false = true at h
           contradiction
@@ -639,7 +638,7 @@ theorem accDecl_wf : accDecl.WF VEnv.empty := by
           .forallE (.bvar 0) (.forallE (.bvar 1) (.sort .zero)),
           .sort (.param 0)]
         (.forallE (.bvar 3) (.sort .zero)) [.bvar 1] (.sort .zero)
-      exact ⟨_, _, rfl, by type_tac, rfl⟩
+      exact .cons (by type_tac) .nil
 
 /-- The concrete public Acc transaction preserves environment order. -/
 def accEnv : VEnv := (VEnv.empty.addInduct accDecl).get (by decide)
@@ -792,14 +791,14 @@ theorem annotatedPiViewDecl_wf : annotatedPiViewDecl.WF VEnv.empty := by
       refine ⟨annotatedPiRecArg, ?_, ?_, ?_⟩
       · rfl
       · simp [annotatedPiRecArg]
-      · exact ⟨⟨⟨_, VEnv.HasType.sort (by decide)⟩, trivial⟩, rfl⟩
+      · exact ⟨⟨⟨_, VEnv.HasType.sort (by decide)⟩, trivial⟩, .nil⟩
     · intro h
       change false = true at h
       contradiction
   · change VEnv.empty.SpineWF 0
       [.forallE (.sort .zero) (.const ``AnnotatedPi [])]
       (.sort (.succ .zero)) [] (.sort (.succ .zero))
-    rfl
+    exact .nil
 
 theorem annotatedPiViewChecked_wf :
     annotatedPiViewChecked.WF outParamEnv := by
@@ -933,7 +932,7 @@ theorem annotatedParamViewDecl_wf :
       List.mem_singleton.1 (by
         simpa [annotatedParamViewType] using hc)
     subst c
-    exact ⟨trivial, rfl⟩
+    exact ⟨trivial, .nil⟩
 
 /-- Exact Theory environment after staging the stored family constant. -/
 def annotatedParamTypeEnv : VEnv :=
@@ -1210,7 +1209,7 @@ theorem aliasFormerViewDecl_wf :
       List.mem_singleton.1 (by
         simpa [aliasFormerViewType, aliasFormerRawType] using hc)
     subst c
-    exact ⟨trivial, rfl⟩
+    exact ⟨trivial, .nil⟩
 
 /-- The paired block carries both the semantic normalization certificate and
 the checked normalized view required by downstream generation. -/
@@ -1567,8 +1566,8 @@ theorem aliasRecViewDecl_wf : aliasRecViewDecl.WF recAliasEnv := by
     have hc' : c = aliasRecViewCtor :=
       List.mem_singleton.1 (by simpa [aliasRecViewType] using hc)
     subst c
-    refine ⟨?_, rfl⟩
-    exact ⟨.inl rfl, fun _ => rfl, trivial⟩
+    refine ⟨?_, .nil⟩
+    exact ⟨.inl rfl, fun _ => .nil, trivial⟩
 
 /-- Recursive-field recognition is certified on the normalized view while the
 paired block continues to retain the raw aliased constructor syntax. -/
@@ -2348,33 +2347,33 @@ theorem normalizationMatrixViewChecked_wf :
             · refine ⟨?_, ?_, ?_⟩
               · exact .inl rfl
               · intro _
-                exact ⟨_, _, rfl,
-                  normalizationMatrixIndexAlias_app_hasType .rfl
-                    (by type_tac), rfl⟩
+                exact .cons
+                  (normalizationMatrixIndexAlias_app_hasType .rfl
+                    (by type_tac)) .nil
               · refine ⟨?_, ?_, ?_⟩
                 · refine .inr (.inl ⟨_, rfl, by decide, ?_⟩)
                   constructor
                   · exact ⟨⟨_, by type_tac⟩, trivial⟩
-                  · exact ⟨_, _, rfl,
-                      normalizationMatrixIndexAlias_app_hasType .rfl
-                        (by type_tac), rfl⟩
+                  · exact .cons
+                      (normalizationMatrixIndexAlias_app_hasType .rfl
+                        (by type_tac)) .nil
                 · intro h
                   change false = true at h
                   contradiction
                 · refine ⟨?_, ?_, ?_⟩
                   · exact .inl rfl
                   · intro _
-                    exact ⟨_, _, rfl,
-                      normalizationMatrixIndexAlias_app_hasType .rfl
-                        (by type_tac), rfl⟩
+                    exact .cons
+                      (normalizationMatrixIndexAlias_app_hasType .rfl
+                        (by type_tac)) .nil
                   · refine ⟨?_, ?_, trivial⟩
                     · exact .inl rfl
                     · intro _
-                      exact ⟨_, _, rfl,
-                        normalizationMatrixIndexAlias_app_hasType .rfl
-                          (by type_tac), rfl⟩
-    · exact ⟨_, _, rfl,
-        normalizationMatrixIndexAlias_app_hasType .rfl (by type_tac), rfl⟩
+                      exact .cons
+                        (normalizationMatrixIndexAlias_app_hasType .rfl
+                          (by type_tac)) .nil
+    · exact .cons
+        (normalizationMatrixIndexAlias_app_hasType .rfl (by type_tac)) .nil
 
 theorem normalizationMatrixBlock_wf :
     normalizationMatrixBlock.WF normalizationMatrixAliasEnv :=

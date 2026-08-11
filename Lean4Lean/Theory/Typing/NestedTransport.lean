@@ -153,6 +153,20 @@ structure ConstInterp (E E' : VEnv) (interp : Name → Option VExpr) : Prop wher
   defeq : ∀ {df}, E.defeqs df →
     E'.defeqs ⟨df.uvars, df.lhs.substConst interp,
       df.rhs.substConst interp, df.type.substConst interp⟩
+  structEta : ∀ {rule}, E.structEtas rule → E'.structEtas rule
+  structEta_familyType : ∀ {rule}, E.structEtas rule →
+    ∀ levels,
+      (rule.familyType.instL levels).substConst interp =
+        rule.familyType.instL levels
+  structEta_structureType : ∀ {rule}, E.structEtas rule →
+    ∀ levels params,
+      (rule.structureType levels params).substConst interp =
+        rule.structureType levels (params.map (VExpr.substConst interp))
+  structEta_rebuild : ∀ {rule}, E.structEtas rule →
+    ∀ levels params major,
+      (rule.rebuild levels params major).substConst interp =
+        rule.rebuild levels (params.map (VExpr.substConst interp))
+          (major.substConst interp)
 
 /-- Typed transport along a constant interpretation: every Theory judgment
 of the interpreted environment holds of the σ̂-images in the target
@@ -162,7 +176,11 @@ theorem IsDefEq.substConst {E E' : VEnv} {interp : Name → Option VExpr}
     E'.IsDefEq U (Γ.map (VExpr.substConst interp))
       (e1.substConst interp) (e2.substConst interp)
       (A.substConst interp) := by
-  induction H with
+  induction H using IsDefEq.rec
+      (motive_2 := fun Γ A es B _ =>
+        E'.SpineWF U (Γ.map (VExpr.substConst interp))
+          (A.substConst interp) (es.map (VExpr.substConst interp))
+          (B.substConst interp)) with
   | bvar h => exact .bvar (h.substConst hi.closed)
   | symm _ ih => exact .symm ih
   | trans _ _ ih1 ih2 => exact .trans ih1 ih2
@@ -188,10 +206,26 @@ theorem IsDefEq.substConst {E E' : VEnv} {interp : Name → Option VExpr}
   | eta _ ih =>
     simpa [VExpr.substConst, VExpr.substConst_lift hi.closed] using
       VEnv.IsDefEq.eta ih
+  | structEta hreg hlevels hlevelsLength hparamsLength _ _ _
+      ihSpine ihMajor ihRebuild =>
+    rw [hi.structEta_familyType hreg] at ihSpine
+    rw [hi.structEta_structureType hreg] at ihMajor
+    rw [hi.structEta_rebuild hreg,
+      hi.structEta_structureType hreg] at ihRebuild
+    have hout := VEnv.IsDefEq.structEta (hi.structEta hreg) hlevels
+      hlevelsLength (by simpa using hparamsLength)
+      (by simpa [VExpr.substConst] using ihSpine)
+      ihMajor ihRebuild
+    simpa only [hi.structEta_rebuild hreg,
+      hi.structEta_structureType hreg] using hout
   | proofIrrel _ _ _ ih1 ih2 ih3 => exact .proofIrrel ih1 ih2 ih3
   | extra h1 h2 h3 =>
     simpa [VExpr.substConst_instL] using
       VEnv.IsDefEq.extra (env := E') (hi.defeq h1) h2 (by simpa using h3)
+  | nil => exact .nil
+  | cons _ _ ihType ihRest =>
+    exact .cons ihType (by
+      simpa only [VExpr.substConst_inst hi.closed] using ihRest)
 
 theorem HasType.substConst {E E' : VEnv} {interp : Name → Option VExpr}
     (hi : ConstInterp E E' interp) (H : E.HasType U Γ e A) :

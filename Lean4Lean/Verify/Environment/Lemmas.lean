@@ -45,6 +45,7 @@ inductive Aligned : ConstMap → VEnv → Prop where
   | const : Aligned C venv → C.find? n = none → TrConstant safety venv ci ci' →
     venv.addConst n ci' = some venv' → ci.name = n → Aligned (C.insert n ci) venv'
   | defeq : Aligned C venv → Aligned C (venv.addDefEq df)
+  | structEta : Aligned C venv → Aligned C (venv.addStructEta rule)
 
 theorem Aligned.map_wf (H : Aligned safety C venv) : C.WF := by
   induction H with
@@ -52,6 +53,7 @@ theorem Aligned.map_wf (H : Aligned safety C venv) : C.WF := by
   | ignoreConst _ h1 _ _ ih
   | const _ h1 _ _ _ ih => exact ih.insert _ _ h1
   | defeq _ ih => exact ih
+  | structEta _ ih => exact ih
 
 theorem Aligned.find?_iff (H : Aligned safety C venv) :
     (∃ ci, C.find? name = some ci ∧ safety ≤ ci.safety) ↔ ∃ ci, venv.constants name = some ci := by
@@ -65,6 +67,7 @@ theorem Aligned.find?_iff (H : Aligned safety C venv) :
     simp [VEnv.addConst] at eq; split at eq <;> cases eq
     split <;> simp_all; exact h2.1
   | defeq _ ih => exact ih
+  | structEta _ ih => exact ih
 
 theorem Aligned.addQuot1 {Q : Prop}
     (H1 : ∀ c env, Aligned safety c env → P c env → Q)
@@ -463,6 +466,7 @@ theorem TrEnv'.aligned (H : TrEnv' safety C Q venv) : Aligned safety C venv := b
   | induct h _ ih => exact ih.addInduct h
   | inductBlock h _ ih => exact ih.addInductBlock h
   | inductNested h _ ih => exact ih.addInductNested h
+  | structEta _ _ ih => exact ih.structEta
 
 /- Since the v4.33 reconciliation the `mutualDef` arm routes through
 `insertDefs`, whose `SMap` reasoning uses the classified persistent-map
@@ -502,6 +506,9 @@ theorem Aligned.find? (H : Aligned safety C venv)
       simp; rename_i h'; refine h2.mono this
     · let ⟨_, h1, h2⟩ := ih h; exact ⟨_, this.constants h1, h2.mono this⟩
   | defeq h1 ih => let ⟨_, h1, h2⟩ := ih h; exact ⟨_, h1, h2.mono VEnv.addDefEq_le⟩
+  | structEta h1 ih =>
+    let ⟨_, h1, h2⟩ := ih h
+    exact ⟨_, h1, h2.mono VEnv.addStructEta_le⟩
 
 theorem Aligned.find?_uniq (H : Aligned safety C venv)
     (h : C.find? name = some ci) (hs : venv.constants name = some ci') :
@@ -520,6 +527,9 @@ theorem Aligned.find?_uniq (H : Aligned safety C venv)
     · rintro ⟨⟩ ⟨⟩; rename_i n _ _ _; subst n; exact ⟨h4, h2.mono this⟩
     · intro hs h; let ⟨h1, h2⟩ := ih h hs; exact ⟨h1, h2.mono this⟩
   | defeq h1 ih => let ⟨h1, h2⟩ := ih h hs; exact ⟨h1, h2.mono VEnv.addDefEq_le⟩
+  | structEta h1 ih =>
+    let ⟨h1, h2⟩ := ih h hs
+    exact ⟨h1, h2.mono VEnv.addStructEta_le⟩
 
 theorem TrEnv.find?_iff (H : TrEnv safety env venv) :
     (∃ ci, env.find? name = some ci ∧ safety ≤ ci.safety) ↔ ∃ ci, venv.constants name = some ci := by
@@ -647,6 +657,8 @@ theorem TrEnv'.of_value (H : TrEnv' safety C Q venv) (h : C.find? name = some ci
     exact (ih (h1.old_of_value H.map_wf h hv)).mono h1.le
   | inductNested h1 H ih =>
     exact (ih (h1.old_of_value H.map_wf h hv)).mono h1.le
+  | structEta _ H ih =>
+    exact (ih h).mono VEnv.addStructEta_le
 
 nonrec theorem TrEnv.of_value (H : TrEnv safety env venv) (h : env.find? name = some ci)
     (hs : safety ≤ ci.safety) (hv : ci.deltaValue? = some v) :

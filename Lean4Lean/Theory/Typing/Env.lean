@@ -57,6 +57,12 @@ inductive VDecl.WF : VEnv → VDecl → VEnv → Prop where
 inductive VEnv.WF' : List VDecl → VEnv → Prop where
   | empty : VEnv.WF' [] .empty
   | decl {env} : VDecl.WF env d env' → env.WF' ds → env'.WF' (d::ds)
+  /-- A checked structure-eta descriptor is an environment capability, not a
+  source declaration.  Keep it in the environment history without inventing
+  a `VDecl`; its subject-reduction certificate is exactly the premise used by
+  `Ordered.structEta`. -/
+  | structEta {env : VEnv} {rule : VStructEta} : rule.WF env → env.WF' ds →
+      (env.addStructEta rule).WF' ds
 
 def VEnv.WF (env : VEnv) : Prop := ∃ ds, VEnv.WF' ds env
 

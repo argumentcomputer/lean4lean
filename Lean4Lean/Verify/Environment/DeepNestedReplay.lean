@@ -106,7 +106,10 @@ theorem biBoxCheckedWF : biBoxChecked.WF VEnv.empty := by
       · intro recursive
         contradiction
       · trivial
-    · rfl
+    · rw [show biBoxDecl.uvars = 0 from rfl,
+        show biBoxDecl.nparams = 2 from rfl,
+        hresult, hindices, hparams]
+      exact .nil
 
 def biBoxGenerationWF : biBoxGeneration.WF VEnv.empty := by
   exact biBoxCheckedWF.identityGeneration .empty

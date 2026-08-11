@@ -177,8 +177,8 @@ theorem VEnv.IsDefEq.appN_defEq {env : VEnv} {U : Nat} {Γ : List VExpr} :
 theorem VEnv.SpineWF.toSpineDefEq {env : VEnv} {U : Nat} {Γ : List VExpr} :
     ∀ {es : List VExpr} {F B : VExpr}, env.SpineWF U Γ F es B →
       VEnv.SpineDefEq env U Γ F es es B
-  | [], _, _, h => h ▸ .nil
-  | _ :: _, _, _, ⟨_, _, hA, ha, hrest⟩ => hA ▸ .cons ha hrest.toSpineDefEq
+  | [], _, _, .nil => .nil
+  | _ :: _, _, _, .cons ha hrest => .cons ha hrest.toSpineDefEq
 
 /-- Iterated application congruence in the function position. -/
 theorem VEnv.IsDefEq.appN_congr {env : VEnv} {U : Nat} {Γ : List VExpr}
@@ -199,13 +199,10 @@ theorem VEnv.IsDefEq.appN_lamN {env : VEnv} (henv : env.Ordered) {U : Nat} :
         (VExpr.instRev body es) B
   | [], Γ, body, T, B, es, _, hb, hs, hlen => by
     obtain rfl : es = [] := List.length_eq_zero_iff.1 hlen
-    obtain rfl : T = B := hs
+    obtain rfl : T = B := hs.nil_inv
     exact hb
   | A :: As, Γ, body, T, B, e :: es, ⟨⟨u, hA⟩, hT⟩, hb,
-      ⟨A₁, A₂, heq, he, hrest⟩, hlen => by
-    injection (show VExpr.forallE A (VExpr.forallN As T) = .forallE A₁ A₂
-      from heq) with h1 h2
-    subst h1; subst h2
+      .cons he hrest, hlen => by
     have hb' : env.HasType U (As.reverse ++ (A :: Γ)) body T := by
       simpa [List.append_assoc] using hb
     have hlam : env.HasType U (A :: Γ) (VExpr.lamN As body)
@@ -248,12 +245,7 @@ theorem VEnv.SpineWF.instRev_defeq
   | [], _, _, _, _ :: _, _, _, hlen, _ => by simp at hlen
   | _ :: _, _, _, _, [], _, _, hlen, _ => by simp at hlen
   | A :: As, C, C', T, e :: es, B,
-      ⟨A₁, A₂, hshape, he, hrest⟩, hlen, hterminal => by
-      change VExpr.forallE A (VExpr.forallN As C) =
-        VExpr.forallE A₁ A₂ at hshape
-      injection hshape with hA htail
-      subst A₁
-      subst A₂
+      .cons he hrest, hlen, hterminal => by
       have hlen' : es.length = As.length := by simpa using hlen
       have W := Ctx.InstN.consTel (Γ₀ := Γ) (e₀ := e) (A₀ := A) As .zero
       have hterminal₀ : env.IsDefEq U (As.reverse ++ A :: Γ) C C' T := by
@@ -298,9 +290,8 @@ theorem VEnv.SpineWF.defEq_of_pointwise {env : VEnv} (henv : env.WF)
       env.SpineWF U Γ F es B →
       List.Forall₂ (fun a a' => a = a' ∨ env.IsDefEqU U Γ a a') es es' →
       VEnv.SpineDefEq env U Γ F es es' B
-  | [], [], _, _, h, .nil => h ▸ .nil
-  | _ :: _, _ :: _, _, _, ⟨A₁, A₂, hF, he, hrest⟩, .cons hd htl => by
-    subst hF
+  | [], [], _, _, .nil, .nil => .nil
+  | _ :: _, _ :: _, _, _, .cons he hrest, .cons hd htl => by
     refine .cons ?_ (hrest.defEq_of_pointwise henv hΓ htl)
     rcases hd with rfl | hd
     · exact he

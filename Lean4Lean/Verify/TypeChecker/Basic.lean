@@ -150,6 +150,12 @@ structure StructureEtaArtifact (env : Environment) (familyName : Name)
   projection : ProjectionArtifact env familyName familyInfo venv
   constructor_name_eq : projection.view.constructorName = constructorName
   constructor_info_eq : projection.constructorInfo = constructorInfo
+  /-- The ordered registry proof fixes the exact descriptor generated from
+  the checked view.  It contains no equality oracle: the associated
+  subject-reduction package is recovered by `Ordered.structEtaWF`. -/
+  etaOrdered : venv.Ordered
+  etaRegistered : venv.structEtas
+    (projection.viewWF.toStructEta etaOrdered)
 
 /-- Host-metadata coherence required whenever the executable checker accepts
 a family/constructor pair as a nonrecursive structure.  This deliberately
@@ -190,6 +196,38 @@ theorem StructureEtaReady.resolveConstructor
     | ctorInfo _ => simp at hshape
     | recInfo _ => simp at hshape
 
+/-- Consume the exact registered descriptor retained by a resolved host
+structure artifact.  Reconstruction typing comes from the registry's
+`VStructEta.WF` certificate; the equality is precisely the primitive Theory
+rule. -/
+theorem StructureEtaArtifact.eta
+    (self : StructureEtaArtifact env familyName familyInfo constructorName
+      constructorInfo venv)
+    {U : Nat} {Γ : List VExpr} {levels : List VLevel}
+    {params : List VExpr} {major : VExpr}
+    (hΓ : OnCtx Γ (venv.IsType U))
+    (hlevels : ∀ level ∈ levels, level.WF U)
+    (hlevelsLength : levels.length = self.projection.view.uvars)
+    (hparamsLength : params.length = self.projection.view.nparams)
+    (hparamsSpine : ∃ resultLevel,
+      venv.SpineWF U Γ
+        (self.projection.view.familyType.instL levels)
+        params (.sort resultLevel))
+    (hmajor : venv.HasType U Γ major
+      (self.projection.view.structureType levels params)) :
+    venv.IsDefEq U Γ
+      (self.projection.view.etaRebuild levels params major) major
+      (self.projection.view.structureType levels params) := by
+  let rule := self.projection.viewWF.toStructEta self.etaOrdered
+  have hruleWF : rule.WF venv :=
+    self.etaOrdered.structEtaWF self.etaRegistered
+  obtain ⟨resultLevel, hparamsSpine⟩ := hparamsSpine
+  have hrebuild := hruleWF.rebuild_hasType VEnv.LE.rfl hΓ hlevels
+    hlevelsLength hparamsLength ⟨resultLevel, hparamsSpine⟩ hmajor
+  have heta := VEnv.IsDefEq.structEta self.etaRegistered hlevels
+    hlevelsLength hparamsLength hparamsSpine hmajor hrebuild
+  simpa [rule] using heta
+
 /-- Environments which contain no constructor metadata satisfy projection
 readiness vacuously.  This is the common staging case for validation fixtures:
 families may already be present, but their constructors have not been
@@ -206,6 +244,24 @@ theorem ProjectionReady.of_no_ctorInfo
     contradiction
   constructorNumParams _view info _hview hfind :=
     (hnoCtor _ info hfind).elim
+
+/-- Environments with no constructor metadata also satisfy structure-eta
+readiness vacuously. -/
+theorem StructureEtaReady.of_no_ctorInfo
+    (hnoCtor : ∀ name info,
+      env.find? name ≠ some (.ctorInfo info)) :
+    StructureEtaReady env venv where
+  resolve _ _ constructorName constructorInfo _ hctor _ :=
+    (hnoCtor constructorName constructorInfo hctor).elim
+
+/-- A convenient negative readiness witness for staging/indexed environments
+where the host recognizes no eta-eligible structure family. -/
+theorem StructureEtaReady.of_no_nonRecStructure
+    (hnone : ∀ name, env.isNonRecStructure name = false) :
+    StructureEtaReady env venv where
+  resolve familyName _ _ _ _ _ hnonrec := by
+    rw [hnone familyName] at hnonrec
+    contradiction
 
 namespace TypeChecker
 
@@ -300,6 +356,7 @@ structure VContext extends Context where
     Environment.primitives.contains n → ci.safety = .safe ∧ ci.levelParams = []
   trenv : TrEnv safety env venv
   projectionReady : ProjectionReady env venv
+  structureEtaReady : StructureEtaReady env venv
   mlctx : MLCtx
   mlctx_wf : mlctx.WF venv lparams
   lctx_eq : mlctx.lctx = lctx

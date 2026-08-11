@@ -68,12 +68,12 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-15B active** (structure eta and unit-like comparison, proceeding as a documented divergence); the L4L-15R v4.33 reconciliation is complete and pruned from §5 (2026-08-11) |
-| Current formalization source | this v4.33 reconciliation merge checkpoint (jj change `zxwpwkpp`) at `jcb/formalization2` (first parent the L4L-15R planning commit `c22d790d` atop the structure-eta staging checkpoint `ae6ee9d6`); `origin/jcb/formalization2` is the live publication bookmark and was published at this checkpoint (2026-08-11) |
-| Parent lineage | this upstream-reconciliation merge (second parent: digama `upstream/master` `b292275c`, which superseded the planned `1a16b72d` before execution); Lean on v4.33.0 final, lean4-nix on `argumentcomputer/lean4-nix` (upstream pins v4.33.0-rc2 — ledger D018) |
+| Ladder position | **L4L-16 active** (route selection and sort inversion); L4L-15B structure eta and unit-like comparison is complete and pruned from §5 (2026-08-11) |
+| Current formalization source | this L4L-15B checkpoint (jj change `xuzusmnl`) at `jcb/formalization2`, atop the approved design/ledger checkpoint `01bfdce9`; `origin/jcb/formalization2` is the publication bookmark moved only after the complete gate |
+| Parent lineage | the L4L-15B implementation descends from the v4.33 reconciliation merge `99a7f8ae7b89` (second parent: digama `upstream/master` `b292275c`); Lean on v4.33.0 final, lean4-nix on `argumentcomputer/lean4-nix` (upstream pins v4.33.0-rc2 — ledger D018) |
 | Fixed `master` baseline | `1fb7d6ef9042c5a80b2de9320c88ac0f3ce404cb` |
-| Trust frontier | exactly 18 sorried proof declarations (12 Tier V, 6 Tier R; `NormalEq.parRed` carries two tokens) plus six kernel-rejection recovery declarations — 24 compiled allowlist entries — and 34 custom-axiom declarations; all are pinned by exact audits. Eight Tier V entries are new at this checkpoint: upstream's `checkPrimitiveDef.WF` boundary, the six D017 front-end/`ProjectionReady`-transport and quotient-initialization entries, and the `aliasFormerAlignmentRun` fixture repair debt |
-| Gates | the full §6 gate is green on this checkpoint: the 212-job default Lake build, the Nix flake checks, the 24-entry exact sorry frontier, the Theory-only import/axiom audit, downstream-consumer and CLI checks, and whitespace hygiene |
+| Trust frontier | exactly 16 sorried proof declarations (10 Tier V, 6 Tier R; `NormalEq.parRed` carries two tokens) plus six kernel-rejection recovery declarations — 22 compiled allowlist entries — and 34 custom-axiom declarations; all are pinned by exact audits. L4L-15B removed the two structure-eta checker roots from the direct frontier; their inherited L4L-16--19 dependencies remain explicit in exact axiom guards |
+| Gates | the full §6 gate is green on this checkpoint: the 212-job default Lake build, the Nix flake checks, the 22-entry exact sorry frontier, the Theory-only import/axiom audit, downstream-consumer and CLI checks, and whitespace hygiene |
 
 ### 2.1 What is green
 
@@ -290,6 +290,25 @@ string branches of `reduceProj.WF`, and the enclosing WHNF/translation
 projection paths. Their exact guards distinguish the remaining inherited
 Tier-R inversion dependency from projection-specific proof debt.
 
+**Structure eta.** L4L-15B adds the registered lower-layer `VStructEta`
+descriptor, monotone `VEnv.structEtas` registry, ordered subject-reduction
+certificate, and the exact `VEnv.IsDefEq.structEta` contraction for complete
+parameter spines. The checked-view bridge fixes reconstruction to the
+deterministic recursor-encoded projector programs; `StructureEtaArtifact`
+retains the exact host family/constructor alignment and registry membership.
+Weakening, substitution, strong typing, inversion/discrimination,
+standardization, nested transport, and every environment-schema consumer
+carry the new case. `StructEq` retains oriented reconstruction
+seeds and complete typed constructor-spine congruence; its named parallel
+join records the constructor/iota, nesting, internal reduction, dependent
+field, proof/Prop, and registered-`.extra` interactions. The unconditional
+`tryEtaStructCore.WF` and `isDefEqUnitLike.WF` roots are now proved from the
+registered artifact, removing both direct Tier V sorries. Exact axiom guards
+pin registration, subject reduction, the primitive rule, Church--Rosser, and
+both roots; the executable/kernel fixture matrix covers dependent
+parameterized, zero-field, proof-field, Prop-valued, recursive,
+multi-constructor, and indexed declarations.
+
 **Theory-only consumer surface.** The L4L-15C audit moved the generic
 `SpineWF` weakening/inversion laws to `Theory/Typing/UniqueTyping.lean`,
 primitive-environment extension and Bool-literal typing to
@@ -300,8 +319,7 @@ where a public name existed. `Tests/TheoryConsumerSurface.lean` imports no
 Verify module and pins the availability and exact axiom closure of every
 migrated API.
 
-**Not claimed.** Structure eta and unit-like checker verification (L4L-15B),
-and the remaining metatheory/checker roots.
+**Not claimed.** The remaining metatheory/checker roots.
 The upstream `Params.extra_pat` field demands that registered defeqs match
 patterns syntactically, which lambda-tower registrations (including
 `quotDefEq`) never do; the assembler therefore exposes spine-level coverage
@@ -317,14 +335,14 @@ never generation-shape authority or Theory semantics.
 
 The sorry audit (`Lean4Lean/Audit/SorryFrontier.lean`, a declaration-level
 `sorryAx` allowlist over the compiled Theory/Verify surface) currently
-accepts exactly 18 sorried proof declarations (`NormalEq.parRed` carries two
+accepts exactly 16 sorried proof declarations (`NormalEq.parRed` carries two
 tokens), plus six deliberately kernel-rejected fixture recoveries that are
-not proof debt. The compiled allowlist therefore contains 24 declarations:
+not proof debt. The compiled allowlist therefore contains 22 declarations:
 
 | Area | Live debt |
 |---|---|
 | Core metatheory (Tier R) | `Injectivity.lean` x3; `UniqueTyping.lean` x1; `Projection.lean` x1; `ChurchRosser.lean` x2 |
-| Checker verification (Tier V) | `Verify/Environment.lean` x2 (`addDecl.WF` — now only its `inductDecl` case — and the re-sorried `addQuot.WF`); `Boundaries.lean` x1 (upstream's `checkPrimitiveDef.WF`); `Extension.lean` x5 (the D017 `ProjectionReady` transports); `WHNF.lean` x1; `IsDefEq.lean` x2; `InductiveFixtures.lean` x1 (`aliasFormerAlignmentRun` repair debt) |
+| Checker verification (Tier V) | `Verify/Environment.lean` x2 (`addDecl.WF` — now only its `inductDecl` case — and the re-sorried `addQuot.WF`); `Boundaries.lean` x1 (upstream's `checkPrimitiveDef.WF`); `Extension.lean` x5 (the D017 checker-readiness transports); `WHNF.lean` x1; `InductiveFixtures.lean` x1 (`aliasFormerAlignmentRun` repair debt) |
 
 All Tier V entries are L4L-19A/19B territory; the eight added at the v4.33
 reconciliation are classified in ledger row D017. Non-sorry debt:
@@ -541,96 +559,13 @@ If upstream advances at a milestone boundary, insert an explicit
 integration-only reconciliation checkpoint (as was done for v4.31) rather
 than hiding merge work inside a semantic milestone.
 
-### Structures (L4L-15B)
-
-Projection semantics, structural laws, and checker verification are complete;
-their current claim surface is recorded in §2.1 and their checkpoint evidence
-lives in history. The remaining structure work is the kernel's eta behavior.
-
-**L4L-15B — structure eta and unit-like comparison (active; divergence
-approved).** Derive `tryEtaStructCore.WF` and `isDefEqUnitLike.WF` on the
-reconciled v4.33 base. Adding the structure-eta rule is a metatheory
-change; upstream agreement is no longer an implementation blocker —
-proceeding as a tracked, documented fork divergence was approved
-2026-08-11, with upstream review deferred to the L4L-20C PR series.
-
-The 2026-08-11 derivability audit reached that gate. The pinned Lean sources
-implement eta for nonrecursive, single-constructor, zero-index structures as
-special kernel support: comparison checks the common structure type and its
-fields, while the unit-like path is the zero-field specialization. Existing
-Theory rules can derive equality of every projected field and can reduce a
-projection whose major is already constructor-headed, but cannot derive the
-missing reconstruction equation
-`C params (proj₀ t) ... (projₙ t) ≡ t` for a neutral `t`. Function eta does
-not apply, proof irrelevance covers only `Prop`, and projection uniqueness is
-not structure extensionality. No `IsDefEq` rule has been changed.
-
-The rule-independent subject-reduction prerequisite is now explicit in
-`Theory/Projection.lean`. `VStructureView.etaRebuild` is the canonical
-constructor applied to every generated projector;
-`ProgramsWF.projectionArgsSpine` assembles the pointwise projector
-certificates into the exact dependent field `SpineWF`; and
-`etaRebuild_hasType_of_constructorPrefix` proves the rebuild well typed from
-the registered constructor-prefix typing judgment. The Theory-only consumer
-test pins all three public names and their exact transitive axiom closures.
-This adds no `sorry` and, deliberately, proves no reconstruction equality:
-that last step is precisely the pending semantic decision.
-
-The checker-side derivations are also staged completely behind that decision.
-`VEnv.HasStructureEta` names only the missing reconstruction equality;
-`StructureEtaReady` aligns the exact host family/constructor metadata with a
-registered Theory view; and the sorry-free proof bodies
-`tryEtaStructCore.WF_of_structureEta` and
-`isDefEqUnitLike.WF_of_structureEta` discharge every remaining executable,
-typing, parameter-spine, and zero-field obligation under those explicit
-premises.  Their exact transitive axiom closures are guarded in
-`Tests/StructureEtaCapability.lean` (including already-tracked L4L-17 and
-projection-frontier `sorryAx` dependencies).  The unconditional roots and
-`VEnv.IsDefEq` remain untouched until the steps below run.
-
-The decided rule is an explicit registered structure-eta rule, restricted
-to checked nonrecursive, single-constructor, zero-index structure views.
-The mandatory order of work:
-
-1. **Design note first.** The exact rule form; subject reduction from the
-   registered constructor/projector typing package (the rule-independent
-   half, `etaRebuild_hasType_of_constructorPrefix`, is already proved);
-   updated injectivity/discrimination arguments; confluence and
-   standardization critical-pair coverage against beta, iota, proof
-   irrelevance, and registered extra rules; and a complete inventory of
-   every exhaustive `IsDefEq` consumer and environment-monotonicity
-   proof that gains a case arm — including how the Tier R statements
-   (`parRed`, the inversion family) and the generic `[Params]`
-   development absorb the rule.
-   The committed design record is
-   `plans/l4l-15-structure-eta-design.md`.
-2. **Ledger entry before the rule lands.** Record the divergence in
-   `upstream-divergence.md`: owner, rule, downstream impact, the
-   parallel upstream conversation, and the removal condition — upstream
-   adopts the rule or an agreed alternative by the L4L-20C series,
-   revisited at every reconciliation checkpoint. If upstream ultimately
-   declines any Theory change, the recorded fallback is disabling the
-   two executable heuristics rather than certifying them from an absent
-   rule.
-   This is ledger entry D019.
-3. **Implementation.** Add the rule, derive `VEnv.HasStructureEta` for
-   registered views, let the staged conditional proofs close both
-   unconditional Tier V roots, and repair every case arm from the
-   inventory. No existing proved root may regress silently: any proof
-   that cannot yet absorb its new case is re-sorried into the frontier
-   with an explicit tier, and this milestone does not close over it.
-*Exit:* both roots are sorry-free and audited on the v4.33 base; the
-design note and ledger entry are committed with
-subject-reduction/injectivity/confluence and downstream-impact evidence;
-the `IsDefEq` case inventory shows no silent regression.
-
 ### Metatheory closure (L4L-16–L4L-18B)
 
 Scheduled completion work; coordinate with Mario because upstream has active
 research branches.
 
-**L4L-16 — route selection and sort inversion.** Evaluate two routes in a
-small, focused proof branch: (1) finish and bridge the fetched
+**L4L-16 — route selection and sort inversion (active).** Evaluate two routes
+in a small, focused proof branch: (1) finish and bridge the fetched
 `logrel@upstream` approach (`ShapeLogRel`, adequacy, and
 `Experimental/UniqueTyping`) into live VExpr judgments; or (2) complete the
 current stratified `HasTypeStrong` proof directly. The spike must list every

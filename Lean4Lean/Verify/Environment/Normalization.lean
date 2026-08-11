@@ -3472,6 +3472,7 @@ structure CandidateFamilyStagedInput
   artifact; any already-complete host structure remains backed by a registered
   Theory view. -/
   projectionReady : ProjectionReady constructorContext.env typeEnv
+  structureEtaReady : StructureEtaReady constructorContext.env typeEnv
   family_lctx_eq : familyContext.lctx = {}
   constructorContext_eq : constructorContext =
     { familyContext with env := constructorContext.env }
@@ -3536,6 +3537,7 @@ def CandidateFamilyStagedInput.postContext
     rw [input.quotInit_eq]
     exact postTr
   projectionReady := input.projectionReady
+  structureEtaReady := input.structureEtaReady
   mlctx := .nil
   mlctx_wf := trivial
   lctx_eq := by
@@ -3654,6 +3656,7 @@ theorem CandidateFamilyStagedInput.validationContextRunFromPre
         simpa only [validationSafety, postEnv, postVenv] using
           input.postContext.trenv
       projectionReady := input.postContext.projectionReady
+      structureEtaReady := input.postContext.structureEtaReady
       mlctx_wf := by
         simpa only [terminalLparams] using postMLWF }
   have validationContextEq : validationContext.toContext =

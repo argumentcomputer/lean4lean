@@ -511,6 +511,14 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
     AddInductNested C env decl C' env' →
     TrEnv' C Q env →
     TrEnv' C' Q env'
+  /-- Register a Theory structure-eta descriptor without changing the host
+  constant map.  Host eligibility and exact view alignment are retained by
+  `StructureEtaArtifact`; this history step records only the checked Theory
+  capability and its subject-reduction certificate. -/
+  | structEta :
+    rule.WF env →
+    TrEnv' C Q env →
+    TrEnv' C Q (env.addStructEta rule)
 
 def TrEnv (safety : DefinitionSafety) (env : Environment) (venv : VEnv) : Prop :=
   TrEnv' safety env.constants env.quotInit venv
@@ -557,6 +565,9 @@ theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
     have ⟨_, H⟩ := ih
     obtain ⟨nested, hwf, hadd⟩ := h1.to_addInductNested
     exact ⟨_, H.decl <| .inductNested hwf hadd⟩
+  | structEta hrule _ ih =>
+    have ⟨_, H⟩ := ih
+    exact ⟨_, H.structEta hrule⟩
 
 /--
 info: 'Lean4Lean.TrEnv'.wf' depends on axioms: [propext, Classical.choice, Quot.sound]

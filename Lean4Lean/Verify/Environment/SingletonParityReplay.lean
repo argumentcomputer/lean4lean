@@ -260,15 +260,13 @@ theorem boolDeclWF07 : boolDecl.WF VEnv.empty := by
     · constructor
       · change True
         trivial
-      · change VExpr.sort (.succ .zero) = VExpr.sort (.succ .zero)
-        rfl
+      · exact .nil
     · have hctor' := List.mem_singleton.1 hctor
       subst ctor
       constructor
       · change True
         trivial
-      · change VExpr.sort (.succ .zero) = VExpr.sort (.succ .zero)
-        rfl
+      · exact .nil
 
 def boolGenerationWF07 : boolGenerationChecked.WF VEnv.empty := by
   exact (boolChecked.wf_of_decl boolDeclWF07).identityGeneration .empty
@@ -459,7 +457,7 @@ theorem listCheckedWF07 : listChecked.WF VEnv.empty := by
     · constructor
       · change True
         trivial
-      · rfl
+      · exact .nil
     · have hctor' := List.mem_singleton.1 hctor
       subst ctor
       constructor
@@ -477,9 +475,9 @@ theorem listCheckedWF07 : listChecked.WF VEnv.empty := by
         · exact .inl rfl
         constructor
         · intro _
-          rfl
+          exact .nil
         · trivial
-      · rfl
+      · exact .nil
 
 def listGenerationWF07 : listGenerationChecked.WF VEnv.empty := by
   exact listCheckedWF07.identityGeneration .empty
@@ -689,7 +687,7 @@ theorem optionDeclWF07 : optionDecl.WF VEnv.empty := by
     · constructor
       · change True
         trivial
-      · rfl
+      · exact .nil
     · have hctor' := List.mem_singleton.1 hctor
       subst ctor
       constructor
@@ -702,7 +700,7 @@ theorem optionDeclWF07 : optionDecl.WF VEnv.empty := by
         · intro recursive
           contradiction
         · trivial
-      · rfl
+      · exact .nil
 
 def optionGenerationWF07 : optionGenerationChecked.WF VEnv.empty := by
   exact (optionChecked.wf_of_decl optionDeclWF07).identityGeneration .empty
@@ -925,7 +923,7 @@ theorem prodCheckedWF07 : prodChecked.WF VEnv.empty := by
       · intro recursive
         contradiction
       · trivial
-    · rfl
+    · exact .nil
 
 def prodGenerationWF07 : prodGenerationChecked.WF VEnv.empty := by
   exact prodCheckedWF07.identityGeneration .empty
@@ -1094,7 +1092,7 @@ theorem andCheckedWF07 : andChecked.WF VEnv.empty := by
       · intro recursive
         contradiction
       · trivial
-    · rfl
+    · exact .nil
 
 def andGenerationWF07 : andGenerationChecked.WF VEnv.empty := by
   exact andCheckedWF07.identityGeneration .empty
@@ -1257,7 +1255,7 @@ theorem orCheckedWF07 : orChecked.WF VEnv.empty := by
         · intro recursive
           contradiction
         · trivial
-      · rfl
+      · exact .nil
     · have hctor' := List.mem_singleton.1 hctor
       subst ctor
       constructor
@@ -1269,7 +1267,7 @@ theorem orCheckedWF07 : orChecked.WF VEnv.empty := by
         · intro recursive
           contradiction
         · trivial
-      · rfl
+      · exact .nil
 
 def orGenerationWF07 : orGenerationChecked.WF VEnv.empty := by
   exact orCheckedWF07.identityGeneration .empty
@@ -1478,8 +1476,7 @@ theorem heqCheckedWF07 : heqChecked.WF VEnv.empty := by
         (.forallE (.sort (.param 0))
           (.forallE (.bvar 0) (.sort .zero)))
         [.bvar 1, .bvar 0] (.sort .zero)
-      refine ⟨_, _, rfl, (by type_tac), ?_⟩
-      exact ⟨_, _, rfl, (by type_tac), rfl⟩
+      exact .cons (by type_tac) <| .cons (by type_tac) .nil
 
 def heqGenerationWF07 : heqGenerationChecked.WF VEnv.empty := by
   exact heqCheckedWF07.identityGeneration .empty
@@ -1905,7 +1902,7 @@ theorem finCheckedWF07 : finChecked.WF finInputEnv07 := by
       · intro recursive
         contradiction
       · trivial
-    · rfl
+    · exact .nil
 
 def finGenerationWF07 : finGenerationChecked.WF finInputEnv07 := by
   exact finCheckedWF07.identityGeneration finInputEnv_ordered07
@@ -2275,7 +2272,7 @@ theorem vectorCheckedWF07 : vectorChecked.WF vectorInputEnv07 := by
       · intro recursive
         contradiction
       · trivial
-    · rfl
+    · exact .nil
 
 def vectorGenerationWF07 :
     vectorGenerationChecked.WF vectorInputEnv07 := by

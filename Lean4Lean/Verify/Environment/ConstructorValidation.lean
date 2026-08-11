@@ -2431,7 +2431,7 @@ theorem nonempty_at
         arguments' := []
         result' := expected'
         arguments_tr := .nil
-        spine := rfl }⟩
+        spine := .nil }⟩
   | cons name domain body binderInfo argument arguments telescopeCheck
       step tail ih =>
       obtain ⟨domain', body', rfl, domainType, bodyType, domain_tr,
@@ -2496,7 +2496,7 @@ theorem nonempty_at
         arguments' := argumentRun.source' :: tailRun.arguments'
         result' := tailRun.result'
         arguments_tr := .cons argument_tr tailRun.arguments_tr
-        spine := ⟨domain', body', rfl, argumentType, tailRun.spine⟩ }⟩
+        spine := .cons argumentType tailRun.spine }⟩
 
 /-- Every successful operational spine trace has a verified interpretation;
 the initial strict endpoint is selected by the trace's own root `checkType`. -/

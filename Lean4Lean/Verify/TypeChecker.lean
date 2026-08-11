@@ -17,6 +17,7 @@ structure VEnvs.WF (env : Environment) (ves : VEnvs) where
     Environment.primitives.contains n → ci.safety = .safe ∧ ci.levelParams = []
   mono : safety ≤ safety' → ves.venv safety' ≤ ves.venv safety
   projectionReady : ProjectionReady env (ves.venv safety)
+  structureEtaReady : StructureEtaReady env (ves.venv safety)
 
 /-- Assemble a `VEnvs` from a pointwise existential. `DefinitionSafety` has three elements, so
 this is a finite case split rather than an appeal to choice -- the name records what it replaces. -/
@@ -37,6 +38,7 @@ structure VEnvAt (env : Environment) (safety : DefinitionSafety) (venv : VEnv) :
   safePrimitives : env.find? n = some ci →
     Environment.primitives.contains n → ci.safety = .safe ∧ ci.levelParams = []
   projectionReady : ProjectionReady env venv
+  structureEtaReady : StructureEtaReady env venv
 
 theorem VEnvs.WF.toVEnvAt {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (safety : DefinitionSafety) : VEnvAt env safety (ves.venv safety) where
@@ -44,6 +46,7 @@ theorem VEnvs.WF.toVEnvAt {env : Environment} {ves : VEnvs} (wf : ves.WF env)
   hasPrimitives := wf.hasPrimitives
   safePrimitives := wf.safePrimitives
   projectionReady := wf.projectionReady
+  structureEtaReady := wf.structureEtaReady
 
 namespace TypeChecker
 open Inner
@@ -72,6 +75,7 @@ def VContext.mk1 {env : Environment} {safety : DefinitionSafety} {venv : VEnv}
   safePrimitives := wf.safePrimitives
   trenv := wf.tr
   projectionReady := wf.projectionReady
+  structureEtaReady := wf.structureEtaReady
   mlctx := .nil
   mlctx_wf := trivial
   lctx_eq := rfl

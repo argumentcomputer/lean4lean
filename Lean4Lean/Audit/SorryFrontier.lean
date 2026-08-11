@@ -145,11 +145,12 @@ private def allowlist : Array Lean.Name := #[
   -- recognizer (Verify/Environment/Boundaries.lean), added by #28 at the
   -- v4.33 reconciliation.
   `Lean4Lean.checkPrimitiveDef.WF,
-  -- `ProjectionReady` transport across the front-end environment extensions
-  -- (Verify/Environment/Extension.lean): upstream's proved v4.33 declaration
-  -- chains meet this fork's projection-readiness obligation on `VContext`;
-  -- the transport proofs are L4L-19B content. The mutual-block entry is the
-  -- compiled recursive functional of `VEnvAt.addAxioms`.
+  -- `ProjectionReady`/registered `StructureEtaReady` transport across the
+  -- front-end environment extensions (Verify/Environment/Extension.lean):
+  -- upstream's proved v4.33 declaration chains do not establish these fork
+  -- obligations on `VContext`; the transport proofs are L4L-19B content. The
+  -- mutual-block entry is the compiled recursive functional of
+  -- `VEnvAt.addAxioms`.
   `Lean4Lean.VEnvAt.addAxioms._f,
   `Lean4Lean.addConstCore.WF,
   `Lean4Lean.addDef.WF,
@@ -165,8 +166,6 @@ private def allowlist : Array Lean.Name := #[
   -- statement is unchanged (Verify/Environment/InductiveFixtures.lean).
   `Lean4Lean.InductiveReplayFixtures.aliasFormerAlignmentRun,
   `Lean4Lean.TypeChecker.Inner.reduceRecursor.WF,
-  `Lean4Lean.TypeChecker.Inner.tryEtaStructCore.WF,
-  `Lean4Lean.TypeChecker.Inner.isDefEqUnitLike.WF,
   -- Tier R — research-grade metatheory (upstream-driven, not scheduled)
   `Lean4Lean.VEnv.IsDefEqU.sort_inv,
   `Lean4Lean.VEnv.IsDefEqU.forallE_inv_stratified,

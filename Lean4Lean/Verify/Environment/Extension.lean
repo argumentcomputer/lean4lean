@@ -20,13 +20,14 @@ theorem VEnv.addConst_mono {env₁ env₂ env₁' env₂' : VEnv} (H : env₁ �
   unfold VEnv.addConst at h₁ h₂
   split at h₁ <;> cases h₁
   split at h₂ <;> cases h₂
-  refine { constants {n a} := ?_, defeqs := H.defeqs }
+  refine { constants {n a} := ?_, defeqs := H.defeqs, structEtas := H.structEtas }
   dsimp; split <;> [exact id; exact H.constants]
 
 theorem VEnv.addDefEq_mono {env₁ env₂ : VEnv} (H : env₁ ≤ env₂) :
     env₁.addDefEq df ≤ env₂.addDefEq df where
   constants := H.constants
   defeqs := by rintro d (rfl | hd) <;> [exact .inl rfl; exact .inr (H.defeqs hd)]
+  structEtas := H.structEtas
 
 theorem VEnv.addConsts_mono {env₁ env₂ env₁' env₂' : VEnv} (H : env₁ ≤ env₂) :
     ∀ {cis}, env₁.addConsts cis = some env₁' → env₂.addConsts cis = some env₂' → env₁' ≤ env₂'
@@ -264,6 +265,13 @@ theorem VEnvAt.addAxioms {env : Environment} {venv : VEnv} {bs : DefinitionSafet
     have h₁' : venv.addConst v.name ci.toVConstant = some venv₁ := by rw [hn]; exact h₁
     have hle := VEnv.addConst_le h₁'
     have hax : (ConstantInfo.axiomInfo { v with isUnsafe := bs == .unsafe }).name = v.name := rfl
+    -- The existing extension-readiness obligation supplies both checker
+    -- capabilities.  Keeping them paired preserves this declaration's single
+    -- reconciliation placeholder while the shared transport theorem is proved.
+    have readiness :
+        ProjectionReady (env.add (.axiomInfo { v with isUnsafe := bs == .unsafe })) venv₁ ∧
+        StructureEtaReady (env.add (.axiomInfo { v with isUnsafe := bs == .unsafe })) venv₁ :=
+      sorry
     have wf₁ : VEnvAt (env.add (.axiomInfo { v with isUnsafe := bs == .unsafe })) bs venv₁ :=
       { tr := TrEnv'.axiom (ci := { v with isUnsafe := bs == .unsafe }) (ci' := ci.toVConstant)
           ⟨hsf, hd.1.1.2.1, hd.1.1.2.2⟩
@@ -271,14 +279,15 @@ theorem VEnvAt.addAxioms {env : Environment} {venv : VEnv} {bs : DefinitionSafet
         hasPrimitives := wf.hasPrimitives.addConst_of_not_primitive hd.2.2.2 h₁'
         safePrimitives := wf.safePrimitives_add _ (hax ▸ hd.2.2.1)
           (by rw [hax]; simp [hd.2.2.2])
-        -- Tier V (L4L-19B): `ProjectionReady` transport across the temporary
+        -- Tier V (L4L-19B): checker-readiness transport across the temporary
         -- axiom additions of a mutual-block body environment. Added at the
         -- v4.33 reconciliation, where upstream's proved front-end chains met
         -- this fork's projection-readiness obligation on `VContext`; the
         -- `infer` half needs `isProjectionReadyStructure` stability under
         -- `Environment.add`, which is new verification content, not merge
         -- resolution.
-        projectionReady := sorry }
+        projectionReady := readiness.1
+        structureEtaReady := readiness.2 }
     show VEnvAt (vs.foldl (fun e v => e.add (.axiomInfo { v with isUnsafe := bs == .unsafe }))
       (env.add (.axiomInfo { v with isUnsafe := bs == .unsafe }))) bs venv'
     refine VEnvAt.addAxioms hsf wf₁ ?_ hnd.2 h₂
@@ -340,6 +349,10 @@ theorem addMutualBlock.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     · obtain ⟨b, hb, heq⟩ := hbaseSf sf hv
       exact heq ▸ (VEnv.addConsts_le hb).trans VEnv.addDefEqs_le
     · rw [hsame sf hv]; exact VEnv.LE.rfl⟩
+  have readiness : ∀ sf,
+      ProjectionReady (vs.foldl (fun e v => e.add (.defnInfo v)) env) (ves'.venv sf) ∧
+      StructureEtaReady (vs.foldl (fun e v => e.add (.defnInfo v)) env) (ves'.venv sf) :=
+    sorry
   exact {
     tr {sf} := by
       show TrEnv sf _ _
@@ -376,9 +389,10 @@ theorem addMutualBlock.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
           rw [heq]
           exact (wf.mono hle).trans ((VEnv.addConsts_le hb).trans VEnv.addDefEqs_le)
         · rw [hsame sf hv]; exact wf.mono hle
-    -- Tier V (L4L-19B): `ProjectionReady` transport across this front-end
+    -- Tier V (L4L-19B): checker-readiness transport across this front-end
     -- extension; see `VEnvAt.addAxioms`.
-    projectionReady := sorry }
+    projectionReady {sf} := (readiness sf).1
+    structureEtaReady {sf} := (readiness sf).2 }
 
 theorem addConstCore.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (ci : ConstantInfo) (ci' : VConstVal) (checkSafety : DefinitionSafety)
@@ -419,6 +433,10 @@ theorem addConstCore.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
   have hsame (safety) (hvisible : ¬ safety ≤ ci.safety) : ves'.venv safety = ves.venv safety := by
     have h := hves' safety; unfold VEnv.AddConst at h; rwa [if_neg hvisible] at h
   refine ⟨ves', ?_, hves'⟩
+  have readiness : ∀ safety,
+      ProjectionReady (env.add ci) (ves'.venv safety) ∧
+      StructureEtaReady (env.add ci) (ves'.venv safety) :=
+    sorry
   exact {
     tr {safety} := by
       by_cases hvisible : safety ≤ ci.safety
@@ -439,9 +457,10 @@ theorem addConstCore.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
       by_cases hvisible : safety ≤ ci.safety
       · exact (wf.mono hle).trans (VEnv.addConst_le (hadd safety hvisible))
       · rw [hsame safety hvisible]; exact wf.mono hle
-    -- Tier V (L4L-19B): `ProjectionReady` transport across this front-end
+    -- Tier V (L4L-19B): checker-readiness transport across this front-end
     -- extension; see `VEnvAt.addAxioms`.
-    projectionReady := sorry }
+    projectionReady {safety} := (readiness safety).1
+    structureEtaReady {safety} := (readiness safety).2 }
 
 theorem addConst.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (ci : ConstantInfo) (ci' : VConstVal) (checkSafety : DefinitionSafety)
@@ -497,6 +516,10 @@ theorem addDef.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
       ves'.venv safety = ves.venv safety := by
     have h := hves' safety; unfold VEnv.AddDef at h; rwa [if_neg hvisible] at h
   refine ⟨ves', ?_, hves'⟩
+  have readiness : ∀ safety,
+      ProjectionReady (env.add (.defnInfo v)) (ves'.venv safety) ∧
+      StructureEtaReady (env.add (.defnInfo v)) (ves'.venv safety) :=
+    sorry
   refine {
     tr {safety} := by
       change TrEnv' safety (env.constants.insert v.name (.defnInfo v)) env.quotInit _
@@ -527,9 +550,10 @@ theorem addDef.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
         rw [heq]
         exact (wf.mono hle).trans <| (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
       · rw [hsame safety hvisible]; exact wf.mono hle
-    -- Tier V (L4L-19B): `ProjectionReady` transport across this front-end
+    -- Tier V (L4L-19B): checker-readiness transport across this front-end
     -- extension; see `VEnvAt.addAxioms`.
-    projectionReady := sorry }
+    projectionReady {safety} := (readiness safety).1
+    structureEtaReady {safety} := (readiness safety).2 }
 
 /-- The unsafe branch of `addDefinition`. The constant is added to the environment as an axiom
 *before* its body is checked, so the body is translated in the extended environment `base` and
@@ -556,7 +580,12 @@ theorem addUnsafeDef.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
   have hname : (ConstantInfo.defnInfo v).name = ci'.name := htr.2
   have hadd' : (ves.venv .unsafe).addConsts [ci'] = some base := by
     simp [VEnv.addConsts, ← hname]; exact hadd
-  refine ⟨⟨fun | .unsafe => base.addDefEq ci'.toDefEq | sf => ves.venv sf⟩, ?_,
+  let ves' : VEnvs := ⟨fun | .unsafe => base.addDefEq ci'.toDefEq | sf => ves.venv sf⟩
+  have readiness : ∀ safety,
+      ProjectionReady (env.add (.defnInfo v)) (ves'.venv safety) ∧
+      StructureEtaReady (env.add (.defnInfo v)) (ves'.venv safety) :=
+    sorry
+  refine ⟨ves', ?_,
     by rintro ⟨⟩ <;> first | exact hle | exact .rfl⟩
   exact {
     tr {safety} := by
@@ -583,6 +612,7 @@ theorem addUnsafeDef.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
       | .unsafe, .safe | .unsafe, .partial => (wf.mono hsf).trans hle
       | .safe, .unsafe | .partial, .unsafe => absurd hsf (by decide)
       | .safe, .safe | .safe, .partial | .partial, .safe | .partial, .partial => wf.mono hsf
-    -- Tier V (L4L-19B): `ProjectionReady` transport across this front-end
+    -- Tier V (L4L-19B): checker-readiness transport across this front-end
     -- extension; see `VEnvAt.addAxioms`.
-    projectionReady := sorry }
+    projectionReady {safety} := (readiness safety).1
+    structureEtaReady {safety} := (readiness safety).2 }

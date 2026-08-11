@@ -1059,15 +1059,18 @@ to the replacement.
 - **Removal condition:** upstream adopts the reshapes or the proofs stop
   needing named intermediate steps.
 
-## D017 — projection readiness meets the v4.33 front-end chains
+## D017 — checker readiness meets the v4.33 front-end chains
 
 - **Status:** intentional-fork (transitional), created by the v4.33
   reconciliation
-- **Delta:** this fork's `VContext`/`VEnvs.WF` carry a `ProjectionReady`
-  obligation that upstream's newly proved front-end declaration chains (#28)
-  do not establish. The merge added the field to upstream's `VEnvAt`
-  (supplied honestly by `VEnvs.WF.toVEnvAt`) and left the extension-transport
-  obligations as five named Tier V sorries (`VEnvAt.addAxioms._f`,
+- **Delta:** this fork's `VContext`/`VEnvs.WF` carry `ProjectionReady` and,
+  since L4L-15B, registered `StructureEtaReady` obligations that upstream's
+  newly proved front-end declaration chains (#28) do not establish. The merge
+  added the projection field to upstream's `VEnvAt`; L4L-15B paired the exact
+  same five transitional declarations with structure-eta readiness, without
+  adding or renaming a frontier entry. Both fields are supplied honestly by
+  `VEnvs.WF.toVEnvAt`; their extension-transport obligations remain the five
+  named Tier V sorries (`VEnvAt.addAxioms._f`,
   `addConstCore.WF`, `addDef.WF`, `addMutualBlock.WF`, `addUnsafeDef.WF`).
   Upstream's vacuous quotient-initialization proof (`checkEqType.WF` via
   `TrEnv'.no_inductInfo`) is refutable on this fork — the inductive boundary
@@ -1083,8 +1086,9 @@ to the replacement.
   (L4L-19B territory), plus upstream's `checkPrimitiveDef.WF` boundary.
 - **Upstream issue/PR:** not applicable upstream (the obligation is
   fork-only); resolved by the L4L-19B transport proofs.
-- **Removal condition:** L4L-19B proves `ProjectionReady` transport across
-  `Environment.add`/`addConsts` and the constructive quotient initialization,
+- **Removal condition:** L4L-19B proves both readiness transports across
+  `Environment.add`/`addConsts`, registers every newly completed eligible
+  structure artifact, and proves constructive quotient initialization,
   emptying the six entries.
 
 ## D018 — v4.33.0 final toolchain (upstream pins v4.33.0-rc2)
@@ -1098,8 +1102,8 @@ to the replacement.
 
 ## D019 — registered structure eta in Theory
 
-- **Status:** approved intentional fork divergence; L4L-15B implementation
-  in progress on the reconciled v4.33 base.
+- **Status:** implemented intentional fork divergence; L4L-15B completed on
+  the reconciled v4.33 base (2026-08-11).
 - **Owner:** John C. Burnham; semantic review is part of the L4L-20C PR
   series.
 - **Delta:** extend Theory with an explicit environment-registered
@@ -1117,11 +1121,13 @@ to the replacement.
   nested transport, and the Verify structure-artifact bridge. Downstream
   Theory consumers see an additive descriptor/registry API and one additional
   definitional-equality constructor.
-- **Tests:** dependent parameterized, zero-field parameterized, proof-field,
-  and Prop-valued positive fixtures; recursive, multi-constructor, and indexed
-  negative fixtures; exact axiom guards for registration, subject reduction,
-  Church--Rosser, `tryEtaStructCore.WF`, and `isDefEqUnitLike.WF`; full sorry
-  frontier and release gate.
+- **Tests:** executable metadata and kernel-conversion fixtures cover
+  dependent parameterized neutral majors, parameterized zero-field,
+  proof-field, and Prop-valued positives plus recursive, multi-constructor,
+  and indexed negatives. Exact axiom guards cover registration, subject
+  reduction, the primitive rule, Church--Rosser, `tryEtaStructCore.WF`, and
+  `isDefEqUnitLike.WF`; the latter two left the direct sorry frontier, reducing
+  it from 24 to 22 entries. The full release gate is green.
 - **Axiom note:** no new project axiom or source `sorry` is permitted. Existing
   L4L-16--L4L-18 frontier dependencies remain explicit in per-root manifests.
 - **Parallel upstream conversation:** implementation is intentionally allowed

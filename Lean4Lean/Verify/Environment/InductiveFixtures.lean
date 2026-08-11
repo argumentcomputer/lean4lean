@@ -153,16 +153,14 @@ theorem natDecl_wf : natDecl.WF VEnv.empty := by
   · constructor
     · change True
       trivial
-    · change VExpr.sort (.succ .zero) = VExpr.sort (.succ .zero)
-      rfl
+    · exact .nil
   · have hc' := List.mem_singleton.1 hc
     subst c
     constructor
     · refine ⟨.inl rfl, ?_, trivial⟩
       intro
-      rfl
-    · change VExpr.sort (.succ .zero) = VExpr.sort (.succ .zero)
-      rfl
+      exact .nil
+    · exact .nil
 
 /-- The exact intermediate invariant used to type the generated recursor. -/
 theorem natStage3 :
@@ -207,15 +205,13 @@ theorem natStage3 :
       subst c
       refine ⟨.inl rfl, ?_, trivial⟩
       intro
-      rfl
+      exact .nil
   · intro c hc
     rcases List.mem_cons.1 hc with rfl | hc
-    · change VExpr.sort (.succ .zero) = VExpr.sort (.succ .zero)
-      rfl
+    · exact .nil
     · have hc' := List.mem_singleton.1 hc
       subst c
-      change VExpr.sort (.succ .zero) = VExpr.sort (.succ .zero)
-      rfl
+      exact .nil
 
 theorem natInfo_tr :
     TrConstVal .safe VEnv.empty natInfo natType.toVConstVal := by
@@ -696,8 +692,7 @@ theorem eqDecl_wf : eqDecl.WF VEnv.empty := by
     constructor
     · change True
       trivial
-    · refine ⟨_, _, rfl, ?_, rfl⟩
-      type_tac
+    · exact .cons (by type_tac) .nil
 
 theorem eqRefl_wf : eqType.ctors[0].toVConstant.WF eqTypeEnv := by
   have hblock := eqDecl_wf.2 eqType (by simp [eqDecl])
@@ -994,8 +989,7 @@ theorem indexedVecDecl_wf : indexedVecDecl.WF natFinalEnv := by
         have hNat : natFinalEnv.constants ``Nat = some natType.toVConstant := rfl
         have hZero : natFinalEnv.constants ``Nat.zero =
             some natType.ctors[0].toVConstant := rfl
-        exact ⟨.const ``Nat [], .sort (.succ (.param 0)), rfl,
-          (by type_tac), rfl⟩
+        exact .cons (by type_tac) .nil
     · have hc' := List.mem_singleton.1 hc
       subst c
       constructor
@@ -1022,8 +1016,7 @@ theorem indexedVecDecl_wf : indexedVecDecl.WF natFinalEnv := by
         · exact .inl rfl
         constructor
         · intro _
-          exact ⟨.const ``Nat [], .sort (.succ (.param 0)), rfl,
-            (by type_tac), rfl⟩
+          exact .cons (by type_tac) .nil
         · trivial
       · change natFinalEnv.SpineWF 1
           [VExpr.app (VExpr.app (VExpr.const ``IndexedVec [VLevel.param 0])
@@ -1037,8 +1030,7 @@ theorem indexedVecDecl_wf : indexedVecDecl.WF natFinalEnv := by
         have hNat : natFinalEnv.constants ``Nat = some natType.toVConstant := rfl
         have hSucc : natFinalEnv.constants ``Nat.succ =
             some natType.ctors[1].toVConstant := rfl
-        exact ⟨.const ``Nat [], .sort (.succ (.param 0)), rfl,
-          (by type_tac), rfl⟩
+        exact .cons (by type_tac) .nil
 
 theorem natFinalEnv_le_indexedVecTypeEnv : natFinalEnv ≤ indexedVecTypeEnv :=
   VEnv.addConst_le (show natFinalEnv.addConst indexedVecType.name
@@ -2580,6 +2572,13 @@ private theorem outParamVEnvs_wf : outParamVEnvs.WF outParamKernelEnv where
     simp only [outParamMap, SMap.WF.find?_insert
       (s := ({} : ConstMap)) SMap.WF.empty] at h
     simp [SMap.find?, annotationOutParamInfo] at h
+  structureEtaReady := StructureEtaReady.of_no_ctorInfo <| by
+    intro name _info h
+    change outParamMap.find?' name = some (.ctorInfo _info) at h
+    rw [outParamMap_wf.find?'_eq_find?] at h
+    simp only [outParamMap, SMap.WF.find?_insert
+      (s := ({} : ConstMap)) SMap.WF.empty] at h
+    simp [SMap.find?, annotationOutParamInfo] at h
 
 /-! ## Definitionally equal constructor parameters -/
 
@@ -3446,6 +3445,13 @@ private theorem aliasFormerNormalizationVEnvs_wf :
     simp only [typeFamilyAliasMap, SMap.WF.find?_insert
       (s := ({} : ConstMap)) SMap.WF.empty] at h
     simp [SMap.find?, typeFamilyAliasInfo] at h
+  structureEtaReady := StructureEtaReady.of_no_ctorInfo <| by
+    intro name _info h
+    change typeFamilyAliasMap.find?' name = some (.ctorInfo _info) at h
+    rw [typeFamilyAliasMap_wf.find?'_eq_find?] at h
+    simp only [typeFamilyAliasMap, SMap.WF.find?_insert
+      (s := ({} : ConstMap)) SMap.WF.empty] at h
+    simp [SMap.find?, typeFamilyAliasInfo] at h
 
 private def aliasFormerNormalizationContext : TypeChecker.VContext :=
   TypeChecker.VContext.mk' aliasFormerNormalizationVEnvs_wf
@@ -3561,6 +3567,17 @@ private theorem aliasRecNormalizationVEnvs_wf :
   safePrimitives := aliasRecNormalization_safePrimitives
   mono := fun _ => .rfl
   projectionReady := ProjectionReady.of_no_ctorInfo <| by
+    intro name _info h
+    change aliasRecTypeMap.find?' name = some (.ctorInfo _info) at h
+    rw [aliasRecTypeMap_wf.find?'_eq_find?] at h
+    simp only [aliasRecTypeMap, recAliasMap_wf.find?_insert] at h
+    simp only [recAliasMap, SMap.WF.find?_insert
+      (s := ({} : ConstMap)) SMap.WF.empty] at h
+    by_cases hAliasRec : ``AliasRec = name <;>
+      by_cases hRecAlias : ``RecAlias = name <;>
+      simp +decide [hAliasRec, hRecAlias, SMap.find?, aliasRecInfo,
+        recAliasInfo] at h
+  structureEtaReady := StructureEtaReady.of_no_ctorInfo <| by
     intro name _info h
     change aliasRecTypeMap.find?' name = some (.ctorInfo _info) at h
     rw [aliasRecTypeMap_wf.find?'_eq_find?] at h
@@ -7465,6 +7482,22 @@ private def aliasFormerFamilyStage :
           typeFamilyAliasInfo] at h
       · simp [hAliasFormer, hTypeFamilyAlias, SMap.find?, aliasFormerInfo,
           typeFamilyAliasInfo] at h
+  structureEtaReady := StructureEtaReady.of_no_ctorInfo <| by
+    intro name _info h
+    change aliasFormerTypeMap.find?' name = some (.ctorInfo _info) at h
+    rw [aliasFormerTypeMap_wf.find?'_eq_find?] at h
+    simp only [aliasFormerTypeMap, typeFamilyAliasMap_wf.find?_insert] at h
+    simp only [typeFamilyAliasMap, SMap.WF.find?_insert
+      (s := ({} : ConstMap)) SMap.WF.empty] at h
+    by_cases hAliasFormer : ``AliasFormer = name
+    · subst name
+      simp [SMap.find?, aliasFormerInfo, typeFamilyAliasInfo] at h
+    · by_cases hTypeFamilyAlias : ``TypeFamilyAlias = name
+      · subst name
+        simp [hAliasFormer, SMap.find?, aliasFormerInfo,
+          typeFamilyAliasInfo] at h
+      · simp [hAliasFormer, hTypeFamilyAlias, SMap.find?, aliasFormerInfo,
+          typeFamilyAliasInfo] at h
   family_lctx_eq := rfl
   constructorContext_eq := rfl
   quotInit_eq := rfl
@@ -8346,6 +8379,17 @@ private def annotatedPiFamilyStage :
   typeEnv := annotatedPiTypeEnv
   addInduct := annotatedPiAddType
   projectionReady := ProjectionReady.of_no_ctorInfo <| by
+    intro name _info h
+    change annotatedPiTypeMap.find?' name = some (.ctorInfo _info) at h
+    rw [annotatedPiTypeMap_wf.find?'_eq_find?] at h
+    simp only [annotatedPiTypeMap, outParamMap_wf.find?_insert] at h
+    simp only [outParamMap, SMap.WF.find?_insert
+      (s := ({} : ConstMap)) SMap.WF.empty] at h
+    by_cases hAnnotatedPi : ``AnnotatedPi = name <;>
+      by_cases hOutParam : ``outParam = name <;>
+      simp +decide [hAnnotatedPi, hOutParam, SMap.find?, annotatedPiInfo,
+        annotationOutParamInfo] at h
+  structureEtaReady := StructureEtaReady.of_no_ctorInfo <| by
     intro name _info h
     change annotatedPiTypeMap.find?' name = some (.ctorInfo _info) at h
     rw [annotatedPiTypeMap_wf.find?'_eq_find?] at h

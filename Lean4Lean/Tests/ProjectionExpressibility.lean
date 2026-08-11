@@ -93,7 +93,7 @@ theorem dependentRecordDecl_wf :
         VInductDecl.recFieldIdxs, VInductDecl.sortLevel,
         VExpr.dropN, VExpr.resultOf, VExpr.forallN,
         VExpr.liftTelN, VExpr.appArgs]
-      rfl
+      exact .nil
 
 theorem dependentRecordGeneration_wf :
     dependentRecordGeneration.WF VEnv.empty :=
@@ -249,8 +249,8 @@ theorem symbolicParams_spine :
       (dependentRecordView.familyType.instL symbolicLevels)
       symbolicMajorParams (.sort resultLevel) := by
   refine ⟨.max (.succ (.param 0)) (.succ (.param 1)),
-    ⟨_, _, rfl, by type_tac, ?_⟩⟩
-  exact ⟨_, _, rfl, by type_tac, rfl⟩
+    .cons (by type_tac) ?_⟩
+  exact .cons (by type_tac) .nil
 
 theorem symbolicMajor_hasType :
     dependentRecordEnv.HasType 2 symbolicContext symbolicMajor
@@ -333,8 +333,8 @@ theorem symbolicMajorBinder_isType : dependentRecordEnv.IsType 2
       [symbolicFamilyType, symbolicAlphaType]
       (dependentRecordView.familyType.instL symbolicLevels)
       [.bvar 1, .bvar 0] (.sort resultLevel) := by
-    refine ⟨_, _, rfl, by type_tac, ?_⟩
-    exact ⟨_, _, rfl, by type_tac, rfl⟩
+    refine .cons (by type_tac) ?_
+    exact .cons (by type_tac) .nil
   have hfamily := VEnv.HasType.const
     (Γ := [symbolicFamilyType, symbolicAlphaType])
       dependentRecord_view_wf.family symbolicLevels_wf (by rfl)
@@ -408,9 +408,9 @@ theorem symbolicKeyRule_spine :
       symbolicKeyRuleArgs symbolicKeyRuleResult := by
   rw [symbolicKeyRuleType_eq]
   unfold symbolicKeyRuleArgs symbolicKeyRuleResult
-  refine ⟨_, _, rfl, by type_tac, ?_⟩
-  refine ⟨_, _, rfl, by type_tac, ?_⟩
-  refine ⟨_, _, rfl, ?_, ?_⟩
+  refine .cons (by type_tac) ?_
+  refine .cons (by type_tac) ?_
+  refine .cons ?_ ?_
   · have hMotiveShape : symbolicKeyMotive =
         .lam
           ((dependentRecordView.structureType symbolicLevels
@@ -424,7 +424,7 @@ theorem symbolicKeyRule_spine :
             dependentRecordView.structureType symbolicLevels
               symbolicMajorParams])
     exact VEnv.HasType.lam (u := structureLevel) hstructure (by type_tac)
-  · refine ⟨_, _, rfl, ?_, ?_⟩
+  · refine .cons ?_ ?_
     · change dependentRecordEnv.HasType 2 symbolicFieldContext
         symbolicKeyMinor
         (.forallE (.bvar 5)
@@ -502,8 +502,8 @@ theorem symbolicKeyRule_spine :
           (.bvar 7) (.sort (.succ (.param 0))) := by
         simpa [innerCtor, innerStructure, VExpr.inst, VExpr.instVar] using hbetaRaw
       exact hbeta.symm.defeq hkey
-    · refine ⟨_, _, rfl, by type_tac, ?_⟩
-      exact ⟨_, _, rfl, by type_tac, rfl⟩
+    · refine .cons (by type_tac) ?_
+      exact .cons (by type_tac) .nil
 
 def symbolicKeyRuleBinders : List VExpr :=
   takeLamDomains 6 (symbolicKeyRule.lhs.instL symbolicKeyRuleLevels)
@@ -1233,7 +1233,7 @@ theorem emptyRecordDecl_wf : emptyRecordDecl.WF VEnv.empty := by
       VInductDecl.ctorFields, VInductDecl.recFieldIdxs,
       VInductDecl.sortLevel, VExpr.dropN, VExpr.resultOf,
       VExpr.forallN, VExpr.liftTelN, VExpr.appArgs]
-    rfl
+    exact .nil
 
 theorem emptyRecordGeneration_wf :
     emptyRecordGeneration.WF VEnv.empty :=

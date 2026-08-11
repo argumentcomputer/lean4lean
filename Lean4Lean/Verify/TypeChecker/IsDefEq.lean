@@ -237,7 +237,7 @@ private theorem AppStack.toSpineWF_of_isType {c : VContext}
     let .head hhead := H
     cases As with
     | nil =>
-      refine ⟨[], .nil, rfl, ?_⟩
+      refine ⟨[], .nil, .nil, ?_⟩
       change c.TrExprS f f'
       exact hhead
     | cons A As =>
@@ -264,8 +264,7 @@ private theorem AppStack.toSpineWF_of_isType {c : VContext}
       obtain ⟨args', hargs, hspine, htailFull⟩ :=
         ih Hrest htailType (by simpa [Expr.mkAppList] using hfull)
           hfullType
-      refine ⟨_ :: args', .cons hargTr hargs,
-        ⟨A, VExpr.forallN As (.sort resultLevel), rfl, hargA, ?_⟩, ?_⟩
+      refine ⟨_ :: args', .cons hargTr hargs, .cons hargA ?_, ?_⟩
       · rw [VExpr.instN_forallN]
         rw [Nat.zero_add]
         rw [(show (VExpr.sort resultLevel).ClosedN 0 by trivial).instN_eq
@@ -290,8 +289,6 @@ private theorem forall₂_of_getElem? {R : α → β → Prop} :
 
 
 theorem tryEtaStructCore.WF_of_structureEta {c : VContext} {s : VState}
-    (ready : StructureEtaReady c.env c.venv)
-    (eta : c.venv.HasStructureEta)
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (tryEtaStructCore e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' := by
   unfold tryEtaStructCore
@@ -314,7 +311,7 @@ theorem tryEtaStructCore.WF_of_structureEta {c : VContext} {s : VState}
   rename_i htypesTrue
   unfold F1
   obtain ⟨familyInfo, hfamily, ⟨artifact⟩⟩ :=
-    ready.resolveConstructor hfind hnonrec
+    c.structureEtaReady.resolveConstructor hfind hnonrec
   have ⟨head', hstack⟩ := AppStack.build <|
     e₂.mkAppList_getAppArgsList ▸ he₂
   have hheadTr := hstack.tr
@@ -471,8 +468,7 @@ theorem tryEtaStructCore.WF_of_structureEta {c : VContext} {s : VState}
   have hty₁Struct := VEnv.IsDefEqU.trans c.Ewf c.Δwf
     (htypes htypesTrue) hty₂Struct
   have haStruct := aTyped.defeqU_r c.Ewf c.Δwf hty₁Struct
-  have heta := eta artifact.projection.view artifact.projection.viewWF
-    artifact.projection.programsWF c.Δwf hlevelsWF hlevelsLength
+  have heta := artifact.eta c.Δwf hlevelsWF hlevelsLength
     hparamsLength ⟨_, hparamsSpine⟩ haStruct
   have hF1Size : F1.size = args'.length := by
     calc
@@ -760,7 +756,8 @@ theorem tryEtaStructCore.WF_of_structureEta {c : VContext} {s : VState}
 
 theorem tryEtaStructCore.WF {c : VContext} {s : VState}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
-    RecM.WF c s (tryEtaStructCore e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' := sorry
+    RecM.WF c s (tryEtaStructCore e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' :=
+  tryEtaStructCore.WF_of_structureEta he₁ he₂
 
 theorem tryEtaStruct.WF {c : VContext} {s : VState}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
@@ -995,8 +992,6 @@ theorem tryStringLitExpansion.WF {c : VContext} {s : VState}
   exact (tryStringLitExpansionCore.WF he₂ he₁).mono fun _ _ _ h hb => (h hb).symm
 
 theorem isDefEqUnitLike.WF_of_structureEta {c : VContext} {s : VState}
-    (ready : StructureEtaReady c.env c.venv)
-    (eta : c.venv.HasStructureEta)
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (isDefEqUnitLike e₁ e₂)
       fun b _ => b = .true → c.IsDefEqU e₁' e₂' := by
@@ -1044,7 +1039,7 @@ theorem isDefEqUnitLike.WF_of_structureEta {c : VContext} {s : VState}
     unfold Kernel.Environment.isNonRecStructure
     rw [hfamily]
     rfl
-  obtain ⟨artifact⟩ := ready.resolve familyName familyInfo ctorName
+  obtain ⟨artifact⟩ := c.structureEtaReady.resolve familyName familyInfo ctorName
     constructorInfo hfamily hctor hnonrec
   have ⟨head', hstack⟩ := AppStack.build <|
     normalizedType.mkAppList_getAppArgsList ▸ tTypeTr
@@ -1117,11 +1112,9 @@ theorem isDefEqUnitLike.WF_of_structureEta {c : VContext} {s : VState}
   have hstructTy₂ := VEnv.IsDefEqU.trans c.Ewf c.Δwf hfullEq (h hb)
   have haStruct := aTyped.defeqU_r c.Ewf c.Δwf hstructTy₁.symm
   have hbStruct := bTyped.defeqU_r c.Ewf c.Δwf hstructTy₂.symm
-  have heta₁ := eta artifact.projection.view artifact.projection.viewWF
-    artifact.projection.programsWF c.Δwf hlevelsWF hlevelsLength
+  have heta₁ := artifact.eta c.Δwf hlevelsWF hlevelsLength
     hparamsLength ⟨_, hparamsFamily⟩ haStruct
-  have heta₂ := eta artifact.projection.view artifact.projection.viewWF
-    artifact.projection.programsWF c.Δwf hlevelsWF hlevelsLength
+  have heta₂ := artifact.eta c.Δwf hlevelsWF hlevelsLength
     hparamsLength ⟨_, hparamsFamily⟩ hbStruct
   have hfieldsLength : artifact.projection.view.fields.length = 0 := by
     calc
@@ -1143,7 +1136,8 @@ theorem isDefEqUnitLike.WF_of_structureEta {c : VContext} {s : VState}
 
 theorem isDefEqUnitLike.WF {c : VContext} {s : VState}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
-    RecM.WF c s (isDefEqUnitLike e₁ e₂) fun b _ => b = .true → c.IsDefEqU e₁' e₂' := sorry
+    RecM.WF c s (isDefEqUnitLike e₁ e₂) fun b _ => b = .true → c.IsDefEqU e₁' e₂' :=
+  isDefEqUnitLike.WF_of_structureEta he₁ he₂
 
 theorem isDefEqCore'.WF {c : VContext} {s : VState}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :

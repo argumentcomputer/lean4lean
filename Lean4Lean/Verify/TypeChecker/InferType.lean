@@ -394,7 +394,7 @@ theorem AppStack.toSpineWF {c : VContext}
       cases As with
       | nil =>
           let .head hfull := H
-          exact ⟨[], .nil, rfl, by simpa⟩
+          exact ⟨[], .nil, .nil, by simpa⟩
       | cons _ _ => simp at hlen
   | cons arg args ih =>
       cases As with
@@ -410,8 +410,7 @@ theorem AppStack.toSpineWF {c : VContext}
         rw [VExpr.instN_forallN] at htailType
         obtain ⟨args', hargs', hspine, hfull⟩ :=
           ih Hrest htailType (by simpa [VExpr.instTelN_length] using hlen')
-        refine ⟨_ :: args', .cons harg' hargs', ⟨A, VExpr.forallN As C,
-          rfl, hargA, ?_⟩, ?_⟩
+        refine ⟨_ :: args', .cons harg' hargs', .cons hargA ?_, ?_⟩
         have hlenArgsAs : args'.length = As.length :=
           hargs'.length_eq.symm.trans hlen'
         rw [VExpr.instN_forallN]
@@ -435,14 +434,14 @@ theorem inferProjParams.WF {c : VContext} {s : VState}
   induction hargs generalizing r R s with
   | nil =>
       simp [inferProjParams] at hspine ⊢
-      exact hspine ▸ .pure ⟨hrBelow, hr⟩
+      exact hspine.nil_inv ▸ .pure ⟨hrBelow, hr⟩
   | @cons arg arg' args args' harg hargs ih =>
       simp only [inferProjParams]
       have hargBelow := hargsBelow arg (by simp)
       have hargsBelow' : ∀ arg ∈ args, c.FVarsBelow proj arg := by
         intro arg harg
         exact hargsBelow arg (by simp [harg])
-      obtain ⟨A, B, rfl, hargType, hrest⟩ := hspine
+      obtain ⟨A, B, rfl, hargType, hrest⟩ := hspine.cons_inv
       obtain ⟨r', hrS, hrEq⟩ := hr
       refine (whnf.WF hrS).bind fun out s' _
         ⟨houtBelow, ⟨out', hout, houtEq⟩⟩ => ?_
