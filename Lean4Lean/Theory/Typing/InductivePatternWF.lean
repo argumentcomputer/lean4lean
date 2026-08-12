@@ -187,6 +187,45 @@ theorem VEnv.IsDefEq.appN_congr {env : VEnv} {U : Nat} {Γ : List VExpr}
     env.IsDefEq U Γ (VExpr.appN X es) (VExpr.appN Y es) B :=
   h.appN_defEq hs.toSpineDefEq
 
+/-- A registered equation remains available after environment growth.
+
+This is the primitive transport operation for consumer-certified extension
+rules: `VEnv.LE` transports registration, while the core `.extra` constructor
+still requires the exact universe instantiation side conditions. -/
+theorem VEnv.LE.extra {env env' : VEnv} (henv : env ≤ env') {U : Nat}
+    {Γ : List VExpr} {df : VDefEq} {ls : List VLevel}
+    (hreg : env.defeqs df) (hlevels : ∀ l ∈ ls, l.WF U)
+    (hlevelsLength : ls.length = df.uvars) :
+    env'.IsDefEq U Γ (df.lhs.instL ls) (df.rhs.instL ls)
+      (df.type.instL ls) :=
+  .extra (henv.defeqs hreg) hlevels hlevelsLength
+
+/-- Transport a registered equation through environment growth and then
+apply it to a well-typed spine. This is the beta-tower consumer boundary:
+registration supplies only the tower equality; application congruence and
+spine typing remain explicit proof obligations. -/
+theorem VEnv.LE.extra_appN {env env' : VEnv} (henv : env ≤ env') {U : Nat}
+    {Γ : List VExpr} {df : VDefEq} {ls : List VLevel} {args : List VExpr}
+    {B : VExpr} (hreg : env.defeqs df)
+    (hlevels : ∀ l ∈ ls, l.WF U) (hlevelsLength : ls.length = df.uvars)
+    (hspine : env.SpineWF U Γ (df.type.instL ls) args B) :
+    env'.IsDefEq U Γ
+      (VExpr.appN (df.lhs.instL ls) args)
+      (VExpr.appN (df.rhs.instL ls) args) B :=
+  (henv.extra hreg hlevels hlevelsLength).appN_congr (hspine.mono henv)
+
+/-- The symmetric applied transport is derived, not a second trusted
+extension direction. -/
+theorem VEnv.LE.extra_appN_symm {env env' : VEnv} (henv : env ≤ env')
+    {U : Nat} {Γ : List VExpr} {df : VDefEq} {ls : List VLevel}
+    {args : List VExpr} {B : VExpr} (hreg : env.defeqs df)
+    (hlevels : ∀ l ∈ ls, l.WF U) (hlevelsLength : ls.length = df.uvars)
+    (hspine : env.SpineWF U Γ (df.type.instL ls) args B) :
+    env'.IsDefEq U Γ
+      (VExpr.appN (df.rhs.instL ls) args)
+      (VExpr.appN (df.lhs.instL ls) args) B :=
+  (henv.extra_appN hreg hlevels hlevelsLength hspine).symm
+
 /-- Applying a lambda telescope to a full well-typed spine collapses to the
 iterated instantiation of its body. -/
 theorem VEnv.IsDefEq.appN_lamN {env : VEnv} (henv : env.Ordered) {U : Nat} :
@@ -883,6 +922,18 @@ milestones land, with no restatement. -/
 /-- info: 'Lean4Lean.VEnv.IsDefEq.appN_defEq' depends on axioms: [propext] -/
 #guard_msgs in
 #print axioms Lean4Lean.VEnv.IsDefEq.appN_defEq
+
+/-- info: 'Lean4Lean.VEnv.LE.extra' depends on axioms: [propext] -/
+#guard_msgs in
+#print axioms Lean4Lean.VEnv.LE.extra
+
+/-- info: 'Lean4Lean.VEnv.LE.extra_appN' depends on axioms: [propext] -/
+#guard_msgs in
+#print axioms Lean4Lean.VEnv.LE.extra_appN
+
+/-- info: 'Lean4Lean.VEnv.LE.extra_appN_symm' depends on axioms: [propext] -/
+#guard_msgs in
+#print axioms Lean4Lean.VEnv.LE.extra_appN_symm
 
 /-- info: 'Lean4Lean.Pattern.varN_matches_paths' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

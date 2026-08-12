@@ -164,6 +164,22 @@ theorem Pattern.matches_instN {p : Pattern} {e : VExpr} {m1 m2} (H : p.Matches e
     rw [(_ : (fun _ => _) = _)]; exact ih1.app ih2
     ext (_|_) <;> rfl
 
+/-- Universe instantiation preserves a successful match.  The universe
+capture is instantiated pointwise and every expression capture is
+instantiated by the same level substitution. -/
+theorem Pattern.Matches.instL {p : Pattern} {e : VExpr} {m1 m2}
+    (H : p.Matches e m1 m2) (ls : List VLevel) :
+    p.Matches (e.instL ls) (m1.map (VLevel.inst ls))
+      fun x => (m2 x).instL ls := by
+  induction H with
+  | const => erw [show (fun _ : Empty => _) = _ by ext ⟨⟩]; exact .const
+  | var _ ih =>
+    rw [(_ : (fun _ => _) = _)]; exact ih.var
+    ext (_|_) <;> rfl
+  | app _ _ ih1 ih2 =>
+    rw [(_ : (fun _ => _) = _)]; exact ih1.app ih2
+    ext (_|_) <;> rfl
+
 theorem Pattern.matches_inter {p q : Pattern} {e : VExpr} :
     (∃ m1 m2, p.Matches e m1 m2) ∧ (∃ m1 m2, q.Matches e m1 m2) ↔
     (∃ r m1 m2, p.inter q = some r ∧ r.Matches e m1 m2) := by

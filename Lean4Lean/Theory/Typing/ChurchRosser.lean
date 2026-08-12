@@ -9,6 +9,12 @@ namespace VEnv
 
 open VExpr
 
+/-- The combinatorial pattern interface used by parallel reduction.
+
+Membership and non-overlap facts classify possible contractions; they do not
+certify that a matched redex is equal to a payload. Operational soundness is
+carried by each `.extra` step, and raw registered-equation joining is supplied
+separately by `Params.Extension`. -/
 class Params where
   env : VEnv
   henv : env.WF
@@ -17,16 +23,11 @@ class Params where
   pat_simple : Pat p r → ∃ sp : SimplePattern, p = sp.toPattern
   pat_uniq : Pat p₁ r → Pat p₂ r' → Subpattern p₃ p₁ → p₂.inter p₃ = some p₄ →
     p₁ = p₂ ∧ p₂ = p₃ ∧ r ≍ r'
-  pat_wf : Pat p r → p.Matches e m1 m2 → HasType env univs Γ e A →
-    r.2.OK (IsDefEqU env univs Γ) m1 m2 → IsDefEqU env univs Γ e (r.1.apply m1 m2)
   pat_app_l : Pat p r → Subpattern (.app p₁ p₂) p → ¬Subpattern (.app p₃ p₄) p₁
   pat_app_l_uniq : Pat p r → Pat p' r' → Subpattern (.app p₁ p₂) p →
     Subpattern (.app p₁' p₂') p' → Subpattern (.var p₃) p₁ → p₁'.inter p₃ = none
   pat_app_uniq : Pat p r → Pat p' r' → Subpattern (.app p₁ p₂) p →
     Subpattern (.app p₁' p₂') p' → Subpattern p₃ p₁ → Subpattern p₃' p₂' → p₃.inter p₃' = none
-  extra_pat : env.defeqs df → (∀ l ∈ ls, l.WF uvars) → ls.length = df.uvars →
-    ∃ p r m1 m2, Pat p r ∧ p.Matches (df.lhs.instL ls) m1 m2 ∧ r.2.OK (IsDefEqU env univs Γ) m1 m2 ∧
-    df.rhs.instL ls = r.1.apply m1 m2
   /-- Registered-family typing is reflected through weakening.  This is the
   structure-family specialization of `IsDefEqU.weakN_iff`: it retains the
   registered head witness, which the untyped theorem intentionally erases. -/
@@ -947,12 +948,18 @@ inductive ParRed : List VExpr → VExpr → VExpr → Prop where
   | lam : Γ ⊢ A ≫ A' → A::Γ ⊢ body ≫ body' → Γ ⊢ .lam A body ≫ .lam A' body'
   | forallE : Γ ⊢ A ≫ A' → A::Γ ⊢ B ≫ B' → Γ ⊢ .forallE A B ≫ .forallE A' B'
   | beta : A::Γ ⊢ e₁ ≫ e₁' → Γ ⊢ e₂ ≫ e₂' → Γ ⊢ .app (.lam A e₁) e₂ ≫ e₁'.inst e₂'
+  /-- A consumer-certified pattern contraction.  The equality certificate is
+  carried by the step itself: membership in `Pat` and a successful match do
+  not make an external equation trusted. -/
   | extra : Pat p r → p.Matches e m1 m2 → r.2.OK (IsDefEqU env univs Γ) m1 m2 →
+    IsDefEqU env univs Γ e (r.1.apply m1 m2) →
     (∀ a, Γ ⊢ m2 a ≫ m2' a) → Γ ⊢ e ≫ r.1.apply m1 m2'
 
 def NonNeutral (Γ : List VExpr) (e : VExpr) : Prop :=
   (∃ A e₁ e₂, e = .app (.lam A e₁) e₂) ∨
-  (∃ p r m1 m2, Pat p r ∧ p.Matches e m1 m2 ∧ r.2.OK (IsDefEqU env univs Γ) m1 m2)
+  (∃ p r m1 m2, Pat p r ∧ p.Matches e m1 m2 ∧
+    r.2.OK (IsDefEqU env univs Γ) m1 m2 ∧
+    IsDefEqU env univs Γ e (r.1.apply m1 m2))
 
 inductive CParRed : List VExpr → VExpr → VExpr → Prop where
   | bvar : Γ ⊢ .bvar i ⋙ .bvar i
@@ -963,6 +970,7 @@ inductive CParRed : List VExpr → VExpr → VExpr → Prop where
   | forallE : Γ ⊢ A ⋙ A' → A::Γ ⊢ B ⋙ B' → Γ ⊢ .forallE A B ⋙ .forallE A' B'
   | beta : A::Γ ⊢ e₁ ⋙ e₁' → Γ ⊢ e₂ ⋙ e₂' → Γ ⊢ .app (.lam A e₁) e₂ ⋙ e₁'.inst e₂'
   | extra : Pat p r → p.Matches e m1 m2 → r.2.OK (IsDefEqU env univs Γ) m1 m2 →
+    IsDefEqU env univs Γ e (r.1.apply m1 m2) →
     (∀ a, Γ ⊢ m2 a ⋙ m2' a) → Γ ⊢ e ⋙ r.1.apply m1 m2'
 
 protected theorem ParRed.rfl : ∀ {e}, Γ ⊢ e ≫ e
@@ -983,10 +991,12 @@ theorem ParRed.weakN (W : Ctx.LiftN n k Γ Γ') (H : Γ ⊢ e1 ≫ e2) :
   | beta _ _ ih1 ih2 =>
     simp [liftN, liftN_inst_hi]
     exact .beta (ih1 W.succ) (ih2 W)
-  | extra h1 h2 h3 _ ih =>
+  | extra h1 h2 h3 h4 _ ih =>
+    have h4 := h4.weakN henv W
+    rw [Pattern.RHS.liftN_apply] at h4
     rw [Pattern.RHS.liftN_apply]
     refine .extra h1 (Pattern.matches_liftN.2 ⟨_, h2, funext_iff.1 rfl⟩)
-      (h3.weakN W) (fun a => ih _ W)
+      (h3.weakN W) h4 (fun a => ih _ W)
 
 variable! (H₀ : Γ₀ ⊢ a1 ≫ a2) (H₀' : Γ₀ ⊢ a1 : A₀) in
 theorem ParRed.instN (W : Ctx.InstN Γ₀ a1 A₀ k Γ₁ Γ)
@@ -1010,9 +1020,12 @@ theorem ParRed.instN (W : Ctx.InstN Γ₀ a1 A₀ k Γ₁ Γ)
   | beta _ _ ih1 ih2 =>
     simp [inst, inst0_inst_hi]
     exact .beta (ih1 W.succ) (ih2 W)
-  | extra h1 h2 h3 _ ih =>
+  | extra h1 h2 h3 h4 _ ih =>
+    have h4 := h4.instN henv W H₀'
+    rw [Pattern.RHS.instN_apply] at h4
     rw [Pattern.RHS.instN_apply]
-    exact .extra h1 (Pattern.matches_instN h2) (h3.instN W H₀') (fun a => ih _ W)
+    exact .extra h1 (Pattern.matches_instN h2) (h3.instN W H₀')
+      h4 (fun a => ih _ W)
 
 variable! (hΓ : OnCtx Γ (IsType env univs)) in
 theorem ParRed.defeq (H : Γ ⊢ e ≫ e') (he : Γ ⊢ e : A) : Γ ⊢ e ≡ e' : A := by
@@ -1036,9 +1049,10 @@ theorem ParRed.defeq (H : Γ ⊢ e ≫ e') (he : Γ ⊢ e : A) : Γ ⊢ e ≡ e'
     exact .trans_l henv hΓ he <| .trans
       (.symm <| .appDF (.symm <| .lamDF hA (ih1 ⟨hΓ, _, hA⟩ hb)) (.symm <| ih2 hΓ ha))
       (.beta (ih1 ⟨hΓ, _, hA⟩ hb).hasType.2 (ih2 hΓ ha).hasType.2)
-  | @extra p r e m1 m2 Γ m2' h1 h2 h3 _ ih =>
-    exact .trans_l henv hΓ he <| .transU_r henv hΓ (pat_wf h1 h2 he h3) <|
-     .apply_pat hΓ (fun _ _ h => ⟨_, ih _ hΓ h⟩) (.defeqU_l henv hΓ (pat_wf h1 h2 he h3) he)
+  | @extra p r e m1 m2 Γ m2' h1 h2 h3 h4 _ ih =>
+    exact .trans_l henv hΓ he <| .transU_r henv hΓ h4 <|
+      .apply_pat hΓ (fun _ _ h => ⟨_, ih _ hΓ h⟩)
+        (.defeqU_l henv hΓ h4 he)
 
 variable! (hΓ : OnCtx Γ (IsType env univs)) in
 theorem ParRed.hasType (H : Γ ⊢ e ≫ e') (he : Γ ⊢ e : A) : Γ ⊢ e' : A :=
@@ -1064,9 +1078,11 @@ theorem ParRed.defeqDFC (W : IsDefEqCtx env univs Γ₀ Γ₁ Γ₂)
     have ⟨_, _, hf, ha⟩ := h.app_inv henv (W.isType' hΓ₀)
     have ⟨⟨_, hA⟩, _, hb⟩ := hf.lam_inv henv (W.isType' hΓ₀)
     exact .beta (ih1 (W.succ hA) hb) (ih2 W ha)
-  | @extra p r e m1 m2 Γ m2' h1 h2 h3 _ ih =>
-    exact .extra h1 h2 (h3.map fun a b h => h.defeqDFC henv W) fun a =>
-      let ⟨_, h⟩ := h2.hasType (W.isType' hΓ₀) h a; ih a W h
+  | @extra p r e m1 m2 Γ m2' h1 h2 h3 h4 _ ih =>
+    exact .extra h1 h2 (h3.map fun a b h => h.defeqDFC henv W)
+      (h4.defeqDFC henv W) fun a =>
+        let ⟨_, h⟩ := h2.hasType (W.isType' hΓ₀) h a
+        ih a W h
 
 theorem ParRed.apply_pat {p : Pattern} (r : p.RHS) {m1 m2 m3}
     (H : ∀ a, Γ ⊢ m2 a ≫ m3 a) : Γ ⊢ r.apply m1 m2 ≫ r.apply m1 m3 := by
@@ -1145,30 +1161,32 @@ theorem ParRed.weakN_inv (W : Ctx.LiftN n k Γ Γ')
     obtain ⟨_, a1, rfl⟩ := ih1 (by exact ⟨hΓ, _, hA⟩) W.succ hb rfl
     obtain ⟨_, b1, rfl⟩ := ih2 hΓ W ha rfl
     exact ⟨_, .beta a1 b1, (liftN_inst_hi ..).symm⟩
-  | @extra p r e m1 m2 Γ' m2' h1 h2 h3 h4 ih =>
+  | @extra p r e m1 m2 Γ' m2' h1 h2 h3 h4 h5 ih =>
     suffices ∃ m3 m3' : _ → _, p.Matches e1 m1 m3 ∧
         (∀ a, Γ ⊢ m3 a ≫ m3' a) ∧
         (∀ a, m2 a = (m3 a).liftN n k) ∧
         (∀ a, m2' a = (m3' a).liftN n k) by
       let ⟨m3, m3', a1, a2, a3, a4⟩ := this
-      refine ⟨_, .extra h1 a1 (h3.map fun _ _ h => ?_) a2,
+      refine ⟨_, .extra h1 a1 (h3.map fun _ _ h => ?_) ?_ a2,
         .trans (by congr; funext; apply a4) r.1.apply_liftN.symm⟩
       rw [(funext a3 : m2 = _), ← Pattern.RHS.apply_liftN, ← Pattern.RHS.apply_liftN] at h
       exact (IsDefEqU.weakN_iff henv hΓ W).1 h
-    clear h1 h3 r
+      rw [← eq, (funext a3 : m2 = _), ← Pattern.RHS.apply_liftN] at h4
+      exact (IsDefEqU.weakN_iff henv hΓ W).1 h4
+    clear h1 h3 h4 r
     induction h2 generalizing e1 A with
     | const => cases e1 <;> cases eq; exact ⟨_, nofun, .const, nofun, nofun, nofun⟩
     | var h1 ih1 =>
       cases e1 <;> cases eq
       have ⟨_, _, hf, ha⟩ := h.app_inv henv hΓ
-      have ⟨_, _, a1, a2, a3, a4⟩ := ih1 (h4 <| some ·) (ih <| some ·) hf rfl
+      have ⟨_, _, a1, a2, a3, a4⟩ := ih1 (h5 <| some ·) (ih <| some ·) hf rfl
       have ⟨_, b2, b4⟩ := ih none hΓ W ha rfl
       exact ⟨_, Option.rec _ _, .var a1, Option.rec b2 a2, Option.rec rfl a3, Option.rec b4 a4⟩
     | app h1 h2 ih1 ih2 =>
       cases e1 <;> cases eq
       have ⟨_, _, hf, ha⟩ := h.app_inv henv hΓ
-      have ⟨_, _, a1, a2, a3, a4⟩ := ih1 (h4 <| .inl ·) (ih <| .inl ·) hf rfl
-      have ⟨_, _, b1, b2, b3, b4⟩ := ih2 (h4 <| .inr ·) (ih <| .inr ·) ha rfl
+      have ⟨_, _, a1, a2, a3, a4⟩ := ih1 (h5 <| .inl ·) (ih <| .inl ·) hf rfl
+      have ⟨_, _, b1, b2, b3, b4⟩ := ih2 (h5 <| .inr ·) (ih <| .inr ·) ha rfl
       exact ⟨_, Sum.rec _ _, .app a1 b1, Sum.rec a2 b2, Sum.rec a3 b3, Sum.rec a4 b4⟩
 
 theorem CParRed.toParRed (H : Γ ⊢ e ⋙ e') : Γ ⊢ e ≫ e' := by
@@ -1180,7 +1198,7 @@ theorem CParRed.toParRed (H : Γ ⊢ e ⋙ e') : Γ ⊢ e ≫ e' := by
   | lam _ _ ih1 ih2 => exact .lam ih1 ih2
   | forallE _ _ ih1 ih2 => exact .forallE ih1 ih2
   | beta _ _ ih1 ih2 => exact .beta ih1 ih2
-  | extra h1 h2 h3 _ ih3 => exact .extra h1 h2 h3 ih3
+  | extra h1 h2 h3 h4 _ ih3 => exact .extra h1 h2 h3 h4 ih3
 
 variable! (hΓ : OnCtx Γ (IsType env univs)) in
 theorem CParRed.exists (H : Γ ⊢ e : A) : ∃ e', Γ ⊢ e ⋙ e' := by
@@ -1188,15 +1206,15 @@ theorem CParRed.exists (H : Γ ⊢ e : A) : ∃ e', Γ ⊢ e ⋙ e' := by
   revert e_ih; change let motive := ?_; ∀ _: e.below (motive := motive), _; intro motive e_ih
   have neut {e} (H' : Γ ⊢ e : A) (e_ih : e.below (motive := motive)) :
       NonNeutral Γ e → ∃ e', Γ ⊢ e ⋙ e' := by
-    rintro (⟨A, e, a, rfl⟩ | ⟨p, r, m1, m2, h1, hp2, hp3⟩)
+    rintro (⟨A, e, a, rfl⟩ | ⟨p, r, m1, m2, h1, hp2, hp3, hp4⟩)
     · have ⟨_, _, hf, ha⟩ := H'.app_inv henv hΓ
       have ⟨⟨_, hA⟩, _, he⟩ := hf.lam_inv henv hΓ
       have ⟨_, he⟩ := e_ih.1.2.2.1 (by exact ⟨hΓ, _, hA⟩) he
       have ⟨_, ha⟩ := e_ih.2.1 hΓ ha
       exact ⟨_, .beta he ha⟩
     · suffices ∃ m3 : p.Path → VExpr, ∀ a, Γ ⊢ m2 a ⋙ m3 a from
-        let ⟨_, h3⟩ := this; ⟨_, .extra h1 hp2 hp3 h3⟩
-      clear H r h1 hp3
+        let ⟨_, h3⟩ := this; ⟨_, .extra h1 hp2 hp3 hp4 h3⟩
+      clear H r h1 hp3 hp4
       induction p generalizing e m1 A with
       | const => exact ⟨nofun, nofun⟩
       | app f a ih1 ih2 =>
@@ -1248,7 +1266,7 @@ theorem ParRed.triangle (H1 : Γ ⊢ e : A) (H : Γ ⊢ e ≫ e') (H2 : Γ ⊢ e
   | const hn =>
     cases H with
     | const => exact ⟨_, .rfl, .refl H1⟩
-    | extra h1 h2 h3 => cases hn (.inr ⟨_, _, _, _, h1, h2, h3⟩)
+    | extra h1 h2 h3 h4 => cases hn (.inr ⟨_, _, _, _, h1, h2, h3, h4⟩)
   | app hn _ _ ih1 ih2 =>
     have ⟨_, _, l1, l2⟩ := H1.app_inv henv hΓ
     cases H with
@@ -1257,7 +1275,7 @@ theorem ParRed.triangle (H1 : Γ ⊢ e : A) (H : Γ ⊢ e ≫ e') (H2 : Γ ⊢ e
       have o1 := p1.hasType hΓ (r1.hasType hΓ l1); have o2 := p2.hasType hΓ (r2.hasType hΓ l2)
       exact ⟨_, .app p1 p2, .appDF o1 (.defeqU_l henv hΓ (n1.defeq hΓ) o1)
         o2 (.defeqU_l henv hΓ (n2.defeq hΓ) o2) n1 n2⟩
-    | extra h1 h2 h3 => cases hn (.inr ⟨_, _, _, _, h1, h2, h3⟩)
+    | extra h1 h2 h3 h4 => cases hn (.inr ⟨_, _, _, _, h1, h2, h3, h4⟩)
     | beta => cases hn (.inl ⟨_, _, _, rfl⟩)
   | lam _ _ ih1 ih2 =>
     have ⟨⟨_, l1⟩, _, l2⟩ := H1.lam_inv henv hΓ
@@ -1307,14 +1325,14 @@ theorem ParRed.triangle (H1 : Γ ⊢ e : A) (H : Γ ⊢ e ≫ e') (H2 : Γ ⊢ e
           (p2.hasType hΓ' (re.hasType hΓ' le)))
         (.instN (l2.toParRed.hasType hΓ la') .zero n2)
     | extra h1 h2 => cases h2 with | app h | var h => cases h
-  | @extra p r e m1 m2 Γ m2' l1 l2 l3 l4 ih =>
+  | @extra p r e m1 m2 Γ m2' l1 l2 l3 l4 l5 ih =>
     have :
       (∃ m3 m3' : p.Path → VExpr, p.Matches e' m1 m3 ∧
         (∀ a, Γ ⊢ m2 a ≫ m3 a) ∧ (∀ a, Γ ⊢ m3 a ≫ m3' a) ∧ (∀ a, Γ ⊢ m3' a ≡ₚ m2' a)) ∨
       (∃ p₁ e₁' e₁ m1₁ m2₁, Subpattern p₁ p ∧ (p₁ = p → e₁ = e ∧ e₁' = e' ∧ m1₁ ≍ m1 ∧ m2₁ ≍ m2) ∧
         p₁.Matches e₁ m1₁ m2₁ ∧ ∃ p' r m1 m2 m2',
         Pat p' r ∧ p'.Matches e₁ m1 m2 ∧ (∀ a, Γ ⊢ m2 a ≫ m2' a) ∧ e₁' = r.1.apply m1 m2') := by
-      clear l1 l3 l4 r
+      clear l1 l3 l4 l5 r
       induction H generalizing p m1 A with
       | const =>
         cases id l2; exact .inl ⟨_, _, l2, nofun, fun _ => .rfl, nofun⟩
@@ -1344,18 +1362,28 @@ theorem ParRed.triangle (H1 : Γ ⊢ e : A) (H : Γ ⊢ e ≫ e') (H2 : Γ ⊢ e
               exact .inl ⟨_, Sum.elim _ _, .app f1 a1,
                 (·.casesOn f2 a2), (·.casesOn f3 a3), (·.casesOn f4 a4)⟩
       | beta _ _ => cases l2 with | var h | app h => cases h
-      | @extra _ _ _ _ _ _ _ r1 r2 _ r4 =>
+      | @extra _ _ _ _ _ _ _ r1 r2 _ _ r4 =>
         exact .inr ⟨_, _, _, _, _, .refl, fun _ => ⟨rfl, rfl, .rfl, .rfl⟩,
           l2, _, _, _, _, _, r1, r2, r4, rfl⟩
       | _ => cases l2
     match this with
     | .inl ⟨m3, m3', h1, h2, h3, h4⟩ =>
-      refine
-        have h := .extra l1 h1 (l3.map fun _ _ ⟨_, h1⟩ => ?_) h3
-        ⟨_, h, .apply_pat hΓ (fun a _ _ => h4 a) (h.hasType hΓ (H.hasType hΓ H1))⟩
-      refine ⟨_, .trans
-        (.symm <| .apply_pat hΓ (fun _ _ h => ⟨_, (h2 _).defeq hΓ h⟩) h1.hasType.1)
-        (.trans h1 <| .apply_pat hΓ (fun _ _ h => ⟨_, (h2 _).defeq hΓ h⟩) h1.hasType.2)⟩
+      have hcheck : r.2.OK (IsDefEqU env univs Γ) m1 m3 :=
+        l3.map fun _ _ ⟨_, hc⟩ => by
+          refine ⟨_, .trans
+            (.symm <| .apply_pat hΓ
+              (fun _ _ h => ⟨_, (h2 _).defeq hΓ h⟩) hc.hasType.1)
+            (.trans hc <| .apply_pat hΓ
+              (fun _ _ h => ⟨_, (h2 _).defeq hΓ h⟩) hc.hasType.2)⟩
+      have he' : IsDefEqU env univs Γ e e' := ⟨_, H.defeq hΓ H1⟩
+      have hrhs : IsDefEqU env univs Γ (r.1.apply m1 m2) (r.1.apply m1 m3) :=
+        ⟨_, IsDefEq.apply_pat hΓ
+          (fun _ _ h => ⟨_, (h2 _).defeq hΓ h⟩) l4.choose_spec.hasType.2⟩
+      have hsound := IsDefEqU.trans henv hΓ he'.symm
+        (IsDefEqU.trans henv hΓ l4 hrhs)
+      have h : Γ ⊢ e' ≫ r.1.apply m1 m3' := .extra l1 h1 hcheck hsound h3
+      exact ⟨_, h, .apply_pat hΓ (fun a _ _ => h4 a)
+        (h.hasType hΓ (H.hasType hΓ H1))⟩
     | .inr ⟨_, _, _, _, _, h1, h2, l2', _, _, _, _, m3, r1, r2, r4, e⟩ =>
       obtain ⟨_, -, -, hr, -⟩ := Pattern.matches_inter.1 ⟨⟨_, _, r2⟩, ⟨_, _, l2'⟩⟩
       obtain ⟨rfl, rfl, ⟨⟩⟩ := pat_uniq l1 r1 h1 hr
@@ -1365,7 +1393,7 @@ theorem ParRed.triangle (H1 : Γ ⊢ e : A) (H : Γ ⊢ e ≫ e') (H2 : Γ ⊢ e
         let ⟨m3', h3, h4⟩ := this
         refine ⟨_, ?h3, .apply_pat hΓ (fun a _ _ => h4 a) ((?h3).hasType hΓ (H.hasType hΓ H1))⟩
         exact .apply_pat _ h3
-      clear H r l1 l2 l3 l4 this h1 h2 r1 r2 hr
+      clear H r l1 l2 l3 l4 l5 this h1 h2 r1 r2 hr
       induction l2' generalizing A with
       | const => exact ⟨nofun, nofun, nofun⟩
       | app _ _ ih1 ih2 =>
@@ -1695,7 +1723,7 @@ endpoint is absorbed without erasing that seed.  This is the common typed
 join for all six structure-eta interactions from the L4L-15B design:
 
 * constructor-major projector iota and an overlapping registered rule are
-  both `ParRed.extra`; `ParRed.defeq` discharges them through `pat_wf`;
+  both `ParRed.extra`; each step retains its own typed equality certificate;
 * nested reconstructions retain their inner `etaL`/`etaR` seed when
   `StructEq.trans_right` composes the outer endpoint;
 * beta and congruence steps inside the major, including every repeated
@@ -1883,6 +1911,43 @@ theorem CRDefEq.trans : Γ ⊢ e₁ ≫≪ e₂ → Γ ⊢ e₂ ≫≪ e₃ → 
     let ⟨_, b1, b2⟩ := (r5.symm hΓ).parRedS hΓ m2
     exact ⟨l1, r2, _, _, .trans l3 a1, .trans r4 b1, a2.trans hΓ <| m3.trans hΓ (b2.symm hΓ)⟩
 
+/-- Operational coverage for the environment's registered equations.
+
+This is deliberately separate from `Params.Pat`: registering a `VDefEq`, or
+merely classifying a pattern, does not make a reduction available. For every
+registered equation and well-formed context, a consumer must supply endpoint
+typings plus parallel-reduction paths to endpoints related by `NormalEq`;
+that is exactly `CRDefEq`. Symmetry and congruence closure are then derived by
+Church--Rosser rather than assumed as additional oracle fields.
+
+At each pattern contraction, `ParRed.extra` independently requires a
+successful match, satisfied checks, and a typed equality from that particular
+redex to the instantiated template. Thus this oracle cannot turn registration
+or pattern membership into an automatically trusted rewrite. Lambda-tower
+registrations expose their useful pattern only underneath the tower, after
+beta collapse, without pretending that the closed tower itself matches a
+first-order pattern. -/
+class Params.Extension [Params] where
+  join : OnCtx Γ (env.IsType univs) →
+    env.defeqs df → (∀ l ∈ ls, l.WF univs) → ls.length = df.uvars →
+    CRDefEq Γ (df.lhs.instL ls) (df.rhs.instL ls)
+
+theorem Params.Extension.extra [Params.Extension]
+    (hΓ : OnCtx Γ (env.IsType univs))
+    (hreg : env.defeqs df) (hlevels : ∀ l ∈ ls, l.WF univs)
+    (hlevelsLength : ls.length = df.uvars) :
+    CRDefEq Γ (df.lhs.instL ls) (df.rhs.instL ls) :=
+  Params.Extension.join hΓ hreg hlevels hlevelsLength
+
+theorem Params.Extension.extra_symm [Params.Extension]
+    (hΓ : OnCtx Γ (env.IsType univs))
+    (hreg : env.defeqs df) (hlevels : ∀ l ∈ ls, l.WF univs)
+    (hlevelsLength : ls.length = df.uvars) :
+    CRDefEq Γ (df.rhs.instL ls) (df.lhs.instL ls) :=
+  (Params.Extension.extra hΓ hreg hlevels hlevelsLength).symm hΓ
+
+variable [Params.Extension]
+
 variable! (hΓ : OnCtx Γ (IsType env univs)) in
 theorem IsDefEq.church_rosser
     (H : Γ ⊢ e₁ ≡ e₂ : A) : Γ ⊢ e₁ ≫≪ e₂ := by
@@ -1930,7 +1995,5 @@ theorem IsDefEq.church_rosser
   | proofIrrel h1 h2 h3 ih1 ih2 ih3 =>
     exact .normalEq hΓ <| .proofIrrel h1.hasType.1 h2.hasType.1 h3.hasType.1
   | @extra _ _ Γ h1 h2 h3 =>
-    have ⟨_, _, _, _, a1, a2, a3, a4⟩ := extra_pat h1 h2 h3 (Γ := Γ)
-    refine have h := .extra h1 h2 h3; mk h (.tail .rfl (.extra a1 a2 a3 fun _ => .rfl)) .rfl ?_
-    exact a4 ▸ .refl h.hasType.2
+    exact Params.Extension.extra hΓ h1 h2 h3
   | nil | cons => trivial

@@ -105,6 +105,46 @@ theorem patTreeClosure : patTreeGen.RuleClosure :=
 theorem patVecClosure : patVecGen.RuleClosure :=
   RuleClosure.of_all _ (by decide) (by decide)
 
+/-! ## Beta-collapsed tower certificates
+
+The concrete generated block and the built-in quotient equation both expose
+their first-order match only after stripping the registered lambda tower.
+These examples pin that contract without constructing a `Params` instance or
+assuming an equality from pattern membership. -/
+
+/-- Every registered iota rule of the concrete mutual block has a
+beta-collapsed pattern witness. -/
+theorem patTreeIotaExtension_covers {i : Nat}
+    {constructor : NormalizedBlockCtor} (hentry : patTreeGen.ruleEntry i constructor)
+    (ls : List VLevel) (hlen : ls.length = (patTreeGen.rule i constructor).uvars) :
+    ∃ m1 m2, (patTreeGen.rulePattern constructor).toPattern.Matches
+      (VExpr.stripLams ((patTreeGen.rule i constructor).lhs.instL ls)) m1 m2 :=
+  (patTreeGen.iotaExtension patTreeClosure hentry).covers ls hlen
+
+/-- `quotDefEq` satisfies the same beta-collapsed coverage contract. -/
+theorem quotDefEq_covers (ls : List VLevel)
+    (hlen : ls.length = quotDefEq.uvars) :
+    ∃ m1 m2, CertifiedExtension.quotPattern.toPattern.Matches
+      (VExpr.stripLams (quotDefEq.lhs.instL ls)) m1 m2 :=
+  CertifiedExtension.quot.covers ls hlen
+
+/-!
+The tower witnesses stay on the standard logical baseline. In particular,
+neither closure contains a project axiom or `sorryAx`.
+-/
+
+/--
+info: 'Lean4Lean.InductivePatternFixtures.patTreeIotaExtension_covers' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms patTreeIotaExtension_covers
+
+/-- info: 'Lean4Lean.InductivePatternFixtures.quotDefEq_covers' depends on axioms: [propext, Quot.sound] -/
+#guard_msgs in
+#print axioms quotDefEq_covers
+
 /-! ## The instantiated pattern sets
 
 Both blocks now carry complete pattern payloads: `patTreeGen.IotaPat

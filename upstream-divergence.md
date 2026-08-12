@@ -1138,6 +1138,48 @@ to the replacement.
   disable the two executable structure-eta heuristics and remove this
   divergence rather than retaining an unsound verifier claim.
 
+## D020 — proof-carrying extension reductions and beta-collapsed coverage
+
+- **Status:** implemented intentional fork divergence; L4L-18B completed on
+  the reconciled v4.33 base (2026-08-12).
+- **Owner:** John C. Burnham; semantic review is part of the L4L-20C PR
+  series.
+- **Delta:** split upstream's combined `Params.pat_wf`/`extra_pat` contract
+  into three explicit layers. `Params` retains only pattern combinatorics;
+  every `ParRed`/`CParRed`/`WHRed.extra` contraction carries an exact
+  `IsDefEqU` certificate for its concrete redex and instantiated payload;
+  and `Params.Extension.join` is a separate consumer-supplied `CRDefEq`
+  obligation for every raw registered equation in every well-formed context.
+  `CertifiedExtension.covers` records only a match after `VExpr.stripLams`,
+  where generated iota and quotient tower bodies actually expose a
+  first-order pattern. The full rationale and trust matrix are in
+  `plans/l4l-18b-extension-interface-design.md`.
+- **Downstream impact:** Church--Rosser and head standardization transport the
+  local equality certificate through weakening, substitution, context
+  conversion, match inversion, and triangle proofs. Only results that invoke
+  raw registered-equation Church--Rosser require `[Params.Extension]`.
+  `VEnv.LE.extra`, `extra_appN`, and `extra_appN_symm` publish the environment
+  growth boundary. L4L-16 must construct the whole-live-environment join
+  instance through the semantic bridge; the block assembler intentionally
+  does not synthesize one.
+- **Tests:** exact guards cover universe-instantiation of matches, the
+  generated-iota and `quotDefEq` beta-collapsed certificates, and all three
+  `VEnv.LE` transport helpers. Concrete mutual-block and quotient fixtures
+  compile the tower obligations. Focused Church--Rosser, head-reduction, and
+  pattern-environment builds plus the full release gate cover migrated
+  consumers.
+- **Axiom note:** no new project axiom or source `sorry` is permitted. The
+  concrete tower witnesses have only the standard logical baseline and no
+  `sorryAx`; existing L4L-16--L4L-18 proof-frontier dependencies are unchanged
+  and remain visible in their existing guards.
+- **Parallel upstream conversation:** implementation proceeds in the fork as
+  decided on 2026-08-12; upstream review is deferred to the L4L-20C proof-PR
+  sequence. Record the issue/PR URL here when opened.
+- **Removal condition:** upstream adopts the proof-carrying contraction plus
+  explicit registered-equation join split, or an equivalent interface that
+  represents beta-collapsed tower rules without a trusted shape or soundness
+  oracle, and the fork migrates.
+
 ## Review checklist
 
 At each publish or ix pin boundary:
