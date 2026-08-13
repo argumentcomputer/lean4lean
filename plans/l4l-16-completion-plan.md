@@ -355,6 +355,51 @@ shapes) compose by per-shape arguments that are all available today
 validity; free `CtorDefEq.trans` one level down for `ctor`-shaped
 fields, eliminated recursively).
 
+**Joint-induction design, first pass (2026-08-13, third autonomous
+tick).** Two candidate structures examined and one selected as the
+working hypothesis:
+
+- *Dead end recorded:* the naive co-proved statement — level-indexed
+  raw domain interchange (`U_n`: two Pi-typings of a shared related
+  term have raw-defeq domains, derived from adequacy at level `n`) —
+  is not derivable from adequacy at any level, because adequacy's
+  outputs are semantic relation facts while the lam-field composition
+  consumes a *raw* retyping of arguments (`LamDefEq`'s raw premise).
+  No relation-level strengthening fixes this without either stripping
+  the raw premise (which the fundamental lemma's lam case needs) or
+  smuggling in the full uniqueness frontier.
+- *Working hypothesis — the principal-type discipline:* InferType
+  completeness ("every weak derivation types its subject at a type
+  raw-defeq-chain-connected to the syntactic principal type, with the
+  chain constructed by the completeness induction itself, not by
+  uniqueness") plus the already-proved syntactic `InferType.determ`
+  gives shared-term type agreement *by determinism*: two typings of a
+  shared term both chain to the SAME principal type, so their
+  connection composes through it (`trans'` applies — every chain step
+  is sort-typed). The open verification questions, in order: (q1) does
+  completeness actually close over this judgment's 15 cases without
+  uniqueness — the `extra` case consumes the registered equation's
+  type, the `proofIrrel` case recurses into its typing premise, and
+  `beta` needs the restored `:↑`-premised `InferType.subst`; (q2) the
+  chains' sort-typed steps must convert relation facts along them
+  (relation `conv` needs semantic `TyDefEq`, so each chain step's raw
+  defeq must pass through adequacy or a direct semantic-validity
+  argument — candidate: the chain steps are `defeqDF` side conditions
+  that the completeness induction can emit in semantic form too);
+  (q3) whether Pi-domain extraction from a chain still needs
+  injectivity, or whether anchoring relation facts at principal types
+  BEFORE unfolding to Pi-forms avoids the extraction entirely
+  (determinism gives one shared Pi-form).
+
+Consequence — dependency inversion: the InferType bootstrap (S3,
+task 4) moves AHEAD of the joint-induction finalization; the design
+completes against what completeness actually yields. Implementation
+order for the bootstrap: (b1) the `:↑`-valued `Ctx.Subst` interface
+and restored `InferType.subst`/`inst`; (b2) `InferType.whRed`
+up-to-defeq; (b3) completeness; (b4) the derived `⤳* → ≡` conversions
+at the root sites; then (q2)/(q3) settle the joint induction's final
+statements.
+
 **DECIDED 2026-08-13 (John): the joint L4L-16/17 route** — see the
 second resolution in `plans/l4l-16-sort-inversion-decision.md`. The
 staging recommendation below is retained for the record but

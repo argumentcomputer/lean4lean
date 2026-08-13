@@ -12,6 +12,16 @@ def LR.Adequate (Γ₀ Γ : List SExpr) (ρ : Valuation) (M N A : SExpr) (m a : 
     (LR Γ₀).DefEq (N.subst σ) (N.subst σ') (A.subst σ) m a) ∧
   ∀ {{σ}}, LR.SubstWF Γ₀ σ σ Γ ρ → (LR Γ₀).DefEq (M.subst σ) (N.subst σ) (A.subst σ) m a
 
+/-- Adequacy specialized to one shape level.  Naming the indexed statement
+separately makes the dependency of the joint adequacy/uniqueness
+construction explicit: inversion at level `n + 1` can consume this package
+without assuming the final polymorphic adequacy theorem. -/
+def LR.AdequacyAt (Γ₀ : List SExpr) (n : Nat) : Prop :=
+  ∀ {Γ : List SExpr} {ρ : Valuation} {M N A : SExpr} {m a : WShape n},
+    IsDefEqStrong Γ M N A →
+    LE_Interp ρ m.T M → LE_Interp ρ a.T A → m.HasType a →
+    LR.Adequate Γ₀ Γ ρ M N A m a
+
 theorem LR.Adequate.bot (ha : a.HasType .type) : Adequate Γ₀ Γ ρ M N A .bot a :=
   ⟨fun _ _ _ => ⟨(LR _).bot ha, (LR _).bot ha⟩, fun _ _ => (LR _).bot ha⟩
 
@@ -1707,49 +1717,85 @@ theorem LR.adequacy (H : IsDefEqStrong Γ M N A)
       have hred := hlocal.subst W.toSubstEq.left
       exact ((LR _).whr .rfl (.tail .rfl hred)).1 hself
 
-theorem forallE_whRed_l
+/-- The polymorphic theorem supplies each individual level package.  Keeping
+this adapter separate is what lets the joint proof replace it with the
+strictly earlier package during well-founded recursion. -/
+theorem LR.adequacyAt (Γ₀ : List SExpr) (n : Nat) : LR.AdequacyAt Γ₀ n :=
+  fun H hM hA hmem => LR.adequacy H hM hA hmem
+
+/-- Pi-head inversion from adequacy at one positive shape level. -/
+theorem forallE_whRed_l_of_adequacy
+    {n : Nat} (adequacy : LR.AdequacyAt Γ (n + 1))
     (d : IsDefEqStrong Γ A₀ (SExpr.forallE B₁ F₁) (.sort s)) :
     ∃ B₀ F₀, Γ ⊢ A₀ ⤳* .forallE B₀ F₀ ∧ ∃ u v,
       Γ ⊢ B₀ ≡ B₁ : .sort u ∧ B₀::Γ ⊢ F₀ ≡ F₁ : .sort v := by
-  have hPi : LE_Interp .nil (WShape.T (n := 1) (.forallE .bot WShapeFun.bot)) (.forallE B₁ F₁) := by
+  have hPi : LE_Interp .nil
+      (WShape.T (n := n + 1) (.forallE (.bot : WShape n) WShapeFun.bot))
+      (.forallE B₁ F₁) := by
     refine .forallE' .bot .bot (.bot <| .bot' .sort) fun _ h => ?_
     cases h.bot_r; exact WShapeFun.bot_app.symm ▸ .bot
-  have hmem : WShape.HasType (n := 1) (.forallE .bot WShapeFun.bot) (.sort (s ≠ .zero)) := by
+  have hmem : WShape.HasType (n := n + 1)
+      (.forallE (.bot : WShape n) WShapeFun.bot) (.sort (s ≠ .zero)) := by
     refine WShape.HasType.forallE_l.2 ⟨_, ?_, rfl⟩
     refine WShape.HasTypePi.iff.2 ⟨.bot (.bot' .sort), fun x hx => ?_⟩
     cases WShape.HasType.bot_r hx; exact WShapeFun.bot_app.symm ▸ .bot .sort
-  have := (LR.adequacy d ((LE_Interp.sound d .nil).1.2 hPi) (.sort TShape.sort_eqv.1) hmem).2 .id
+  have := (adequacy d ((LE_Interp.sound d .nil).1.2 hPi)
+    (.sort TShape.sort_eqv.1) hmem).2 .id
   have ⟨_, _, _, _, _, _, redA₀, redPi, convB, convF, _⟩ := subst_id ▸ subst_id ▸ subst_id ▸ this
   cases WHNF.forallE.whRedS redPi; exact ⟨_, _, redA₀, _, _, convB, convF⟩
 
+theorem forallE_whRed_l
+    (d : IsDefEqStrong Γ A₀ (SExpr.forallE B₁ F₁) (.sort s)) :
+    ∃ B₀ F₀, Γ ⊢ A₀ ⤳* .forallE B₀ F₀ ∧ ∃ u v,
+      Γ ⊢ B₀ ≡ B₁ : .sort u ∧ B₀::Γ ⊢ F₀ ≡ F₁ : .sort v :=
+  forallE_whRed_l_of_adequacy (n := 0) (LR.adequacyAt Γ 1) d
+
 /-- Pi–Pi injectivity: if two Pi types are definitionally equal,
 their domains and codomains are each definitionally equal. -/
-theorem forallE_inv
+theorem forallE_inv_of_adequacy
+    {n : Nat} (adequacy : LR.AdequacyAt Γ (n + 1))
     (H : IsDefEqStrong Γ (SExpr.forallE A₀ B₀) (SExpr.forallE A₁ B₁) (.sort s)) :
     ∃ u v, Γ ⊢ A₀ ≡ A₁ : .sort u ∧ A₀::Γ ⊢ B₀ ≡ B₁ : .sort v := by
-  have ⟨_, _, red, H⟩ := forallE_whRed_l H
+  have ⟨_, _, red, H⟩ := forallE_whRed_l_of_adequacy adequacy H
   cases WHNF.forallE.whRedS red; exact H
+
+theorem forallE_inv
+    (H : IsDefEqStrong Γ (SExpr.forallE A₀ B₀) (SExpr.forallE A₁ B₁) (.sort s)) :
+    ∃ u v, Γ ⊢ A₀ ≡ A₁ : .sort u ∧ A₀::Γ ⊢ B₀ ≡ B₁ : .sort v :=
+  forallE_inv_of_adequacy (n := 0) (LR.adequacyAt Γ 1) H
+
+theorem sort_forallE_inv_of_adequacy
+    {n : Nat} (adequacy : LR.AdequacyAt Γ (n + 1)) :
+    ¬IsDefEqStrong Γ (.sort u) (SExpr.forallE A₁ B₁) (.sort s) :=
+  fun H => have ⟨_, _, H⟩ := forallE_whRed_l_of_adequacy adequacy H
+    nomatch WHNF.sort.whRedS H.1
 
 theorem sort_forallE_inv :
     ¬IsDefEqStrong Γ (.sort u) (SExpr.forallE A₁ B₁) (.sort s) :=
-  fun H => have ⟨_, _, H⟩ := forallE_whRed_l H; nomatch WHNF.sort.whRedS H.1
+  sort_forallE_inv_of_adequacy (n := 0) (LR.adequacyAt Γ 1)
 
 /-- Sort injectivity: if two sorts are definitionally equal, their levels are equal. -/
-theorem sort_inv (d : IsDefEqStrong Γ (SExpr.sort u) (SExpr.sort v) V) : u = v := by
-  have hM : LE_Interp .nil (WShape.T (n := 1) (.sort (decide (u ≠ .zero)))) (.sort u) :=
+theorem sort_inv_of_adequacy
+    {k : Nat} (adequacy : LR.AdequacyAt Γ (k + 1))
+    (d : IsDefEqStrong Γ (SExpr.sort u) (SExpr.sort v) V) : u = v := by
+  have hM : LE_Interp .nil
+      (WShape.T (n := k + 1) (.sort (decide (u ≠ .zero)))) (.sort u) :=
     .sort TShape.sort_eqv.1
   have ⟨n, mU, mV, h1, h2, h3, hA, h5⟩ := (LE_Interp.sound d .nil).2 hM |>.out
   have h2' := WShape.lift_sort ▸ (TShape.LE.lift_l h1).1 h2; dsimp only at h2'
   cases WShape.sort_le.1 h2'
-  cases show mV = (.sort true : WShape 1).lift n by
+  cases show mV = (.sort true : WShape (k + 1)).lift n by
     let _+1 := n
     simp only [WShape.HasType, WShape.sort] at h5
     ext1; generalize mV.val = mv at h5
     let .sort := Shape.HasType.unfold_iff.1 h5; rfl
-  have h1' : (1 : Nat) ≤ n := h1
-  have := (LR.adequacy d hM (hA.unlift h1') .sort).2 .id
+  have h1' : k + 1 ≤ n := h1
+  have := (adequacy d hM (hA.unlift h1') .sort).2 .id
   have ⟨w, h1, h2⟩ := (LR _).sort_iff.1 (subst_id ▸ subst_id ▸ subst_id ▸ this)
   cases WHNF.sort.whRedS h1; cases WHNF.sort.whRedS h2; rfl
+
+theorem sort_inv (d : IsDefEqStrong Γ (SExpr.sort u) (SExpr.sort v) V) : u = v :=
+  sort_inv_of_adequacy (k := 0) (LR.adequacyAt Γ 1) d
 
 /-- Experimental end-to-end sort injectivity for `VExpr`, assuming the rewrite-rule
 infrastructure packaged by `SExpr.Params`. -/
