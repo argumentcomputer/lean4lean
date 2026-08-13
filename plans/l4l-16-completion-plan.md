@@ -217,17 +217,25 @@ The leaf (`~1228`) decomposes into three named obligations (per the
   exactly this), then the application chain closes by `LRS.DefEq.app`.
   No environment or reduction oracle.
 
-Plus **S3-narrow**: the six `WHRedS.defeq` call sites must be closed
-without building a weak-judgment inversion layer (§2.3). Options, in
-order of preference: (i) prove the conversion `⤳* → ≡` only for the
-step shapes actually taken there (`.extra` steps carry `Action.sound`
-verbatim; `.app`/`.major` congruence steps have full `SpineWF`
-certificates in scope at every call site) as a certificate-carrying
-variant; (ii) state subject reduction at the strong/carried-evidence
-judgment (`IsDefEqStrong`, whose `subst` is already proved) and consume
-that. Either way, generic weak `WHRedS.defeq` stays open and moves out
-of the gate path; S4/S5 then close against the narrowed form or stay
-deferred.
+Plus **S3 (revised 2026-08-13 after reading the site contracts —
+supersedes "S3-narrow")**: the four live `.defeq` call sites reduce to
+two facts about the ROOT pair only — the spine-redex self-typing at the
+package `A` (from `htermX` plus major-position congruence) and
+`IotaTyping.majorEq` (the typed collapse `majorX ≡ ctorSpine :
+majorType`). Neither can be discharged by a certificate-carrying
+variant alone: the major's stored reduction is an arbitrary weak-head
+sequence, and per-step subject reduction hits beta/extra cases needing
+typing inversion. The honest route is the one the `▷` layer was built
+for — the **InferType principal-types bootstrap**: syntactic
+`InferType.determ` (already proved) substitutes for type uniqueness;
+prove inference completeness over `IsDefEq` (each case computes the
+principal type and connects it to the derivation's type by the IH, no
+uniqueness needed), restate `InferType.whRed` up-to-defeq (the false
+exact-form was deleted at 16B′), restore `InferType.subst`/`inst` with
+a `:↑`-valued substitution premise, and derive the needed `⤳* → ≡`
+conversions from principal-type subject reduction. S4/S5 close en route.
+This is a real sub-development (days), and it is confined to the ROOT
+pair: intermediate chain links never need it (see the chain addendum).
 
 Note on `hDef`: the "circular constant premise" is a field of
 `IsDefEqStrong.const` discharged by `mkS` out of
@@ -265,6 +273,29 @@ Decided architecture — **root-anchored capture-chain fold**:
   the `PatternLeafSpine` package supplies every typing; the fold's
   output supplies the root-to-root capture relations that
   `IotaRHSDefEq` consumes.
+
+Implementation status (2026-08-13, checkpoint `wolxmups`): the
+syntactic midpoint-agreement layer is kernel-checked in `SExpr.lean` —
+`Pattern.WF.arity_head`, `spine_inj`, `Params.matchesS_symb_head`,
+`WHNF.ctorSpine`, `WHRedS.ctorSpine_eq`, and `WHRedS.ctorSpine_determ`
+(two weak-head reductions of one term onto classified constructor
+spines land on the same syntactic spine). Remaining chain work, in
+order: (1) define `LRS.CtorLink`/`LRS.CtorChain` (links = `.exact`
+field bundles between adjacent spines; concatenation via
+`ctorSpine_determ`); (2) `CtorDefEq.toChain` by induction on the free
+closure — `left`/`symm` need the link mirror (either add the
+right-anchored aligned spine to `.exact`, free at both construction
+sites since they pass the same head twice, or re-anchor
+semantically); `whr`/`unwhr` via `WHRedS.determ_l`; the open
+sub-design is `mono`/`lift`/`unlift` bookkeeping — per-field
+`HasType` side conditions for `mono_l` must travel in the links
+(`CtorSpineDefEq.cons` already stores `hp`), and cross-level moves
+compose stored `LiftEquiv`s; if a zigzag resists `trans`/`cancelRight`
+reduction, keep links at their native levels and let the consumer
+rebase, since links carry their own `HasType`s; (3) per-link
+consumption: each link certifies its own iota contraction pair with
+conclusions glued by `(LRS IH).trans` at the package-fixed result type,
+with the root endpoints attached by `whr`-expansion.
 
 Verification condition checked before implementation: the per-field
 composition step needs `IH.DefEq x y D p a` and `IH.DefEq y z D' p a`
