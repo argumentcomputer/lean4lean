@@ -411,6 +411,27 @@ statements become co-deliverables. Route-independent work (chain
 normalization, InferType bootstrap, O3, 16D ladder) proceeds
 unchanged.
 
+**Implementation checkpoint (2026-08-13, joint route):** the working
+tree now contains the kernel-checked joint interfaces
+`LR.AdequacyAt`/`LR.JointAt`/`LR.JointBuilder` and
+`LogRel.LimitedUniq`; the combined recursion is structurally ordered as
+adequacy at 0, then uniqueness at n consumed by adequacy at n+1, then
+uniqueness derived at n+1. The SExpr inversions are parameterized by
+`AdequacyAt`. The reflection decision is also implemented:
+`SExpr.mk` is conservative modulo `VEnv.EqUpToLevels`, reflecting
+semantic-level equality to `VLevel` equivalence and relating every
+well-formed expression to `reify (mk e)`.
+
+The route-independent chain normalization is kernel-checked too.
+`CtorExact` stores one finite native leaf; `CtorFrame` retains all
+`mono`/`lift`/`unlift` transport back to the root without attempting the
+invalid pointwise lowering of high-level fields; `CtorLink` combines
+those two pieces; a nonempty `CtorPath` removes free transitivity; and
+root `CtorView`s isolate weak-head expansion. `CtorDefEq.toChain`
+handles all nine constructors, uses `WHRedS.ctorSpine_determ` at shared
+midpoints, and `CtorChain.toCtorDefEq` proves the round trip. The active
+dependency is therefore the InferType principal-types bootstrap.
+
 Superseded recommendation (α): stage the claim. Add a first-order-fields
 restriction at the observation-consumption boundary (an explicit
 `Params.Semantic`-level or shape-level side condition), close the
@@ -462,8 +483,7 @@ aligned, only valid.
 Exit measurement: `sort_invS` reaches
 `[propext, Classical.choice, Quot.sound]`. Record that
 `SExpr.forallE_inv` and `SExpr.sort_forallE_inv` went clean at the same
-moment (they become L4L-16 deliverables; their VExpr reflection stays
-L4L-17).
+moment; their VExpr reflection is a joint L4L-16 co-deliverable at 16E.
 
 ### L4L-16D — live-environment instance, staged (the real risk)
 
@@ -529,14 +549,15 @@ Experimental stays buildable at every pause point.
    verdicts, S6 move). Gated surface is untouched by the diff, so §6
    gates pass as-is; run them anyway.
 2. **16B′ cleanup** (delete/restate items — small, mechanical).
-3. **16C′ O1** (finish the `aligned`/`CtorSpineDefEq.trans` encoding the
-   worker already started; decision + endpoint recorded in
-   `plans/l4l-16-sort-inversion-decision.md` as a dated section).
-4. **16C′ S3-narrow + O3 + O2 leaf closure** → measured clean
+3. **16C′ joint interface + O1 normalization** (**kernel-checked in
+   the current working tree**: limited uniqueness contract,
+   level-indexed adequacy/inversions, `mk` reflection boundary, and
+   `CtorLink`/`CtorChain`/`toChain`).
+4. **16C′ InferType bootstrap + O3 + O2 leaf closure** → measured clean
    `sort_invS`; SExpr `forallE_inv`/`sort_forallE_inv` recorded clean.
 5. **16D0 slice**, then **16D1–D4** as separate checkpoints.
 6. **16E promotion** + allowlist 21 + digama decision.
-7. Hand the ladder to L4L-17′ (reflection decision first).
+7. Land the former L4L-17 statements as the joint 16E co-deliverables.
 
 Rough effort guess (calibrate against how fast 16A went): 1–2 days for
 1–2; the 16C′ spike+closure is the genuine unknown — timebox the spike,

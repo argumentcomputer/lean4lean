@@ -5841,6 +5841,26 @@ inductive LRS.CtorArgsDefEq (IH : LogRel Γ n) :
       (hv : IH.DefEq x y A p a) (hrest : CtorArgsDefEq IH xs ys ps) :
       CtorArgsDefEq IH (x :: xs) (y :: ys) (p :: ps)
 
+/-- The level-indexed uniqueness fragment needed when two exact constructor
+observations share a middle field.  It does not assert unrestricted
+faithfulness of the logical relation: both typings and both semantic
+validity witnesses for the *same term and shape* are supplied.  The result
+aligns the raw field types and their semantic type interpretations, exactly
+the two conversions required by dependent constructor-spine composition.
+
+In the joint L4L-16 proof this package at level `n` is derived from adequacy
+and inversion at level `n`; constructor composition in `LRS` consumes it one
+level higher. -/
+structure LogRel.LimitedUniq (IH : LogRel Γ n) : Prop where
+  align : ∀ {x A B : SExpr} {p a b : WShape n},
+    p.HasType a → p.HasType b →
+    IsDefEq Γ x x A → IsDefEq Γ x x B →
+    IH.TyDefEq A A a → IH.TyDefEq B B b →
+    IH.DefEq x x A p a → IH.DefEq x x B p b →
+    ∃ u, IsDefEq Γ A B (.sort u) ∧
+      ∀ {y : SExpr}, IsDefEq Γ x y B → IH.DefEq x y B p b →
+        IH.DefEq x y A p a
+
 /-- Forget the dependent constructor telescope while retaining its aligned
 per-field logical-relation evidence. -/
 theorem LRS.CtorSpineDefEq.args
@@ -5933,6 +5953,32 @@ theorem LRS.CtorArgsDefEq.tail
     CtorArgsDefEq IH xs ys ps := by
   cases H with
   | cons _ _ _ _ hrest => exact hrest
+
+/-- Compose adjacent exact constructor-field bundles using only the
+level-indexed uniqueness fragment.  The output is left-oriented: its raw
+and semantic equalities retain the first link's field type. -/
+theorem LRS.CtorArgsDefEq.trans
+    (uniq : LogRel.LimitedUniq IH)
+    (H₁ : CtorArgsDefEq IH xs ys ps)
+    (H₂ : CtorArgsDefEq IH ys zs ps) :
+    CtorArgsDefEq IH xs zs ps := by
+  induction H₁ generalizing zs with
+  | nil =>
+    cases H₂
+    exact .nil
+  | cons hp htyA hxy hvxy hrest ih =>
+    cases H₂ with
+    | cons hpB htyB hyz hvyz hrest₂ =>
+      have hyyA := hxy.hasType.2
+      have hyyB := hyz.hasType.1
+      have vyyA := IH.left (IH.symm hvxy)
+      have vyyB := IH.left hvyz
+      obtain ⟨_, hAB, retype⟩ :=
+        uniq.align hp hpB hyyA hyyB htyA htyB vyyA vyyB
+      have hyzA := IsDefEq.defeqDF hAB.symm hyz
+      have vyzA := retype hyz hvyz
+      exact .cons hp htyA (hxy.trans hyzA) (IH.trans hvxy vyzA)
+        (ih hrest₂)
 
 theorem LRS.CtorArgsDefEq.left
     (H : CtorArgsDefEq IH xs ys ps) : CtorArgsDefEq IH xs xs ps := by
@@ -6119,6 +6165,310 @@ theorem LRS.CtorArgsDefEq.rebase
     (H : LRS.CtorArgsDefEq IH xs ys ps) :
     LRS.CtorArgsDefEq IH' xs ys (ps.map (.lift n')) :=
   H.lift le E.ty E.term
+
+/-- A unary transport context from a native exact constructor observation
+back to the logical relation and shape requested at the root.  In
+particular, an `unlift` frame retains its high-level evidence instead of
+projecting arbitrary higher-level constructor fields. -/
+inductive LRS.CtorFrame (Γ : List SExpr) :
+    {n k : Nat} → LogRel Γ n → WShape (n + 1) →
+      LogRel Γ k → WShape (k + 1) → Prop where
+  | refl : CtorFrame Γ IH m IH m
+  | mono : m ≤ m' → CtorFrame Γ IH m' J p → CtorFrame Γ IH m J p
+  | lift {IH : LogRel Γ n} {IH' : LogRel Γ n'} (le : n ≤ n')
+      (E : LogRel.LiftEquiv IH IH' le) :
+      CtorFrame Γ IH m J p →
+      CtorFrame Γ IH' (m.lift (n' + 1)) J p
+  | unlift {IH : LogRel Γ n} {IH' : LogRel Γ n'} (le : n ≤ n')
+      (E : LogRel.LiftEquiv IH IH' le) :
+      CtorFrame Γ IH' (m.lift (n' + 1)) J p →
+      CtorFrame Γ IH m J p
+
+/-- Reapply a constructor transport frame to native evidence. -/
+theorem LRS.CtorFrame.apply
+    (F : LRS.CtorFrame Γ IH m J p)
+    (H : LRS.CtorDefEq Γ J M N p) :
+    LRS.CtorDefEq Γ IH M N m := by
+  induction F with
+  | refl => exact H
+  | mono hle _ ih => exact .mono hle (ih H)
+  | lift le E _ ih => exact .lift le E.ty E.term (ih H)
+  | unlift le E _ ih => exact .unlift le E.ty E.term (ih H)
+
+/-- One native, exact constructor-spine observation.  Endpoint weak-head
+reductions live in `CtorView`; this certificate contains only the finite
+head, telescope, and field payload of the exact leaf. -/
+inductive LRS.CtorExact (Γ : List SExpr) :
+    {n : Nat} → LogRel Γ n → SExpr → SExpr → WShape (n + 1) → Prop where
+  | intro {IH : LogRel Γ n} {c : Name} {rargs : List (WShape n)} {hwf}
+      {ls ls' : List SLevel} {args args' : List SExpr}
+      {CHead CHead' A A' : SExpr} :
+      Params.classify c = some (.ctor args.length) →
+      args.length = rargs.length → args'.length = rargs.length →
+      IsDefEq Γ (.const c ls) (.const c ls) CHead →
+      IsDefEq Γ (.const c ls') (.const c ls') CHead' →
+      SExpr.SpineWF Γ CHead args.reverse A →
+      SExpr.SpineWF Γ CHead' args'.reverse A' →
+      LRS.CtorArgsDefEq IH args args' rargs →
+      LRS.CtorSpineDefEq IH CHead args args' rargs A →
+      LRS.CtorSpineDefEq IH CHead' args' args rargs A' →
+      CtorExact Γ IH
+        (args.foldr (fun a f => f.app a) (.const c ls))
+        (args'.foldr (fun a f => f.app a) (.const c ls'))
+        (.ctor c rargs.reverse hwf)
+
+/-- Reconstitute the free relation's exact constructor from a normalized
+native leaf. -/
+theorem LRS.CtorExact.toCtorDefEq
+    (H : LRS.CtorExact Γ IH M N m) :
+    LRS.CtorDefEq Γ IH M N m := by
+  cases H with
+  | intro hcl hlen hlen' hhead hhead' hspine hspine' hargs haligned hmirror =>
+    exact .exact hcl hlen hlen' .rfl .rfl hhead hhead' hspine hspine'
+      hargs haligned hmirror
+
+/-- Mirror one exact native link. -/
+theorem LRS.CtorExact.symm
+    (H : LRS.CtorExact Γ IH M N m) :
+    LRS.CtorExact Γ IH N M m := by
+  cases H with
+  | @intro c rargs hwf ls ls' args args' CHead CHead' A A'
+      hcl hlen hlen' hhead hhead' hspine hspine' hargs haligned hmirror =>
+    have hcl' : Params.classify c = some (.ctor args'.length) := by
+      simpa [hlen, hlen'] using hcl
+    exact .intro hcl' hlen' hlen hhead' hhead hspine' hspine
+      hargs.symm hmirror haligned
+
+/-- A term anchored to a classified constructor spine. -/
+inductive LRS.CtorView (Γ : List SExpr) (M : SExpr) : SExpr → Prop where
+  | intro {c : Name} {ls : List SLevel} {args : List SExpr} :
+      Params.classify c = some (.ctor args.length) →
+      WHRedS Γ M (args.foldr (fun a f => f.app a) (.const c ls)) →
+      CtorView Γ M (args.foldr (fun a f => f.app a) (.const c ls))
+
+/-- Move a constructor view forward along a weak-head reduction. -/
+theorem LRS.CtorView.whr
+    (hM : WHRedS Γ M M') (V : LRS.CtorView Γ M X) :
+    LRS.CtorView Γ M' X := by
+  cases V with
+  | intro hcl hred =>
+    exact .intro hcl (hM.determ_l hred (.ctorSpine hcl _))
+
+/-- Move a constructor view backward along a weak-head reduction. -/
+theorem LRS.CtorView.unwhr
+    (hM : WHRedS Γ M M') (V : LRS.CtorView Γ M' X) :
+    LRS.CtorView Γ M X := by
+  cases V with
+  | intro hcl hred => exact .intro hcl (.trans hM hred)
+
+/-- A normalized link: one native exact leaf plus its transport frame back
+to the root relation. -/
+inductive LRS.CtorLink (Γ : List SExpr) (IH : LogRel Γ n)
+    (m : WShape (n + 1)) : SExpr → SExpr → Prop where
+  | intro (frame : LRS.CtorFrame Γ IH m J p)
+      (exact : LRS.CtorExact Γ J X Y p) : CtorLink Γ IH m X Y
+
+theorem LRS.CtorLink.toCtorDefEq
+    (H : LRS.CtorLink Γ IH m X Y) :
+    LRS.CtorDefEq Γ IH X Y m := by
+  cases H with
+  | intro frame exact => exact frame.apply exact.toCtorDefEq
+
+theorem LRS.CtorLink.symm
+    (H : LRS.CtorLink Γ IH m X Y) :
+    LRS.CtorLink Γ IH m Y X := by
+  cases H with
+  | intro frame exact => exact .intro frame exact.symm
+
+theorem LRS.CtorLink.mono (hle : m' ≤ m)
+    (H : LRS.CtorLink Γ IH m X Y) :
+    LRS.CtorLink Γ IH m' X Y := by
+  cases H with
+  | intro frame exact => exact .intro (.mono hle frame) exact
+
+theorem LRS.CtorLink.lift
+    {IH : LogRel Γ n} {IH' : LogRel Γ n'} (le : n ≤ n')
+    (E : LogRel.LiftEquiv IH IH' le)
+    (H : LRS.CtorLink Γ IH m X Y) :
+    LRS.CtorLink Γ IH' (m.lift (n' + 1)) X Y := by
+  cases H with
+  | intro frame exact => exact .intro (.lift le E frame) exact
+
+theorem LRS.CtorLink.unlift
+    {IH : LogRel Γ n} {IH' : LogRel Γ n'} (le : n ≤ n')
+    (E : LogRel.LiftEquiv IH IH' le)
+    (H : LRS.CtorLink Γ IH' (m.lift (n' + 1)) X Y) :
+    LRS.CtorLink Γ IH m X Y := by
+  cases H with
+  | intro frame exact => exact .intro (.unlift le E frame) exact
+
+/-- A nonempty sequence of native exact links.  All free structural closure
+has been pushed into link frames or into the sequence itself. -/
+inductive LRS.CtorPath (Γ : List SExpr) (IH : LogRel Γ n)
+    (m : WShape (n + 1)) : SExpr → SExpr → Prop where
+  | single : LRS.CtorLink Γ IH m X Y → CtorPath Γ IH m X Y
+  | cons : LRS.CtorLink Γ IH m X Y → CtorPath Γ IH m Y Z →
+      CtorPath Γ IH m X Z
+
+theorem LRS.CtorPath.toCtorDefEq
+    (H : LRS.CtorPath Γ IH m X Y) :
+    LRS.CtorDefEq Γ IH X Y m := by
+  induction H with
+  | single link => exact link.toCtorDefEq
+  | cons link _ ih => exact link.toCtorDefEq.trans ih
+
+theorem LRS.CtorPath.append
+    (H₁ : LRS.CtorPath Γ IH m X Y)
+    (H₂ : LRS.CtorPath Γ IH m Y Z) :
+    LRS.CtorPath Γ IH m X Z := by
+  induction H₁ with
+  | single link => exact .cons link H₂
+  | cons link _ ih => exact .cons link (ih H₂)
+
+theorem LRS.CtorPath.symm
+    (H : LRS.CtorPath Γ IH m X Y) :
+    LRS.CtorPath Γ IH m Y X := by
+  induction H with
+  | single link => exact .single link.symm
+  | cons link _ ih => exact ih.append (.single link.symm)
+
+theorem LRS.CtorPath.mono (hle : m' ≤ m)
+    (H : LRS.CtorPath Γ IH m X Y) :
+    LRS.CtorPath Γ IH m' X Y := by
+  induction H with
+  | single link => exact .single (link.mono hle)
+  | cons link _ ih => exact .cons (link.mono hle) ih
+
+theorem LRS.CtorPath.lift
+    {IH : LogRel Γ n} {IH' : LogRel Γ n'} (le : n ≤ n')
+    (E : LogRel.LiftEquiv IH IH' le)
+    (H : LRS.CtorPath Γ IH m X Y) :
+    LRS.CtorPath Γ IH' (m.lift (n' + 1)) X Y := by
+  induction H with
+  | single link => exact .single (link.lift le E)
+  | cons link _ ih => exact .cons (link.lift le E) ih
+
+theorem LRS.CtorPath.unlift
+    {IH : LogRel Γ n} {IH' : LogRel Γ n'} (le : n ≤ n')
+    (E : LogRel.LiftEquiv IH IH' le)
+    (H : LRS.CtorPath Γ IH' (m.lift (n' + 1)) X Y) :
+    LRS.CtorPath Γ IH m X Y := by
+  induction H with
+  | single link => exact .single (link.unlift le E)
+  | cons link _ ih => exact .cons (link.unlift le E) ih
+
+/-- Root-anchored constructor normal form.  The endpoint views isolate all
+weak-head bookkeeping; the path between their classified spines consists
+only of exact native links. -/
+inductive LRS.CtorChain (Γ : List SExpr) (IH : LogRel Γ n)
+    (M N : SExpr) (m : WShape (n + 1)) : Prop where
+  | intro {X Y : SExpr} :
+      LRS.CtorView Γ M X → LRS.CtorView Γ N Y →
+      LRS.CtorPath Γ IH m X Y → CtorChain Γ IH M N m
+
+theorem LRS.CtorChain.toCtorDefEq
+    (H : LRS.CtorChain Γ IH M N m) :
+    LRS.CtorDefEq Γ IH M N m := by
+  cases H with
+  | intro left right links =>
+    cases left with
+    | intro _ hM =>
+      cases right with
+      | intro _ hN => exact .unwhr hM hN links.toCtorDefEq
+
+theorem LRS.CtorChain.symm
+    (H : LRS.CtorChain Γ IH M N m) :
+    LRS.CtorChain Γ IH N M m := by
+  cases H with
+  | intro left right links => exact .intro right left links.symm
+
+/-- Retain a constructor witness while making both root endpoints the left
+endpoint.  A path followed by its mirror stays nonempty and therefore keeps
+the observation evidence needed by later consumers. -/
+theorem LRS.CtorChain.left
+    (H : LRS.CtorChain Γ IH M N m) :
+    LRS.CtorChain Γ IH M M m := by
+  cases H with
+  | intro left _ links => exact .intro left left (links.append links.symm)
+
+/-- Concatenate two root-anchored chains.  Weak-head determinism identifies
+the two classified constructor spines chosen for their shared root term. -/
+theorem LRS.CtorChain.trans
+    (H₁ : LRS.CtorChain Γ IH M N m)
+    (H₂ : LRS.CtorChain Γ IH N P m) :
+    LRS.CtorChain Γ IH M P m := by
+  cases H₁ with
+  | intro left middle₁ links₁ =>
+    cases H₂ with
+    | intro middle₂ right links₂ =>
+      cases middle₁ with
+      | intro hcl₁ hred₁ =>
+        cases middle₂ with
+        | intro hcl₂ hred₂ =>
+          have hmid := WHRedS.ctorSpine_determ hcl₁ hcl₂ hred₁ hred₂
+          exact .intro left right (links₁.append (hmid.symm ▸ links₂))
+
+theorem LRS.CtorChain.mono (hle : m' ≤ m)
+    (H : LRS.CtorChain Γ IH M N m) :
+    LRS.CtorChain Γ IH M N m' := by
+  cases H with
+  | intro left right links => exact .intro left right (links.mono hle)
+
+theorem LRS.CtorChain.whr
+    (hM : WHRedS Γ M M') (hN : WHRedS Γ N N')
+    (H : LRS.CtorChain Γ IH M N m) :
+    LRS.CtorChain Γ IH M' N' m := by
+  cases H with
+  | intro left right links =>
+    exact .intro (left.whr hM) (right.whr hN) links
+
+theorem LRS.CtorChain.unwhr
+    (hM : WHRedS Γ M M') (hN : WHRedS Γ N N')
+    (H : LRS.CtorChain Γ IH M' N' m) :
+    LRS.CtorChain Γ IH M N m := by
+  cases H with
+  | intro left right links =>
+    exact .intro (left.unwhr hM) (right.unwhr hN) links
+
+theorem LRS.CtorChain.lift
+    {IH : LogRel Γ n} {IH' : LogRel Γ n'} (le : n ≤ n')
+    (E : LogRel.LiftEquiv IH IH' le)
+    (H : LRS.CtorChain Γ IH M N m) :
+    LRS.CtorChain Γ IH' M N (m.lift (n' + 1)) := by
+  cases H with
+  | intro left right links => exact .intro left right (links.lift le E)
+
+theorem LRS.CtorChain.unlift
+    {IH : LogRel Γ n} {IH' : LogRel Γ n'} (le : n ≤ n')
+    (E : LogRel.LiftEquiv IH IH' le)
+    (H : LRS.CtorChain Γ IH' M N (m.lift (n' + 1))) :
+    LRS.CtorChain Γ IH M N m := by
+  cases H with
+  | intro left right links => exact .intro left right (links.unlift le E)
+
+/-- Normalize the free constructor-observation closure into a root-anchored
+chain of native exact leaves. -/
+theorem LRS.CtorDefEq.toChain
+    (H : LRS.CtorDefEq Γ IH M N m) :
+    LRS.CtorChain Γ IH M N m := by
+  induction H with
+  | exact hcl hlen hlen' hM hN hhead hhead' hspine hspine' hargs haligned
+      hmirror =>
+    exact .intro (.intro hcl hM)
+      (.intro (by simpa [hlen, hlen'] using hcl) hN) <|
+      .single <| .intro .refl <|
+        .intro hcl hlen hlen' hhead hhead' hspine hspine'
+          hargs haligned hmirror
+  | left _ ih => exact ih.left
+  | symm _ ih => exact ih.symm
+  | trans _ _ ih₁ ih₂ => exact ih₁.trans ih₂
+  | mono hle _ ih => exact ih.mono hle
+  | whr hM hN _ ih => exact ih.whr hM hN
+  | unwhr hM hN _ ih => exact ih.unwhr hM hN
+  | lift le hliftTy hlift _ ih =>
+    exact ih.lift le (.ofFields le hliftTy hlift)
+  | unlift le hliftTy hlift _ ih =>
+    exact ih.unlift le (.ofFields le hliftTy hlift)
 
 /-- An algebra for consuming the free closure carried by `CtorDefEq`.
 

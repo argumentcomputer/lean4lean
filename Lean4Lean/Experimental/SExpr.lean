@@ -81,11 +81,37 @@ theorem mk_eq (hl : l.WF univs) (hl' : l'.WF univs) (h : l ≈ l') : mk l = mk l
   apply Subtype.ext
   exact VLevel.equiv_def'.1 h
 
+theorem mk_val (h : l.WF univs) : (mk l).1 = l.eval := by rw [mk_of_wf h]
+
+/-- Equality after semantic level translation reflects the source levels
+up to Lean's level equivalence.  Literal syntactic injectivity is neither
+true nor needed. -/
+theorem equiv_of_mk_eq (hl : l.WF univs) (hl' : l'.WF univs)
+    (h : mk l = mk l') : l ≈ l' := by
+  apply VLevel.equiv_def'.2
+  rw [← mk_val hl, ← mk_val hl', h]
+
+theorem forall₂_equiv_of_map_mk_eq
+    (hls : ∀ l ∈ ls, l.WF univs) (hls' : ∀ l ∈ ls', l.WF univs)
+    (h : ls.map mk = ls'.map mk) : List.Forall₂ (· ≈ ·) ls ls' := by
+  induction ls generalizing ls' with
+  | nil =>
+    cases ls' with
+    | nil => exact .nil
+    | cons => cases h
+  | cons l ls ih =>
+    cases ls' with
+    | nil => cases h
+    | cons l' ls' =>
+      simp only [List.map_cons, List.cons.injEq] at h
+      exact .cons
+        (equiv_of_mk_eq (hls l (.head _)) (hls' l' (.head _)) h.1)
+        (ih (fun x hx => hls x (.tail _ hx))
+          (fun x hx => hls' x (.tail _ hx)) h.2)
+
 @[simp] theorem mk_zero : mk .zero = zero := by
   apply Subtype.ext
   rfl
-
-theorem mk_val (h : l.WF univs) : (mk l).1 = l.eval := by rw [mk_of_wf h]
 
 def succ (l : SLevel) : SLevel :=
   ⟨fun v => l.1 v + 1, let ⟨u, h1, h2⟩ := l.2; ⟨u.succ, h1, h2 ▸ rfl⟩⟩
@@ -292,6 +318,53 @@ theorem reify_levelWF : ∀ e : SExpr, e.reify.LevelWF univs
   | .app f a => ⟨reify_levelWF f, reify_levelWF a⟩
   | .lam A e => ⟨reify_levelWF A, reify_levelWF e⟩
   | .forallE A B => ⟨reify_levelWF A, reify_levelWF B⟩
+
+/-- `mk` is conservative on well-formed expressions modulo the source
+theory's universe-level equivalence. -/
+theorem _root_.Lean4Lean.VEnv.EqUpToLevels.of_mk_eq
+    {e e' : VExpr} (he : e.LevelWF univs) (he' : e'.LevelWF univs)
+    (h : SExpr.mk e = SExpr.mk e') : VEnv.EqUpToLevels univs e e' := by
+  induction e generalizing e' with
+  | bvar i =>
+    cases e' with
+    | bvar j => cases h; exact .bvar
+    | sort | const | app | lam | forallE => cases h
+  | sort l =>
+    cases e' with
+    | sort l' =>
+      injection h with hl
+      exact .sort he he' (SLevel.equiv_of_mk_eq he he' hl)
+    | bvar | const | app | lam | forallE => cases h
+  | const c ls =>
+    cases e' with
+    | const c' ls' =>
+      injection h with hc hls
+      subst c'
+      exact .const he he' (SLevel.forall₂_equiv_of_map_mk_eq he he' hls)
+    | bvar | sort | app | lam | forallE => cases h
+  | app f a ihf iha =>
+    cases e' with
+    | app f' a' =>
+      injection h with hf ha
+      exact .app (ihf he.1 he'.1 hf) (iha he.2 he'.2 ha)
+    | bvar | sort | const | lam | forallE => cases h
+  | lam A e ihA ihe =>
+    cases e' with
+    | lam A' e' =>
+      injection h with hA heq
+      exact .lam (ihA he.1 he'.1 hA) (ihe he.2 he'.2 heq)
+    | bvar | sort | const | app | forallE => cases h
+  | forallE A B ihA ihB =>
+    cases e' with
+    | forallE A' B' =>
+      injection h with hA hB
+      exact .forallE (ihA he.1 he'.1 hA) (ihB he.2 he'.2 hB)
+    | bvar | sort | const | app | lam => cases h
+
+theorem _root_.Lean4Lean.VEnv.EqUpToLevels.reify_mk
+    {e : VExpr} (he : e.LevelWF univs) :
+    VEnv.EqUpToLevels univs e (SExpr.reify (SExpr.mk e)) :=
+  .of_mk_eq he (SExpr.reify_levelWF (SExpr.mk e)) (SExpr.mk_reify _).symm
 
 /-- Translate an expression while instantiating its universe parameters. -/
 def mkInst (ls : List SLevel) : VExpr → SExpr

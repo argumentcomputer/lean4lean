@@ -22,6 +22,36 @@ def LR.AdequacyAt (Γ₀ : List SExpr) (n : Nat) : Prop :=
     LE_Interp ρ m.T M → LE_Interp ρ a.T A → m.HasType a →
     LR.Adequate Γ₀ Γ ρ M N A m a
 
+/-- One completed level of the joint development. -/
+structure LR.JointAt (Γ₀ : List SExpr) (n : Nat) : Prop where
+  adequacy : LR.AdequacyAt Γ₀ n
+  uniq : LogRel.LimitedUniq (LR Γ₀ : LogRel Γ₀ n)
+
+/-- The acyclic builder for the joint adequacy/uniqueness tower.  At a
+successor level, adequacy consumes uniqueness from the strict predecessor;
+limited uniqueness at the new level is then derived from that newly built
+adequacy package.  This is the precise well-founded order used by L4L-16C'. -/
+structure LR.JointBuilder (Γ₀ : List SExpr) : Prop where
+  zero : LR.AdequacyAt Γ₀ 0
+  succ : ∀ n, LogRel.LimitedUniq (LR Γ₀ : LogRel Γ₀ n) →
+    LR.AdequacyAt Γ₀ (n + 1)
+  uniqOfAdequacy : ∀ n, LR.AdequacyAt Γ₀ n →
+    LogRel.LimitedUniq (LR Γ₀ : LogRel Γ₀ n)
+
+/-- Primitive recursion realizes the joint tower; there is no same-level
+cycle between the two obligations. -/
+def LR.JointBuilder.build (B : LR.JointBuilder Γ₀) :
+    ∀ n, LR.JointAt Γ₀ n
+  | 0 =>
+    let adequacy : LR.AdequacyAt Γ₀ 0 := B.zero
+    { adequacy := adequacy
+      uniq := B.uniqOfAdequacy 0 adequacy }
+  | n + 1 =>
+    let prev := B.build n
+    let adequacy : LR.AdequacyAt Γ₀ (n + 1) := B.succ n prev.uniq
+    { adequacy := adequacy
+      uniq := B.uniqOfAdequacy (n + 1) adequacy }
+
 theorem LR.Adequate.bot (ha : a.HasType .type) : Adequate Γ₀ Γ ρ M N A .bot a :=
   ⟨fun _ _ _ => ⟨(LR _).bot ha, (LR _).bot ha⟩, fun _ _ => (LR _).bot ha⟩
 

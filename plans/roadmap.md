@@ -651,7 +651,16 @@ so they go clean with it.
   SExpr-side inversion lemmas recorded clean simultaneously. The
   `hDef` premise needs no 16C work (it is `IsDefEqStrong.const`'s
   field, discharged by `mkS` from `Params.Semantic.defn`; its live
-  construction is 16D's `defn`).
+  construction is 16D's `defn`). **Progress, 2026-08-13:** step (1)'s
+  interfaces are kernel-checked: `LR.AdequacyAt`, `LR.JointAt`, and
+  `LR.JointBuilder` validate the level dependency; the public Pi/sort
+  inversions factor through level-indexed adequacy; and `mk` reflection
+  is fixed at `VEnv.EqUpToLevels` (not false syntactic injectivity).
+  Step (2) is also kernel-checked: native exact `CtorLink`s carry unary
+  root frames, nonempty `CtorPath`s concatenate through classified-spine
+  determinism, and `CtorDefEq.toChain` covers every free-closure
+  constructor with a proved round trip. Step (3), the InferType
+  principal-types bootstrap, is now active.
 - *L4L-16D — live-environment instance.* The only route segment never
   executed end to end — therefore staged, thin vertical slice first:
   **D0** a two-declaration environment (one definition plus one

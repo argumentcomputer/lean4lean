@@ -213,3 +213,22 @@ John chose the joint route (2026-08-13). Consequences:
   principal-types bootstrap for the root sites, O3's `LE_Interp.recR`
   argument, and the 16D instance ladder.
 - Publication holds until the joint leaf closes (John, same date).
+
+### Joint-interface checkpoint (2026-08-13)
+
+The first two implementation dependencies are now kernel-checked.
+`LR.AdequacyAt`, `LR.JointAt`, and `LR.JointBuilder` make the proposed
+recursion explicit, while `LogRel.LimitedUniq` states the exact
+same-term/same-shape retyping contract consumed by constructor-field
+composition. SExpr Pi/sort inversions now accept adequacy at an explicit
+shape level.
+
+The reflection choice is conservativity modulo source level equivalence:
+well-formed `SLevel.mk` equality reflects to `VLevel` equivalence, and
+well-formed `SExpr.mk` equality reflects to `VEnv.EqUpToLevels`; literal
+syntactic injectivity is intentionally not claimed. The route-independent
+constructor normalization is also complete in the working tree:
+`CtorDefEq.toChain` produces root-anchored chains of native exact links,
+retaining lift/unlift evidence in per-link frames and using classified
+constructor-spine determinism to join transitive midpoints. The next active
+dependency is the InferType principal-types bootstrap.
