@@ -1261,8 +1261,6 @@ inductive IsDefEq : List SExpr → SExpr → SExpr → SExpr → Prop where
   | bvar : Lookup Γ i A → Γ ⊢ .bvar i : A
   | symm : Γ ⊢ e ≡ e' : A → Γ ⊢ e' ≡ e : A
   | trans : Γ ⊢ e₁ ≡ e₂ : A → Γ ⊢ e₂ ≡ e₃ : A → Γ ⊢ e₁ ≡ e₃ : A
-  /-- Heterogeneous transitivity: middle term may be at a different sort. -/
-  | trans' : Γ ⊢ A ≡ B : .sort u → Γ ⊢ B ≡ C : .sort v → Γ ⊢ A ≡ C : .sort u
   | sort : Γ ⊢ .sort l : .sort (.succ l)
   | const : env.constants c = some ci → ls.length = ci.uvars →
     Γ ⊢ .const c ls : SExpr.mkInst ls ci.type
@@ -1280,6 +1278,112 @@ inductive IsDefEq : List SExpr → SExpr → SExpr → SExpr → Prop where
   --   (∀ a b A, (A, a, b) ∈ dfs → Γ ⊢ a ≡ b : A) → Γ ⊢ e ≡ r.1.applyS m1 m2' : A
   | extra : env.defeqs df → ls.length = df.uvars →
     Γ ⊢ .mkInst ls df.lhs ≡ .mkInst ls df.rhs : .mkInst ls df.type
+
+/-- The universe list of a constant at the head of `e` has the arity
+registered for that constant. -/
+def HeadConstLevelsWF (e : SExpr) : Prop :=
+  ∀ {c ls ci}, e = .const c ls → Params.env.constants c = some ci →
+    ls.length = ci.uvars
+
+private theorem HeadConstLevelsWF.nonconst
+    (h : ∀ {c ls}, e ≠ .const c ls) : HeadConstLevelsWF e := by
+  intro c ls ci heq
+  exact (h heq).elim
+
+/-- Head-constant arity is preserved by term instantiation.  The only
+nontrivial case is a substituted bound variable, whose result is the
+instantiating argument itself. -/
+theorem HeadConstLevelsWF.inst
+    (he : HeadConstLevelsWF e) (ha : HeadConstLevelsWF a) :
+    HeadConstLevelsWF (e.inst a) := by
+  induction e with
+  | bvar i =>
+    cases i with
+    | zero => exact ha
+    | succ i =>
+      refine HeadConstLevelsWF.nonconst ?_
+      intro c ls heq
+      change SExpr.bvar i = SExpr.const c ls at heq
+      cases heq
+  | const => exact he
+  | sort | app | lam | forallE =>
+    exact HeadConstLevelsWF.nonconst (by simp [SExpr.inst, SExpr.subst])
+
+/-- A well-typed closed source expression instantiated into semantic levels
+has a well-formed head constant. -/
+private theorem HeadConstLevelsWF.mkInst_of_hasType
+    (H : Params.env.HasType U [] e A) :
+    HeadConstLevelsWF (SExpr.mkInst ls e) := by
+  intro c levels ci heq hci
+  cases e with
+  | bvar | sort | app | lam | forallE => cases heq
+  | const c' sourceLevels =>
+    simp only [SExpr.mkInst] at heq
+    injection heq with hc hlevels
+    subst c'
+    obtain ⟨ci', hci', _, hlen⟩ :=
+      VEnv.HasType.const_inv Params.henv (by trivial) H
+    have hciEq : ci' = ci := Option.some.inj (hci'.symm.trans hci)
+    rw [← hciEq]
+    rw [← hlen, ← hlevels, List.length_map]
+
+/-- Both endpoints of a weak definitional equality have well-formed head
+constant levels.  This survives beta substitution and raw registered
+equations, the two cases not covered by a shallow constructor inversion. -/
+theorem IsDefEq.headConstLevelsWF
+    (H : IsDefEq Γ e₁ e₂ A) :
+    HeadConstLevelsWF e₁ ∧ HeadConstLevelsWF e₂ := by
+  induction H with
+  | bvar =>
+    exact ⟨HeadConstLevelsWF.nonconst (by simp),
+      HeadConstLevelsWF.nonconst (by simp)⟩
+  | symm _ ih => exact ih.symm
+  | trans _ _ ih₁ ih₂ => exact ⟨ih₁.1, ih₂.2⟩
+  | sort =>
+    exact ⟨HeadConstLevelsWF.nonconst (by simp),
+      HeadConstLevelsWF.nonconst (by simp)⟩
+  | const hreg hlen =>
+    constructor <;> intro c' ls' ci' heq hreg'
+    all_goals
+      injection heq with hc hls
+      subst c'; subst ls'
+      have hciEq : _ = ci' := Option.some.inj (hreg.symm.trans hreg')
+      simpa [hciEq] using hlen
+  | appDF =>
+    exact ⟨HeadConstLevelsWF.nonconst (by simp),
+      HeadConstLevelsWF.nonconst (by simp)⟩
+  | lamDF =>
+    exact ⟨HeadConstLevelsWF.nonconst (by simp),
+      HeadConstLevelsWF.nonconst (by simp)⟩
+  | forallEDF =>
+    exact ⟨HeadConstLevelsWF.nonconst (by simp),
+      HeadConstLevelsWF.nonconst (by simp)⟩
+  | defeqDF _ _ _ ih => exact ih
+  | beta _ _ ihBody ihArg =>
+    exact ⟨HeadConstLevelsWF.nonconst (by simp),
+      HeadConstLevelsWF.inst ihBody.1 ihArg.1⟩
+  | eta _ ih =>
+    exact ⟨HeadConstLevelsWF.nonconst (by simp), ih.1⟩
+  | proofIrrel _ _ _ _ ihLeft ihRight => exact ⟨ihLeft.1, ihRight.1⟩
+  | extra hreg _ =>
+    have hwf := Params.henv.defEqWF hreg
+    exact ⟨HeadConstLevelsWF.mkInst_of_hasType hwf.1,
+      HeadConstLevelsWF.mkInst_of_hasType hwf.2⟩
+
+/-- Invert weak equality at a constant left endpoint to recover the exact
+universe-list arity required by its registered declaration. -/
+theorem IsDefEq.const_left_levelsLength
+    (H : IsDefEq Γ (.const c ls) e A)
+    (hci : Params.env.constants c = some ci) :
+    ls.length = ci.uvars :=
+  H.headConstLevelsWF.1 rfl hci
+
+/-- Symmetric endpoint form of `const_left_levelsLength`. -/
+theorem IsDefEq.const_right_levelsLength
+    (H : IsDefEq Γ e (.const c ls) A)
+    (hci : Params.env.constants c = some ci) :
+    ls.length = ci.uvars :=
+  H.headConstLevelsWF.2 rfl hci
 
 /-- SExpr-side typing of an exact application spine.  Unlike a bare typing
 of the final application, this retains the type of every argument at the
@@ -1300,17 +1404,27 @@ inductive SpineWF (Γ : List SExpr) : SExpr → List SExpr → SExpr → Prop wh
     IsDefEq Γ B B' (.sort u) →
     SpineWF Γ A es B'
 
+/-- Concatenate conversion-aware spines without composing their result-type
+conversions.  In the `ret` case the retained conversion is moved to the
+head of the second spine.  This is the structural replacement for the old
+heterogeneous `IsDefEq.trans'` rule: no equality between the two sort
+indices is needed or assumed. -/
+theorem SpineWF.append
+    (H₁ : SpineWF Γ A es B) (H₂ : SpineWF Γ B fs C) :
+    SpineWF Γ A (es ++ fs) C := by
+  induction H₁ with
+  | nil => simpa using H₂
+  | cons harg _ ih => exact .cons harg (ih H₂)
+  | conv hty _ ih => exact .conv hty (ih H₂)
+  | ret _ hret ih => exact ih (.conv hret H₂)
+
 /-- Extend a conversion-aware spine by its final argument. -/
 theorem SpineWF.snoc
     (H : SpineWF Γ A es B)
     (hB : IsDefEq Γ B (.forallE D C) (.sort u))
     (he : IsDefEq Γ e e D) :
-    SpineWF Γ A (es ++ [e]) (C.inst e) := by
-  induction H generalizing D C u with
-  | nil => exact .conv hB (.cons he .nil)
-  | cons harg _ ih => exact .cons harg (ih hB he)
-  | conv hty _ ih => exact .conv hty (ih hB he)
-  | ret _ hret ih => exact ih (hret.trans' hB) he
+    SpineWF Γ A (es ++ [e]) (C.inst e) :=
+  H.append (.conv hB (.cons he .nil))
 
 /-- Two application spines with a common final Pi layer.  The explicit
 codomain conversions are deliberately retained for both majors: they let a
@@ -1470,6 +1584,17 @@ inductive SpineDefEq (Γ : List SExpr) :
     IsDefEq Γ B B' (.sort u) →
     SpineDefEq Γ A es es' B'
 
+/-- Concatenate pointwise spines while retaining successive result-type
+conversions as separate certificates. -/
+theorem SpineDefEq.append
+    (H₁ : SpineDefEq Γ A es es' B) (H₂ : SpineDefEq Γ B fs fs' C) :
+    SpineDefEq Γ A (es ++ fs) (es' ++ fs') C := by
+  induction H₁ with
+  | nil => simpa using H₂
+  | cons harg _ ih => exact .cons harg (ih H₂)
+  | conv hty _ ih => exact .conv hty (ih H₂)
+  | ret _ hret ih => exact ih (.conv hret H₂)
+
 /-- Extend a dependently typed pointwise spine by its final related
 argument.  The conversion at the old result exposes the next Pi; the new
 result is oriented at the left argument, exactly like `SpineDefEq.cons`. -/
@@ -1477,12 +1602,8 @@ theorem SpineDefEq.snoc
     (H : SpineDefEq Γ A es es' B)
     (hB : IsDefEq Γ B (.forallE D C) (.sort u))
     (he : IsDefEq Γ e e' D) :
-    SpineDefEq Γ A (es ++ [e]) (es' ++ [e']) (C.inst e) := by
-  induction H generalizing D C u with
-  | nil => exact .conv hB (.cons he .nil)
-  | cons harg _ ih => exact .cons harg (ih hB he)
-  | conv hty _ ih => exact .conv hty (ih hB he)
-  | ret _ hret ih => exact ih (hret.trans' hB) he
+    SpineDefEq Γ A (es ++ [e]) (es' ++ [e']) (C.inst e) :=
+  H.append (.conv hB (.cons he .nil))
 
 /-- A typed pointwise spine applies congruently to related heads. -/
 theorem SpineDefEq.congr
@@ -1523,8 +1644,9 @@ inductive PathSpineWF (Γ : List SExpr) {α : Type}
     (value type : α → SExpr) : SExpr → List α → SExpr → Prop where
   | nil : PathSpineWF Γ value type A [] A
   | cons :
+    IsDefEq Γ (type path) A₁ (.sort u) →
     PathSpineWF Γ value type (A₂.inst (value path)) paths B →
-    PathSpineWF Γ value type (.forallE (type path) A₂) (path :: paths) B
+    PathSpineWF Γ value type (.forallE A₁ A₂) (path :: paths) B
   | conv :
     IsDefEq Γ A A' (.sort u) →
     PathSpineWF Γ value type A' paths B →
@@ -1542,9 +1664,9 @@ theorem PathSpineWF.toSpineWF
     SpineWF Γ A (paths.map value) B := by
   induction H with
   | nil => exact .nil
-  | cons _ ih =>
+  | cons hdom _ ih =>
     simp only [List.map_cons]
-    exact .cons (htyped _) ih
+    exact .cons (hdom.defeqDF (htyped _)) ih
   | conv hty _ ih => exact .conv hty ih
   | ret _ hty ih => exact .ret ih hty
 
@@ -1558,9 +1680,9 @@ theorem PathSpineWF.toSpineDefEq
     SpineDefEq Γ A (paths.map value) (paths.map value') B := by
   induction H with
   | nil => exact .nil
-  | cons _ ih =>
+  | cons hdom _ ih =>
     simp only [List.map_cons]
-    exact .cons (hvalue _) ih
+    exact .cons (hdom.defeqDF (hvalue _)) ih
   | conv hty _ ih => exact .conv hty ih
   | ret _ hty ih => exact .ret ih hty
 
@@ -1784,8 +1906,6 @@ inductive IsDefEqStrong : List SExpr → SExpr → SExpr → SExpr → Prop wher
   | bvar : Lookup Γ i A → Γ ⊢ A : .sort u → Γ ⊢ .bvar i : A
   | symm : Γ ⊢ e ≡ e' : A → Γ ⊢ e' ≡ e : A
   | trans : Γ ⊢ e₁ ≡ e₂ : A → Γ ⊢ e₂ ≡ e₃ : A → Γ ⊢ e₁ ≡ e₃ : A
-  /-- Heterogeneous transitivity: middle term may be at a different sort. -/
-  | trans' : Γ ⊢ A ≡ B : .sort u → Γ ⊢ B ≡ C : .sort v → Γ ⊢ A ≡ C : .sort u
   | sort : Γ ⊢ .sort l : .sort (.succ l)
   | const : env.constants c = some ci → ls.length = ci.uvars →
     Γ ⊢ SExpr.mkInst ls ci.type : .sort u →
@@ -1798,11 +1918,12 @@ inductive IsDefEqStrong : List SExpr → SExpr → SExpr → SExpr → Prop wher
     (∀ {r : (Pattern.const c).RHS × (Pattern.const c).Check}, Pat (.const c) r →
       Γ ⊢ r.1.applyS ls Empty.elim ≡ .const c ls : SExpr.mkInst ls ci.type) →
     Γ ⊢ .const c ls : SExpr.mkInst ls ci.type
-  | appDF : Γ ⊢ A : .sort u →
+  | appDF : Γ ⊢ A : .sort u → A::Γ ⊢ B : .sort v →
     Γ ⊢ f ≡ f' : .forallE A B → Γ ⊢ a ≡ a' : A →
     Γ ⊢ B.inst a ≡ B.inst a' : .sort v →
     Γ ⊢ .app f a ≡ .app f' a' : B.inst a
   | lamDF : Γ ⊢ A ≡ A' : .sort u → A::Γ ⊢ B : .sort v →
+    A'::Γ ⊢ B : .sort v →
     A::Γ ⊢ body ≡ body' : B → A'::Γ ⊢ body ≡ body' : B →
     Γ ⊢ .lam A body ≡ .lam A' body' : .forallE A B
   | forallEDF : Γ ⊢ A ≡ A' : .sort u →
@@ -1815,6 +1936,19 @@ inductive IsDefEqStrong : List SExpr → SExpr → SExpr → SExpr → Prop wher
   | eta : Γ ⊢ e : .forallE A B → Γ ⊢ .lam A (.app e.lift (.bvar 0)) : .forallE A B →
     Γ ⊢ .lam A (.app e.lift (.bvar 0)) ≡ e : .forallE A B
   | proofIrrel : Γ ⊢ p : .sort .zero → Γ ⊢ h : p → Γ ⊢ h' : p → Γ ⊢ h ≡ h' : p
+  /-- A zero-arity definition contraction without the recursive constant-
+  typing knot.  The local action supplies the ordinary equality, the RHS is
+  strongly typed, and the constant metadata is exactly the non-definition
+  fragment needed to type the left endpoint. -/
+  | defn {r : (Pattern.const c).RHS × (Pattern.const c).Check} :
+    env.constants c = some ci → ls.length = ci.uvars →
+    Γ ⊢ SExpr.mkInst ls ci.type : .sort u →
+    (F : ∀ cl, CtorBundle c cl) →
+    (∀ cl, Γ ⊢ SExpr.mkInst ls ci.type ≡ (F cl).rhs ls : .sort (F cl).u) →
+    (action : Pattern.Action Γ r (.const c ls) ls Empty.elim
+      (SExpr.mkInst ls ci.type)) →
+    Γ ⊢ r.1.applyS ls Empty.elim : SExpr.mkInst ls ci.type →
+    Γ ⊢ .const c ls ≡ r.1.applyS ls Empty.elim : SExpr.mkInst ls ci.type
   /-- A local, proof-carrying extension contraction.  Unlike a registered
   raw equation, this constructor can be interpreted operationally: it names
   the concrete matched redex, carries its successful checks and exact local
@@ -1884,6 +2018,12 @@ class Params.Semantic [Params] where
       (rule : Pattern.IotaRule r) →
       (captureType : (RecursorIotaPattern rec major ctor arity).Path → SExpr) →
       (captureTyping : Pattern.CaptureTyping Γ mcap captureType) →
+      /- Capture witnesses may arrive at an existentially selected common
+      type.  Reified context validity is the finite evidence needed to align
+      those types with the concrete generated telescope; without it this
+      data-valued field is not constructible for an arbitrary `captureType`.
+      The adequacy caller obtains this premise from `Ctx.WF.reify`. -/
+      OnCtx (Γ.map SExpr.reify) (env.IsType univs) →
       (typing : Pattern.IotaTyping Γ rec ctor recLs ctorLs
         recArgs ctorArgs majorTerm A) →
       (RecursorIotaPattern rec major ctor arity).MatchesS
@@ -1997,12 +2137,13 @@ theorem _root_.Lean4Lean.VEnv.IsDefEqStrong.mkS [Params.Semantic]
           (SExpr.mkInst (ls.map SLevel.mk) ci.type)).symm
     simpa only [mkInst_map_mk hls] using
       (IsDefEqStrong.const hci (by simpa using hlen) htype F hF hDef)
-  | appDF _ _ _ _ _ _ _ ihA _ ihf iha ihB =>
-    have ihB' := ihB
-    simp only [mk, mk_instExpr] at ihB'
-    simpa only [mk, mk_instExpr] using IsDefEqStrong.appDF ihA ihf iha ihB'
+  | appDF _ _ _ _ _ _ _ ihA ihCod ihf iha ihResult =>
+    have ihResult' := ihResult
+    simp only [mk, mk_instExpr] at ihResult'
+    simpa only [List.map_cons, mk, mk_instExpr] using
+      IsDefEqStrong.appDF ihA ihCod ihf iha ihResult'
   | lamDF _ _ _ _ _ _ _ ihA ihB ihB' ihBody ihBody' =>
-    exact .lamDF ihA ihB ihBody ihBody'
+    exact .lamDF ihA ihB ihB' ihBody ihBody'
   | forallEDF hu hv _ _ _ ihA ihBody ihBody' =>
     simpa only [mk, SLevel.mk_imax hu hv] using
       IsDefEqStrong.forallEDF ihA ihBody ihBody'
@@ -2011,12 +2152,12 @@ theorem _root_.Lean4Lean.VEnv.IsDefEqStrong.mkS [Params.Semantic]
     have ihResult' := ihResult
     have ihInst' := ihInst
     simp only [mk, mk_instExpr] at ihResult' ihInst'
-    have hlam := IsDefEqStrong.lamDF ihA ihB ihBody ihBody
-    have happ := IsDefEqStrong.appDF ihA hlam ihArg ihResult'
+    have hlam := IsDefEqStrong.lamDF ihA ihB ihB ihBody ihBody
+    have happ := IsDefEqStrong.appDF ihA ihB hlam ihArg ihResult'
     simpa only [mk, mk_instExpr] using
       IsDefEqStrong.beta ihBody ihArg happ ihInst'
   | @eta Γ A u B v e _ _ _ _ _ _ _ _
-      ihA ihB _ ihe iheWeak ihAWeak =>
+      ihA ihB ihBWeak ihe iheWeak ihAWeak =>
     have ihAWeak' : IsDefEqStrong (mk A :: Γ.map mk)
         (mk A).lift (mk A).lift (.sort (SLevel.mk u)) := by
       simpa only [List.map_cons, mk, mk_lift] using ihAWeak
@@ -2024,6 +2165,10 @@ theorem _root_.Lean4Lean.VEnv.IsDefEqStrong.mkS [Params.Semantic]
         (mk e).lift (mk e).lift
         (.forallE (mk A).lift (mk (B.liftN 1 1))) := by
       simpa only [List.map_cons, mk, mk_lift] using iheWeak
+    have ihBWeak' : IsDefEqStrong ((mk A).lift :: mk A :: Γ.map mk)
+        (mk (B.liftN 1 1)) (mk (B.liftN 1 1))
+        (.sort (SLevel.mk v)) := by
+      simpa only [List.map_cons, mk, mk_lift] using ihBWeak
     have hbvar : IsDefEqStrong (mk A :: Γ.map mk)
         (.bvar 0) (.bvar 0) (mk A).lift :=
       .bvar .zero ihAWeak'
@@ -2034,8 +2179,8 @@ theorem _root_.Lean4Lean.VEnv.IsDefEqStrong.mkS [Params.Semantic]
     have happ : IsDefEqStrong (mk A :: Γ.map mk)
         (.app (mk e).lift (.bvar 0)) (.app (mk e).lift (.bvar 0)) (mk B) := by
       rw [← hresult]
-      exact IsDefEqStrong.appDF ihAWeak' iheWeak' hbvar (hresult ▸ ihB)
-    have hlam := IsDefEqStrong.lamDF ihA ihB happ happ
+      exact IsDefEqStrong.appDF ihAWeak' ihBWeak' iheWeak' hbvar (hresult ▸ ihB)
+    have hlam := IsDefEqStrong.lamDF ihA ihB ihB happ happ
     simpa only [mk, mk_lift] using IsDefEqStrong.eta ihe hlam
   | structEta hreg _ _ _ _ _ _ _ _ ihType ihMajor ihRebuild =>
     exact Params.Semantic.structureEta hreg ihRebuild ihMajor
@@ -2048,23 +2193,162 @@ theorem _root_.Lean4Lean.VEnv.IsDefEqStrong.mkS [Params.Semantic]
       (Params.Semantic.registered (Γ := Γ.map mk) (ls := ls.map SLevel.mk)
         hreg (by simpa using hlen) ihLhs' ihRhs')
 
+/-- Reify semantic universe levels to instantiate a closed Theory typing,
+then translate its evidence-rich strengthening back to any SExpr context.
+This is the fixed-head typing input needed by semantic `R`-recursion: it is
+derived from `Params.henv`, not added to `Params.Semantic` as an oracle. -/
+theorem Params.Semantic.closedHasTypeStrong
+    [Params.Semantic]
+    {U : Nat} {e A : VExpr} {ls : List SLevel} {Γ : List SExpr}
+    (H : Params.env.HasType U [] e A) :
+    IsDefEqStrong Γ (SExpr.mkInst ls e) (SExpr.mkInst ls e)
+      (SExpr.mkInst ls A) := by
+  let vls := ls.map SLevel.reify
+  have hlevels : ∀ l ∈ vls, l.WF Params.univs := by
+    intro l hl
+    simp only [vls, List.mem_map] at hl
+    obtain ⟨sl, _, rfl⟩ := hl
+    exact SLevel.reify_wf sl
+  have hStrong :=
+    ((H.strong Params.henv (by trivial)).instL hlevels).weak0
+      Params.henv (Γ := Γ.map SExpr.reify)
+  have hS := hStrong.mkS
+  have hvls : vls.map SLevel.mk = ls := by
+    change (ls.map SLevel.reify).map SLevel.mk = ls
+    rw [List.map_map]
+    exact List.map_id''' ls fun sl _ => SLevel.mk_reify sl
+  have hctx : (Γ.map SExpr.reify).map SExpr.mk = Γ := by
+    rw [List.map_map]
+    exact List.map_id''' Γ fun term _ => SExpr.mk_reify term
+  have hmkinst (term : VExpr) :
+      SExpr.mkInst ls term = SExpr.mk (term.instL vls) := by
+    rw [← hvls]
+    exact SExpr.mkInst_map_mk hlevels
+  simpa only [hctx, hmkinst] using hS
+
+/-- A registered equation's right tower has an evidence-rich self-typing at
+every semantic level instantiation. -/
+theorem Params.Semantic.registeredRhsStrong
+    [Params.Semantic]
+    {df : VDefEq} {ls : List SLevel} {Γ : List SExpr}
+    (hreg : Params.env.defeqs df) :
+    IsDefEqStrong Γ (SExpr.mkInst ls df.rhs) (SExpr.mkInst ls df.rhs)
+      (SExpr.mkInst ls df.type) :=
+  Params.Semantic.closedHasTypeStrong (Params.henv.defEqWF hreg).2
+
+/-- The fixed head selected by an iota descriptor is strongly self-typed.
+This is the syntactic half of the repaired `IotaRHSDefEq` contract; its
+logical adequacy is supplied by the surrounding semantic `R` recursion. -/
+theorem _root_.Lean4Lean.Pattern.IotaRule.rhsStrong
+    [Params.Semantic]
+    {rec ctor : Name} {major arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    (rule : Pattern.IotaRule r) (ls : List SLevel) :
+    IsDefEqStrong Γ (SExpr.mkInst ls rule.df.rhs)
+      (SExpr.mkInst ls rule.df.rhs) (SExpr.mkInst ls rule.df.type) :=
+  Params.Semantic.registeredRhsStrong rule.registered
+
 theorem IsDefEqStrong.defeq : IsDefEqStrong Γ e1 e2 A → Γ ⊢ e1 ≡ e2 : A := by
   intro H
   induction H with
   | bvar h _ _ => exact .bvar h
   | symm _ ih => exact ih.symm
   | trans _ _ ih₁ ih₂ => exact ih₁.trans ih₂
-  | trans' _ _ ih₁ ih₂ => exact ih₁.trans' ih₂
   | sort => exact .sort
   | const hreg hlen _ _ _ => exact .const hreg hlen
-  | appDF _ _ _ _ _ ihf iha _ => exact .appDF ihf iha
-  | lamDF _ _ _ _ ihA _ ihBody _ => exact .lamDF ihA ihBody
+  | appDF _ _ _ _ _ _ _ ihf iha _ => exact .appDF ihf iha
+  | lamDF _ _ _ _ _ ihA _ _ ihBody _ => exact .lamDF ihA ihBody
   | forallEDF _ _ _ ihA ihBody _ => exact .forallEDF ihA ihBody
   | defeqDF _ _ ihA ihe => exact .defeqDF ihA ihe
   | beta _ _ _ _ ihBody ihArg _ _ => exact .beta ihBody ihArg
   | eta _ _ ihe _ => exact .eta ihe
   | proofIrrel _ _ _ ihp ihh ihh' => exact .proofIrrel ihp ihh ihh'
+  | defn _ _ _ _ _ action => exact action.sound
   | extra action _ _ _ _ => exact action.sound
+
+/-- Both endpoints of an evidence-rich equality retain evidence-rich
+self-typings at its declared type.  Unlike the corresponding weak fact,
+this is just homogeneous composition and therefore does not need type
+uniqueness. -/
+theorem IsDefEqStrong.hasType
+    (H : IsDefEqStrong Γ e₁ e₂ A) :
+    IsDefEqStrong Γ e₁ e₁ A ∧ IsDefEqStrong Γ e₂ e₂ A :=
+  ⟨H.trans H.symm, H.symm.trans H⟩
+
+/-- If either endpoint of an evidence-rich equality is syntactically a Pi,
+recover evidence-rich validity of its domain and codomain.  All extension
+leaves of `IsDefEqStrong` carry their endpoint typings, so this eliminator is
+structural; in particular it does not appeal to weak type uniqueness or
+Church--Rosser. -/
+theorem IsDefEqStrong.forallE_inv'
+    (H : IsDefEqStrong Γ e₁ e₂ V)
+    (eq : e₁ = .forallE A B ∨ e₂ = .forallE A B) :
+    (∃ u, IsDefEqStrong Γ A A (.sort u)) ∧
+      ∃ v, IsDefEqStrong (A :: Γ) B B (.sort v) := by
+  induction H generalizing A B with
+  | bvar => nomatch eq
+  | symm _ ih => exact ih eq.symm
+  | trans _ _ ih₁ ih₂ =>
+    obtain eq | eq := eq
+    · exact ih₁ (.inl eq)
+    · exact ih₂ (.inr eq)
+  | sort => nomatch eq
+  | const => nomatch eq
+  | appDF => nomatch eq
+  | lamDF => nomatch eq
+  | forallEDF hA hBody hBody' _ _ _ =>
+    obtain ⟨⟨⟩⟩ | ⟨⟨⟩⟩ := eq
+    · exact ⟨⟨_, hA.hasType.1⟩, _, hBody.hasType.1⟩
+    · exact ⟨⟨_, hA.hasType.2⟩, _, hBody'.hasType.2⟩
+  | defeqDF _ _ _ ih => exact ih eq
+  | beta _ _ _ _ _ _ _ ihInst =>
+    obtain eq | eq := eq
+    · nomatch eq
+    · exact ihInst (.inl eq)
+  | eta _ _ ihTerm _ =>
+    obtain eq | eq := eq
+    · nomatch eq
+    · exact ihTerm (.inl eq)
+  | proofIrrel _ _ _ ihProp ihLeft ihRight =>
+    obtain eq | eq := eq
+    · exact ihLeft (.inl eq)
+    · exact ihRight (.inr eq)
+  | defn _ _ _ _ _ _ _ _ _ ihRhs =>
+    obtain eq | eq := eq
+    · nomatch eq
+    · exact ihRhs (.inl eq)
+  | extra _ _ _ ihLeft ihRight =>
+    obtain eq | eq := eq
+    · exact ihLeft (.inl eq)
+    · exact ihRight (.inr eq)
+
+/-- The declared type of every evidence-rich equality is itself an
+evidence-rich type.  The extra premises retained by application, lambda,
+beta, eta, and local extension constructors make this a direct structural
+proof. -/
+theorem IsDefEqStrong.isType
+    (H : IsDefEqStrong Γ e₁ e₂ A) :
+    ∃ u, IsDefEqStrong Γ A A (.sort u) := by
+  induction H with
+  | bvar _ hA _ => exact ⟨_, hA⟩
+  | symm _ ih => exact ih
+  | trans _ _ ih _ => exact ih
+  | sort => exact ⟨_, .sort⟩
+  | const _ _ hTy _ _ _ _ _ _ => exact ⟨_, hTy⟩
+  | appDF _ _ _ _ hResult _ _ _ _ _ =>
+    exact ⟨_, hResult.hasType.1⟩
+  | lamDF hA hBody _ _ _ _ _ _ _ _ =>
+    have hAA := hA.hasType.1
+    have hBB := hBody.hasType.1
+    exact ⟨_, .forallEDF hAA hBB hBB⟩
+  | forallEDF => exact ⟨_, .sort⟩
+  | defeqDF hType _ _ _ => exact ⟨_, hType.hasType.2⟩
+  | beta _ _ _ _ _ _ _ ihInst => exact ihInst
+  | eta _ _ ihTerm _ => exact ihTerm
+  | proofIrrel hProp _ _ _ _ _ => exact ⟨_, hProp⟩
+  | defn _ _ hTy => exact ⟨_, hTy⟩
+  | extra _ _ _ ihLeft _ => exact ihLeft
 
 theorem _root_.Lean4Lean.Params.ctor_ty [Params.Semantic]
     (hcl1 : Params.classify c = some cl) (hcl2 : cl matches .ctor .. | .etaCtor ..)
@@ -2099,8 +2383,8 @@ inductive HasTypeStratifiedS : List SExpr → SExpr → SExpr → Bool → Nat �
   | const :
     env.constants c = some ci →
     ls.length = ci.uvars →
-    Γ ⊢ (mk ci.type).instL ls : .sort u !! n →
-    Γ ⊢ .const c ls :! (mk ci.type).instL ls !! n+1
+    Γ ⊢ SExpr.mkInst ls ci.type : .sort u !! n →
+    Γ ⊢ .const c ls :! SExpr.mkInst ls ci.type !! n+1
   | app :
     Γ ⊢ A : .sort u !! n →
     A::Γ ⊢ B : .sort v !! n →
@@ -2119,7 +2403,7 @@ inductive HasTypeStratifiedS : List SExpr → SExpr → SExpr → Bool → Nat �
     A::Γ ⊢ body : .sort v !! n →
     Γ ⊢ .forallE A body :! .sort (.imax u v) !! n+1
   | base : Γ ⊢ e :! A !! n → Γ ⊢ e : A !! n
-  | defeq : Γ ⊢ A ≡ B : .sort u →
+  | defeq : IsDefEqStrong Γ A B (.sort u) →
     Γ ⊢ A : .sort u !! n → Γ ⊢ B : .sort u !! n →
     Γ ⊢ e : A !! n → Γ ⊢ e : B !! n+1
 end
@@ -2155,6 +2439,144 @@ theorem HasTypeStratifiedS.mono (le : m ≤ n)
     replace le := Nat.le_of_succ_le_succ le
     exact .defeq h (ihA le) (ihB le) (ihe le)
 
+/-- Every evidence-rich equality has stratified typings for both endpoints
+at one common depth.  The application and lambda cases are the reason the
+strong judgment retains codomain validity in both binder contexts: the
+right endpoint is first typed at its native dependent result and then
+transported back to the left-oriented conclusion type. -/
+theorem IsDefEqStrong.stratify (H : IsDefEqStrong Γ e₁ e₂ A) :
+    ∃ n, HasTypeStratifiedS Γ e₁ A true n ∧
+      HasTypeStratifiedS Γ e₂ A true n := by
+  induction H with
+  | bvar h _ ihA =>
+    obtain ⟨n, hA, _⟩ := ihA
+    exact ⟨n + 1, .base (.bvar h hA), .base (.bvar h hA)⟩
+  | symm _ ih =>
+    obtain ⟨n, h₁, h₂⟩ := ih
+    exact ⟨n, h₂, h₁⟩
+  | trans _ _ ih₁ ih₂ =>
+    obtain ⟨n₁, h₁, _⟩ := ih₁
+    obtain ⟨n₂, _, h₂⟩ := ih₂
+    exact ⟨max n₁ n₂, h₁.mono (Nat.le_max_left ..),
+      h₂.mono (Nat.le_max_right ..)⟩
+  | sort =>
+    exact ⟨0, .base .sort', .base .sort'⟩
+  | const hreg hlen _ _ _ _ ihTy _ _ =>
+    obtain ⟨n, hTy, _⟩ := ihTy
+    exact ⟨n + 1, .base (.const hreg hlen hTy),
+      .base (.const hreg hlen hTy)⟩
+  | @appDF Γ A u B v f f' a a' hA hCod hf ha hResult
+      ihA ihCod ihf iha ihResult =>
+    obtain ⟨nA, hA₁, _⟩ := ihA
+    obtain ⟨nCod, hCod₁, _⟩ := ihCod
+    obtain ⟨nf, hf₁, hf₂⟩ := ihf
+    obtain ⟨na, ha₁, ha₂⟩ := iha
+    obtain ⟨nR, hR₁, hR₂⟩ := ihResult
+    let k := max nA (max nCod (max nf (max na nR)))
+    have hleft : HasTypeStratifiedS Γ (.app f a) (B.inst a) true (k + 1) :=
+      .base (.app (hA₁.mono (by omega)) (hCod₁.mono (by omega))
+        (hf₁.mono (by omega)) (ha₁.mono (by omega))
+        (hR₁.mono (by omega)))
+    have hrightNative :
+        HasTypeStratifiedS Γ (.app f' a') (B.inst a') true (k + 1) :=
+      .base (.app (hA₁.mono (by omega)) (hCod₁.mono (by omega))
+        (hf₂.mono (by omega)) (ha₂.mono (by omega))
+        (hR₂.mono (by omega)))
+    have hright : HasTypeStratifiedS Γ (.app f' a') (B.inst a) true (k + 2) :=
+      .defeq hResult.symm
+        (hR₂.mono (by omega)) (hR₁.mono (by omega))
+        hrightNative
+    exact ⟨k + 2, hleft.mono (by omega), hright⟩
+  | @lamDF Γ A A' u B v body body' hA hB hB' hBody hBody'
+      ihA ihB ihB' ihBody ihBody' =>
+    obtain ⟨nA, hA₁, hA₂⟩ := ihA
+    obtain ⟨nB, hB₁, _⟩ := ihB
+    obtain ⟨nB', hB₁', hB₂'⟩ := ihB'
+    obtain ⟨nBody, hBody₁, _⟩ := ihBody
+    obtain ⟨nBody', _, hBody₂'⟩ := ihBody'
+    let k := max nA (max nB (max nB' (max nBody nBody')))
+    have hPi : HasTypeStratifiedS Γ (.forallE A B)
+        (.sort (.imax u v)) true (k + 1) :=
+      .base (.forallE (hA₁.mono (by omega)) (hB₁.mono (by omega)))
+    have hPi' : HasTypeStratifiedS Γ (.forallE A' B)
+        (.sort (.imax u v)) true (k + 1) :=
+      .base (.forallE (hA₂.mono (by omega)) (hB₂'.mono (by omega)))
+    have hleft : HasTypeStratifiedS Γ (.lam A body) (.forallE A B)
+        true (k + 2) :=
+      .base (.lam (hA₁.mono (by omega)) (hB₁.mono (by omega))
+        (hBody₁.mono (by omega)) hPi)
+    have hrightNative : HasTypeStratifiedS Γ (.lam A' body')
+        (.forallE A' B) true (k + 2) :=
+      .base (.lam (hA₂.mono (by omega)) (hB₂'.mono (by omega))
+        (hBody₂'.mono (by omega)) hPi')
+    have hPiEq : IsDefEqStrong Γ (.forallE A B) (.forallE A' B)
+        (.sort (.imax u v)) :=
+      .forallEDF hA hB hB'
+    have hright : HasTypeStratifiedS Γ (.lam A' body') (.forallE A B)
+        true (k + 3) :=
+      .defeq hPiEq.symm (hPi'.mono (by omega)) (hPi.mono (by omega))
+        hrightNative
+    exact ⟨k + 3, hleft.mono (by omega), hright⟩
+  | forallEDF _ _ _ ihA ihBody ihBody' =>
+    obtain ⟨nA, hA₁, hA₂⟩ := ihA
+    obtain ⟨nB, hB₁, _⟩ := ihBody
+    obtain ⟨nB', _, hB₂⟩ := ihBody'
+    let k := max nA (max nB nB')
+    exact ⟨k + 1,
+      .base (.forallE (hA₁.mono (by omega)) (hB₁.mono (by omega))),
+      .base (.forallE (hA₂.mono (by omega)) (hB₂.mono (by omega)))⟩
+  | defeqDF hA _ ihA ihe =>
+    obtain ⟨nA, hA₁, hA₂⟩ := ihA
+    obtain ⟨ne, he₁, he₂⟩ := ihe
+    let k := max nA ne
+    exact ⟨k + 1,
+      .defeq hA (hA₁.mono (by omega)) (hA₂.mono (by omega))
+        (he₁.mono (by omega)),
+      .defeq hA (hA₁.mono (by omega)) (hA₂.mono (by omega))
+        (he₂.mono (by omega))⟩
+  | beta _ _ _ _ ihBody ihArg ihApp ihInst =>
+    obtain ⟨nApp, hApp, _⟩ := ihApp
+    obtain ⟨nInst, _, hInst⟩ := ihInst
+    exact ⟨max nApp nInst, hApp.mono (Nat.le_max_left ..),
+      hInst.mono (Nat.le_max_right ..)⟩
+  | eta _ _ ihe ihLam =>
+    obtain ⟨ne, _, he⟩ := ihe
+    obtain ⟨nLam, hLam, _⟩ := ihLam
+    exact ⟨max nLam ne, hLam.mono (Nat.le_max_left ..),
+      he.mono (Nat.le_max_right ..)⟩
+  | proofIrrel _ _ _ _ ihh ihh' =>
+    obtain ⟨nh, hh, _⟩ := ihh
+    obtain ⟨nh', _, hh'⟩ := ihh'
+    exact ⟨max nh nh', hh.mono (Nat.le_max_left ..),
+      hh'.mono (Nat.le_max_right ..)⟩
+  | defn hreg hlen _ _ _ _ _ ihTy _ ihRhs =>
+    obtain ⟨nTy, hTy, _⟩ := ihTy
+    obtain ⟨nRhs, _, hRhs⟩ := ihRhs
+    let k := max (nTy + 1) nRhs
+    exact ⟨k,
+      (HasTypeStratifiedS.base (.const hreg hlen hTy)).mono
+        (Nat.le_max_left ..),
+      hRhs.mono (Nat.le_max_right ..)⟩
+  | extra _ _ _ ihLeft ihRight =>
+    obtain ⟨nL, hL, _⟩ := ihLeft
+    obtain ⟨nR, _, hR⟩ := ihRight
+    exact ⟨max nL nR, hL.mono (Nat.le_max_left ..),
+      hR.mono (Nat.le_max_right ..)⟩
+
+/-- Erase only the stratification index, retaining the ordinary weak typing
+judgment. -/
+theorem HasTypeStratifiedS.hasType
+    (H : HasTypeStratifiedS Γ e A b n) : Γ ⊢ e : A := by
+  induction H with
+  | bvar h _ _ => exact .bvar h
+  | sort' => exact .sort
+  | const hreg hlen _ _ => exact .const hreg hlen
+  | app _ _ _ _ _ _ _ ihf iha _ => exact .appDF ihf iha
+  | lam _ _ _ _ ihA _ ihBody _ => exact .lamDF ihA ihBody
+  | forallE _ _ ihA ihBody => exact .forallEDF ihA ihBody
+  | base _ ih => exact ih
+  | defeq h _ _ _ _ _ ihe => exact h.defeq.defeqDF ihe
+
 theorem HasTypeStratifiedS.to_core (H : Γ ⊢ e : A !! n) :
     ∃ A', Γ ⊢ e :! A' !! n := by
   generalize hb : true = b at H
@@ -2163,6 +2585,133 @@ theorem HasTypeStratifiedS.to_core (H : Γ ⊢ e : A !! n) :
   | defeq _ _ _ _ _ _ ih =>
     obtain ⟨A', hA'⟩ := ih rfl
     exact ⟨A', hA'.mono (Nat.le_succ _)⟩
+
+/-- A stratified typing of a syntactic Pi exposes strictly shallower
+stratified typings for its domain and codomain.  Outer conversions are
+discarded by `to_core`; the remaining core derivation is forced to be the
+syntax-directed `forallE` constructor.  This is the depth information the
+joint adequacy/uniqueness induction needs in its application case. -/
+theorem HasTypeStratifiedS.forallE_inv
+    (H : HasTypeStratifiedS Γ (.forallE A B) V true n) :
+    ∃ u v,
+      HasTypeStratifiedS Γ A (.sort u) true (n - 1) ∧
+      HasTypeStratifiedS (A :: Γ) B (.sort v) true (n - 1) := by
+  obtain ⟨V', H⟩ := H.to_core
+  cases H with
+  | forallE hA hB =>
+    exact ⟨_, _, by simpa using hA, by simpa using hB⟩
+
+/-- A stratified typing of a concrete application exposes every native
+typing premise one layer earlier.
+
+Outer displayed-type conversions are discarded by `to_core`; consequently
+the returned codomain is the one selected by the actual application
+derivation, rather than an independently reconstructed typing of the public
+result type.  Iterating this lemma down a focused registered RHS tower keeps
+the exact endpoint derivation and provides the strict depth decrease needed
+before rebuilding an evaluator edge. -/
+theorem HasTypeStratifiedS.app_inv
+    (H : HasTypeStratifiedS Γ (.app f a) V true n) :
+    ∃ A u B v,
+      HasTypeStratifiedS Γ A (.sort u) true (n - 1) ∧
+      HasTypeStratifiedS (A :: Γ) B (.sort v) true (n - 1) ∧
+      HasTypeStratifiedS Γ f (.forallE A B) true (n - 1) ∧
+      HasTypeStratifiedS Γ a A true (n - 1) ∧
+      HasTypeStratifiedS Γ (B.inst a) (.sort v) true (n - 1) := by
+  obtain ⟨V', H⟩ := H.to_core
+  cases H with
+  | app hA hB hf ha hResult =>
+    exact ⟨_, _, _, _, by simpa using hA, by simpa using hB,
+      by simpa using hf, by simpa using ha, by simpa using hResult⟩
+
+/-- Iteratively peel a concrete left-associated application tower while
+retaining the native typing derivation of its literal head. -/
+theorem HasTypeStratifiedS.foldl_app_head
+    {args : List SExpr} {head V : SExpr}
+    (H : HasTypeStratifiedS Γ
+      (args.foldl (fun f a => f.app a) head) V true n) :
+    ∃ HeadType,
+      HasTypeStratifiedS Γ head HeadType true (n - args.length) := by
+  induction args generalizing head n V with
+  | nil => exact ⟨V, by simpa⟩
+  | cons arg args ih =>
+    simp only [List.foldl_cons] at H
+    obtain ⟨_, hHeadApp⟩ := ih H
+    obtain ⟨A, _, B, _, _, _, hHead, _, _⟩ := hHeadApp.app_inv
+    refine ⟨.forallE A B, ?_⟩
+    simpa only [List.length_cons, Nat.sub_sub, Nat.add_comm] using hHead
+
+/-- A well-typed nonempty left-associated application tower has positive
+stratification depth. -/
+theorem HasTypeStratifiedS.foldl_app_depth_pos
+    {args : List SExpr} {head V : SExpr}
+    (H : HasTypeStratifiedS Γ
+      (args.foldl (fun f a => f.app a) head) V true n)
+    (hne : args ≠ []) :
+    0 < n := by
+  induction args generalizing head n V with
+  | nil => exact (hne rfl).elim
+  | cons arg args ih =>
+    simp only [List.foldl_cons] at H
+    by_cases hrest : args = []
+    · subst args
+      simp only [List.foldl_nil] at H
+      obtain ⟨_, H⟩ := H.to_core
+      cases H with
+      | app => omega
+    · exact ih H hrest
+
+/-- A nonempty application tower exposes its literal head at a strictly
+smaller stratification depth. -/
+theorem HasTypeStratifiedS.foldl_app_head_of_ne_nil
+    {args : List SExpr} {head V : SExpr}
+    (H : HasTypeStratifiedS Γ
+      (args.foldl (fun f a => f.app a) head) V true n)
+    (hne : args ≠ []) :
+    ∃ HeadType depth,
+      depth < n ∧ HasTypeStratifiedS Γ head HeadType true depth := by
+  obtain ⟨HeadType, hHead⟩ := H.foldl_app_head
+  have hnpos : 0 < n := H.foldl_app_depth_pos hne
+  have hlen : 0 < args.length := by
+    cases args with
+    | nil => exact (hne rfl).elim
+    | cons => simp
+  exact ⟨HeadType, n - args.length, by omega, hHead⟩
+
+/-- Peel the concrete capture tower selected by an iota descriptor and
+retain the native stratified typing of its literal registered RHS head. -/
+theorem _root_.Lean4Lean.Pattern.IotaRule.rhsHeadStratified
+    {rec ctor : Name} {major arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    (rule : Pattern.IotaRule r) {recLs : List SLevel}
+    {capture : (RecursorIotaPattern rec major ctor arity).Path → SExpr}
+    {V : SExpr}
+    (H : HasTypeStratifiedS Γ (r.1.applyS recLs capture) V true depth) :
+    ∃ HeadType,
+      HasTypeStratifiedS Γ (SExpr.mkInst recLs rule.df.rhs) HeadType true
+        (depth - rule.capturePaths.length) := by
+  rw [← rule.rhsApply recLs capture] at H
+  simpa only [List.length_map] using H.foldl_app_head
+
+/-- A nonempty registered capture tower exposes its fixed RHS head at a
+strictly smaller depth than the typed instantiated endpoint. -/
+theorem _root_.Lean4Lean.Pattern.IotaRule.rhsHeadStratified_of_nonempty
+    {rec ctor : Name} {major arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    (rule : Pattern.IotaRule r) {recLs : List SLevel}
+    {capture : (RecursorIotaPattern rec major ctor arity).Path → SExpr}
+    {V : SExpr}
+    (H : HasTypeStratifiedS Γ (r.1.applyS recLs capture) V true depth)
+    (hne : rule.capturePaths ≠ []) :
+    ∃ HeadType headDepth,
+      headDepth < depth ∧
+        HasTypeStratifiedS Γ (SExpr.mkInst recLs rule.df.rhs)
+          HeadType true headDepth := by
+  rw [← rule.rhsApply recLs capture] at H
+  apply H.foldl_app_head_of_ne_nil
+  simpa using hne
 
 theorem HasTypeStratifiedS.isType (H : HasTypeStratifiedS Γ e A b n) :
     ∃ u, Γ ⊢ A : .sort u !! n - 1 := by
@@ -2176,10 +2725,301 @@ theorem HasTypeStratifiedS.isType (H : HasTypeStratifiedS Γ e A b n) :
   | @sort' _ l _ => exact ⟨_, .base (.sort' (l := l.succ))⟩
   | @forallE _ A u _ body v _ _ => exact ⟨_, .base (.sort' (l := .imax u v))⟩
 
+/-- Reconstruct evidence-rich self-typing from a stratified typing.
+
+The stratified judgment retains every validity premise needed by
+`IsDefEqStrong`.  Its conversion constructor now also retains the strong
+type equality, so this proof is structural.  The constant case obtains the
+constructor and definition witnesses from `Params.Semantic`; it does not
+postulate a generic weak-to-strong conversion. -/
+theorem HasTypeStratifiedS.strong
+    [Params.Semantic] (H : HasTypeStratifiedS Γ e A b n) :
+    IsDefEqStrong Γ e e A := by
+  induction H with
+  | bvar h _ ihA =>
+    exact .bvar h ihA
+  | sort' =>
+    exact .sort
+  | @const c ci Γ ls u _ hreg hlen _ ihTy =>
+    let F : ∀ cl, CtorBundle c cl := fun cl =>
+      (Params.Semantic.ctor (ls := ls) (Γ := Γ) hreg hlen cl).1
+    have hF : ∀ cl, IsDefEqStrong Γ
+        (SExpr.mkInst ls ci.type) ((F cl).rhs ls) (.sort (F cl).u) := by
+      intro cl
+      exact (Params.Semantic.ctor (ls := ls) (Γ := Γ) hreg hlen cl).2
+    have hDef : ∀ {r : (Pattern.const c).RHS × (Pattern.const c).Check},
+        Params.Pat (.const c) r →
+        IsDefEqStrong Γ (r.1.applyS ls Empty.elim) (.const c ls)
+          (SExpr.mkInst ls ci.type) := by
+      intro r hpat
+      obtain ⟨value, closed, hr, hdef⟩ := Params.Semantic.defn hpat
+      subst r
+      simpa only [Pattern.RHS.applyS] using
+        (hdef hreg hlen : IsDefEqStrong Γ
+          (.const c ls) (SExpr.mkInst ls value)
+          (SExpr.mkInst ls ci.type)).symm
+    exact .const hreg hlen ihTy F hF hDef
+  | app _ _ _ _ _ ihA ihB ihf iha ihResult =>
+    exact .appDF ihA ihB ihf iha ihResult
+  | lam _ _ _ _ ihA ihB ihBody _ =>
+    exact .lamDF ihA ihB ihB ihBody ihBody
+  | forallE _ _ ihA ihBody =>
+    exact .forallEDF ihA ihBody ihBody
+  | base _ ih =>
+    exact ih
+  | defeq hType _ _ _ _ _ ihTerm =>
+    exact .defeqDF hType ihTerm
+
 def Ctx.WF : List SExpr → Prop
   | [] => True
   | A::Γ => WF Γ ∧ ∃ u, Γ ⊢ A : .sort u
 scoped notation:65 "⊢ " Γ:36 => Ctx.WF Γ
+
+/-! ## Reflection and evidence recovery
+
+Once heterogeneous transitivity has been eliminated, the weak SExpr
+judgment reflects into the ordinary Theory judgment constructor for
+constructor.  Reification is exactly homomorphic for term lifting and
+substitution; universe `succ`, `imax`, and `instL` commute only modulo the
+semantic level quotient, so those cases use Theory's proved
+`EqUpToLevels` transport. -/
+
+theorem reify_lift' (e : SExpr) : (e.lift' ρ).reify = e.reify.lift' ρ := by
+  induction e generalizing ρ <;> simp [SExpr.lift', SExpr.reify, VExpr.lift', *]
+
+theorem reify_subst (e : SExpr) :
+    (e.subst σ).reify = e.reify.subst (fun i => (σ i).reify) := by
+  induction e generalizing σ with
+  | bvar => rfl
+  | sort => rfl
+  | const => rfl
+  | app f a ihf iha =>
+    simp only [SExpr.subst, SExpr.reify, VExpr.subst, ihf, iha]
+  | lam A e ihA ihe | forallE A e ihA ihe =>
+    simp only [SExpr.subst, SExpr.reify, VExpr.subst, ihA]
+    rw [ihe]
+    congr 2
+    funext i
+    cases i with
+    | zero => rfl
+    | succ i =>
+      simp [SExpr.Subst.lift, VExpr.Subst.lift, reify_lift',
+        VExpr.lift_eq_lift']
+
+theorem reify_inst (e a : SExpr) :
+    (e.inst a).reify = e.reify.inst a.reify := by
+  rw [SExpr.inst, VExpr.inst_eq, reify_subst]
+  congr 2
+  funext i
+  cases i <;> rfl
+
+theorem Lookup.reify (H : SExpr.Lookup Γ i A) :
+    Lean4Lean.Lookup (Γ.map SExpr.reify) i A.reify := by
+  induction H with
+  | zero =>
+    rw [reify_lift', ← VExpr.lift_eq_lift']
+    exact Lean4Lean.Lookup.zero
+  | succ _ ih =>
+    rw [reify_lift', ← VExpr.lift_eq_lift']
+    exact Lean4Lean.Lookup.succ ih
+
+theorem _root_.Lean4Lean.VEnv.EqUpToLevels.reify_of_mk_eq
+    (he : e.LevelWF Params.univs) (h : SExpr.mk e = s) :
+    VEnv.EqUpToLevels Params.univs e s.reify := by
+  subst s
+  exact VEnv.EqUpToLevels.reify_mk he
+
+theorem _root_.Lean4Lean.VEnv.EqUpToLevels.reify_refl (e : SExpr) :
+    VEnv.EqUpToLevels Params.univs e.reify e.reify := by
+  simpa only [SExpr.mk_reify] using
+    (VEnv.EqUpToLevels.reify_mk (SExpr.reify_levelWF e))
+
+theorem mk_instL_map_reify (e : VExpr) (ls : List SLevel) :
+    SExpr.mk (e.instL (ls.map SLevel.reify)) = SExpr.mkInst ls e := by
+  let vls := ls.map SLevel.reify
+  have hlevels : ∀ l ∈ vls, l.WF Params.univs := by
+    intro l hl
+    simp only [vls, List.mem_map] at hl
+    obtain ⟨sl, _, rfl⟩ := hl
+    exact SLevel.reify_wf sl
+  have hvls : vls.map SLevel.mk = ls := by
+    change (ls.map SLevel.reify).map SLevel.mk = ls
+    rw [List.map_map]
+    exact List.map_id''' ls fun sl _ => SLevel.mk_reify sl
+  have h := (SExpr.mkInst_map_mk (e := e) hlevels).symm
+  rw [hvls] at h
+  exact h
+
+/-- Simultaneously change both endpoints and the declared type of a Theory
+judgment along universe-representative equivalence.  This uses only the
+proved ordered-environment strengthening layer. -/
+theorem _root_.Lean4Lean.VEnv.IsDefEq.alignEqUpToLevels
+    (hΓ : OnCtx Γ (Params.env.IsType Params.univs))
+    (H : Params.env.IsDefEq Params.univs Γ e₁ e₂ A)
+    (he₁ : VEnv.EqUpToLevels Params.univs e₁ e₁')
+    (he₂ : VEnv.EqUpToLevels Params.univs e₂ e₂')
+    (hA : VEnv.EqUpToLevels Params.univs A A') :
+    Params.env.IsDefEq Params.univs Γ e₁' e₂' A' := by
+  let W := VEnv.CtxStrong.strong Params.henv hΓ
+  have hs := H.strong Params.henv hΓ
+  have hterm :=
+    VEnv.EqUpToLevels.defeq Params.henv Params.henv.strong W hs he₁ he₂
+  obtain ⟨u, htype⟩ := hs.isType' Params.henv Params.henv.strong W
+  have hrefl := (VEnv.EqUpToLevels.refl W.levelWF htype).1
+  have htype' := VEnv.EqUpToLevels.defeq Params.henv Params.henv.strong W
+    htype hrefl hA
+  exact .defeqDF htype'.defeq hterm.defeq
+
+/-- Reflect the quotient syntax's weak judgment back into Theory.  The
+target context validity is explicit so binder cases can extend it with the
+typing recovered from their translated premises. -/
+theorem IsDefEq.reify (H : IsDefEq Γ e₁ e₂ A) :
+    OnCtx (Γ.map SExpr.reify) (Params.env.IsType Params.univs) →
+    Params.env.IsDefEq Params.univs (Γ.map SExpr.reify)
+      e₁.reify e₂.reify A.reify := by
+  intro hΓ
+  induction H with
+  | bvar h => exact .bvar h.reify
+  | symm _ ih => exact (ih hΓ).symm
+  | trans _ _ ih₁ ih₂ => exact (ih₁ hΓ).trans (ih₂ hΓ)
+  | @sort Γ l =>
+    have hl : l.reify.WF Params.univs := SLevel.reify_wf l
+    have hbase : Params.env.IsDefEq Params.univs (Γ.map SExpr.reify)
+        (.sort l.reify) (.sort l.reify) (.sort l.reify.succ) :=
+      .sortDF hl hl rfl
+    have htype : VEnv.EqUpToLevels Params.univs
+        (VExpr.sort l.reify.succ) (SExpr.sort l.succ).reify :=
+      .reify_of_mk_eq (show l.reify.succ.WF Params.univs from hl)
+        (by simp only [SExpr.mk, SLevel.mk_succ hl, SLevel.mk_reify])
+    exact hbase.alignEqUpToLevels hΓ
+      (.reify_refl (SExpr.sort l)) (.reify_refl (SExpr.sort l)) htype
+  | @const c ci Γ ls hreg hlen =>
+    let vls := ls.map SLevel.reify
+    have hlevels : ∀ l ∈ vls, l.WF Params.univs := by
+      intro l hl
+      simp only [vls, List.mem_map] at hl
+      obtain ⟨sl, _, rfl⟩ := hl
+      exact SLevel.reify_wf sl
+    have hbase : Params.env.IsDefEq Params.univs (Γ.map SExpr.reify)
+        (.const c vls) (.const c vls) (ci.type.instL vls) :=
+      .constDF hreg hlevels hlevels (by simpa [vls] using hlen)
+        (List.Forall₂.rfl fun _ _ => rfl)
+    let W := VEnv.CtxStrong.strong Params.henv hΓ
+    have htype : VEnv.EqUpToLevels Params.univs
+        (ci.type.instL vls) (SExpr.mkInst ls ci.type).reify :=
+      .reify_of_mk_eq (hbase.levelWF W.levelWF).2.2
+        (by simpa only [vls] using mk_instL_map_reify ci.type ls)
+    exact hbase.alignEqUpToLevels hΓ
+      (.reify_refl (SExpr.const c ls)) (.reify_refl (SExpr.const c ls)) htype
+  | @appDF Γ f f' A B a a' _ _ ihf iha =>
+    simpa only [SExpr.reify, reify_inst] using
+      VEnv.IsDefEq.appDF (ihf hΓ) (iha hΓ)
+  | @lamDF Γ A A' u body body' B _ _ ihA ihBody =>
+    have hA := ihA hΓ
+    have hΓ' : OnCtx (A.reify :: Γ.map SExpr.reify)
+        (Params.env.IsType Params.univs) :=
+      ⟨hΓ, ⟨_, hA.hasType.1⟩⟩
+    exact .lamDF hA (ihBody hΓ')
+  | @forallEDF Γ A A' u body body' v _ _ ihA ihBody =>
+    have hA := ihA hΓ
+    have hΓ' : OnCtx (A.reify :: Γ.map SExpr.reify)
+        (Params.env.IsType Params.univs) :=
+      ⟨hΓ, ⟨_, hA.hasType.1⟩⟩
+    have hbase := VEnv.IsDefEq.forallEDF hA (ihBody hΓ')
+    have hu : u.reify.WF Params.univs := SLevel.reify_wf u
+    have hv : v.reify.WF Params.univs := SLevel.reify_wf v
+    have htype : VEnv.EqUpToLevels Params.univs
+        (VExpr.sort (.imax u.reify v.reify)) (SExpr.sort (.imax u v)).reify :=
+      .reify_of_mk_eq
+        (show (VLevel.imax u.reify v.reify).WF Params.univs from ⟨hu, hv⟩)
+        (by simp only [SExpr.mk, SLevel.mk_imax hu hv, SLevel.mk_reify])
+    exact hbase.alignEqUpToLevels hΓ
+      (.reify_refl (SExpr.forallE A body))
+      (.reify_refl (SExpr.forallE A' body')) htype
+  | defeqDF _ _ ihA ihe => exact .defeqDF (ihA hΓ) (ihe hΓ)
+  | @beta A Γ e B e' _ _ ihBody ihArg =>
+    have harg := ihArg hΓ
+    have hΓ' : OnCtx (A.reify :: Γ.map SExpr.reify)
+        (Params.env.IsType Params.univs) :=
+      ⟨hΓ, harg.isType Params.henv hΓ⟩
+    simpa only [SExpr.reify, reify_inst] using
+      VEnv.IsDefEq.beta (ihBody hΓ') harg
+  | @eta Γ e A B _ ihe =>
+    simpa only [SExpr.reify, reify_lift', ← VExpr.lift_eq_lift'] using
+      VEnv.IsDefEq.eta (ihe hΓ)
+  | @proofIrrel Γ p h h' _ _ _ ihp ihh ihh' =>
+    have hp := ihp hΓ
+    have hz : SLevel.zero.reify ≈ VLevel.zero :=
+      SLevel.equiv_of_mk_eq (SLevel.reify_wf .zero) (by trivial)
+        (by simp only [SLevel.mk_reify, SLevel.mk_zero])
+    have hp' := hp.alignEqUpToLevels hΓ
+      (.reify_refl p) (.reify_refl p)
+      (VEnv.EqUpToLevels.sort (SLevel.reify_wf .zero) (by trivial) hz)
+    exact .proofIrrel hp' (ihh hΓ) (ihh' hΓ)
+  | @extra df Γ ls hreg hlen =>
+    let vls := ls.map SLevel.reify
+    have hlevels : ∀ l ∈ vls, l.WF Params.univs := by
+      intro l hl
+      simp only [vls, List.mem_map] at hl
+      obtain ⟨sl, _, rfl⟩ := hl
+      exact SLevel.reify_wf sl
+    have hbase : Params.env.IsDefEq Params.univs (Γ.map SExpr.reify)
+        (df.lhs.instL vls) (df.rhs.instL vls) (df.type.instL vls) :=
+      .extra hreg hlevels (by simpa [vls] using hlen)
+    let W := VEnv.CtxStrong.strong Params.henv hΓ
+    have hwf := hbase.levelWF W.levelWF
+    have hlhs : VEnv.EqUpToLevels Params.univs
+        (df.lhs.instL vls) (SExpr.mkInst ls df.lhs).reify :=
+      .reify_of_mk_eq hwf.1
+        (by simpa only [vls] using mk_instL_map_reify df.lhs ls)
+    have hrhs : VEnv.EqUpToLevels Params.univs
+        (df.rhs.instL vls) (SExpr.mkInst ls df.rhs).reify :=
+      .reify_of_mk_eq hwf.2.1
+        (by simpa only [vls] using mk_instL_map_reify df.rhs ls)
+    have htype : VEnv.EqUpToLevels Params.univs
+        (df.type.instL vls) (SExpr.mkInst ls df.type).reify :=
+      .reify_of_mk_eq hwf.2.2
+        (by simpa only [vls] using mk_instL_map_reify df.type ls)
+    exact hbase.alignEqUpToLevels hΓ hlhs hrhs htype
+
+/-- A well-formed SExpr context reifies to a well-formed Theory context. -/
+theorem Ctx.WF.reify (H : Ctx.WF Γ) :
+    OnCtx (Γ.map SExpr.reify) (Params.env.IsType Params.univs) := by
+  induction Γ with
+  | nil => trivial
+  | cons A Γ ih =>
+    obtain ⟨hΓ, u, hA⟩ := H
+    have hΓ' := ih hΓ
+    exact ⟨hΓ', ⟨u.reify, hA.reify hΓ'⟩⟩
+
+/-- Translate a well-formed Theory context through `SExpr.mk`.  This is the
+context counterpart of `VEnv.IsDefEqStrong.mkS`; generated reduction sites
+and the contextual adequacy tower use the two translations together. -/
+theorem Ctx.WF.mkS [Params.Semantic]
+    (H : OnCtx Γ (Params.env.IsType Params.univs)) :
+    Ctx.WF (Γ.map SExpr.mk) := by
+  induction Γ with
+  | nil => trivial
+  | cons A Γ ih =>
+    obtain ⟨hΓ, u, hA⟩ := H
+    have hΓS := ih hΓ
+    have hAS := (hA.strong Params.henv hΓ).mkS
+    exact ⟨hΓS, ⟨SLevel.mk u, hAS.defeq⟩⟩
+
+/-- Recover the proof-carrying judgment from a weak SExpr derivation in a
+well-formed context.  The proof reflects to Theory, uses its clean ordered
+environment strengthening theorem, and translates back; it does not depend
+on Theory's transitional uniqueness or injectivity declarations. -/
+theorem IsDefEq.strong [Params.Semantic]
+    (hΓ : Ctx.WF Γ) (H : IsDefEq Γ e₁ e₂ A) :
+    IsDefEqStrong Γ e₁ e₂ A := by
+  have hΓ' := hΓ.reify
+  have hV := (H.reify hΓ').strong Params.henv hΓ'
+  have hS := hV.mkS
+  have hctx : (Γ.map SExpr.reify).map SExpr.mk = Γ := by
+    rw [List.map_map]
+    exact List.map_id''' Γ fun term _ => SExpr.mk_reify term
+  simpa only [hctx, SExpr.mk_reify] using hS
 
 variable (HasType : List SExpr → SExpr → SExpr → Prop)
 inductive Ctx.Subst (Γ : List SExpr) : SExpr.Subst → List SExpr → Prop where
@@ -2343,7 +3183,6 @@ theorem IsDefEq.weakCore (W : Ctx.Lift' ρ Γ Γ') (H : Γ ⊢ e1 ≡ e2 : A) :
   | bvar h => refine .bvar (h.weak' W)
   | symm _ ih => exact .symm (ih W)
   | trans _ _ ih1 ih2 => exact .trans (ih1 W) (ih2 W)
-  | trans' _ _ ih1 ih2 => exact .trans' (ih1 W) (ih2 W)
   | sort => exact .sort
   | const h1 h2 => rw [((henv.closedC h1).mkInstS).lift'_eq .zero]; exact .const h1 h2
   | appDF _ _ ih1 ih2 => exact SExpr.lift'_inst_hi .. ▸ .appDF (ih1 W) (ih2 W)
@@ -2420,7 +3259,6 @@ theorem IsDefEq.subst (W : Ctx.Subst (fun Γ e A => Γ ⊢ e : A) Γ₀ σ Γ)
   | bvar h => exact W.lookup h
   | symm _ ih => exact (ih W).symm
   | trans _ _ ih₁ ih₂ => exact (ih₁ W).trans (ih₂ W)
-  | trans' _ _ ih₁ ih₂ => exact (ih₁ W).trans' (ih₂ W)
   | sort => exact .sort
   | const hreg hlen =>
     rw [((henv.closedC hreg).mkInstS).subst_eq .zero]
@@ -2475,20 +3313,14 @@ theorem IsDefEqStrong.substCongr (W : Ctx.SubstEq Γ₀ σ σ' Γ)
     exact ⟨(ih W).2, (ih W).1⟩
   | trans _ _ ih₁ ih₂ =>
     exact ⟨(ih₁ W).1, (ih₂ W).2⟩
-  | trans' h₁ h₂ ih₁ ih₂ =>
-    have hsame₁ := h₁.defeq.subst W.left
-    have hsame₂ := h₂.defeq.subst W.left
-    have hcross₂ := hsame₂.trans (ih₂ W).2
-    have hsame := hsame₁.trans' hsame₂
-    have hcross := hsame₁.trans' hcross₂
-    exact ⟨(ih₁ W).1, hsame.symm.trans hcross⟩
   | sort =>
     exact ⟨.sort, .sort⟩
   | const hreg hlen _ _ _ =>
     constructor <;>
       rw [((henv.closedC hreg).mkInstS).subst_eq .zero] <;>
       exact .const hreg hlen
-  | @appDF Γ A u f f' B a a' v hA hf ha hB ihA ihf iha ihB =>
+  | @appDF Γ A u B v f f' a a' hA hCod hf ha hB
+      ihA ihCod ihf iha ihB =>
     have hf' := ihf W
     have ha' := iha W
     have hcod : Γ₀ ⊢
@@ -2501,8 +3333,8 @@ theorem IsDefEqStrong.substCongr (W : Ctx.SubstEq Γ₀ σ σ' Γ)
     · have happ := IsDefEq.appDF hf'.2 ha'.2
       have happ' := hcod.symm.defeqDF happ
       simpa only [SExpr.subst, SExpr.subst_inst] using happ'
-  | @lamDF Γ A A' u B v body body' hA hB hBody hBody'
-      ihA ihB ihBody ihBody' =>
+  | @lamDF Γ A A' u B v body body' hA hB hB' hBody hBody'
+      ihA ihB ihB' ihBody ihBody' =>
     have WA := W.lift hA.defeq.hasType.1
     have WA' := W.lift hA.defeq.hasType.2
     have hdom := ihA W
@@ -2537,6 +3369,11 @@ theorem IsDefEqStrong.substCongr (W : Ctx.SubstEq Γ₀ σ σ' Γ)
     exact ⟨(ihLam W).1, (ihe W).1⟩
   | proofIrrel _ _ _ ihp ihh ihh' =>
     exact ⟨(ihh W).1, (ihh' W).1⟩
+  | defn hreg hlen _ _ _ _ _ _ _ ihRhs =>
+    constructor
+    · rw [((henv.closedC hreg).mkInstS).subst_eq .zero]
+      exact .const hreg hlen
+    · exact (ihRhs W).1
   | extra _ _ _ ihLeft ihRight =>
     exact ⟨(ihLeft W).1, (ihRight W).1⟩
 
@@ -2577,6 +3414,98 @@ def _root_.Lean4Lean.Pattern.Action.weak' (action : Pattern.Action Γ r e m1 m2 
     subst b
     exact (action.checked a₀ b₀ B₀ hab).weak' W
   · simpa only [Pattern.RHS.lift'_applyS] using action.sound.weak' W
+
+/-- Evidence-rich equality is stable under context embeddings.  Constants
+are rebuilt from the semantic environment at the target context, avoiding
+any false assumption that the abstract constructor bundle's SExpr fields are
+syntactically closed; local extension leaves weaken their finite `Action`
+certificate pointwise. -/
+theorem IsDefEqStrong.weak' [Params.Semantic]
+    (W : Ctx.Lift' ρ Γ Γ')
+    (H : IsDefEqStrong Γ e1 e2 A) :
+    IsDefEqStrong Γ' (e1.lift' ρ) (e2.lift' ρ) (A.lift' ρ) := by
+  induction H generalizing ρ Γ' with
+  | bvar h _ ihA => exact .bvar (h.weak' W) (ihA W)
+  | symm _ ih => exact (ih W).symm
+  | trans _ _ ih1 ih2 => exact (ih1 W).trans (ih2 W)
+  | sort => exact .sort
+  | @const c ci Γ ls u hreg hlen hTy F hF hDef ihTy ihF ihDef =>
+    rw [((Params.henv.closedC hreg).mkInstS).lift'_eq .zero]
+    have hTy' := ihTy W
+    rw [((Params.henv.closedC hreg).mkInstS).lift'_eq .zero] at hTy'
+    let F' : ∀ cl, CtorBundle c cl := fun cl =>
+      (Params.Semantic.ctor (ls := ls) (Γ := Γ') hreg hlen cl).1
+    have hF' : ∀ cl, IsDefEqStrong Γ'
+        (SExpr.mkInst ls ci.type) ((F' cl).rhs ls) (.sort (F' cl).u) := by
+      intro cl
+      exact (Params.Semantic.ctor (ls := ls) (Γ := Γ') hreg hlen cl).2
+    have hDef' : ∀ {r : (Pattern.const c).RHS × (Pattern.const c).Check},
+        Params.Pat (.const c) r →
+        IsDefEqStrong Γ' (r.1.applyS ls Empty.elim) (.const c ls)
+          (SExpr.mkInst ls ci.type) := by
+      intro r hpat
+      obtain ⟨value, closed, hr, hdef⟩ := Params.Semantic.defn hpat
+      subst r
+      simpa only [Pattern.RHS.applyS] using
+        (hdef hreg hlen : IsDefEqStrong Γ'
+          (.const c ls) (SExpr.mkInst ls value)
+          (SExpr.mkInst ls ci.type)).symm
+    exact .const hreg hlen hTy' F' hF' hDef'
+  | appDF _ _ _ _ _ ihA ihCod ihf iha ihResult =>
+    have hResult := ihResult W
+    rw [SExpr.lift'_inst_hi, SExpr.lift'_inst_hi] at hResult
+    exact SExpr.lift'_inst_hi .. ▸
+      .appDF (ihA W) (ihCod W.cons) (ihf W) (iha W) hResult
+  | lamDF _ _ _ _ _ ihA ihB ihB' ihBody ihBody' =>
+    exact .lamDF (ihA W) (ihB W.cons) (ihB' W.cons)
+      (ihBody W.cons) (ihBody' W.cons)
+  | forallEDF _ _ _ ihA ihBody ihBody' =>
+    exact .forallEDF (ihA W) (ihBody W.cons) (ihBody' W.cons)
+  | defeqDF _ _ ihA ihe => exact .defeqDF (ihA W) (ihe W)
+  | beta _ _ _ _ ihBody ihArg ihApp ihInst =>
+    have hApp := ihApp W
+    have hInst := ihInst W
+    simp only [SExpr.lift'_inst_hi] at hApp hInst
+    rw [SExpr.lift'_inst_hi, SExpr.lift'_inst_hi]
+    exact .beta (ihBody W.cons) (ihArg W) hApp hInst
+  | @eta Γ e A B hTerm hLam ihTerm ihLam =>
+    have hLam' : IsDefEqStrong Γ'
+        (.lam (A.lift' ρ) ((e.lift' ρ).lift.app (.bvar 0)))
+        (.lam (A.lift' ρ) ((e.lift' ρ).lift.app (.bvar 0)))
+        (.forallE (A.lift' ρ) (B.lift' ρ.cons)) := by
+      simpa [SExpr.lift, ← SExpr.lift'_comp] using ihLam W
+    simpa [SExpr.lift, ← SExpr.lift'_comp] using
+      IsDefEqStrong.eta (ihTerm W) hLam'
+  | proofIrrel _ _ _ ihProp ihLeft ihRight =>
+    exact .proofIrrel (ihProp W) (ihLeft W) (ihRight W)
+  | @defn c ci Γ ls u r hreg hlen hTy F hF action hRhs
+      ihTy ihF ihRhs =>
+    rw [((Params.henv.closedC hreg).mkInstS).lift'_eq .zero]
+    have hTy' := ihTy W
+    rw [((Params.henv.closedC hreg).mkInstS).lift'_eq .zero] at hTy'
+    let F' : ∀ cl, CtorBundle c cl := fun cl =>
+      (Params.Semantic.ctor (ls := ls) (Γ := Γ') hreg hlen cl).1
+    have hF' : ∀ cl, IsDefEqStrong Γ'
+        (SExpr.mkInst ls ci.type) ((F' cl).rhs ls) (.sort (F' cl).u) := by
+      intro cl
+      exact (Params.Semantic.ctor (ls := ls) (Γ := Γ') hreg hlen cl).2
+    have hempty :
+        (fun path : Empty => (Empty.elim path : SExpr).lift' ρ) = Empty.elim := by
+      funext path
+      exact nomatch path
+    have hAction := action.weak' W
+    simp only [SExpr.lift'] at hAction
+    rw [hempty, ((Params.henv.closedC hreg).mkInstS).lift'_eq .zero] at hAction
+    have hRhs' := ihRhs W
+    rw [Pattern.RHS.lift'_applyS] at hRhs'
+    rw [hempty, ((Params.henv.closedC hreg).mkInstS).lift'_eq .zero] at hRhs'
+    rw [Pattern.RHS.lift'_applyS, hempty]
+    exact IsDefEqStrong.defn hreg hlen hTy' F' hF' hAction hRhs'
+  | extra action _ _ ihLeft ihRight =>
+    have hRight := ihRight W
+    rw [Pattern.RHS.lift'_applyS] at hRight
+    simpa only [Pattern.RHS.lift'_applyS] using
+      IsDefEqStrong.extra (action.weak' W) (ihLeft W) hRight
 
 /-- A certified local contraction remains certified after a genuinely typed
 substitution.  In particular, generated-rule checks and the final local
@@ -2638,7 +3567,6 @@ theorem IsDefEq.defeqDF_l' (h1 : Γ ⊢ A ≡ A' : .sort u)
     exact h.defeqDF_l' h1
   | symm _ ih => exact (ih hctx).symm
   | trans _ _ ih₁ ih₂ => exact (ih₁ hctx).trans (ih₂ hctx)
-  | trans' _ _ ih₁ ih₂ => exact (ih₁ hctx).trans' (ih₂ hctx)
   | sort => exact .sort
   | const hreg hlen => exact .const hreg hlen
   | appDF _ _ ihf iha => exact .appDF (ihf hctx) (iha hctx)
@@ -3094,13 +4022,14 @@ theorem WHRedS.subst
   | tail _ h2 ih => exact .tail ih (h2.subst W)
 
 /-- Weak-head reduction is definitional equality. OPEN, and the one
-`SExpr.lean` admission on the L4L-16 gate path: the adequacy development
-consumes it (dot-notation `.defeq`) inside `LR.iotaActions_of_exactAt`
-and the leaf machinery. Do not prove it generically — that needs the
-weak-judgment inversion layer this development exists to replace; the
-L4L-16C plan closes the actual call sites with a certificate-carrying
-variant (every site has `Action.sound`/`SpineWF` evidence in scope). See
-plans/l4l-16-completion-plan.md §16C′ "S3-narrow". -/
+`SExpr.lean` admission on the L4L-16 gate path. Native exact iota leaves no
+longer use it: their reductions are reflexive and their typings come from
+`CtorExact`/`PatternLeafSpine`.  The remaining uses are the two root-to-view
+anchors of a normalized constructor chain (and generic compatibility
+wrappers).  Proving those anchors is part of the merged weak-inversion/type-
+uniqueness development; it cannot be replaced by an intermediate-link
+certificate because arbitrary weak-head expansion erased that typing. See
+plans/l4l-16-completion-plan.md §16C′. -/
 theorem WHRedS.defeq (H : Γ ⊢ e1 ⤳* e2) (he : Γ ⊢ e1 : A) : Γ ⊢ e1 ≡ e2 : A := sorry
 
 theorem WHRedS.weak' (W : Ctx.Lift' ρ Γ Δ) (H : Γ ⊢ e1 ⤳* e2) :

@@ -23,8 +23,9 @@ variable [Params] [Params.Semantic]
 judgment.  Unlike the retired weak theorem, its premise retains every typing
 and local-extension certificate required by adequacy. -/
 theorem IsDefEqStrong.uniq_sort
+    (hΓ : Ctx.WF Γ)
     (h : IsDefEqStrong Γ (.sort u) (.sort v) V) : u = v :=
-  SExpr.sort_inv h
+  SExpr.sort_inv hΓ h
 
 end SExpr
 end Lean4Lean
