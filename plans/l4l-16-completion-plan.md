@@ -300,7 +300,48 @@ and need not be a lift even when the element-shape is, so the
 carry per-link native levels with an explicit connection to the root
 relation (the LiftEquiv-zigzag question), or the link's semantic
 payload must be re-derived from its raw payload at consumption time.
-Decide this before writing `toChain`; (3) per-link
+Decide this before writing `toChain`.
+
+**Chain-level design closure (2026-08-13, second autonomous tick).**
+The `HasTypeU` inversion characterization settles the lowering
+question: for `sort`/`ctor`/`indTy`/`forallE` element-shapes the
+type-shape is forced to a lift-stable form (`.type`, `.indTy`,
+`.sort r`), so those cons-steps lower through the node iffs after a
+`mono_r_2` canonicalization; but a `lam`-shaped field's type-shape is
+an arbitrary Pi-shape, no lift-shaped Pi-shape sits below it except
+payload-destroying bot-forms, and pointwise lowering is therefore
+impossible exactly where the rejected `Shape.WF.plift` said it would
+be. Consequently per-link *semantic* payload cannot be transported to
+the root level in general, and per-link processing at foreign levels
+is out. The forced design: links glue at the RAW layer. Adjacent links
+share their middle spine syntactically (`ctorSpine_determ`), so
+cross-link field alignment reduces to aligning the two links' raw
+telescopes at that shared spine, which descends from one fact —
+
+**Lemma (C), weak constant-type coherence:** any derivation of
+`Γ ⊢ .const c ls₀ ≡ .const c ls₀ : T` (more precisely: any
+`IsDefEq` derivation whose endpoint is the constant) has
+`T` raw-defeq-connected to `mkInst ls₀ ci.type`. Provable by direct
+structural induction on the weak judgment — constant-headedness is
+preserved or vacuous in every case, `defeqDF` extends the chain,
+`proofIrrel` recurses into its typing premise — EXCEPT the `.extra`
+case, where a registered equation whose instantiated lhs is the bare
+constant would type it at the equation's type. Bare `[Params]` does
+not link `env.defeqs` to `classify`, so (C) needs one new coherence
+field (natural home: `Params.Semantic`, alongside `registered`):
+*the stripped lhs head of every registered equation classifies as a
+symbol* — i.e. ctor-classified constants are never definition heads.
+The 16D instance discharges it from the same pattern-coherence that
+already gives `pat_wf`. With (C), the shared-middle composition gets
+its raw domain alignment (`A₁ ≡ A₁'` telescopewise from
+`CHead'ᵢ ≡ CHeadᵢ₊₁` by descending both spines' carried `hPi`
+conversions), and the root-level field relations compose via the
+per-shape semantic argument (sort/indTy/bot free; lam via the aligned
+raw premise).
+
+Execution order for `toChain` is therefore: (a) add the coherence
+field; (b) prove (C); (c) `CtorLink`/`CtorChain` at the root relation
+with raw-glued links; (d) `toChain`; (e) the composition lemma. (3) per-link
 consumption: each link certifies its own iota contraction pair with
 conclusions glued by `(LRS IH).trans` at the package-fixed result type,
 with the root endpoints attached by `whr`-expansion.
