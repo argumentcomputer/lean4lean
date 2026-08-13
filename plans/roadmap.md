@@ -705,17 +705,27 @@ leaf, so they go clean with it.
   sorry-free path, the public `IsDefEqU.sort_inv` closes from the
   development, and the audit allowlist shrinks 22 → 21.
 
-*Exit:* the public sorry is removed with an exact accepted axiom closure —
-no `sorryAx`, no `extra_pat`-style axiom, and no environment oracle on the
-path — and the route record is updated with any residual semantic-route
-debt.
+*Exit (joint route, 2026-08-13):* the public `sort_inv` sorry is removed
+with an exact accepted axiom closure — no `sorryAx`, no
+`extra_pat`-style axiom, and no environment oracle on the path — and the
+former L4L-17 co-deliverables land from the same development:
+`forallE_inv_stratified`, `sort_forallE_inv`, `weakN_iff`,
+`registeredStructureHeadInversion`, the reflection decision, and the
+re-run `uniq`/`uniqU` and downstream guards. The route record carries
+any residual semantic-route debt.
 
-**L4L-17 — remaining injectivity and weakening inversion.** From the same
-semantic development, prove `IsDefEqU.forallE_inv_stratified`,
-`IsDefEqU.sort_forallE_inv`, `IsDefEqU.weakN_iff`, and
-`VEnv.WF.registeredStructureHeadInversion` (whose projection consumers shed
-`sorryAx` automatically); re-run `IsDefEq.uniq`/`uniqU`, context inversion,
-and all downstream `#print axioms` checks. This milestone also owns the
+**L4L-17 — merged into L4L-16 (joint route, decided 2026-08-13).** The
+former separate milestone is dissolved: the L4L-16C composition
+impossibility map showed the semantic leaf needs a level-indexed limited
+uniqueness for higher-order constructor fields, so the two research gates
+are one mutually founded development (the second resolution in
+`plans/l4l-16-sort-inversion-decision.md`). Its statements —
+`IsDefEqU.forallE_inv_stratified`, `IsDefEqU.sort_forallE_inv`,
+`IsDefEqU.weakN_iff`, `VEnv.WF.registeredStructureHeadInversion` (whose
+projection consumers shed `sorryAx` automatically), the reflection
+decision, and re-running `IsDefEq.uniq`/`uniqU`, context inversion, and
+all downstream `#print axioms` checks — are co-deliverables of L4L-16's
+exit. This milestone also owns the
 weak-judgment scope retired from `Experimental/UniqueTyping.lean` at
 L4L-16A: general type uniqueness over weak SExpr defeq and admissibility
 of the heterogeneous `trans'` rule. The known design gap is

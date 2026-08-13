@@ -355,7 +355,18 @@ shapes) compose by per-shape arguments that are all available today
 validity; free `CtorDefEq.trans` one level down for `ctor`-shaped
 fields, eliminated recursively).
 
-Recommended resolution (α): stage the claim. Add a first-order-fields
+**DECIDED 2026-08-13 (John): the joint L4L-16/17 route** — see the
+second resolution in `plans/l4l-16-sort-inversion-decision.md`. The
+staging recommendation below is retained for the record but
+superseded: instead of restricting to first-order fields, the
+milestone co-proves a level-indexed limited uniqueness with adequacy
+in one mutual induction (uniqueness at level n from adequacy at level
+n, consumed by the lam-field composition at level n+1), and L4L-17's
+statements become co-deliverables. Route-independent work (chain
+normalization, InferType bootstrap, O3, 16D ladder) proceeds
+unchanged.
+
+Superseded recommendation (α): stage the claim. Add a first-order-fields
 restriction at the observation-consumption boundary (an explicit
 `Params.Semantic`-level or shape-level side condition), close the
 L4L-16 leaf and `sort_invS` for first-order-constructor environments —

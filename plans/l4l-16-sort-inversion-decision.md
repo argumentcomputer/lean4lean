@@ -173,3 +173,43 @@ beta-collapsed coverage for generated iota rules and `quotDefEq` (design note
 work in this record is therefore the live semantic environment instance,
 current-judgment translation, adequacy, and public theorem promotion assigned
 to L4L-16.
+
+## Second resolution (2026-08-13): joint L4L-16/17 route adopted
+
+The L4L-16C leaf work produced a complete impossibility map
+(`plans/l4l-16-completion-plan.md`): eliminating the
+constructor-observation free closure for higher-order (lam-shaped)
+constructor fields requires typed-equality transport across a shared
+endpoint — weak heterogeneous transitivity, i.e. exactly the
+uniqueness-strength frontier — in every branch (semantic composition,
+raw composition, per-link typed sites, telescope descent), while
+first-order fields compose with machinery available today. Two exits
+were presented: stage the claim to first-order-constructor
+environments (lifting at L4L-17), or adopt this note's previously
+declined Option 2 and merge the L4L-16/L4L-17 research gates into one
+mutually founded development.
+
+John chose the joint route (2026-08-13). Consequences:
+
+- The ladder keeps the L4L-16 identifier; L4L-17's statements
+  (`forallE_inv_stratified`, `sort_forallE_inv`, `weakN_iff`,
+  `registeredStructureHeadInversion`, the reflection decision, and the
+  weak-judgment uniqueness scope retired from
+  `Experimental/UniqueTyping.lean`) become co-deliverables of the
+  joint development rather than a successor milestone.
+- The circularity objection that rejected Option 2 in the original
+  spike applied to the *live stratified* route (Route 2), where
+  uniqueness had to be assumed to prove sort inversion syntactically.
+  On the semantic route the shape-level stratification gives the
+  candidate well-founded structure: the joint induction co-proves
+  adequacy and a level-indexed limited uniqueness, each level's
+  uniqueness derived from adequacy at that level and consumed by
+  adequacy one level up (the lam-field composition). Designing that
+  mutual induction precisely — including the level-indexed statements
+  of the SExpr-side inversion lemmas, which are currently stated only
+  at the top — is the first task of the joint development.
+- Work that is route-independent proceeds unchanged: the chain
+  normalization (`CtorLink`/`CtorChain`/`toChain`), the InferType
+  principal-types bootstrap for the root sites, O3's `LE_Interp.recR`
+  argument, and the 16D instance ladder.
+- Publication holds until the joint leaf closes (John, same date).
