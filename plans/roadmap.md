@@ -74,7 +74,7 @@ required for the final release; they can be reached in separate milestones.
 
 | Fact | Value |
 |---|---|
-| Ladder position | **L4L-16 active** (semantic environment bridge and sort inversion). L4L-18B completed first on 2026-08-12: proof-carrying pattern contractions, an explicit registered-equation join contract, beta-collapsed generated-iota/`quotDefEq` coverage, and `VEnv.LE` transport now form the fork-owned interface (design note `plans/l4l-18b-extension-interface-design.md`, ledger D020). L4L-16A committed at checkpoint `quyyrlks` (2026-08-13); the remaining slices were re-cut the same day (`plans/l4l-16-completion-plan.md`, attempt history in `plans/l4l-16c-adequacy-log.md`), and the 16B′ cleanup checkpoint narrowed the Experimental admission set to the measured gate path (§5) |
+| Ladder position | **L4L-16 active** (semantic environment bridge and sort inversion). L4L-18B completed first on 2026-08-12: proof-carrying pattern contractions, an explicit registered-equation join contract, beta-collapsed generated-iota/`quotDefEq` coverage, and `VEnv.LE` transport now form the fork-owned interface (design note `plans/l4l-18b-extension-interface-design.md`, ledger D020). The former L4L-17 merged in on 2026-08-13 (joint route; second resolution in the sort-inversion decision note). Slices 16A and 16B′ are complete at checkpoints `quyyrlks`/`pxluxmvm`; the WHNF/determinism layer and mirror-spine refactor landed at `wolxmups`/`mvmrxuus`; 16C′ joint leaf closure is active (§5), with publication held until it measures clean |
 | Current formalization source | the L4L-18B checkpoint (jj change `oluxtqyk`) descends from the L4L-15B checkpoint `7c1e89fc` (jj change `xuzusmnl`) and is published at `jcb/formalization2` after the complete gate passed |
 | Parent lineage | the L4L-15B implementation descends from the v4.33 reconciliation merge `99a7f8ae7b89` (second parent: digama `upstream/master` `b292275c`); Lean on v4.33.0 final, lean4-nix on `argumentcomputer/lean4-nix` (upstream pins v4.33.0-rc2 — ledger D018) |
 | Fixed `master` baseline | `1a16b72d2e35932a82aa501beb29ef2c3d072580` — local `master` bookmark (corrected 2026-08-12; the row previously carried a fork formalization hash that no `master` ref ever pointed at). The v4.33 reconciliation merged the later digama `upstream/master` `b292275c` as its second parent without moving `master`; `origin/master` has since moved (see remote drift) |
@@ -255,7 +255,7 @@ from the exact rule defeq registered by `addInduct`, with the redex
 arriving decomposed into recursor and constructor spines — precisely
 what a verified reduction site holds — at exactly the Church–Rosser
 development's transitional unique-typing closure, shedding `sorryAx`
-automatically when L4L-16/17 land. The block-local assembler
+automatically when the joint L4L-16 closure lands. The block-local assembler
 (`Theory/Typing/InductivePatternEnv.lean`) builds environments whose
 defeq set is exactly one certified block's generated rules plus
 separately certified extension rules over a constant base
@@ -336,7 +336,7 @@ migrated API.
 certificates do not constitute the whole-live-environment
 `Params.Extension` instance; constructing it (consumed only by
 `IsDefEq.church_rosser`, and needing weakN-inversion-strength fields that
-arrive with L4L-17) is L4L-18A work under the 2026-08-13 re-cut, while
+arrive with the joint L4L-16 co-deliverables) is L4L-18A work under the 2026-08-13 re-cut, while
 L4L-16D builds the SExpr-side instances that `sort_invS` consumes. Pattern coverage,
 checks, and registry membership never imply an operational rewrite without
 the local equality certificate. The nested fixtures prove the current
@@ -372,7 +372,7 @@ reconciliation are classified in ledger row D017. Non-sorry debt:
   verification closed at L4L-14/L4L-15A; structure eta and unit-like
   comparison closed at L4L-15B as a documented divergence (ledger D019) on
   the reconciled v4.33 base. `pat_wf` carries the Church–Rosser
-  development's transitional unique-typing closure until L4L-16/17 close it.
+  development's transitional unique-typing closure until the joint L4L-16 closure lands.
 - The L4L-15C consumer-neutral audit is complete. Generic spine laws,
   primitive-environment extension, literal typing, containment/absence, and
   elimination-mode conversion now have Theory-only homes, with a dedicated
@@ -404,27 +404,17 @@ reconciliation are classified in ledger row D017. Non-sorry debt:
 - `NestedBlockCertificate` exposes the full lookup/freshness/WF/rule
   surface but no `ruleClosure`/`IotaPat` pattern facts; pattern facts are
   block-certificate-only until the σ̂ β-collapse bridge lands (L4L-19A).
-- The semantic route to injectivity/unique typing runs through the in-tree
-  `Experimental/` `SExpr`/`ShapeLogRel` development brought over by the
-  v4.33 reconciliation; `plans/l4l-16-sort-inversion-decision.md` records
-  the route decision and `plans/l4l-16-completion-plan.md` the 2026-08-13
-  re-cut. Measured closure (probed against built oleans, 2026-08-13): the
-  SExpr `Params` class is proof-carrying (the `extra_pat` axiom is
-  deleted), the six-field `Params.Semantic` bridge interface exists, the
-  current-judgment translation `VEnv.IsDefEqStrong.mkS` — including
-  `IsDefEq.structEta` — is proved at `[propext, Quot.sound]`, and the
-  endpoint `VEnv.IsDefEqU.sort_invS` closes at
-  `[propext, sorryAx, Classical.choice, Quot.sound]` with no project
-  axiom. Exactly two admissions feed the `sorryAx`: the adequacy iota
-  leaf and `SExpr.WHRedS.defeq` (consumed by the leaf machinery via
-  dot-notation); `LE_Interp.sound`, `LRS.CtorDefEq.fold`, and
-  `LR.DefEq.ctor'_inv` are clean, `ShapeLogRel.lean` is live-sorry-free
-  (the formerly reported `Shape.WF.plift` `stop` admission was a
-  never-elaborated comment block, deleted at 16B′), and the three
-  remaining `SExpr.lean` admissions besides `WHRedS.defeq` are
-  documented off-path deferrals. Nothing there merges as a completed
-  proof, and no experimental assumption substitutes for a supported
-  root's accepted closure.
+- The semantic route to injectivity/unique typing runs through the
+  in-tree `Experimental/` `SExpr`/`ShapeLogRel` development; the route
+  and joint-route decisions live in
+  `plans/l4l-16-sort-inversion-decision.md`, the design state in
+  `plans/l4l-16-completion-plan.md`, and the measured gate path in the
+  L4L-16 ladder entry (§5). Current admission surface: the adequacy
+  iota leaf and `SExpr.WHRedS.defeq` are the two `sorryAx` sources on
+  the gate path; three further `SExpr.lean` admissions are documented
+  off-path deferrals; `ShapeLogRel.lean` is live-sorry-free. Nothing
+  there merges as a completed proof, and no experimental assumption
+  substitutes for a supported root's accepted closure.
 - `Lean4Lean.Experimental` is not among Lake's `defaultTargets`, so no §6
   gate ever builds it. L4L-16A explicitly parked the four pre-broken,
   unreferenced prototypes — `Stratified`, `StratifiedUntyped`, `Stronger`,
@@ -602,144 +592,103 @@ than hiding merge work inside a semantic milestone.
 
 ### Metatheory closure (L4L-16–L4L-18A)
 
-L4L-18B completed the prerequisite interface split on 2026-08-12 (design note
-`plans/l4l-18b-extension-interface-design.md`, ledger D020). The L4L-16 route
-spike (`plans/l4l-16-sort-inversion-decision.md`) can now target an explicit
-`Params.Extension.join` semantic obligation instead of the impossible raw
-lambda-tower `extra_pat` contract. Identifiers are stable names carried by
-their deliverables; execution order is this list's order. This work proceeds
-independently of upstream: no milestone blocks on upstream review or
-interface approval, every interface departure is decided here and recorded,
-and upstream engagement consolidates in the L4L-20C series.
+L4L-18B completed the prerequisite interface split on 2026-08-12 (design
+note `plans/l4l-18b-extension-interface-design.md`, ledger D020).
+Identifiers are stable names carried by their deliverables; execution
+order is this list's order. This work proceeds independently of
+upstream: no milestone blocks on upstream review or interface approval,
+every interface departure is decided here and recorded, and upstream
+engagement consolidates in the L4L-20C series.
 
-**L4L-16 — semantic environment bridge and sort inversion.** Execute the
-semantic route recorded in `plans/l4l-16-sort-inversion-decision.md` on the
-L4L-18B interface. The 2026-08-13 audit re-cut the remaining slices
-(`plans/l4l-16-completion-plan.md`); the attempt-history narrative that
-previously lived in this entry is preserved in
-`plans/l4l-16c-adequacy-log.md`. Measured gate path (probed against built
-oleans, 2026-08-13): `VEnv.IsDefEqU.sort_invS` closes at
-`[propext, sorryAx, Classical.choice, Quot.sound]` with no project axiom;
-exactly two admissions feed its `sorryAx` — the adequacy iota leaf
-(`LR.PatternLeafDefEq.of_iota`'s obligation inside `LR.adequacy`) and
-`SExpr.WHRedS.defeq`, which the leaf machinery consumes by dot-notation.
+**L4L-16 — semantic environment bridge, sort inversion, and joint
+inversion/uniqueness closure.** Execute the semantic route on the
+L4L-18B interface per `plans/l4l-16-sort-inversion-decision.md` (both
+resolutions). The former L4L-17 is merged in (joint route, 2026-08-13):
+the composition impossibility map showed that eliminating the
+constructor-observation closure for higher-order constructor fields
+needs a level-indexed limited uniqueness, so the inversion/uniqueness
+statements are co-proved with adequacy in one mutually founded
+development — the shape-level stratification supplies the well-founded
+structure the originally declined joint route lacked. Execution detail
+and design state live in `plans/l4l-16-completion-plan.md`; the attempt
+history is in `plans/l4l-16c-adequacy-log.md`.
+
+Measured gate path (probed against built oleans, 2026-08-13):
+`VEnv.IsDefEqU.sort_invS` closes at
+`[propext, sorryAx, Classical.choice, Quot.sound]` with no project
+axiom; the `sorryAx` sources are exactly the adequacy iota leaf and
+`SExpr.WHRedS.defeq` (consumed by the leaf machinery by dot-notation).
 `LE_Interp.sound`, `VEnv.IsDefEqStrong.mkS`, `LRS.CtorDefEq.fold`, and
 `LR.DefEq.ctor'_inv` are measured clean, and the SExpr-side
-`forallE_inv`/`sort_forallE_inv` carry `sorryAx` only through the same
-leaf, so they go clean with it.
+`forallE_inv`/`sort_forallE_inv` carry `sorryAx` only through the leaf,
+so they go clean with it.
 
-- *L4L-16A — bridge interface and judgment translation.* **Complete** at
-  checkpoint `quyyrlks` (2026-08-13): proof-carrying SExpr `Params`
-  (`extra_pat` deleted), the six-field `Params.Semantic` interface
-  (`structureEta`/`ctor`/`defn`/`iotaRule`/`iotaSite`/`registered`),
-  `VEnv.IsDefEqStrong.mkS` — including `IsDefEq.structEta` — at
-  `[propext, Quot.sound]`, the endpoint statement `sort_invS` with no
-  project axiom, the four import-compatible parked prototypes, and the
-  strong-judgment `Experimental/UniqueTyping.lean` endpoint.
-- *L4L-16B′ — SExpr infrastructure, narrowed to the gate.* The 16B′
-  checkpoint deleted the unsound `IsDefEqLift.subst` (its free
-  section-variable `HasType` premise admitted the trivial relation; the
-  proved `substDefEq` is the sound form, and `InferType.subst`/`inst`
-  went with it since their proofs consumed the unsound lemma at
-  `HasType := InferType`), the false-as-stated `InferType.whRed` (`▷`
-  has no conversion rule, so all three open cases were unprovable), and
-  the never-elaborated `Shape.WF.plift` comment block (its "`stop`
-  hides an admission" ledger item was stale — the prototype was inside
-  a block comment with zero consumers, and `ShapeLogRel.lean` is
-  live-sorry-free). The unconsumed `CRDefEq.trans` was removed as a
-  disguised L4L-18A port: its five-line Theory proof rests on
-  `ParRedS.church_rosser`, `NormalEq.parRedS`, and `NormalEq.trans`,
-  none of which exist SExpr-side, so the joining argument lands once
-  against the finished Theory script (§L4L-18A). Remaining Experimental
-  admissions, all documented in-source: `WHRedS.defeq` (the one
-  gate-path item, closed by 16C′'s narrowed form) and the deferred
-  off-path `WHRed.weakU_inv` `.extra` and `InferType(S).hasType`.
-- *L4L-16C′ — leaf closure by decision.* Decomposed into named
-  obligations (plan §16C′). **O1**: restate `LRS.CtorDefEq.exact` over
-  the single-result-type `LRS.CtorSpineDefEq` (continuing the
-  `PatternLeafSpine.aligned` refactor) and prove `CtorSpineDefEq.trans`
-  from carried conversion certificates plus the certificate-pinned
-  syntactic telescope (`CtorBundle.rhs`), so the fold's `.trans` handler
-  gets a composable midpoint alignment without manufacturing types.
-  **S3-narrow**: close the six `WHRedS.defeq` call sites from carried
-  evidence (`Action.sound`, in-scope `SpineWF` certificates) rather than
-  weak-judgment inversion; the generic lemma stays open and off-path.
-  **O3**: prove `LRS.IotaRHSDefEq`'s fixed-tower head by well-founded
-  recursion on the semantic `R`-edges via `LE_Interp.recR`, closing the
-  application chain with `LRS.DefEq.app`; variable-RHS leaves are
-  already discharged by the aligned capture family. **O2**: instantiate
-  `LRS.CtorDefEq.fold` at the leaf motive and close the sorry through
-  the proved `LRS.iotaDefEq_of_exactAt`. The `hDef` premise needs no
-  16C work (it is `IsDefEqStrong.const`'s field, discharged by `mkS`
-  from `Params.Semantic.defn`; its live construction is 16D's `defn`).
-  Exit measurement: `sort_invS` at
-  `[propext, Classical.choice, Quot.sound]`, with
-  `SExpr.forallE_inv`/`sort_forallE_inv` recorded clean simultaneously.
-- *L4L-16D — live-environment instance.* The headline deliverable, not
-  yet started, and the only route segment never executed end to end —
-  therefore staged, with a thin vertical slice first: **D0** a
-  two-declaration environment (one definition plus one generated iota
-  rule from an existing fixture block) through the SExpr `Params` and
-  `Params.Semantic` instances with `sort_invS` instantiated; **D1**
-  definitions/mutual definitions plus `quotDefEq`
-  (`CertifiedExtension.quot`); **D2** ordinary/block inductive rules via
-  `AssembledPat` — this requires lifting the four block-local `IotaPat`
-  non-overlap laws to the union pattern set and a new cross-term
-  (block-rule vs extension-rule) non-overlap lemma; **D3** nested rules
-  as registered equations only (nested pattern facts stay L4L-19A);
-  **D4** registered structure eta from the L4L-15B registry certificate.
-  Concretely: derive `classify` from the block certificates; populate
-  `Pat` through the D020 `stripLams`/beta-collapsed coverage
-  (`AssembledPat`, `CertifiedExtension`); discharge the non-overlap laws
-  from the L4L-10B match-inversion library; and source the `Semantic`
-  fields — `structureEta` from the L4L-15B registry certificate, `ctor`
-  from generation certificates, `defn` from declaration history,
-  `registered` from Theory's `IsDefEq.strong` plus beta collapse.
-  Scope note (2026-08-13 re-cut): this milestone builds the **SExpr**
-  instances that `sort_invS` consumes. The Theory-side
+- *L4L-16A — bridge interface and judgment translation.* **Complete**,
+  checkpoint `quyyrlks` (2026-08-13). *L4L-16B′ — SExpr infrastructure
+  narrowed to the gate.* **Complete**, checkpoint `pxluxmvm`
+  (2026-08-13); four Experimental admissions remain, documented
+  in-source, with `WHRedS.defeq` the only gate-path item. Narratives
+  live in the checkpoint messages and the adequacy log.
+- *L4L-16C′ — joint leaf closure (active).* In dependency order:
+  (1) the joint-induction design — state the level-indexed limited
+  uniqueness that the lam-field composition at level `n+1` consumes
+  from level `n`, derive it from adequacy per level, restate the
+  SExpr-side inversion lemmas level-indexed (they are currently
+  top-level only), verify well-foundedness of the combined recursion,
+  and take the mk-faithfulness/reflection decision here (a VEnv-side
+  adequacy restatement must be known before the leaf closes, not
+  after); (2) chain-normalize constructor observations
+  (`CtorLink`/`CtorChain`/`toChain`) over the landed WHNF/determinism
+  layer (`WHNF.ctorSpine`, `WHRedS.ctorSpine_determ`, the mirror-spine
+  `exact` fields — checkpoints `wolxmups`, `mvmrxuus`); (3) the
+  InferType principal-types bootstrap for the root sites — inference
+  completeness over `IsDefEq` plus up-to-defeq subject reduction, with
+  the proved syntactic `InferType.determ` substituting for uniqueness —
+  closing `WHRedS.defeq`'s call sites; (4) `LRS.IotaRHSDefEq`'s
+  fixed-tower head by well-founded recursion on semantic `R`-edges via
+  `LE_Interp.recR`; (5) fold the chain at the leaf and measure
+  `sort_invS` at `[propext, Classical.choice, Quot.sound]`, with the
+  SExpr-side inversion lemmas recorded clean simultaneously. The
+  `hDef` premise needs no 16C work (it is `IsDefEqStrong.const`'s
+  field, discharged by `mkS` from `Params.Semantic.defn`; its live
+  construction is 16D's `defn`).
+- *L4L-16D — live-environment instance.* The only route segment never
+  executed end to end — therefore staged, thin vertical slice first:
+  **D0** a two-declaration environment (one definition plus one
+  generated iota rule from an existing fixture block) through the SExpr
+  `Params`/`Params.Semantic` instances with `sort_invS` instantiated;
+  **D1** definitions/mutual definitions plus `quotDefEq`
+  (`CertifiedExtension.quot`); **D2** ordinary/block inductive rules
+  via `AssembledPat`, which requires lifting the four block-local
+  `IotaPat` non-overlap laws to the union pattern set plus a new
+  cross-term non-overlap lemma; **D3** nested rules as registered
+  equations only (nested pattern facts stay L4L-19A); **D4** registered
+  structure eta from the L4L-15B registry certificate. Sources:
+  `classify` from block certificates, `Pat` through the D020
+  beta-collapsed coverage, non-overlap from the L4L-10B match-inversion
+  library, and the `Semantic` fields from the eta registry, generation
+  certificates, declaration history, and `IsDefEq.strong` plus beta
+  collapse. Scope: the **SExpr** instances only; the Theory-side
   `Params`/`Params.Extension.join` live instance is consumed only by
-  `IsDefEq.church_rosser` and needs weakN-inversion-strength fields; it
-  moves to L4L-18A.
-- *L4L-16E — promotion.* Supported roots never import experiments: the
-  consumed modules leave `Experimental/` with a stable API and a
-  sorry-free path, the public `IsDefEqU.sort_inv` closes from the
-  development, and the audit allowlist shrinks 22 → 21.
+  `IsDefEq.church_rosser` and moves to L4L-18A.
+- *L4L-16E — promotion and joint co-deliverables.* Supported roots
+  never import experiments: the consumed modules leave `Experimental/`
+  with a stable API and a sorry-free path, the public
+  `IsDefEqU.sort_inv` closes from the instances, and the audit
+  allowlist shrinks 22 → 21. The joint co-deliverables land here from
+  the same development: `IsDefEqU.forallE_inv_stratified`,
+  `IsDefEqU.sort_forallE_inv`, `IsDefEqU.weakN_iff`,
+  `VEnv.WF.registeredStructureHeadInversion` (whose projection
+  consumers shed `sorryAx` automatically), general type uniqueness over
+  weak SExpr defeq with admissibility/elimination of the heterogeneous
+  `trans'` rule, and the re-run `IsDefEq.uniq`/`uniqU`, context
+  inversion, and downstream `#print axioms` checks. The digama
+  reconcile-or-defer decision (§7) is taken at this boundary.
 
-*Exit (joint route, 2026-08-13):* the public `sort_inv` sorry is removed
-with an exact accepted axiom closure — no `sorryAx`, no
-`extra_pat`-style axiom, and no environment oracle on the path — and the
-former L4L-17 co-deliverables land from the same development:
-`forallE_inv_stratified`, `sort_forallE_inv`, `weakN_iff`,
-`registeredStructureHeadInversion`, the reflection decision, and the
-re-run `uniq`/`uniqU` and downstream guards. The route record carries
-any residual semantic-route debt.
-
-**L4L-17 — merged into L4L-16 (joint route, decided 2026-08-13).** The
-former separate milestone is dissolved: the L4L-16C composition
-impossibility map showed the semantic leaf needs a level-indexed limited
-uniqueness for higher-order constructor fields, so the two research gates
-are one mutually founded development (the second resolution in
-`plans/l4l-16-sort-inversion-decision.md`). Its statements —
-`IsDefEqU.forallE_inv_stratified`, `IsDefEqU.sort_forallE_inv`,
-`IsDefEqU.weakN_iff`, `VEnv.WF.registeredStructureHeadInversion` (whose
-projection consumers shed `sorryAx` automatically), the reflection
-decision, and re-running `IsDefEq.uniq`/`uniqU`, context inversion, and
-all downstream `#print axioms` checks — are co-deliverables of L4L-16's
-exit. This milestone also owns the
-weak-judgment scope retired from `Experimental/UniqueTyping.lean` at
-L4L-16A: general type uniqueness over weak SExpr defeq and admissibility
-of the heterogeneous `trans'` rule. The known design gap is
-reflection: `sort_invS` reflects its SExpr conclusion back to `VLevel`
-through `SLevel.mk` injectivity because SExpr levels are semantically
-quotiented, but the adequacy development's SExpr-side `forallE_inv` and
-`sort_forallE_inv` have no comparable route — nothing yet states that
-SExpr defeq of `mk`-images yields `IsDefEqU` on the VExpr preimages, and
-`weakN_iff`/`registeredStructureHeadInversion` have no SExpr-side
-counterparts at all. Deciding the mk-faithfulness story (prove a
-reflection/conservativity lemma, or restate adequacy to produce VEnv-side
-conclusions directly) is the first task of this milestone.
-*Exit:* the remaining public injectivity/inversion statements are sorry-free;
-affected Theory and checker roots have exact accepted closures.
+*Exit:* the public `sort_inv` sorry and the merged inversion/uniqueness
+statements are removed with exact accepted axiom closures — no
+`sorryAx`, no `extra_pat`-style axiom, and no environment oracle on any
+path — and the route record carries any residual semantic-route debt.
 
 **L4L-18A — Church–Rosser `.extra` cases.** The holes in `NormalEq.parRed`
 are the constant/application cases where a parallel step meets a
@@ -767,7 +716,7 @@ if a promoted API turns out to consume it. This milestone also owns, per
 the 2026-08-13 re-cut, constructing the Theory-side live
 `Params`/`Params.Extension.join` instance that `IsDefEq.church_rosser`
 consumes — its four structEta/forallE inversion fields are supplied by
-L4L-17's outputs, which is why it sits here and not in L4L-16D.
+the joint L4L-16 co-deliverables, which is why it sits here and not in L4L-16D.
 *Exit:* `ParRed.church_rosser`, normal-form uniqueness, and the live
 standardization/head-reduction endpoints contain no hidden placeholder
 assumptions.
@@ -992,13 +941,13 @@ assume an oracle or axiom.
   compatibility shims where feasible.
 - **Research-branch optimism.** The in-tree `SExpr`/`ShapeLogRel`
   development is evidence of a viable path, not a drop-in solution. The
-  2026-08-12 spike measured its live closure (`sorryAx` plus the
-  `Params.extra_pat` project axiom); the same day's working-copy rebuild
-  eliminated the project axiom (`sort_invS` at the standard baseline plus
-  `sorryAx`), leaving the obligations scoped at L4L-16A–E. The remaining
-  optimism hazard is concentrated in L4L-16D: the live-environment
-  instance is the one segment of the route that has never been executed
-  end to end.
+  two remaining optimism hazards: the joint level-indexed
+  uniqueness-with-adequacy induction is a novel structure whose
+  well-foundedness must be verified at design time — the recorded
+  fallback is the first-order staging option in the completion plan,
+  which restores a closable milestone at reduced scope — and L4L-16D's
+  live-environment instance is the one segment of the route that has
+  never been executed end to end.
 - **Unsound bridge axioms.** Some cache equations were documented false on
   older pins and remain unproved. Zero sorries is not a soundness claim until
   final-root axiom reachability is clean.
