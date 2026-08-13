@@ -1684,74 +1684,13 @@ theorem WShapeFun.join_mem {f : WShapeFun n}
     join (.sort r : WShape n) (.sort r') = if r = r' then .sort r else .bot := by
   ext1; simp [join, WShape.Compat, sort, Shape.Compat.sort_sort]; split <;> rfl
 
-/-
-protected theorem Shape.WF.plift (x : WShape n) :
-    WF (n := m) x.1.plift.1 ∧ ∀ y : Shape m, x.1.plift.2 = some y → y.WF := by
-  induction m generalizing n with | zero => exact ⟨trivial, fun _ _ => trivial⟩ | succ m ih
-  cases n with | zero => obtain ⟨⟨⟩⟩ := x <;> simp [WF, plift] | succ n
-  specialize @ih n
-  let rec go (x : WShapeFun n) :
-      ShapeFun.WF (n := m) WF (ShapeFun.plift plift x.1).1 ∧
-      ∀ y : ShapeFun m, (ShapeFun.plift plift x.1).2 = some y → ShapeFun.WF WF y := by
-    obtain le | le := Nat.le_total n m
-    · simp [ShapeFun.plift_eq_lift le, ShapeFun.WF.lift le x.2]
-    simp [ShapeFun.plift, ShapeFun.WF, ShapeFun.WF', List.mapM_eq_some]
-    -- have ⟨⟨⟨_, a1⟩, a2⟩, a3⟩ := x.2
-    refine ⟨⟨⟨?_, ?_⟩, ?_⟩, fun _ h1 => ⟨⟨?_, ?_⟩, fun _ _ h2 => ?_⟩⟩
-    · have ⟨_, h⟩ := x.2.1.1; exact ⟨_, _, _, h, _, by cases n <;> rfl, rfl, rfl⟩
-    · intro _ _ _ _ h1 b₂ h2 rfl rfl _ _ _ _ h3 c₂ h4 rfl rfl; refine ⟨fun h => ?_, fun h => ?_⟩
-      · replace ⟨b1, _, h1⟩ := x.mem_val' h1; replace ⟨c1, _, h3⟩ := x.mem_val' h3
-        refine have hc := by exact Compat.plift.2 h2 h4 h
-          have ⟨⟨d, d'⟩, d1, d2, d3⟩ := x.join_mem h1 h3 hc; ?_
-        let b₂' : WShape _ := ⟨b₂, (ih ⟨_, b1⟩).2 _ h2⟩
-        let c₂' : WShape _ := ⟨c₂, (ih ⟨_, c1⟩).2 _ h4⟩
-        change b₂'.Compat c₂' at h
-        have jeq : (b₂'.join c₂').1 = b₂.join c₂ := by simp [b₂', c₂', WShape.join_val h]
-        have ⟨j1, j2⟩ := (WShape.Join.mk h).le
-        simp [WShape.LE.def, b₂', c₂', jeq] at j1 j2
-        have : d.1 ≤ ((b₂'.join c₂').lift n).1 := by
-          refine d3.trans <| (WShape.Join.mk hc _).2 ⟨?_, ?_⟩ <;>
-            simp [WShape.LE.def, WShape.lift_val le, jeq, ← plift_le le] <;> exact ⟨_, ‹_›, ‹_›⟩
-        have ⟨d₂, e1, e2⟩ := (plift_le le).2 (jeq ▸ WShape.lift_val le ▸ this :)
-        refine ⟨_, ⟨_, _, _, d1, _, e1, rfl, rfl⟩, jeq ▸ (?_ : _ ≤ d₂), e2⟩
-        have ⟨j3, j4⟩ := (WShape.Join.mk hc _).1 d2
-        have := (plift_le le).1 ⟨_, e1, .rfl⟩
-        refine (WShape.Join.mk h ⟨d₂, (ih _).2 _ e1⟩).2 ⟨?_, ?_⟩
-        · have ⟨_, f1, f2⟩ := (plift_le le).2 (j3.trans this); cases h2.symm.trans f1; exact f2
-        · have ⟨_, f1, f2⟩ := (plift_le le).2 (j4.trans this); cases h4.symm.trans f1; exact f2
-      · rename_i b b' c c'
-        refine plift_mono <| x.mem_mono (x.mem_val h1) (x.mem_val h3) ?_
-        sorry
-    stop
-    · intro _ _ _ _ h1 _ h2 rfl rfl; exact ⟨(ih (a3 _ h1).1).2 _ h2, (ih (a3 _ h1).2).1⟩
-    · have ⟨_, b1, _, _, rfl⟩ := h1.forall_exists_l _ a1; exact ⟨_, by simpa using b1⟩
-    · intro _ b₂ h2 _ c₂ h3
-      obtain ⟨⟨b, b'⟩, b1, _, b2, ⟨⟩⟩ := h1.forall_exists_r _ h2
-      obtain ⟨⟨c, c'⟩, c1, _, c2, ⟨⟩⟩ := h1.forall_exists_r _ h3; dsimp at *
-      refine ⟨fun h => ?_, fun h => ?_⟩
-      · sorry
-      · sorry
-    · obtain ⟨⟨b, b'⟩, b1, _, b2, ⟨⟩⟩ := h1.forall_exists_r _ h2
-      exact ⟨(ih (a3 _ b1).1).1, (ih (a3 _ b1).2).2 _ b2⟩
-  obtain ⟨x, wf⟩ := x
-  cases x with simp [WF] at wf <;> simp [plift, WF, List.mapM_eq_some, *]
-  | forallE =>
-    refine ⟨⟨(ih ⟨_, wf.1⟩).1, (go ⟨_, wf.2⟩).1⟩, ?_⟩
-    rintro _ _ h1 _ h2 rfl; exact ⟨(ih ⟨_, wf.1⟩).2 _ h1, (go ⟨_, wf.2⟩).2 _ h2⟩
-  | lam => exact ⟨⟨(go ⟨_, wf.1⟩).1, sorry⟩, fun _ h1 => ⟨(go ⟨_, wf.1⟩).2 _ h1, sorry⟩⟩
-  | ctor =>
-    refine ⟨⟨fun _ h1 => (ih ⟨_, wf.1 _ h1⟩).1, sorry⟩, fun _ h1 => ⟨fun _ h2 => ?_, sorry⟩⟩
-    have ⟨_, h3, h4⟩ := h1.forall_exists_r _ h2; exact (ih ⟨_, wf.1 _ h3⟩).2 _ h4
-
--- theorem ShapeFun.WF'.plift (h : WF (n := n) Shape.WF x) :
---     WF (n := m) Shape.WF (plift Shape.plift x).1 ∧
---     ∀ y : ShapeFun m, (plift Shape.plift x).2 = some y → WF Shape.WF y := by
---   sorry
-
--- theorem Shape.WF.plift (h : WF (n := n) x) : WF (n := m) x.plift.1 := sorry
--- theorem ShapeFun.WF.plift (h : WF (n := n) Shape.WF x) :
---     WF (n := m) Shape.WF (plift Shape.plift x).1 := sorry
--/
+/- The general `Shape.WF.plift` well-formedness-projection principle
+(pushing a well-formed higher-level shape down to an arbitrary lower
+level) was rejected and its prototype deleted: downward projection can
+destroy the `NonZero`/join-closure invariants at `lam`/`ctor` nodes. The
+order-theoretic `plift` lemmas above are the surviving true fragment;
+transport of refinement evidence is instead carried as data by
+`LRS.CtorDefEq.lift`/`.unlift` and `LogRel.LiftEquiv` below. -/
 
 theorem WShape.Join.lift {x y z : WShape n} (le : n ≤ m) :
     (x.lift m).Join (y.lift m) (z.lift m) ↔ x.Join y z := by

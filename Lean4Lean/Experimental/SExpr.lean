@@ -2652,8 +2652,13 @@ theorem IsDefEqLift.substDefEq
   (H.defeq' .refl SExpr.lift'_refl.symm SExpr.lift'_refl.symm
     SExpr.lift'_refl.symm).subst W
 
-theorem IsDefEqLift.subst : Ctx.Subst HasType Δ σ Γ → Γ ⊢ e1 ≡ e2 :↑ A →
-    Δ ⊢ e1.subst σ ≡ e2.subst σ :↑ A.subst σ := sorry
+/- There is deliberately no `IsDefEqLift.subst` concluding at `:↑`. The
+former statement quantified over the free section relation `HasType`, so
+instantiating it at the trivial relation claimed lift-stability of `≡ :↑`
+under arbitrary substitutions, which is false. `substDefEq` above is the
+sound instantiation-to-ordinary-equality form; a `:↑`-valued conclusion
+would additionally need a `Ctx.Subst`-vs-`Ctx.Lift'` commutation witness
+in the premise, which no current consumer requires. -/
 
 theorem WithLift.weak'_inv (W : Ctx.Lift' ρ Γ Δ)
     (H : WithLift DefEq Δ (e1.lift' ρ) (e2.lift' ρ) (A.lift' ρ)) : WithLift DefEq Γ e1 e2 A where
@@ -2781,6 +2786,13 @@ theorem WHRed.weak' (W : Ctx.Lift' ρ Γ Γ') :
     rw [Pattern.RHS.lift'_applyS]
     exact .extra (action.weak' W)
 
+/-- Inverse weakening for one weak-head step. The `.extra` case is
+deferred (off the L4L-16 gate path; consumed only by the staged
+`WHRedS.weakU_inv`/`InferTypeS.weakU_inv` mirrors): it needs to lower the
+two `IsDefEq` fields of the matched `Pattern.Action`, which requires
+either a context-WF-conditioned `IsDefEq` inverse weakening or restating
+`Action.checked`/`sound` at `:↑`. See plans/l4l-16-completion-plan.md
+§16B′. -/
 theorem WHRed.weakU_inv (W : Ctx.Lift' ρ Γ Γ') (H : Γ' ⊢ e1.lift' ρ ⤳ e2') :
     ∃ e2, e2' = e2.lift' ρ ∧ Γ ⊢ e1 ⤳ e2 := by
   generalize he : e1.lift' ρ = e1' at H
@@ -2917,6 +2929,14 @@ theorem WHRedS.subst
   | rfl => exact .rfl
   | tail _ h2 ih => exact .tail ih (h2.subst W)
 
+/-- Weak-head reduction is definitional equality. OPEN, and the one
+`SExpr.lean` admission on the L4L-16 gate path: the adequacy development
+consumes it (dot-notation `.defeq`) inside `LR.iotaActions_of_exactAt`
+and the leaf machinery. Do not prove it generically — that needs the
+weak-judgment inversion layer this development exists to replace; the
+L4L-16C plan closes the actual call sites with a certificate-carrying
+variant (every site has `Action.sound`/`SpineWF` evidence in scope). See
+plans/l4l-16-completion-plan.md §16C′ "S3-narrow". -/
 theorem WHRedS.defeq (H : Γ ⊢ e1 ⤳* e2) (he : Γ ⊢ e1 : A) : Γ ⊢ e1 ≡ e2 : A := sorry
 
 theorem WHRedS.weak' (W : Ctx.Lift' ρ Γ Δ) (H : Γ ⊢ e1 ⤳* e2) :
@@ -3015,6 +3035,11 @@ inductive InferType : List SExpr → SExpr → SExpr → Prop where
   | forallE : Γ ⊢ A ▷ U → Γ ⊢ U ⤳* .sort u →
     A::Γ ⊢ B ▷ V → A::Γ ⊢ V ⤳* .sort v → Γ ⊢ .forallE A B ▷ .sort (.imax u v)
 
+/-- Soundness of syntactic type inference. Deferred (off the L4L-16 gate
+path; the adequacy development consumes neither `▷` nor `▷*`): the `app`
+and `forallE` cases need the `⤳* → ≡` conversion whose narrowed,
+certificate-carrying form is the L4L-16C obligation, plus an `isType`
+extraction; port Theory's `HeadReduction.lean` proof once those land. -/
 theorem InferType.hasType (H : Γ ⊢ e ▷ A) : Γ ⊢ e : A := sorry
 
 theorem InferType.determ (H1 : Γ ⊢ e ▷ A) (H2 : Γ ⊢ e ▷ A') : A = A' := by
@@ -3068,33 +3093,19 @@ theorem InferType.weak'_inv (W : Ctx.Lift' ρ Γ Δ) (H : Δ ⊢ e.lift' ρ ▷ 
   obtain ⟨_, h1, h2⟩ := H.weakU_inv W
   exact SExpr.lift'_inj.1 h1 ▸ h2
 
-theorem InferType.subst (W : Ctx.Subst InferType Δ σ Γ)
-    (H : Γ ⊢ e ▷ A) : Δ ⊢ e.subst σ ▷ A.subst σ := by
-  induction H generalizing Δ σ with
-  | @bvar Γ i A h =>
-    simp [SExpr.subst]
-    induction W generalizing i A with | nil | @cons Γ σ B W h' ih <;> cases h
-    case zero => rw [SExpr.lift, SExpr.subst_lift']; exact h'
-    case succ i C h => rw [SExpr.lift, SExpr.subst_lift']; exact ih h
-  | sort => exact .sort
-  | const h1 h2 =>
-    rw [(henv.closedC h1).mkInstS.subst_eq .zero]
-    exact .const h1 h2
-  | app h1 h2 h3 ih =>
-    exact subst_inst ▸ .app (ih W)
-      (h2.subst (W.imp InferType.hasType)) (h3.subst W)
-  | lam h1 h2 ih => exact .lam (h1.subst W) (ih (W.lift InferType.weak' .bvar))
-  | forallE h1 h2 h3 h4 ih1 ih2 =>
-    exact .forallE (ih1 W) (h2.subst (W.imp InferType.hasType))
-      (ih2 (W.lift InferType.weak' .bvar))
-      (h4.subst ((W.lift InferType.weak' .bvar).imp InferType.hasType))
-
-theorem InferType.inst (H₀ : Γ ⊢ a ▷ A₀) (H : A₀::Γ ⊢ e ▷ A) :
-    Γ ⊢ e.inst a ▷ A.inst a := .subst (.one InferType.weak' .bvar H₀) H
+/- `InferType.subst`/`InferType.inst` were deleted together with the
+unsound `IsDefEqLift.subst`: their `app`/`lam` cases consumed it at the
+instance `HasType := InferType`, i.e. their proofs rested on exactly the
+free-relation unsoundness that forced the deletion, and their only
+consumer was the also-deleted `InferType.whRed`. Restoring them requires
+a `Ctx.Subst` premise whose entries carry `:↑` (lift-stable) typings,
+which no current development needs. -/
 
 def InferTypeS (Γ : List SExpr) (e A : SExpr) := ∃ A', Γ ⊢ e ▷ A' ∧ Γ ⊢ A' ⤳* A
 scoped notation:65 Γ " ⊢ " e1 " ▷* " e2:36 => InferTypeS Γ e1 e2
 
+/-- Deferred with `InferType.hasType` (a three-line corollary of it plus
+the `⤳* → ≡` conversion); no current consumer. -/
 theorem InferTypeS.hasType : Γ ⊢ e ▷* A → Γ ⊢ e : A := sorry
 
 theorem WHRedS.inferType
@@ -3236,8 +3247,13 @@ theorem CRDefEq.defeq : Γ ⊢ e₁ ≫≪ e₂ : A → Γ ⊢ e₁ ≡ e₂ : A
 theorem CRDefEq.symm : Γ ⊢ e₁ ≫≪ e₂ : A → Γ ⊢ e₂ ≫≪ e₁ : A
   | ⟨h1, _, _, h3, h4, h5⟩ => ⟨h1.symm, _, _, h4, h3, h5.symm⟩
 
-theorem CRDefEq.trans : Γ ⊢ e₁ ≫≪ e₂ : A → Γ ⊢ e₂ ≫≪ e₃ : A → Γ ⊢ e₁ ≫≪ e₃ : A
-  | ⟨l1, _, _, l3, l4, l5⟩, ⟨r1, _, _, r3, r4, r5⟩ => sorry
+/- There is deliberately no `CRDefEq.trans` here. Its Theory counterpart
+is five lines from `ParRedS.church_rosser`, `NormalEq.parRedS`, and
+`NormalEq.trans`; none of that development exists on the SExpr side, and
+Theory's own `NormalEq.parRed` `.extra` overlap cases are the open
+L4L-18A obligations. Porting the joining argument lands with L4L-18A
+against the finished Theory script — see plans/l4l-16-completion-plan.md
+§L4L-18A′ — and nothing on the L4L-16 gate path consumes it. -/
 
 theorem CRDefEq.defeqDF : Γ ⊢ e₁ ≫≪ e₂ : A → Γ ⊢ A ≡ B : .sort u → Γ ⊢ e₁ ≫≪ e₂ : B
   | ⟨l1, _, _, l3, l4, l5⟩, H => ⟨H.defeqDF l1, _, _, l3, l4, l5.defeqDF H⟩
@@ -3258,13 +3274,12 @@ theorem CRDefEqLift.left (H : Γ ⊢ e1 ≫≪ e2 :↑ A) : Γ ⊢ e1 :↑ A := 
 nonrec theorem CRDefEqLift.refl (H : Γ ⊢ e :↑ A) : Γ ⊢ e ≫≪ e :↑ A :=
   .refl (.refl <| H.left' · · ·)
 
-theorem InferType.whRed (H1 : Γ ⊢ e ⤳ e') (H2 : Γ ⊢ e ▷ A) : Γ ⊢ e' ▷ A := by
-  induction H1 generalizing A with
-  | app h1 ih => let .app r1 r2 r3 := H2; exact .app (ih r1) r2 r3
-  | major => sorry
-  | beta =>
-    let .app a1 a2 a3 := H2
-    let .lam b1 b2 := a1
-    cases WHNF.forallE.whRedS a2
-    exact .inst sorry b2
-  | extra => sorry
+/- There is deliberately no `InferType.whRed` (subject reduction for
+inferred types under one weak-head step). The former statement was false
+as written: `▷` is syntax-directed with no conversion rule, so a `major`
+step changes the inferred type from `B.inst a` to the merely-defeq
+`B.inst a'`, a `beta` redex's argument is typed (`:↑`) at a domain that
+need not be its principal type, and a `Pattern.Action` supplies a typing
+of the RHS, not an inference. If a successor milestone needs this fact,
+state it up to conversion (`Γ ⊢ e' ▷* A'` with `Γ ⊢ A ≡ A' : .sort u`);
+Theory has no counterpart to port. -/
