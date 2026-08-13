@@ -413,11 +413,16 @@ unchanged.
 
 **Implementation checkpoint (2026-08-13, joint route):** the working
 tree now contains the kernel-checked joint interfaces
-`LR.AdequacyAt`/`LR.JointAt`/`LR.JointBuilder` and
-`LogRel.LimitedUniq`; the combined recursion is structurally ordered as
-adequacy at 0, then uniqueness at n consumed by adequacy at n+1, then
-uniqueness derived at n+1. The SExpr inversions are parameterized by
-`AdequacyAt`. The reflection decision is also implemented:
+`LR.AdequacyAt`/`LR.JointStage`/`LR.JointBuilder` and
+`LogRel.LimitedUniq`. A subsequent premise audit rejected the first,
+same-level builder: `AdequacyAt Γ n` alone cannot imply weak-judgment
+uniqueness in an arbitrary context, particularly at bottom shapes. The
+replacement records target-context well-formedness and the actual offset
+bootstrap: adequacy at 0, specialized adequacy at 1, level-0 uniqueness from
+the positive observations, then uniqueness at n consumed by adequacy at
+n+2 and used to derive uniqueness at n+1. The SExpr inversions are
+parameterized by positive-level `AdequacyAt`. The reflection decision is
+also implemented:
 `SExpr.mk` is conservative modulo `VEnv.EqUpToLevels`, reflecting
 semantic-level equality to `VLevel` equivalence and relating every
 well-formed expression to `reify (mk e)`.
@@ -429,8 +434,33 @@ invalid pointwise lowering of high-level fields; `CtorLink` combines
 those two pieces; a nonempty `CtorPath` removes free transitivity; and
 root `CtorView`s isolate weak-head expansion. `CtorDefEq.toChain`
 handles all nine constructors, uses `WHRedS.ctorSpine_determ` at shared
-midpoints, and `CtorChain.toCtorDefEq` proves the round trip. The active
-dependency is therefore the InferType principal-types bootstrap.
+midpoints, and `CtorChain.toCtorDefEq` proves the round trip. Its
+`CtorChain.Algebra` elimination boundary has only native exact leaves,
+composition, and root anchoring; the original nine-way closure is absent
+from consumers. `CtorChain.NativeAlgebra` further pins the crucial order:
+finish a native exact leaf, fold the completed result through its
+`CtorFrame`, and compose only after reaching the root. This resolves the
+lift/unlift uniqueness question without projecting high-level fields or
+requiring uniqueness for a foreign native relation. The active joint
+dependency is therefore `uniqSucc` plus the deep-`R` iota leaf: the
+specialized level-one bootstrap now derives contextual raw uniqueness and
+the uniqueness-aware chain consumer through path-valued stratified inversion.
+There is no longer an `invZero` field or an unsound generic
+`uniqOfAdequacy` obligation.
+
+**InferType q1 resolution (2026-08-13): negative for the generic
+proposal.** `InferType.app` can be constructed only after the inferred
+function type weak-head reduces to a Pi. An `IsDefEq.defeqDF` conversion
+connects that type to a Pi only by definitional equality; turning this into
+the required reduction is precisely a Church–Rosser/inversion theorem, not
+something inference completeness can emit by structural induction. The
+same obstruction remains at the four root reduction conversions even with
+the existing `SpineWF` packages, because their weak-head paths may contain
+beta and registered steps under an arbitrary converted type. Do not restore
+the deleted generic `InferType.subst`/completeness route. Under the combined
+L4L-16/17 scope, implement the promised limited uniqueness and consume it
+while folding the normalized constructor chain; only then restate the root
+subject-reduction lemma at the exact semantic package it needs.
 
 Superseded recommendation (α): stage the claim. Add a first-order-fields
 restriction at the observation-consumption boundary (an explicit
@@ -463,7 +493,7 @@ with the root endpoints attached by `whr`-expansion.
 Verification condition checked before implementation: the per-field
 composition step needs `IH.DefEq x y D p a` and `IH.DefEq y z D' p a`
 (same syntactic `y`, same shapes, two validity types) to compose.
-**Resolved (2026-08-13, by reading `LRS.DefEq`'s definition):** the
+**Superseded conclusion (rejected by the lambda case):** the
 concrete relation is type-independent modulo validity — at `.sort`
 type-shapes `DefEq` ignores its type argument entirely, at `.indTy` the
 only type-dependence is the `IndTyHead` conjunct (supplied by the target
@@ -474,11 +504,156 @@ R.DefEq M N A m a → R.DefEq M N A' m a` — is provable with no new
 assumptions: trivially at `LR0` (its `DefEq` never inspects the type),
 by shape-case analysis with recursion into the lower level at `LRS`,
 hence at `LR` for every level. With `Retype`, cross-observation field
-composition is `retype` + `IH.trans`; no canonical-telescope data, no
-promoted uniqueness, and no residual sorry is needed for O1. This is
-the precise sense in which the roadmap's "canonical field-type
-alignment" exists: the semantic relation never needed the types
-aligned, only valid.
+composition would be `retype` + `IH.trans`.
+
+**Correction (2026-08-13):** `LRS.DefEq` at a lambda observation retains
+codomain validity tied to the original Pi typing, so the assumption-free
+`Retype` claim is false. The implemented builder boundary is
+`RawTypeUniq + LimitedUniq.LamRetype`: raw uniqueness aligns ordinary result
+types, and the term-indexed `LamRetype` callback supplies exactly the
+successor-level lambda case; all other shapes are structural. `PiTypeAlign`
+is retained only as an optional sufficient adapter, because arbitrary valid
+Pi observations need not be compatible. This is packaged by
+`LRS.limitedUniq_of_typeUniq`; the offset `LR.JointBuilder.succ` now also
+receives lower-level adequacy explicitly, matching the actual fixed-head
+recursion dependency.
+
+The normalized-chain audit then exposed a separate raw invariant:
+constructor leaves previously allowed unrelated universe-level lists on
+their two heads. Both producers already use the same semantic list, so
+`CtorDefEq.exact`/`CtorExact.intro` now record `ls = ls'`. Consequently each
+native leaf has an existential ordinary typed equality. The kernel-checked
+`CtorPath.foldRaw` threads one recursor domain across all native links using
+`RawTypeUniq`; `CtorChain.foldRaw` and `CtorDefEq.foldRaw` expose the two root
+weak-head views as explicit typed callbacks. All these theorems measure at
+`[propext, Classical.choice, Quot.sound]`. This proves that intermediate
+links need no subject reduction; only the two roots do.
+
+**Native/root consumer correction (2026-08-13).** The normalized
+`NativeAlgebra` order remains valid, but it does not by itself close iota.
+An exact handler runs at the native relation stored by a link, whereas the
+recursor prefix, result functions, and final type relation are available at
+the canonical root relation. A lift/unlift zigzag relates arbitrary high
+extensions of a common low relation only on shapes lifted from that low
+relation; it cannot project the root prefix into an unrelated native
+refinement. Constant evaluation now returns `LogRel.DefEqRect` (left endpoint
+self-relation, right endpoint self-relation, and cross-relation) so these
+three observations remain synchronized through term-indexed retyping. The
+remaining iota consumer must therefore prove the generated fixed-head
+application chain at the canonical root and use native normalization only for
+the raw constructor/capture boundary.
+
+Finally, O3 is not route-independent as previously stated. The current
+`IotaRHSDefEq` proposition describes the desired result, but
+`PathSpineWF` plus capture alignment does not itself supply logical validity
+for the fixed RHS head or the intermediate semantic Pi telescope. Its
+constructor must live inside a strengthened `LE_Interp.recR` induction and
+receive that head adequacy hypothesis explicitly. The head's syntactic
+self-typing is now kernel-checked independently:
+`Params.Semantic.closedHasTypeStrong` reifies the semantic levels and
+translates the ordered-environment strong typing, and
+`Pattern.IotaRule.rhsStrong` packages the registered RHS specialization.
+
+**Heterogeneous-rule correction (2026-08-13).** The earlier principal-chain
+notes above still assumed that sort-typed chain edges could be collapsed by
+the primitive `IsDefEq.trans'`. That constructor has now been eliminated
+from both weak and strong SExpr judgments. Conversion-aware spines use
+structural concatenation, while successor Pi type validity stores
+`TypeDefEqPath`, a nonempty sequence of ordinary typed equalities. Semantic
+transitivity therefore remains assumption-free; collapsing a path to one raw
+equality consumes `RawTypeUniq` explicitly. The contextual form is packaged
+by `LogRel.ContextualRawTypeUniq` and `LR.ContextualJointBuilder`; the
+level-indexed Pi inversion returns paths, and its `_collapsed` adapter uses
+context well-formedness to collapse the codomain path under the extended
+binder. This supersedes every earlier recommendation that used `trans'` as a
+free composition rule.
+
+**Contextual/recursion correction (2026-08-13).** A compiled skeleton of the
+promised outer `LE_Interp.recR` / inner strong-derivation induction showed
+that shallow `RChildren` evidence is lost in `symm` and the second half of
+`trans`: semantic soundness transports the interpretation, not the recursive
+provenance attached to its proof. The replacement
+`LE_Interp.RDeepChildren`/`recRDeep` traverses ordinary semantic children and
+grants the recursive predicate only at abstract constant edges, which is the
+well-founded interface needed by an inner stratified self-typing induction.
+That induction made the target-context dependency executable rather than
+documentary: Pi uniqueness immediately enters `A :: Γ`, so a wrapper that
+returns already-built fixed-context `JointBuilder Γ`s is circular.
+`JointStage` and `JointBuilder` now quantify over all well-formed target
+contexts at each level, and `HasTypeStratifiedS.forallE_inv` preserves the
+strictly smaller typing depth at the binder boundary. All three additions
+kernel-check and have the standard clean axiom closure.
+
+**Bootstrap/root-closure checkpoint (2026-08-13).**
+`JointStratifiedInversion` now states precisely the stratified sort/Pi facts
+needed by the syntactic proof, and
+`IsDefEq.uniq_of_stratified_inversion` proves contextual weak type uniqueness
+by well-founded induction on maximum typing depth. The full application,
+lambda, Pi, and conversion cases are kernel-checked at
+`[propext, Classical.choice, Quot.sound]`. The initially exposed base boundary
+has now been discharged without assuming its result: positive adequacy
+propagates non-bottom sort/Pi observations across whole heterogeneous
+`TypeDefEqPath`s, proves path-level sort/Pi inversion and stratified path
+uniqueness, and only then collapses the paths. Thus
+`LogRel.contextualRawTypeUniq_of_adequacy` and
+`JointStratifiedInversion.of_adequacy` are kernel-checked, while the redundant
+`JointBuilder.invZero` field has been deleted.
+
+The same package now proves `WHRed.defeq_of_stratified_inversion` and
+`WHRedS.defeq_of_stratified_inversion`, including beta and registered-rule
+steps. `LRS.CtorDefEq.foldRaw_of_jointBuilder` feeds those exact two root
+callbacks and the derived raw uniqueness into the normalized constructor
+chain. Thus the conditional chain/root part of 16C′ is complete and clean;
+the exact lambda-retyping boundary and its lower-adequacy dependency are now
+implemented. The remaining proof body is the canonical-root, deep-`R`
+fixed-head application chain needed at the iota leaf.
+
+**Proof-relevant semantic-recursion correction (2026-08-13).** The
+fixed-head proof does recurse through the interpretations of both the head
+term and its registered type, but the first paired implementation exposed a
+false interface. `LE_Interp` and its constant payload are propositions, so
+proof irrelevance identifies constructor trees that chose different abstract
+relations. Consequently `recRDeep₂` is sound only for results independent of
+that proof choice; it cannot retain the exact evaluator branch. Focused
+conversion and application probes also showed that no ordering of two
+homogeneous proof trees supplies both an arbitrary converted type and the
+term/type role swap needed by application.
+
+`LE_Interp.Witness` is now the proof-relevant mirror at this internal
+boundary. Every public interpretation noncomputably chooses one consistent
+witness; `Witness.toInterp`, `witness_toInterp`, `Witness.mono`,
+`Witness.recR`/`recRIndex`, and `Lower.realizeWitness` preserve the exact
+constant relation and recursive callback while public conclusions remain
+proof-independent. The layer builds and audits at
+`[propext, Classical.choice, Quot.sound]`. `recRDeep₂` remains available for
+proof-independent consumers, but is no longer the planned evaluator
+recursor. The live adequacy constant case now destructs `hM.witness`, so its
+`R` callback returns exact witnesses rather than reconstructed propositions.
+`Witness.recDeep` now supplies exact ordinary and registered children for the
+inner stratified induction, and proof-relevant `recDeep₂` supports term/type
+role swaps without erasing either callback tree. `RHS.fixedWitness`/`fixedLowerWitness`,
+`Witness.mono_l`/`closed`, and
+`IotaRHSDefEq.of_nonbotWitness` carry that callback through the reached fixed
+RHS head and expose it to the generated-chain consumer. The retained-tree
+finite merge is complete too: `RDeepChildren.JoinLaws` states the four exact
+closure laws, and proof-relevant `compat_join` constructs one synchronized
+joined witness/tree through applications, binders, and constant evaluators.
+`RDeepChildren.Laws`, `TypedRDeep.lam`, and `TypedRDeep.forallE` now close the
+same retained package under weakening and both binders.  The conversion probe
+then fixed the recursion order: `recNatRDeep`/`recNatRDeep₂` make stratified
+depth the primary decrease, so a smaller conversion premise can restart on
+an arbitrary exact target witness without assuming its retained tree.
+`FitsRDeep`, `SoundRDeepAt`, `soundRDeepRestart`, and
+`recNatRDeepSound` kernel-check the complete syntax-directed induction,
+including application, lambda, Pi, and conversion.  All audit at the same
+clean baseline. The remaining work is now the consumer-specific `buildP`
+algebra. Its dependent-application core is isolated in the clean
+`LR.adequateApp` lemma: three lower callbacks (function, argument, and
+instantiated result) discharge the complete application shape join at the
+standard axiom baseline. The retained self-typing probe instantiates that
+interface directly. What remains is the conversion/type-relation handoff
+and constant case, then consuming the rectangle along the generated
+`ShapeSpine` and folding the sole adequacy leaf.
 
 Exit measurement: `sort_invS` reaches
 `[propext, Classical.choice, Quot.sound]`. Record that
@@ -490,14 +665,79 @@ moment; their VExpr reflection is a joint L4L-16 co-deliverable at 16E.
 The only segment never executed end-to-end. De-risk with a thin vertical
 slice before full coverage:
 
-- **D0 (slice):** a two-declaration environment (one definition + one
-  generated iota rule from an existing fixture block) through
-  `Params` + `Params.Semantic`, endpoint `sort_invS` instantiated. This
-  smokes out interface mismatches while they are cheap.
-- **D1:** definitions/mutual definitions + quotient (`CertifiedExtension.quot`).
-- **D2:** ordinary/block inductive rules via `AssembledPat` — requires
-  lifting the four `IotaPat` non-overlap laws to the union and the
-  cross-term non-overlap lemma (new, bounded, combinatorial).
+- **D0 (slice) — complete 2026-08-14 in the active working tree:** the
+  generated Nat block's zero/successor iota rules plus the checked
+  `d0def : Nat := Nat.zero` declaration run through complete
+  `Params` + `Params.Semantic` values, with `d0SortInvS` instantiated.
+  `SExprParamsD0.lean` has no local admission, its 122-job Lake target is
+  green, and the exact inherited endpoint closure is pinned in-source.
+- **D1 — delivered 2026-08-15 (working tree), except the quot semantic
+  instance:** `SExprParamsD1.lean` (187 decls, no local admission).
+  Mutual-definitions half complete end to end: first live
+  `VDecl.WF.mutualDef` (genuine forward reference inside the block; a
+  three-layer unfolding chain through `d0def` exercises
+  `IsDefEqStrong.defn` in sequence), D0→D1 transport functor with the
+  previously-vacuous `const`/`defn` cases now live, full
+  `Params.Semantic` with the Nat iota sites replayed against `d1Env`,
+  endpoint `d1SortInvS` pinned (closure = D0's set + named D1-local
+  `native_decide` observations; `sorryAx` inherited from 16C′ only).
+  Quotient half: environment layer delivered and pinned sorryAx-free
+  (`d1qEnv_wf` with a checked `VDecl.WF.quot` step,
+  `d1qEnv_defeq_quot`), plus the kernel-checked forcing lemma
+  `quotPattern_forces_ctor_classification`; the quot
+  `Params`/`Params.Semantic` instance is blocked on a 16C′-owner
+  interface decision (guardrail #3): any WF classifier forces
+  `Quot.mk = .ctor 3`, and `Semantic.ctor`'s unrestricted level
+  quantifier then violates `CtorBundle.hu0` at Prop instantiations —
+  the punit disqualification biting a live constructor. Candidate
+  repairs recorded at `SExprParamsD1.lean:2703–2755`
+  (typing-conditional `hu0`, or well-sorted-instantiation restriction
+  of `Semantic.ctor`); independently the quot site-check needs
+  stuck-`Quot` injectivity (L4L-18A′ strength). Take the interface
+  decision before any further quot attempt.
+- **D2:** ordinary/block inductive rules via `AssembledPat`. **The new
+  mathematics is done (probe-proved 2026-08-15, kernel `decide` only —
+  no `native_decide`):** `plans/probes/probeD2-nonoverlap.lean` proves
+  the four union-level laws in exact `Params`-field shape under a
+  single `ExtSeparation` hypothesis (self/block/uniqueness/pairwise
+  separation — each field a fixture obligation, `decide`-dischargeable
+  for literal-name fixtures), the cross-term engine
+  (`SimplePattern.HeadSep.inter_subpattern_none`), and a falsity
+  witness showing the hypothesis-free `pat_uniq` is unprovable. The
+  real cross-term case is block-rule vs extension-rule; cross-inductive
+  pairs inside one block were already covered by `IotaPat.pat_uniq`.
+  The demo instantiates the whole family on the mutual
+  PatTree/PatForest block + quot extension. **Landed 2026-08-15**:
+  Parts 1–3 in `Theory/Typing/InductivePatternEnv.lean` and the demo
+  in `InductivePatternFixtures.lean`, strictly additive, all
+  `#guard_msgs`-pinned (engine laws at `[propext, Quot.sound]`);
+  `Lean4Lean.Theory` gate green; D0/D1 rebuilt downstream with pins
+  re-verified. **D2 fixture delivered 2026-08-15 through the
+  structural layer:** `SExprParamsD2.lean` (1033 lines, 75 decls, no
+  admission, 9 pins) — `d2Env` extends d1Env with a *checked* mutual
+  block step (`VDecl.WF.inductBlock`), and `d2Params` is the first
+  complete structural `Params` over a live block-inductive
+  environment. It uses the Tree/TreeList block, not PatTree/PatForest,
+  because only `treeGeneration` carries a proved `gen.WF` certificate.
+  All four non-overlap laws discharged through the freshly landed
+  Theory lemmas by kernel `decide` (no `native_decide` anywhere in the
+  pattern layer) — the union machinery worked as designed on first
+  live contact. Remaining D2: `Params.Semantic`'s
+  `iotaSite`/`registered` for the 5 block rules plus `ctor`/`defn` via
+  the D1→D2 transport clone. NOT an interface defect (unlike D1's
+  quot) — pure volume: ~640 lines/rule of evidence-rich replay over an
+  8-argument major at `uvars = 2` (large elimination adds the motive
+  universe; D0/D1 only ever saw `uvars = 1`). Forcing lemmas
+  `d2Pat_block_rule`/`d2Registered_obligation` pin both fields as
+  obliged. **Cost-control decision to take before D3:** the per-rule,
+  per-fixture replay is what makes D2–D4 expensive; a generic replay
+  lemma parameterized over the generation certificate would retire all
+  five at once and pay off again on D3/D4 (the generic-instance design
+  doc reaches the same conclusion from the other side, and warns that
+  iota *check* discharge — one check per parameter and per index —
+  needs stuck inductive-application injectivity, never exercised
+  because Nat has neither parameters nor indices; Tree has a
+  parameter, so this bites exactly at D2's `iotaSite`).
 - **D3:** nested rules as registered equations only (per roadmap).
 - **D4:** registered structure eta from the L4L-15B registry.
 
@@ -507,13 +747,132 @@ Explicitly OUT of L4L-16: constructing Theory's `Params`/
 moves to L4L-18A′. The roadmap's §2.1 "Not claimed" paragraph should be
 amended accordingly.
 
-### L4L-16E — promotion (unchanged, plus corrections)
+### L4L-16E — promotion (recon executed 2026-08-15)
+
+Executable checklist with full citations: `plans/l4l-16e-promotion-map.md`
+(move-map, allowlist edits, gate table with the expected re-pin sets,
+type-checked draft statements in `plans/probes/CoDeliverableDrafts.lean`
+and `plans/probes/SExprCounterpartDrafts.lean`).
 
 Move the consumed modules out of `Experimental/`, close public
-`IsDefEqU.sort_inv` from the instances, shrink the allowlist 22 → 21,
-add the missing `#guard_msgs`/`#print axioms` pins for the promoted
-roots (none exist today because Experimental is ungated), and take the
-digama reconcile-or-defer decision recorded as due at this boundary.
+`IsDefEqU.sort_inv` from the instances, shrink the allowlist 22 → 21 at
+the promotion checkpoint (execution step 6; step 7's co-deliverables
+then take it to 17), add the missing `#guard_msgs`/`#print axioms` pins
+for the promoted roots (none exist today because Experimental is
+ungated), and take the digama reconcile-or-defer decision (prepared
+analysis with defer recommendation:
+`plans/l4l-16-boundary-digama-drift.md`). The recon surfaced items the
+plan had not assigned; they are 16E work items now:
+
+- Both co-deliverables already exist as sorried statements in the
+  trusted tree — `IsDefEqU.weakN_iff`
+  (`Theory/Typing/UniqueTyping.lean:171`, backward direction proved,
+  forward/strengthening open) and `WF.registeredStructureHeadInversion`
+  (`Theory/Projection.lean:3518`). Nothing needs drafting; 16E proves
+  them and re-pins the ~10 downstream guards that flip.
+- **`weakN_iff` forward — design pass executed 2026-08-15; verdict:
+  research-grade, not closable inside 16E** (route decision + staged
+  obligations: `plans/l4l-16-weakn-design.md`; W0–W8 type-checked in
+  `plans/probes/probeE-weakn.lean`). Chosen route: SST —
+  de-circularized stratified standardization on the Theory side; the
+  forward direction assembles in ~15 lines from three staged lemmas,
+  but their cores (`NormalEq.weakN_inv` mutual with `trans` on a
+  (depth, meas, derivation) measure; per-depth CR re-founding) are 3–6
+  focused weeks, after the 16C′ endpoints and the 18A `.extra` holes.
+  Rejected routes carry machine-checked obstructions (W0
+  trans-midpoint re-lift gluing witness, proved; semantic descent
+  impossible by relation design — bot shape relates all terms;
+  Theory-CR circular definitionally and at the `Params` oracle
+  fields). Banked now at `[propext, Quot.sound]`: W0 and W1
+  (`strengthen_of_witness`, forward under inhabited insertion).
+  **Ladder attacked the same day — W2 and W3 are PROVED**
+  (`plans/probes/probeE2-weakn-w2w3.lean`, exit 0, no sorries in the
+  probe; closures `[propext, sorryAx, Classical.choice, Quot.sound]`
+  with every `sorryAx` traced to four named upstream stubs). Headline
+  correction: W2/W3 are not "real work" — they are *consumers*, and
+  the design doc's dependency arrow was inverted (W3 uses W2, not the
+  reverse; W2's only non-elementary input is `InferType.exists`, i.e.
+  the W6 CR core). Both statements were *strengthened*: probe E's
+  `hA : IsType` / `hF` hypotheses are redundant — which matters,
+  because the SST assembly's caller does not have base-context typing
+  before strengthening. Blocking delta discovered: the bare-`VEnv.WF`
+  forms are not provable today — the engine is `[Params]`-generic and
+  needs `[Params.Extension]`, so W2/W3 ride on the same
+  generic-instance debt as W8 and `sort_inv` (see below). Bonus
+  de-circularization: `OnCtx.weakN_inv` (UniqueTyping.lean:198), a
+  direct consumer of the target sorry, is re-proved from
+  `IsType.weakN_inv_ex` alone. Revised remainder: 2.5–5 weeks serial,
+  or **8–11 staged agent sessions**, with W5+W6 (the coupled
+  `NormalEq`/CR cores) carrying essentially all residual risk. W4's
+  route is settled as option (a) `Pattern.Action` packaging (`meas` is
+  lift-invariant and a rule RHS may exceed the redex, so neither
+  `meas` nor size bounds the payloads). One newly-scoped ~1-session
+  piece de-circularizes W2 alone: re-prove `InferType.weakU_inv` by
+  size induction with a type-level strengthening premise.
+  **DECISION REQUIRED:** re-scope `weakN_iff` (and the dependent
+  `registeredStructureHeadInversion` fields that consume it) off the
+  16E gate into an L4L-18A′-coupled slice — both design passes
+  recommend yes; 16E's allowlist exit count then lands at 19, not 17.
+- **`registeredStructureHeadInversion.constructor_name_inv` /
+  `constructor_inv` are false as stated** (axiom-headed major and
+  defn-alias counterexamples; `TrProj` constrains only the major's
+  type, and the safe Verify consumer's `whnf`+`ctorInfo` facts never
+  reach the Theory statement). Repair with a head-classification
+  premise before proof work; budget the consumer-side change.
+- **Pre-promotion sorry closure step (new):** the four off-path
+  `SExpr.lean` sorries (:3810 `WHRed.weakU_inv` `.extra`; :4033
+  `WHRedS.defeq` — superseded by `defeq_of_stratified_inversion`,
+  delete/restate and migrate its two consumers; :4136/:4202
+  `InferType(S).hasType`) do NOT close with the leaf and block the
+  module move; they get their own step before promotion.
+- **Instance generalization — design pass executed 2026-08-15;
+  recommendation: neither D4's endpoint nor a 16E step, but a named
+  successor milestone (L4L-16F)** (`plans/l4l-16-generic-instance-design.md`,
+  staged obligations R0–R9 type-checked in
+  `plans/probes/probeG-generic-instance.lean`). `sort_invS` holds at
+  `[Params.Semantic]`; public `sort_inv` quantifies over arbitrary
+  `VEnv.WF env`. A *conditional* instance was checked and refuted as a
+  route: `adequacyAt` quantifies over all derivations and `mkS`
+  demands `Semantic.ctor` at every `constDF` node of the arbitrary
+  input derivation, so the restriction cannot be moved onto the goal —
+  a conditional instance just restates the fixture ladder. Banked
+  results: promotion is one instance wide (R0); the syntax transport
+  functor is generic in `univs`-equality (R1 — deletes ~1200 lines of
+  D0/D1 boilerplate and pays off again on D2–D4, so land it BEFORE
+  more fixture work). Attackable now without any interface decision:
+  R2 (per-step extension theorem — the D-ladder's transport pattern
+  literally IS the induction step, with only five new-content fields
+  varying per rung), R3 (classify/`pat_wf` packaging), R4
+  (`ExtSeparation` from history freshness — 6 new lemmas; provably not
+  droppable per `separation_is_necessary`), R5 (`defn` at `uvars > 0`).
+  Note `structureEta` is vacuous in all three existing instances —
+  never once exercised. **Circularity trap recorded:** the generic
+  construction must NOT consume Theory's `BlockGenerationChecked.pat_wf`
+  — it carries `sorryAx` through `IsDefEqU.trans` → `uniq` → the
+  sorried `sort_inv`.
+- **`CtorBundle.hu0` — recommendation: delete the field outright**
+  (supersedes both candidate repairs recorded in the D1 quot record).
+  Banked evidence: `hu0_impossible_at_prop` (under type uniqueness no
+  `CtorBundle` can satisfy it for a Prop-typed constructor — the wall
+  is intrinsic, not a fixture artifact) and `propWitness_of_ctor_zero`
+  (the Prop typing is free from the bundle's own equality, so no
+  replacement field or premise is needed). The wall is far wider than
+  D1 recorded: not just `Quot.mk` at `[.zero]` but every constructor
+  of a Prop-sorted inductive (`Eq.refl`, `And.intro`, `Acc.intro`) at
+  *every* instantiation, since a constructor's type ends in its
+  inductive type and `imax _ 0 = 0`. Residual work is a case split at
+  exactly two sites (`ShapeLogRel.lean:9208-9251`,
+  `ShapeLogRelAdequacy.lean:6339`) with a discriminating probe staged
+  (`propCtor_membership`): either bot-absorption applies, or the Prop
+  case is contradictory and the deletion is free. Deciding this also
+  unblocks D1's parked quotient half.
+- Mechanical but previously unlisted: regenerate
+  `Audit/SorryFrontier.lean`'s import block at promotion (else the
+  moved modules silently leave the audited surface); resolve the
+  `Experimental/UniqueTyping.lean` filename collision (fold into the
+  adequacy module or rename); consider the `SExpr.Params` rename for
+  the `Lean4Lean.Params` vs `VEnv.Params` near-collision during API
+  stabilization.
 
 ### L4L-17′ — re-scoped
 
@@ -553,7 +912,11 @@ Experimental stays buildable at every pause point.
    the current working tree**: limited uniqueness contract,
    level-indexed adequacy/inversions, `mk` reflection boundary, and
    `CtorLink`/`CtorChain`/`toChain`).
-4. **16C′ InferType bootstrap + O3 + O2 leaf closure** → measured clean
+4. **16C′ O3 + O2 leaf closure.** The path/direct stratified inversion
+   bootstrap, generic uniqueness theorem, chain consumer, and root subject
+   reduction are kernel-checked; the exact successor lambda-retyping and
+   synchronized endpoint rectangle are implemented. Complete the canonical
+   deep-`R` fixed-head application chain and fold the leaf → measured clean
    `sort_invS`; SExpr `forallE_inv`/`sort_forallE_inv` recorded clean.
 5. **16D0 slice**, then **16D1–D4** as separate checkpoints.
 6. **16E promotion** + allowlist 21 + digama decision.

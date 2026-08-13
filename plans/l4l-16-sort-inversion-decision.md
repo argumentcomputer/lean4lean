@@ -217,11 +217,17 @@ John chose the joint route (2026-08-13). Consequences:
 ### Joint-interface checkpoint (2026-08-13)
 
 The first two implementation dependencies are now kernel-checked.
-`LR.AdequacyAt`, `LR.JointAt`, and `LR.JointBuilder` make the proposed
-recursion explicit, while `LogRel.LimitedUniq` states the exact
+`LR.AdequacyAt`, `LR.JointStage`, and `LR.JointBuilder` make the corrected
+offset recursion explicit, while `LogRel.LimitedUniq` states the exact
 same-term/same-shape retyping contract consumed by constructor-field
-composition. SExpr Pi/sort inversions now accept adequacy at an explicit
-shape level.
+composition. The first interface draft incorrectly claimed that arbitrary
+same-level adequacy implied this weak-judgment contract: bottom shapes erase
+typing evidence, and the target context was not required to be well formed.
+The checked replacement carries target-context validity, proves levels zero
+and one by specialized base arguments, derives level-zero alignment from the
+positive level-one observations, and only then iterates uniqueness at `n`
+into adequacy at `n + 2`. SExpr Pi/sort inversions accept adequacy at an
+explicit positive shape level.
 
 The reflection choice is conservativity modulo source level equivalence:
 well-formed `SLevel.mk` equality reflects to `VLevel` equivalence, and
@@ -230,5 +236,34 @@ syntactic injectivity is intentionally not claimed. The route-independent
 constructor normalization is also complete in the working tree:
 `CtorDefEq.toChain` produces root-anchored chains of native exact links,
 retaining lift/unlift evidence in per-link frames and using classified
-constructor-spine determinism to join transitive midpoints. The next active
-dependency is the InferType principal-types bootstrap.
+constructor-spine determinism to join transitive midpoints. The normalized
+consumer API is the three-operation `CtorChain.Algebra` (native exact leaf,
+composition, root anchoring), refined by `CtorChain.NativeAlgebra`: native
+completion precedes frame transport, and predecessor uniqueness is consumed
+only by root composition. A later raw audit strengthened exact leaves with
+equality of their constructor universe-level lists and added
+`CtorPath.foldRaw`/`CtorChain.foldRaw`/`CtorDefEq.foldRaw`. These retype every
+native edge at one common domain via `RawTypeUniq`; only the two root views
+remain explicit subject-reduction callbacks, and the normalized route is
+measured free of `sorryAx`. The generic stratified proof is now
+kernel-checked: `JointStratifiedInversion` implies contextual weak type
+uniqueness, which in turn proves both weak-head root callbacks (including beta
+and registered steps). `CtorDefEq.foldRaw_of_jointBuilder` consumes those
+callbacks and the derived uniqueness, so normalized-chain root subject
+reduction is complete conditional on a builder. The positive bootstrap is now
+also complete: non-bottom sort/Pi observations are transported across whole
+`TypeDefEqPath`s, yielding path-level inversion and stratified path uniqueness
+before any path is collapsed. Consequently level-one adequacy derives
+contextual raw uniqueness and direct `JointStratifiedInversion`; the former
+`JointBuilder.invZero` callback has been deleted. `uniqSucc` now consumes the
+exact term-indexed `LamRetype` callback (with `PiTypeAlign` only an optional
+adapter), and `JointBuilder.succ` explicitly receives lower adequacy. The
+remaining semantic obligation is the canonical-root application chain for
+the fixed iota RHS head. A native framed leaf cannot consume the root
+recursor prefix through arbitrary `unlift` refinements; synchronized endpoint
+relations are now retained as `LogRel.DefEqRect`. A spike
+resolved
+the proposed generic InferType-completeness
+shortcut negatively: weak definitional equality of an inferred function
+type with a Pi does not provide the weak-head reduction demanded by
+`InferType.app` without the very Church–Rosser/inversion result being built.
