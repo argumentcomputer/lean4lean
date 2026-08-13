@@ -339,9 +339,46 @@ conversions), and the root-level field relations compose via the
 per-shape semantic argument (sort/indTy/bot free; lam via the aligned
 raw premise).
 
-Execution order for `toChain` is therefore: (a) add the coherence
-field; (b) prove (C); (c) `CtorLink`/`CtorChain` at the root relation
-with raw-glued links; (d) `toChain`; (e) the composition lemma. (3) per-link
+**Composition impossibility map and staged resolution (2026-08-13,
+same tick — RECOMMENDED DECISION, flagged for John's review).**
+Checking `IsDefEq.trans'` closed the last free route: it is
+sort-level-heterogeneous only, not general. The complete map: raw
+cross-type composition needs general heterogeneous transitivity (=
+weak type uniqueness, L4L-17); semantic composition at `lam`-shaped
+fields needs the same rule inside `LamDefEq`'s raw argument premises;
+per-link typed sites need it to retype intermediate spines; and (C)'s
+telescope descent needs Pi-injectivity (Tier R). Every route
+terminates at the same missing rule *for higher-order constructor
+fields specifically*; first-order fields (`sort`/`ctor`/`indTy`/`bot`
+shapes) compose by per-shape arguments that are all available today
+(`LR0` type-obliviousness at the base; `IndTyHead` from target
+validity; free `CtorDefEq.trans` one level down for `ctor`-shaped
+fields, eliminated recursively).
+
+Recommended resolution (α): stage the claim. Add a first-order-fields
+restriction at the observation-consumption boundary (an explicit
+`Params.Semantic`-level or shape-level side condition), close the
+L4L-16 leaf and `sort_invS` for first-order-constructor environments —
+which covers the entire D0–D2 fixture ladder (Nat, List, both tree
+blocks; `Acc` is the known exception, entering only at kernel-parity
+scope) — and lift the restriction at L4L-17 when
+`forallE_inv`/uniqueness arrive, exactly as `pat_wf` sheds its
+transitional closure. This matches roadmap §4.5 (staging is monotone
+and temporary) and §2.2's "growing subset" posture. The alternative —
+promoting general weak uniqueness into L4L-16 — was already rejected
+by the route decision (it is Route 2's circularity). Before
+implementing: confirm the restriction's exact carrier (a `WShape`
+first-order predicate on ctor field shapes is the least invasive) and
+record it in the ladder as an explicit stage predicate with a
+rejection fixture.
+
+Execution order for `toChain` is therefore: (a) decide/record the
+first-order stage predicate; (b) `CtorLink`/`CtorChain` at the root
+relation with raw-glued links; (c) `toChain`; (d) the first-order
+composition lemma; (e) lemma (C) and the coherence field only if the
+first-order composition still needs raw telescope alignment (it may
+not: with first-order shapes the semantic layer composes without raw
+support). (3) per-link
 consumption: each link certifies its own iota contraction pair with
 conclusions glued by `(LRS IH).trans` at the package-fixed result type,
 with the root endpoints attached by `whr`-expansion.
