@@ -238,6 +238,54 @@ Rule: if the chosen option hits a second wall, STOP and re-derive the
 mathematical obligation in this file before writing more Lean. No sixth
 transport layer.
 
+**O1 design addendum (2026-08-13, recorded before implementation).**
+Deriving the fold motive abstractly hit the two-strikes rule: every
+variant that runs the typed iota-site construction at *intermediate*
+fold nodes (trans midpoints, or exact nodes reached inside the free
+closure) terminates at the same irreducible brick — reconciling two weak
+typings of one term (midpoint, or reduct spine) without inversion, which
+is the uniqueness-strength frontier itself. `Pattern.Action` sites for
+intermediate pairs are therefore impossible by design, not by missing
+lemmas: the free closure's midpoints are genuinely untyped up to
+weak-head expansion (`LogRel.whr` is deliberately an untyped iff).
+Decided architecture — **root-anchored capture-chain fold**:
+
+- The fold motive carries NO typing and NO sites: only (i) each
+  endpoint's weak-head reduction to its constructor spine, and (ii)
+  composable per-field semantic relations (`IH`-level) between the two
+  spines' fields, plus the head/level agreement.
+- `trans` composes via weak-head determinism (`WHRedS.inferType`
+  uniqueness: the shared midpoint's two constructor-spine reducts are
+  syntactically equal, so field columns literally coincide) and the
+  relation's PER laws; `whr`/`unwhr` via `WHRedS.determ_l`; `mono` via
+  `mono_l`; `lift`/`unlift` via the carried `LiftEquiv` fields; `left`/
+  `symm` via the PER laws.
+- The typed layer (both `Pattern.IotaTyping` sites, the `Action`s, the
+  `PathSpineWF` capture spines) is built ONCE, at the root pair, where
+  the `PatternLeafSpine` package supplies every typing; the fold's
+  output supplies the root-to-root capture relations that
+  `IotaRHSDefEq` consumes.
+
+Verification condition checked before implementation: the per-field
+composition step needs `IH.DefEq x y D p a` and `IH.DefEq y z D' p a`
+(same syntactic `y`, same shapes, two validity types) to compose.
+**Resolved (2026-08-13, by reading `LRS.DefEq`'s definition):** the
+concrete relation is type-independent modulo validity — at `.sort`
+type-shapes `DefEq` ignores its type argument entirely, at `.indTy` the
+only type-dependence is the `IndTyHead` conjunct (supplied by the target
+type's own validity), and at `.forallE` every consumed component
+(domain reduction, domain validity, `PiDefEq`, `LamDefEq`) is carried
+inside the definition. Therefore a `Retype` law — `R.TyDefEq A' A' a →
+R.DefEq M N A m a → R.DefEq M N A' m a` — is provable with no new
+assumptions: trivially at `LR0` (its `DefEq` never inspects the type),
+by shape-case analysis with recursion into the lower level at `LRS`,
+hence at `LR` for every level. With `Retype`, cross-observation field
+composition is `retype` + `IH.trans`; no canonical-telescope data, no
+promoted uniqueness, and no residual sorry is needed for O1. This is
+the precise sense in which the roadmap's "canonical field-type
+alignment" exists: the semantic relation never needed the types
+aligned, only valid.
+
 Exit measurement: `sort_invS` reaches
 `[propext, Classical.choice, Quot.sound]`. Record that
 `SExpr.forallE_inv` and `SExpr.sort_forallE_inv` went clean at the same

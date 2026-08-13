@@ -2872,6 +2872,97 @@ theorem IsMajorPremise.whnf : IsMajorPremise e → WHNF Γ e := by
   rintro rfl
   cases h2.antisymm (.appL .refl)
 
+omit [Params] in
+/-- Descend a pattern's arity chain to its head constant's classification.
+With the registered defaults (`top := true`, `extra := 0`) this says every
+registered pattern's head classifies as a symbol of the pattern's arity. -/
+theorem _root_.Lean4Lean.Pattern.WF.arity_head
+    {cl : Name → Option Classification} {c : Name} {k : Nat} {p : Pattern}
+    (H : Arity (.const c) k p) :
+    ∀ {top : Bool} {n : Nat}, p.WF cl top n →
+      cl c = some (if top then .symb (k + n) else .ctor (k + n)) := by
+  induction H with
+  | refl => intro top n h; simp only [Nat.zero_add]; exact h
+  | app _ ih =>
+    intro top n h
+    simpa only [Nat.succ_add, Nat.add_succ] using ih h.1
+  | var _ ih =>
+    intro top n h
+    simpa only [Nat.succ_add, Nat.add_succ] using ih h
+
+/-- Constant-headed application spines decompose uniquely. -/
+theorem spine_inj :
+    ∀ (args args' : List SExpr) {c c' : Name} {ls ls' : List SLevel},
+      args.foldr (fun (a f : SExpr) => f.app a) (.const c ls) =
+        args'.foldr (fun (a f : SExpr) => f.app a) (.const c' ls') →
+      c = c' ∧ ls = ls' ∧ args = args'
+  | [], [], _, _, _, _, h => by cases h; exact ⟨rfl, rfl, rfl⟩
+  | [], _ :: _, _, _, _, _, h => by cases h
+  | _ :: _, [], _, _, _, _, h => by cases h
+  | _ :: args, _ :: args', _, _, _, _, h => by
+    injection h with h1 h2
+    obtain ⟨rfl, rfl, rfl⟩ := spine_inj args args' h1
+    cases h2
+    exact ⟨rfl, rfl, rfl⟩
+
+/-- The subject of any registered-pattern match is a constant-headed spine
+whose head classifies as a symbol of the spine's length. -/
+theorem Params.matchesS_symb_head {p : Pattern} {r} {e : SExpr}
+    {m1 : List SLevel} {m2 : p.Path → SExpr}
+    (h1 : Params.Pat p r) (h2 : p.MatchesS e m1 m2) :
+    ∃ (c' : Name) (ls' : List SLevel) (args' : List SExpr),
+      e = args'.foldr (fun (a f : SExpr) => f.app a) (.const c' ls') ∧
+      Params.classify c' = some (.symb args'.length) := by
+  obtain ⟨c', ls', args', rfl, har⟩ := h2.head_spine
+  refine ⟨c', ls', args', rfl, ?_⟩
+  simpa using Pattern.WF.arity_head har (Params.pat_wf h1)
+
+/-- A fully applied spine headed by a classified constructor is weak-head
+normal: registered pattern heads classify as symbols, so no pattern matches
+the spine or any prefix, no prefix is a major premise, and no prefix is a
+lambda. -/
+theorem WHNF.ctorSpine {c : Name} {k : Nat} {ls : List SLevel}
+    (hcl : Params.classify c = some (.ctor k)) (args : List SExpr) :
+    WHNF Γ (args.foldr (fun (a f : SExpr) => f.app a) (.const c ls)) := by
+  induction args with
+  | nil =>
+    intro e' hred
+    cases hred with
+    | extra action =>
+      obtain ⟨c', ls', args', heq, hsymb⟩ :=
+        Params.matchesS_symb_head action.pat action.matched
+      obtain ⟨rfl, -, rfl⟩ := spine_inj [] args' heq
+      rw [hcl] at hsymb
+      cases hsymb
+  | cons a args ih =>
+    simp only [List.foldr_cons]
+    intro e' hred
+    generalize hf :
+      args.foldr (fun (a f : SExpr) => f.app a) (.const c ls) = fhead at hred ih
+    cases hred with
+    | app h1 => exact ih _ h1
+    | major h1 _ =>
+      obtain ⟨p, ⟨r', hp⟩, p₁, p₂, hsub, m1', m2', hm⟩ := h1
+      cases Params.simple_appS hp hsub
+      subst hf
+      obtain ⟨ch, lsh, argsh, heqh, harh⟩ := hm.head_spine
+      obtain ⟨rfl, -, rfl⟩ := spine_inj args argsh heqh
+      have hhead := Pattern.WF.arity_head harh (Params.pat_wf hp).1
+      rw [hcl] at hhead
+      cases hhead
+    | beta =>
+      cases args <;> simp only [List.foldr_cons, List.foldr_nil] at hf <;> cases hf
+    | extra action =>
+      subst hf
+      obtain ⟨c', ls', args', heq, hsymb⟩ :=
+        Params.matchesS_symb_head action.pat action.matched
+      have heq' : (a :: args).foldr (fun (a f : SExpr) => f.app a) (.const c ls) =
+          args'.foldr (fun (a f : SExpr) => f.app a) (.const c' ls') := by
+        simpa only [List.foldr_cons] using heq
+      obtain ⟨rfl, -, rfl⟩ := spine_inj (a :: args) args' heq'
+      rw [hcl] at hsymb
+      cases hsymb
+
 theorem WHRed.determ (H1 : Γ ⊢ e ⤳ e₁) (H2 : Γ ⊢ e ⤳ e₂) : e₁ = e₂ := by
   induction H1 generalizing e₂ with
   | app l1 ih =>
@@ -3120,6 +3211,34 @@ theorem WHRedS.inferType
     cases H2 using ReflTransGen.headIndOn with
     | rfl => cases W2 _ l1
     | head r1 r2 => cases l1.determ r1; exact ih r2 W2
+
+/-- A classified constructor spine only reduces to itself. -/
+theorem WHRedS.ctorSpine_eq {c : Name} {k : Nat} {ls : List SLevel}
+    (hcl : Params.classify c = some (.ctor k)) {args : List SExpr}
+    (H : Γ ⊢ args.foldr (fun (a f : SExpr) => f.app a) (.const c ls) ⤳* e') :
+    e' = args.foldr (fun (a f : SExpr) => f.app a) (.const c ls) := by
+  have gen : ∀ {e₀ e'}, Γ ⊢ e₀ ⤳* e' →
+      e₀ = args.foldr (fun (a f : SExpr) => f.app a) (.const c ls) →
+      e' = args.foldr (fun (a f : SExpr) => f.app a) (.const c ls) := by
+    intro e₀ e' H
+    induction H using ReflTransGen.headIndOn with
+    | rfl => exact id
+    | head h1 _ _ => rintro rfl; cases WHNF.ctorSpine hcl args _ h1
+  exact gen H rfl
+
+/-- Two weak-head reductions of one term to classified constructor spines
+land on the same syntactic spine.  This is the midpoint agreement used to
+concatenate constructor-observation chains. -/
+theorem WHRedS.ctorSpine_determ
+    {c c' : Name} {k k' : Nat} {ls ls' : List SLevel}
+    {args args' : List SExpr}
+    (hc : Params.classify c = some (.ctor k))
+    (hc' : Params.classify c' = some (.ctor k'))
+    (H1 : Γ ⊢ e ⤳* args.foldr (fun (a f : SExpr) => f.app a) (.const c ls))
+    (H2 : Γ ⊢ e ⤳* args'.foldr (fun (a f : SExpr) => f.app a) (.const c' ls')) :
+    args.foldr (fun (a f : SExpr) => f.app a) (.const c ls) =
+      args'.foldr (fun (a f : SExpr) => f.app a) (.const c' ls') :=
+  WHRedS.inferType H1 (.ctorSpine hc args) H2 (.ctorSpine hc' args')
 
 theorem WHRed.parRed (H : Γ ⊢ e ⤳ e') : Γ ⊢ e ≫ e' := by
   induction H with
