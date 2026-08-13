@@ -959,7 +959,8 @@ theorem LR.constDefEq
         (ys.foldr (fun a f => f.app a) (.const c ls)) A
         (WShape.ctor c' fields hwf)
       exact ⟨hIndHead, LRS.CtorDefEq.of_exact_ctor_spines
-        hleaf.args hleaf.aligned hcl' hhead hhead hspineX hspineY hctor'⟩
+        hleaf.args hleaf.aligned hleaf.aligned.symm hcl' hhead hhead
+        hspineX hspineY hctor'⟩
     | indTy => exact (TShape.indTy_not_le_ctor' hctor').elim
   | @indTy semOut semArgs hcl hind =>
     have hlen : semArgs.length = rargs'.length := by
@@ -1272,6 +1273,8 @@ theorem LR.adequacy (H : IsDefEqStrong Γ M N A)
             (.const h1 h2) (.const h1 h2)
             (.nil (Γ := Γ₀) (A := mkInst ls ci.type))
             (.nil (Γ := Γ₀) (A := mkInst ls ci.type)) .nil
+            (LRS.CtorSpineDefEq.nil
+              (IH := LR Γ₀) (Head := mkInst ls ci.type))
             (LRS.CtorSpineDefEq.nil
               (IH := LR Γ₀) (Head := mkInst ls ci.type))⟩
         | indTy => exact (TShape.indTy_not_le_ctor' hctor).elim

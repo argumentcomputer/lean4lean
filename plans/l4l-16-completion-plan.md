@@ -292,7 +292,15 @@ sub-design is `mono`/`lift`/`unlift` bookkeeping — per-field
 (`CtorSpineDefEq.cons` already stores `hp`), and cross-level moves
 compose stored `LiftEquiv`s; if a zigzag resists `trans`/`cancelRight`
 reduction, keep links at their native levels and let the consumer
-rebase, since links carry their own `HasType`s; (3) per-link
+rebase, since links carry their own `HasType`s. Sharpened at the mirror
+checkpoint: pointwise lowering of a spine at lifted element-shapes is
+NOT derivable — the cons-step's type-shape `a` is existentially bound
+and need not be a lift even when the element-shape is, so the
+`hliftTy`/`hlift` iffs don't apply; the chain must therefore either
+carry per-link native levels with an explicit connection to the root
+relation (the LiftEquiv-zigzag question), or the link's semantic
+payload must be re-derived from its raw payload at consumption time.
+Decide this before writing `toChain`; (3) per-link
 consumption: each link certifies its own iota contraction pair with
 conclusions glued by `(LRS IH).trans` at the package-fixed result type,
 with the root endpoints attached by `whr`-expansion.

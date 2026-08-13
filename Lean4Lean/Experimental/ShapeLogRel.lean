@@ -5990,6 +5990,7 @@ inductive LRS.CtorDefEq (Γ : List SExpr) :
       SExpr.SpineWF Γ CHead' args'.reverse A' →
       CtorArgsDefEq IH args args' rargs →
       CtorSpineDefEq IH CHead args args' rargs A →
+      CtorSpineDefEq IH CHead' args' args rargs A' →
       CtorDefEq Γ IH M N (.ctor c rargs.reverse hwf)
   | left : CtorDefEq Γ IH M N m → CtorDefEq Γ IH M M m
   | symm : CtorDefEq Γ IH M N m → CtorDefEq Γ IH N M m
@@ -6143,6 +6144,7 @@ structure LRS.CtorDefEq.Algebra (Γ : List SExpr)
       SExpr.SpineWF Γ CHead' args'.reverse A' →
       LRS.CtorArgsDefEq IH args args' rargs →
       LRS.CtorSpineDefEq IH CHead args args' rargs A →
+      LRS.CtorSpineDefEq IH CHead' args' args rargs A' →
       Q IH M N (.ctor c rargs.reverse hwf)
   left : ∀ {n : Nat} {IH : LogRel Γ n} {M N : SExpr} {m : WShape (n + 1)},
       Q IH M N m → Q IH M M m
@@ -6181,9 +6183,10 @@ theorem LRS.CtorDefEq.fold
     (alg : LRS.CtorDefEq.Algebra Γ Q)
     (H : LRS.CtorDefEq Γ IH M N m) : Q IH M N m := by
   induction H with
-  | exact hcl hlen hlen' hM hN hhead hhead' hspine hspine' hargs haligned =>
+  | exact hcl hlen hlen' hM hN hhead hhead' hspine hspine' hargs haligned
+      haligned' =>
     exact alg.exact hcl hlen hlen' hM hN hhead hhead' hspine hspine'
-      hargs haligned
+      hargs haligned haligned'
   | left _ ih => exact alg.left ih
   | symm _ ih => exact alg.symm ih
   | trans _ _ ih ih' => exact alg.trans ih ih'
@@ -7158,6 +7161,7 @@ theorem LRS.CtorDefEq.of_exact_ctor_spines_of_le
     {CHead CHead' A A' : SExpr}
     (hargs : CtorArgsDefEq (LR Γ) xs ys rargs)
     (haligned : CtorSpineDefEq (LR Γ) CHead xs ys rargs A)
+    (hmirror : CtorSpineDefEq (LR Γ) CHead' ys xs rargs A')
     (hcl : Params.classify c = some (.ctor rargs.length))
     (hhead : IsDefEq Γ (.const c ls) (.const c ls) CHead)
     (hhead' : IsDefEq Γ (.const c ls') (.const c ls') CHead')
@@ -7176,6 +7180,10 @@ theorem LRS.CtorDefEq.of_exact_ctor_spines_of_le
       (rargs.map (.lift k)) A :=
     haligned.lift hn (fun hmt => LR.TyDefEq.lift hn hmt)
       (fun hma => LR.DefEq.lift hn hma)
+  have hmirror' : CtorSpineDefEq (LR Γ) CHead' ys xs
+      (rargs.map (.lift k)) A' :=
+    hmirror.lift hn (fun hmt => LR.TyDefEq.lift hn hmt)
+      (fun hma => LR.DefEq.lift hn hma)
   have hwf : IsStruct c → WShape.ListNonZero ((rargs.map (.lift k)).reverse) := by
     intro hs
     simp [IsStruct, hcl] at hs
@@ -7185,7 +7193,7 @@ theorem LRS.CtorDefEq.of_exact_ctor_spines_of_le
       (.ctor c (rargs.map (.lift k)).reverse hwf) := by
     exact .exact (hargs.lengths.1.symm ▸ hcl)
       hargs'.lengths.1 hargs'.lengths.2 .rfl .rfl
-      hhead hhead' hspine hspine' hargs' haligned'
+      hhead hhead' hspine hspine' hargs' haligned' hmirror'
   have hle' : m ≤
       WShape.ctor c (rargs.map (.lift k)).reverse hwf := by
     have hle' := (TShape.LE.def (Nat.le_refl (k + 1))
@@ -7203,6 +7211,7 @@ theorem LRS.CtorDefEq.of_exact_ctor_spines
     {CHead CHead' A A' : SExpr}
     (hargs : CtorArgsDefEq (LR Γ) xs ys rargs)
     (haligned : CtorSpineDefEq (LR Γ) CHead xs ys rargs A)
+    (hmirror : CtorSpineDefEq (LR Γ) CHead' ys xs rargs A')
     (hcl : Params.classify c = some (.ctor rargs.length))
     (hhead : IsDefEq Γ (.const c ls) (.const c ls) CHead)
     (hhead' : IsDefEq Γ (.const c ls') (.const c ls') CHead')
@@ -7221,7 +7230,7 @@ theorem LRS.CtorDefEq.of_exact_ctor_spines
     (TShape.lift_eqv (a := m.T) (Nat.succ_le_succ hk)).1.trans hle
   exact .unlift hk (fun hmt => LR.TyDefEq.lift hk hmt)
     (fun hma => LR.DefEq.lift hk hma) <|
-    of_exact_ctor_spines_of_le hargs haligned hcl hhead hhead'
+    of_exact_ctor_spines_of_le hargs haligned hmirror hcl hhead hhead'
       hspine hspine' hn hle'
 
 /-- A concrete capture realized in one explicitly supplied logical
