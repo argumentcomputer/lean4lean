@@ -15770,6 +15770,51 @@ def LRS.IndTyHeadNorm : Prop :=
   ∀ {Γ : List SExpr} {X Y : SExpr} {s : SLevel},
     Ctx.WF Γ → IsDefEq Γ X Y (.sort s) → LRS.IndTyHead Γ X → LRS.IndTyHead Γ Y
 
+/-- **Triage (2026-08-15): `LRS.IndTyHeadNorm` is banked-consumer plumbing,
+not leaf-critical.**  Every consumer of `LRS.IndTyHeadNorm` sits inside a
+CR-conditional producer: `LR.convertStepAt_all` and
+`LR.PiComponentTransport.of_crLadder` (below) take the ladder rungs
+`LRS.SubjectRedS` / `LRS.PiHeadNorm` / `LRS.PiEdgeInv` as hypotheses, and
+the three ADQ consumers are `LR.FixedHeadConvertStep.of_crLadder`,
+`LR.FixedHeadConvertRightValid.of_crLadder` and
+`LR.FixedHeadConvertStep.of_crLadder_R11`.  The ladder rungs are
+interderivable with the 16C′ leaf (`LRS.piPathInv_iff_parRedSDefeq`), so
+nothing on the mandatory leaf path consumes this Prop; it fires only in the
+banked consumer direction, after the leaf lands.  This corrects the
+premortem's framing of the rung as a leaf-path residual.
+
+**What soundness does and does not supply.**  The ShapeDisj precedent
+(`LRS.SortForallEDisj.of_soundness` and friends) does not extend to a
+producer here.  `IndTyHeadNorm` factors as
+
+    whr-expansion  ∘  shape transport  ∘  indTy adequacy
+
+and only the middle factor is soundness-shaped — it is this theorem.  The
+left flank — moving `IndTyHead Γ X`'s `WHRedS Γ X spine` into a defeq that
+`LE_Interp.sound` can consume — is exactly `LRS.SubjectRedS` (equivalently a
+direct whr-invariance of `LE_Interp`, which does not exist; the Theory
+mirror `SExpr.WHRedS.defeq` is a `sorry`).  The right flank — recovering
+`WHRedS Γ Y spine'` from `Y` carrying the `indTy` shape — is the adequacy
+fixpoint's `indTy` observation (`LR.adequacy`, ADQ).  Both flanks are
+leaf-equivalent and neither is soundness-derivable, because the conclusion
+`LRS.IndTyHead Γ Y` carries a *syntactic* reduction — which is what
+distinguishes this rung from the refutation-shaped §4.4 facts that
+soundness does prove.  There is also no `Params.Semantic` certificate to
+bridge either flank: its fields (`structureEta`, `ctor`, `defn`,
+`iotaRule`, `iotaSite`) are equational, not normalizing. -/
+theorem LRS.indTyShapeTransport [Params.Semantic] {Γ : List SExpr}
+    {X Y : SExpr} {s : SLevel} {n : Nat} (hΓ : Ctx.WF Γ)
+    (h : IsDefEq Γ X Y (.sort s))
+    (hX : LE_Interp .nil (WShape.indTy : WShape (n+1)).T X) :
+    LE_Interp .nil (WShape.indTy : WShape (n+1)).T Y :=
+  (LE_Interp.sound (h.strong hΓ) .nil).1.1 hX
+
+/--
+info: 'Lean4Lean.SExpr.LRS.indTyShapeTransport' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms LRS.indTyShapeTransport
+
 /-- **The Pi rung of the induction.**  Note the conclusion is the
 *heterogeneous* `TyDefEq A B`, which is strictly more convenient than the
 right-endpoint form: `LRS.PiEdgeInv` hands back paths `A₁ ⇝ B₁` and
