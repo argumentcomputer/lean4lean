@@ -1,4 +1,6 @@
 import Lean4Lean.Experimental.SExprParamsD1
+import Lean4Lean.Experimental.SExprTransport
+import Lean4Lean.Experimental.SExprGenericReplay
 import Lean4Lean.Verify.Environment.MutualInductiveFixtures
 import Lean4Lean.Theory.Typing.InductivePatternFixtures
 
@@ -844,6 +846,1474 @@ noncomputable def d2IotaRule (univs : Nat)
     @Pattern.IotaRule (d2Params univs) rec major ctor arity r :=
   Classical.choice (d2IotaRule_nonempty univs H)
 
+/-! ## D1-to-D2 proof transport
+
+`SExpr` retains its complete `Params` value as an inductive parameter, so
+crossing from the D1 instance into the block-extended D2 instance is an
+explicit syntax map.  Unlike D0/D1, the syntax layer is not hand-rolled: it
+is the generic univs-agreement transport of
+`Lean4Lean/Experimental/SExprTransport.lean` (R1), instantiated at the two
+instances.  Only the judgment transport below (`d1StrongToD2`) is
+rung-specific, because its `const`/`defn` cases consume the D2 pattern and
+classifier extensions. -/
+
+/-- The two instances agree on `univs` definitionally. -/
+abbrev d1d2 (univs : Nat) :
+    @Params.univs (d1Params univs) = @Params.univs (d2Params univs) := rfl
+
+/-! ### Freshness of the nine block heads over `d1Env` -/
+
+theorem treeLeaf_fresh : d1Env.constants ``Tree.leaf = none := by native_decide
+
+theorem treeNode_fresh : d1Env.constants ``Tree.node = none := by native_decide
+
+theorem treeBranch_fresh : d1Env.constants ``Tree.branch = none := by
+  native_decide
+
+theorem treeListNil_fresh : d1Env.constants ``TreeList.nil = none := by
+  native_decide
+
+theorem treeListCons_fresh : d1Env.constants ``TreeList.cons = none := by
+  native_decide
+
+theorem treeRec_fresh : d1Env.constants (.str ``Tree "rec") = none := by
+  native_decide
+
+theorem treeListRec_fresh : d1Env.constants (.str ``TreeList "rec") = none := by
+  native_decide
+
+/-! ### The nine block heads are unclassified by the D1 table -/
+
+theorem d1Classify_tree : d1Classify ``Tree = none := by native_decide
+
+theorem d1Classify_treeList : d1Classify ``TreeList = none := by native_decide
+
+theorem d1Classify_treeLeaf : d1Classify ``Tree.leaf = none := by native_decide
+
+theorem d1Classify_treeNode : d1Classify ``Tree.node = none := by native_decide
+
+theorem d1Classify_treeBranch : d1Classify ``Tree.branch = none := by
+  native_decide
+
+theorem d1Classify_treeListNil : d1Classify ``TreeList.nil = none := by
+  native_decide
+
+theorem d1Classify_treeListCons : d1Classify ``TreeList.cons = none := by
+  native_decide
+
+theorem d1Classify_treeRec : d1Classify (.str ``Tree "rec") = none := by
+  native_decide
+
+theorem d1Classify_treeListRec : d1Classify (.str ``TreeList "rec") = none := by
+  native_decide
+
+/-- A constant of the D1 environment is none of the nine block heads, so the
+D2 classifier restricts to the D1 classifier at it. -/
+theorem d2Classify_of_d1Const {c : Name} {ci : VConstant}
+    (hreg : d1Env.constants c = some ci) :
+    d2Classify c = d1Classify c := by
+  have h1 : c ≠ ``Tree := fun h => by rw [h, tree_fresh] at hreg; cases hreg
+  have h2 : c ≠ ``TreeList := fun h => by
+    rw [h, treeList_fresh] at hreg; cases hreg
+  have h3 : c ≠ ``Tree.leaf := fun h => by
+    rw [h, treeLeaf_fresh] at hreg; cases hreg
+  have h4 : c ≠ ``Tree.node := fun h => by
+    rw [h, treeNode_fresh] at hreg; cases hreg
+  have h5 : c ≠ ``Tree.branch := fun h => by
+    rw [h, treeBranch_fresh] at hreg; cases hreg
+  have h6 : c ≠ ``TreeList.nil := fun h => by
+    rw [h, treeListNil_fresh] at hreg; cases hreg
+  have h7 : c ≠ ``TreeList.cons := fun h => by
+    rw [h, treeListCons_fresh] at hreg; cases hreg
+  have h8 : c ≠ .str ``Tree "rec" := fun h => by
+    rw [h, treeRec_fresh] at hreg; cases hreg
+  have h9 : c ≠ .str ``TreeList "rec" := fun h => by
+    rw [h, treeListRec_fresh] at hreg; cases hreg
+  simp [d2Classify, h1, h2, h3, h4, h5, h6, h7, h8, h9]
+
+/-! ### Constant lookups of the block-extended environment restrict -/
+
+theorem foldlM_addConst_constants_old {α : Type _} (name : α → Name)
+    (ci : α → VConstant) {c : Name} :
+    ∀ (xs : List α) {env env' : VEnv},
+      xs.foldlM (fun env x => env.addConst (name x) (ci x)) env = some env' →
+      (∀ x ∈ xs, name x ≠ c) →
+      env'.constants c = env.constants c
+  | [], _, _, h, _ => by cases h; rfl
+  | x :: xs, _, _, h, hne => by
+    rw [List.foldlM_cons] at h
+    rcases Option.bind_eq_some_iff.1 h with ⟨envx, hx, hrest⟩
+    rw [foldlM_addConst_constants_old name ci xs hrest
+      (fun y hy => hne y (.tail _ hy))]
+    unfold VEnv.addConst at hx
+    split at hx
+    · cases hx
+    · cases hx
+      show (if name x = c then some (ci x) else _) = _
+      rw [if_neg (hne x (.head _))]
+
+theorem foldl_addDefEq_constants :
+    ∀ (dfs : List VDefEq) (env : VEnv) (c : Name),
+      (dfs.foldl VEnv.addDefEq env).constants c = env.constants c
+  | [], _, _ => rfl
+  | d :: dfs, env, c => foldl_addDefEq_constants dfs (env.addDefEq d) c
+
+theorem treeTypeConstants_names :
+    treeDecl.blockTypeConstants.map (·.name) = [``Tree, ``TreeList] := rfl
+
+theorem treeCtorConstants_names :
+    treeDecl.blockConstructorConstants.map (·.name) =
+      [``Tree.leaf, ``Tree.node, ``Tree.branch,
+        ``TreeList.nil, ``TreeList.cons] := rfl
+
+theorem treeRecursors_names :
+    TreeGen.recursors.map (·.name) =
+      [.str ``Tree "rec", .str ``TreeList "rec"] := rfl
+
+/-- A D2 constant that is none of the nine block heads was already a D1
+constant. -/
+theorem d2Env_constants_old {c : Name} {ci : VConstant}
+    (h1 : c ≠ ``Tree) (h2 : c ≠ ``TreeList)
+    (h3 : c ≠ ``Tree.leaf) (h4 : c ≠ ``Tree.node) (h5 : c ≠ ``Tree.branch)
+    (h6 : c ≠ ``TreeList.nil) (h7 : c ≠ ``TreeList.cons)
+    (h8 : c ≠ .str ``Tree "rec") (h9 : c ≠ .str ``TreeList "rec")
+    (hci : d2Env.constants c = some ci) : d1Env.constants c = some ci := by
+  obtain ⟨trace⟩ := d2Trace
+  rw [← trace.addRules, foldl_addDefEq_constants] at hci
+  rw [foldlM_addConst_constants_old _ _ _ trace.addRecs (by
+      intro x hx
+      have : x.name ∈ TreeGen.recursors.map (·.name) := List.mem_map_of_mem hx
+      rw [treeRecursors_names] at this
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at this
+      rcases this with h | h <;> rw [h]
+      · exact fun hc => h8 hc.symm
+      · exact fun hc => h9 hc.symm),
+    foldlM_addConst_constants_old _ _ _ trace.addCtors (by
+      intro x hx
+      have : x.name ∈ treeDecl.blockConstructorConstants.map (·.name) :=
+        List.mem_map_of_mem hx
+      rw [treeCtorConstants_names] at this
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at this
+      rcases this with h | h | h | h | h <;> rw [h]
+      · exact fun hc => h3 hc.symm
+      · exact fun hc => h4 hc.symm
+      · exact fun hc => h5 hc.symm
+      · exact fun hc => h6 hc.symm
+      · exact fun hc => h7 hc.symm),
+    foldlM_addConst_constants_old _ _ _ trace.addTypes (by
+      intro x hx
+      have : x.name ∈ treeDecl.blockTypeConstants.map (·.name) :=
+        List.mem_map_of_mem hx
+      rw [treeTypeConstants_names] at this
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at this
+      rcases this with h | h <;> rw [h]
+      · exact fun hc => h1 hc.symm
+      · exact fun hc => h2 hc.symm)] at hci
+  exact hci
+
+/-! ### Constant patterns of the D2 registry are inherited -/
+
+/-- Every constant pattern of the D2 inventory is a D1 pattern: the block
+contributes only iota patterns, and the extension patterns are literally the
+D1 definition patterns.  Stated with an explicit pattern equation so the
+dependent index of `AssembledPat` can be eliminated. -/
+theorem d2Pat_at_const_aux {p : Pattern} {r : p.RHS × p.Check}
+    (H : D2Pat p r) :
+    ∀ {c : Name} (hp : p = .const c), D1Pat (.const c) (hp ▸ r) := by
+  intro c hp
+  cases H with
+  | nat H =>
+    exfalso
+    rcases natPat_pattern H with h | h <;> rw [hp] at h <;> cases h
+  | assembled H =>
+    cases H with
+    | rule h =>
+      exfalso
+      obtain ⟨i, cc, hentry, hpat, -⟩ :=
+        VInductDecl.BlockGenerationChecked.IotaPat.recover TreeGen h
+      rw [hp] at hpat
+      cases hpat
+    | ext ext hmem =>
+      simp only [d2Exts, List.mem_cons, List.not_mem_nil, or_false] at hmem
+      rcases hmem with rfl | rfl | rfl
+      · cases hp
+        exact .old .defn
+      · cases hp
+        exact .defnA
+      · cases hp
+        exact .defnB
+
+theorem d2Pat_at_const {c : Name}
+    {r : (Pattern.const c).RHS × (Pattern.const c).Check}
+    (H : D2Pat (.const c) r) : D1Pat (.const c) r :=
+  d2Pat_at_const_aux H rfl
+
+/-! ### Constructor-classification transport at old constants -/
+
+/-- A constructor-shaped D2 classification at a D1 constant restricts to the
+same constructor classification in D1. -/
+theorem d2CtorToD1 (univs : Nat) {c : Name} {ci : VConstant}
+    (hreg : d1Env.constants c = some ci)
+    (H : @CtorBundle.IsCtor (d2Params univs) c) :
+    @CtorBundle.IsCtor (d1Params univs) c := by
+  change ∃ cl, d2Classify c = some cl ∧
+    (match cl with | .ctor _ | .etaCtor _ _ => true | _ => false) = true at H
+  change ∃ cl, d1Classify c = some cl ∧
+    (match cl with | .ctor _ | .etaCtor _ _ => true | _ => false) = true
+  rwa [d2Classify_of_d1Const hreg] at H
+
+theorem d2CtorToD1_cl_eq (univs : Nat) {c : Name} {ci : VConstant}
+    (hreg : d1Env.constants c = some ci)
+    (cl : @CtorBundle.IsCtor (d2Params univs) c) :
+    (@CtorBundle.IsCtor.cl (d1Params univs) c
+        (d2CtorToD1 univs hreg cl)).1 =
+      (@CtorBundle.IsCtor.cl (d2Params univs) c cl).1 := by
+  let oldCl := @CtorBundle.IsCtor.cl (d1Params univs) c
+    (d2CtorToD1 univs hreg cl)
+  let newCl := @CtorBundle.IsCtor.cl (d2Params univs) c cl
+  have hnewD1 : d1Classify c = some newCl.1 := by
+    have hnew := newCl.2.1
+    change d2Classify c = some newCl.1 at hnew
+    rwa [d2Classify_of_d1Const hreg] at hnew
+  have hold : d1Classify c = some oldCl.1 := oldCl.2.1
+  exact Option.some.inj (hold.symm.trans hnewD1)
+
+/-- Reindex a D1 constructor bundle through the generic syntax transport and
+the classifier restriction. -/
+noncomputable def d1CtorBundleToD2 (univs : Nat) {c : Name} {ci : VConstant}
+    (hreg : d1Env.constants c = some ci)
+    (cl : @CtorBundle.IsCtor (d2Params univs) c)
+    (F : @CtorBundle (d1Params univs) c (d2CtorToD1 univs hreg cl)) :
+    @CtorBundle (d2Params univs) c cl := by
+  rcases F with ⟨I, Ts, args, u, hlen, hclI, hu0⟩
+  refine @CtorBundle.mk (d2Params univs) c cl I
+    (Ts.map (transportExpr (d1d2 univs)))
+    (args.map (transportExpr (d1d2 univs)))
+    (transportLevel (d1d2 univs) u) ?_ ?_ ?_
+  · rw [List.length_map, hlen, d2CtorToD1_cl_eq univs hreg cl]
+  · change d1Classify I = some (.indTy args.length) at hclI
+    letI : Params := d2Params univs
+    change d2Classify I =
+      some (.indTy (args.map (transportExpr (d1d2 univs))).length)
+    simpa using d1Classify_agrees hclI
+  · intro hzero
+    have hback := congrArg (transportLevel (d1d2 univs).symm) hzero
+    apply hu0
+    apply Subtype.ext
+    exact congrArg Subtype.val hback
+
+@[simp] theorem d1CtorBundleToD2_rhs (univs : Nat) {c : Name} {ci : VConstant}
+    (hreg : d1Env.constants c = some ci)
+    (cl : @CtorBundle.IsCtor (d2Params univs) c)
+    (F : @CtorBundle (d1Params univs) c (d2CtorToD1 univs hreg cl))
+    (ls : List (@SLevel (d1Params univs))) :
+    transportExpr (d1d2 univs)
+        (@CtorBundle.rhs (d1Params univs) c (d2CtorToD1 univs hreg cl) F ls) =
+      @CtorBundle.rhs (d2Params univs) c cl
+        (d1CtorBundleToD2 univs hreg cl F)
+        (ls.map (transportLevel (d1d2 univs))) := by
+  rcases F with ⟨I, Ts, args, u, hlen, hclI, hu0⟩
+  simp [CtorBundle.rhs, d1CtorBundleToD2,
+    transportExpr_foldr_forallE, transportExpr_foldr_app]
+
+@[simp] theorem d1CtorBundleToD2_u (univs : Nat) {c : Name} {ci : VConstant}
+    (hreg : d1Env.constants c = some ci)
+    (cl : @CtorBundle.IsCtor (d2Params univs) c)
+    (F : @CtorBundle (d1Params univs) c (d2CtorToD1 univs hreg cl)) :
+    @CtorBundle.u (d2Params univs) c cl (d1CtorBundleToD2 univs hreg cl F) =
+      transportLevel (d1d2 univs)
+        (@CtorBundle.u (d1Params univs) c (d2CtorToD1 univs hreg cl) F) := by
+  cases F
+  rfl
+
+/-! ### Judgment transport -/
+
+theorem d1IsDefEq_to_d2 (univs : Nat)
+    {Gamma : List (@SExpr (d1Params univs))}
+    {e₁ e₂ A : @SExpr (d1Params univs)}
+    (H : @IsDefEq (d1Params univs) Gamma e₁ e₂ A) :
+    @IsDefEq (d2Params univs) (Gamma.map (transportExpr (d1d2 univs)))
+      (transportExpr (d1d2 univs) e₁) (transportExpr (d1d2 univs) e₂)
+      (transportExpr (d1d2 univs) A) := by
+  letI : Params := d2Params univs
+  induction H with
+  | bvar h => exact .bvar (transportLookup (d1d2 univs) h)
+  | symm _ ih => exact .symm ih
+  | trans _ _ ih₁ ih₂ => exact .trans ih₁ ih₂
+  | @sort Gamma l =>
+    simpa only [transportExpr_sort, transportLevel_succ] using
+      (IsDefEq.sort : IsDefEq (Gamma.map (transportExpr (d1d2 univs)))
+        (.sort (transportLevel (d1d2 univs) l))
+        (.sort (transportLevel (d1d2 univs) l))
+        (.sort (.succ (transportLevel (d1d2 univs) l))))
+  | @const c ci Gamma ls hreg hlen =>
+    simpa only [transportExpr_const, transportExpr_mkInst] using
+      (IsDefEq.const (Γ := Gamma.map (transportExpr (d1d2 univs)))
+        (ls := ls.map (transportLevel (d1d2 univs)))
+        (d1Env_le_d2Env.constants hreg) (by simpa using hlen))
+  | appDF _ _ ihf iha =>
+    rw [transportExpr_app, transportExpr_app, transportExpr_inst]
+    exact IsDefEq.appDF ihf iha
+  | lamDF _ _ ihA ihBody =>
+    simpa only [List.map_cons, transportExpr_lam, transportExpr_forallE] using
+      IsDefEq.lamDF ihA ihBody
+  | forallEDF _ _ ihA ihBody =>
+    simpa only [List.map_cons, transportExpr_forallE, transportExpr_sort,
+      transportLevel_imax] using IsDefEq.forallEDF ihA ihBody
+  | defeqDF _ _ ihA ihe => exact .defeqDF ihA ihe
+  | beta _ _ ihBody ihArg =>
+    simpa only [List.map_cons, transportExpr_app, transportExpr_lam,
+      transportExpr_inst] using IsDefEq.beta ihBody ihArg
+  | eta _ ih =>
+    rw [transportExpr_lam, transportExpr_app, transportExpr_bvar,
+      transportExpr_forallE, transportExpr_lift']
+    exact IsDefEq.eta ih
+  | proofIrrel _ _ _ ihp ihh ihh' => exact .proofIrrel ihp ihh ihh'
+  | @extra df Gamma ls hreg hlen =>
+    simpa only [transportExpr_mkInst] using
+      (IsDefEq.extra (Γ := Gamma.map (transportExpr (d1d2 univs)))
+        (ls := ls.map (transportLevel (d1d2 univs)))
+        (d1Env_le_d2Env.defeqs hreg) (by simpa using hlen))
+
+noncomputable def d1Action_to_d2 (univs : Nat)
+    {Gamma : List (@SExpr (d1Params univs))} {p : Pattern}
+    {r : p.RHS × p.Check} {e A : @SExpr (d1Params univs)}
+    {m₁ : List (@SLevel (d1Params univs))}
+    {m₂ : p.Path → @SExpr (d1Params univs)}
+    (H : @Pattern.Action (d1Params univs) Gamma p r e m₁ m₂ A) :
+    @Pattern.Action (d2Params univs)
+      (Gamma.map (transportExpr (d1d2 univs))) p r
+      (transportExpr (d1d2 univs) e) (m₁.map (transportLevel (d1d2 univs)))
+      (fun path => transportExpr (d1d2 univs) (m₂ path))
+      (transportExpr (d1d2 univs) A) := by
+  rcases H with ⟨hpat, hmatched, dfs, hdefeqs, hchecked, hsound⟩
+  change D1Pat p r at hpat
+  refine @Pattern.Action.mk (d2Params univs)
+    (Gamma := Gamma.map (transportExpr (d1d2 univs))) (p := p) (r := r)
+    (e := transportExpr (d1d2 univs) e)
+    (m1 := m₁.map (transportLevel (d1d2 univs)))
+    (m2 := fun path => transportExpr (d1d2 univs) (m₂ path))
+    (A := transportExpr (d1d2 univs) A) (d1Pat_to_d2 hpat)
+    (transportMatchesS (d1d2 univs) hmatched)
+    (transportDfs (d1d2 univs) dfs) ?_ ?_ ?_
+  · rw [transportDfs_map_snd, hdefeqs]
+    exact transport_defeqsS (d1d2 univs) r.2 m₁ m₂
+  · intro a b B hmem
+    simp only [transportDfs, List.mem_map] at hmem
+    obtain ⟨⟨B₀, a₀, b₀⟩, hmem₀, heq⟩ := hmem
+    cases heq
+    exact d1IsDefEq_to_d2 univs (hchecked a₀ b₀ B₀ hmem₀)
+  · simpa only [transportExpr_rhs_applyS] using d1IsDefEq_to_d2 univs hsound
+
+/-- Transport a D1 evidence-rich derivation into the block-extended D2
+syntax and registry.  The `const` and `defn` cases carry the inherited
+definition patterns across the `d1Pat_to_d2` inclusion, and reindex
+constructor bundles through the D2 classifier restriction at old
+constants. -/
+noncomputable def d1StrongToD2 (univs : Nat)
+    {Gamma : List (@SExpr (d1Params univs))}
+    {e₁ e₂ A : @SExpr (d1Params univs)}
+    (H : @IsDefEqStrong (d1Params univs) Gamma e₁ e₂ A) :
+    @IsDefEqStrong (d2Params univs) (Gamma.map (transportExpr (d1d2 univs)))
+      (transportExpr (d1d2 univs) e₁) (transportExpr (d1d2 univs) e₂)
+      (transportExpr (d1d2 univs) A) := by
+  letI : Params := d2Params univs
+  induction H with
+  | bvar h _ ihA => exact .bvar (transportLookup (d1d2 univs) h) ihA
+  | symm _ ih => exact .symm ih
+  | trans _ _ ih₁ ih₂ => exact .trans ih₁ ih₂
+  | @sort Gamma l =>
+    simpa only [transportExpr_sort, transportLevel_succ] using
+      (IsDefEqStrong.sort : IsDefEqStrong
+        (Gamma.map (transportExpr (d1d2 univs)))
+        (.sort (transportLevel (d1d2 univs) l))
+        (.sort (transportLevel (d1d2 univs) l))
+        (.sort (.succ (transportLevel (d1d2 univs) l))))
+  | @const c ci Gamma ls u hreg hlen hTy F hF hDef ihTy ihF ihDef =>
+    let F' : ∀ cl : CtorBundle.IsCtor c, CtorBundle c cl := fun cl =>
+      d1CtorBundleToD2 univs hreg cl (F (d2CtorToD1 univs hreg cl))
+    simpa only [transportExpr_const, transportExpr_mkInst] using
+      (@IsDefEqStrong.const (d2Params univs) c ci
+      (Gamma.map (transportExpr (d1d2 univs)))
+      (ls.map (transportLevel (d1d2 univs))) (transportLevel (d1d2 univs) u)
+      (d1Env_le_d2Env.constants hreg)
+      (by simpa only [List.length_map] using hlen) (by
+        simpa only [transportExpr_mkInst, transportExpr_sort] using ihTy)
+      F' (by
+        intro cl
+        dsimp only [F']
+        rw [← d1CtorBundleToD2_rhs univs hreg cl
+            (F (d2CtorToD1 univs hreg cl)) ls,
+          d1CtorBundleToD2_u univs hreg cl (F (d2CtorToD1 univs hreg cl))]
+        have H := ihF (d2CtorToD1 univs hreg cl)
+        simp only [transportExpr_mkInst, transportExpr_sort] at H
+        exact H) (by
+        intro r hpat
+        have hold : D1Pat (.const c) r := d2Pat_at_const hpat
+        have H := ihDef hold
+        rw [transportExpr_rhs_applyS] at H
+        have hm2 : (fun path => transportExpr (d1d2 univs) (Empty.elim path)) =
+            (Empty.elim :
+              (Pattern.const c).Path → @SExpr (d2Params univs)) :=
+          funext fun path => nomatch path
+        rw [hm2] at H
+        simpa only [transportExpr_const, transportExpr_mkInst] using H))
+  | appDF _ _ _ _ _ ihA ihCod ihf iha ihResult =>
+    rw [transportExpr_inst, transportExpr_inst, transportExpr_sort] at ihResult
+    simpa only [List.map_cons, transportExpr_app, transportExpr_forallE,
+      transportExpr_inst] using
+      IsDefEqStrong.appDF ihA ihCod ihf iha ihResult
+  | lamDF _ _ _ _ _ ihA ihB ihB' ihBody ihBody' =>
+    simpa only [List.map_cons, transportExpr_lam, transportExpr_forallE] using
+      IsDefEqStrong.lamDF ihA ihB ihB' ihBody ihBody'
+  | forallEDF _ _ _ ihA ihBody ihBody' =>
+    simpa only [List.map_cons, transportExpr_forallE, transportExpr_sort,
+      transportLevel_imax] using
+      IsDefEqStrong.forallEDF ihA ihBody ihBody'
+  | defeqDF _ _ ihA ihe => exact .defeqDF ihA ihe
+  | beta _ _ _ _ ihBody ihArg ihApp ihInst =>
+    simp only [transportExpr_app, transportExpr_lam,
+      transportExpr_inst] at ihApp
+    simp only [transportExpr_inst] at ihInst
+    simpa only [List.map_cons, transportExpr_app, transportExpr_lam,
+      transportExpr_inst] using
+      IsDefEqStrong.beta ihBody ihArg ihApp ihInst
+  | @eta Gamma e A B _ _ ihTerm ihLam =>
+    rw [transportExpr_lam, transportExpr_app, transportExpr_lift',
+      transportExpr_bvar, transportExpr_forallE] at ihLam ⊢
+    exact IsDefEqStrong.eta ihTerm ihLam
+  | proofIrrel _ _ _ ihp ihh ihh' => exact .proofIrrel ihp ihh ihh'
+  | @defn c ci Gamma ls u r hreg hlen hTy F hF action hRhs ihTy ihF ihRhs =>
+    have hm2 : (fun path => transportExpr (d1d2 univs) (Empty.elim path)) =
+        (Empty.elim :
+          (Pattern.const c).Path → @SExpr (d2Params univs)) :=
+      funext fun path => nomatch path
+    let F' : ∀ cl : CtorBundle.IsCtor c, CtorBundle c cl := fun cl =>
+      d1CtorBundleToD2 univs hreg cl (F (d2CtorToD1 univs hreg cl))
+    have action' := d1Action_to_d2 univs action
+    rw [transportExpr_const, transportExpr_mkInst, hm2] at action'
+    have hRhs' := ihRhs
+    rw [transportExpr_rhs_applyS, hm2, transportExpr_mkInst] at hRhs'
+    have hTy' := ihTy
+    rw [transportExpr_mkInst, transportExpr_sort] at hTy'
+    have hF' : ∀ cl, IsDefEqStrong (Gamma.map (transportExpr (d1d2 univs)))
+        (SExpr.mkInst (ls.map (transportLevel (d1d2 univs))) ci.type)
+        ((F' cl).rhs (ls.map (transportLevel (d1d2 univs))))
+        (.sort (F' cl).u) := by
+      intro cl
+      dsimp only [F']
+      rw [← d1CtorBundleToD2_rhs univs hreg cl
+          (F (d2CtorToD1 univs hreg cl)) ls,
+        d1CtorBundleToD2_u univs hreg cl (F (d2CtorToD1 univs hreg cl))]
+      have H := ihF (d2CtorToD1 univs hreg cl)
+      simp only [transportExpr_mkInst, transportExpr_sort] at H
+      exact H
+    simpa only [transportExpr_const, transportExpr_mkInst,
+      transportExpr_rhs_applyS, hm2] using
+      IsDefEqStrong.defn (d1Env_le_d2Env.constants hreg)
+        (by simpa only [List.length_map] using hlen)
+        hTy' F' hF' action' hRhs'
+  | extra action _ _ ihLeft ihRight =>
+    rw [transportExpr_rhs_applyS] at ihRight
+    simpa only [transportExpr_rhs_applyS] using
+      IsDefEqStrong.extra (d1Action_to_d2 univs action) ihLeft ihRight
+
+/-! ## D2 semantic machinery
+
+The type-uniqueness, spine-view, and path-spine tools the semantic layer
+needs are *not* re-proved here: they are the generic engine of
+`Lean4Lean/Experimental/SExprGenericReplay.lean` (R2), instantiated at the
+block-extended instance through one `SExpr.Replay` certificate.  This is the
+first consumer of that module; D0/D1's hand-rolled copies are a recorded
+deletion follow-up. -/
+
+/-- The ambient replay certificate of the D2 instance: the block-extended
+environment is well formed, and its (empty) structure-eta registry is
+sound. -/
+theorem d2Replay (univs : Nat) : @SExpr.Replay (d2Params univs) :=
+  @SExpr.Replay.mk (d2Params univs) d2Env_wf (d2StructureEtaSound univs)
+
+
+
+abbrev D2ContextValid (univs : Nat)
+    (Gamma : List (@SExpr (d2Params univs))) : Prop :=
+  @SExpr.CtxValid (d2Params univs) Gamma
+
+abbrev D2TypesDefEq (univs : Nat) {Gamma : List (@SExpr (d2Params univs))}
+    (A B : @SExpr (d2Params univs)) : Prop :=
+  @SExpr.TypesDefEq (d2Params univs) Gamma A B
+
+theorem d2TypeUniq (univs : Nat)
+    {Gamma : List (@SExpr (d2Params univs))}
+    {x A B : @SExpr (d2Params univs)}
+    (hGamma : D2ContextValid univs Gamma)
+    (hxA : @IsDefEq (d2Params univs) Gamma x x A)
+    (hxB : @IsDefEq (d2Params univs) Gamma x x B) :
+    D2TypesDefEq (Gamma := Gamma) univs A B :=
+  @SExpr.typeUniq (d2Params univs) (d2Replay univs) _ _ _ _ hGamma hxA hxB
+
+theorem d2TypesTrans (univs : Nat)
+    {Gamma : List (@SExpr (d2Params univs))}
+    {A B C : @SExpr (d2Params univs)}
+    (hGamma : D2ContextValid univs Gamma)
+    (hAB : D2TypesDefEq (Gamma := Gamma) univs A B)
+    (hBC : D2TypesDefEq (Gamma := Gamma) univs B C) :
+    D2TypesDefEq (Gamma := Gamma) univs A C :=
+  @SExpr.typesTrans (d2Params univs) (d2Replay univs) _ _ _ _ hGamma hAB hBC
+
+theorem d2TypesInst (univs : Nat)
+    {Gamma : List (@SExpr (d2Params univs))}
+    {D B B' e : @SExpr (d2Params univs)}
+    (hBB' : D2TypesDefEq (Gamma := D :: Gamma) univs B B')
+    (he : @IsDefEq (d2Params univs) Gamma e e D) :
+    D2TypesDefEq (Gamma := Gamma) univs
+      (@SExpr.inst (d2Params univs) B e)
+      (@SExpr.inst (d2Params univs) B' e) :=
+  @SExpr.typesInst (d2Params univs) _ _ _ _ _ hBB' he
+
+theorem d2ForallEInv (univs : Nat)
+    {Gamma : List (@SExpr (d2Params univs))}
+    {A B A' B' : @SExpr (d2Params univs)}
+    (hGamma : D2ContextValid univs Gamma)
+    (hPi : D2TypesDefEq (Gamma := Gamma) univs
+      (@SExpr.forallE (d2Params univs) A B)
+      (@SExpr.forallE (d2Params univs) A' B')) :
+    D2TypesDefEq (Gamma := Gamma) univs A A' ∧
+      D2TypesDefEq (Gamma := A :: Gamma) univs B B' :=
+  @SExpr.forallEInv (d2Params univs) (d2Replay univs) _ _ _ _ _ hGamma hPi
+
+noncomputable def d2SpineConsView (univs : Nat)
+    {Gamma : List (@SExpr (d2Params univs))}
+    {D B Head e R : @SExpr (d2Params univs)}
+    {es : List (@SExpr (d2Params univs))}
+    (hGamma : D2ContextValid univs Gamma)
+    (hHead : D2TypesDefEq (Gamma := Gamma) univs
+      (@SExpr.forallE (d2Params univs) D B) Head)
+    (H : @SpineWF (d2Params univs) Gamma Head (e :: es) R) :
+    @SExpr.SpineConsView (d2Params univs) Gamma D B e es R :=
+  @SExpr.spineConsView (d2Params univs) (d2Replay univs) _ _ _ _ _ _ _ hGamma hHead H
+
+theorem d2PathSpineOfSpineWF (univs : Nat)
+    {Gamma : List (@SExpr (d2Params univs))}
+    {alpha : Type}
+    {value type : alpha → @SExpr (d2Params univs)}
+    {A B : @SExpr (d2Params univs)} {paths : List alpha}
+    (hGamma : D2ContextValid univs Gamma)
+    (htyped : ∀ path, @IsDefEq (d2Params univs) Gamma
+      (value path) (value path) (type path))
+    (H : @SpineWF (d2Params univs) Gamma A (paths.map value) B) :
+    @PathSpineWF (d2Params univs) Gamma alpha value type A paths B :=
+  @SExpr.pathSpineOfSpineWF (d2Params univs) (d2Replay univs) _ _ _ _ _ _ _ hGamma htyped H
+
+/-! ## The block heads: lookups, classifications, and strong typings -/
+
+theorem d2Env_tree_lookup :
+    d2Env.constants ``Tree = some treeType.toVConstant :=
+  d2Env_family_lookup (List.mem_of_getElem? (i := 0) rfl)
+
+theorem d2Env_treeList_lookup :
+    d2Env.constants ``TreeList = some treeListType.toVConstant :=
+  d2Env_family_lookup (List.mem_of_getElem? (i := 1) rfl)
+
+theorem d2Env_treeLeaf_lookup :
+    d2Env.constants ``Tree.leaf = some treeType.ctors[0].toVConstant :=
+  d2Env_ctor_lookup (List.mem_of_getElem? (i := 0) rfl)
+
+theorem d2Env_treeNode_lookup :
+    d2Env.constants ``Tree.node = some treeType.ctors[1].toVConstant :=
+  d2Env_ctor_lookup (List.mem_of_getElem? (i := 1) rfl)
+
+theorem d2Env_treeBranch_lookup :
+    d2Env.constants ``Tree.branch = some treeType.ctors[2].toVConstant :=
+  d2Env_ctor_lookup (List.mem_of_getElem? (i := 2) rfl)
+
+theorem d2Env_treeListNil_lookup :
+    d2Env.constants ``TreeList.nil = some treeListType.ctors[0].toVConstant :=
+  d2Env_ctor_lookup (List.mem_of_getElem? (i := 3) rfl)
+
+theorem d2Env_treeListCons_lookup :
+    d2Env.constants ``TreeList.cons = some treeListType.ctors[1].toVConstant :=
+  d2Env_ctor_lookup (List.mem_of_getElem? (i := 4) rfl)
+
+/-- Constructor-shaped classifications of the D2 table: the five block
+constructors, or an inherited D1 classification. -/
+theorem d2Classify_ctor_cases {c : Name} {cl : Classification}
+    (hc : d2Classify c = some cl) (hshape : ctorLike cl = true) :
+    (c = ``Tree.leaf ∧ cl = .ctor 2) ∨ (c = ``Tree.node ∧ cl = .ctor 2) ∨
+      (c = ``Tree.branch ∧ cl = .ctor 2) ∨
+      (c = ``TreeList.nil ∧ cl = .ctor 1) ∨
+      (c = ``TreeList.cons ∧ cl = .ctor 3) ∨ d1Classify c = some cl := by
+  by_cases h1 : c = ``Tree
+  · subst c
+    simp [d2Classify] at hc
+    subst cl
+    simp [ctorLike] at hshape
+  by_cases h2 : c = ``TreeList
+  · subst c
+    simp [d2Classify, h1] at hc
+    subst cl
+    simp [ctorLike] at hshape
+  by_cases h3 : c = ``Tree.leaf
+  · subst c
+    simp [d2Classify, h1, h2] at hc
+    exact .inl ⟨rfl, hc.symm⟩
+  by_cases h4 : c = ``Tree.node
+  · subst c
+    simp [d2Classify, h1, h2, h3] at hc
+    exact .inr (.inl ⟨rfl, hc.symm⟩)
+  by_cases h5 : c = ``Tree.branch
+  · subst c
+    simp [d2Classify, h1, h2, h3, h4] at hc
+    exact .inr (.inr (.inl ⟨rfl, hc.symm⟩))
+  by_cases h6 : c = ``TreeList.nil
+  · subst c
+    simp [d2Classify, h1, h2, h3, h4, h5] at hc
+    exact .inr (.inr (.inr (.inl ⟨rfl, hc.symm⟩)))
+  by_cases h7 : c = ``TreeList.cons
+  · subst c
+    simp [d2Classify, h1, h2, h3, h4, h5, h6] at hc
+    exact .inr (.inr (.inr (.inr (.inl ⟨rfl, hc.symm⟩))))
+  by_cases h8 : c = .str ``Tree "rec"
+  · subst c
+    simp [d2Classify, h1, h2, h3, h4, h5, h6, h7] at hc
+    subst cl
+    simp [ctorLike] at hshape
+  by_cases h9 : c = .str ``TreeList "rec"
+  · subst c
+    simp [d2Classify, h1, h2, h3, h4, h5, h6, h7, h8] at hc
+    subst cl
+    simp [ctorLike] at hshape
+  refine .inr (.inr (.inr (.inr (.inr ?_))))
+  simpa [d2Classify, h1, h2, h3, h4, h5, h6, h7, h8, h9] using hc
+
+theorem treeType_not_ctor (univs : Nat)
+    (cl : @CtorBundle.IsCtor (d2Params univs) ``Tree) : False := by
+  letI : Params := d2Params univs
+  have hshape : ctorLike cl.cl.1 = true := by
+    have hs := cl.cl.2.2
+    cases hc : cl.cl.1 <;> simp [ctorLike, hc] at hs ⊢
+  have hc := cl.cl.2.1
+  change d2Classify ``Tree = some cl.cl.1 at hc
+  simp [d2Classify] at hc
+  rw [← hc] at hshape
+  simp [ctorLike] at hshape
+
+theorem treeListType_not_ctor (univs : Nat)
+    (cl : @CtorBundle.IsCtor (d2Params univs) ``TreeList) : False := by
+  letI : Params := d2Params univs
+  have hshape : ctorLike cl.cl.1 = true := by
+    have hs := cl.cl.2.2
+    cases hc : cl.cl.1 <;> simp [ctorLike, hc] at hs ⊢
+  have hc := cl.cl.2.1
+  change d2Classify ``TreeList = some cl.cl.1 at hc
+  simp [d2Classify] at hc
+  rw [← hc] at hshape
+  simp [ctorLike] at hshape
+
+/-- No D2 constant pattern lives at a name fresh over `d1Env`: the three
+definition patterns name D1 constants. -/
+theorem d2Pat_no_const_fresh {c : Name}
+    {r : (Pattern.const c).RHS × (Pattern.const c).Check}
+    (hfresh : d1Env.constants c = none) (H : D2Pat (.const c) r) : False := by
+  have H1 := d2Pat_at_const H
+  cases H1 with
+  | old H0 =>
+    cases H0 with
+    | iota H' => rcases natPat_pattern H' with h | h <;> cases h
+    | defn =>
+      rw [d0Env_le_d1Env.constants d0Env_d0Def_lookup] at hfresh
+      cases hfresh
+  | defnA =>
+    rw [d1Env_d1MutA_lookup] at hfresh
+    cases hfresh
+  | defnB =>
+    rw [d1Env_d1MutB_lookup] at hfresh
+    cases hfresh
+
+/-! ### Strong typings of the family heads and constructor types -/
+
+theorem d2TreeStrong (univs : Nat) (Gamma : List (@SExpr (d2Params univs)))
+    (l : @SLevel (d2Params univs)) :
+    @IsDefEqStrong (d2Params univs) Gamma
+      (@SExpr.const (d2Params univs) ``Tree [l])
+      (@SExpr.const (d2Params univs) ``Tree [l])
+      (@SExpr.forallE (d2Params univs)
+        (@SExpr.sort (d2Params univs) (@SLevel.succ (d2Params univs) l))
+        (@SExpr.sort (d2Params univs) (@SLevel.succ (d2Params univs) l))) := by
+  letI : Params := d2Params univs
+  let F : ∀ cl : CtorBundle.IsCtor ``Tree, CtorBundle ``Tree cl := fun cl =>
+    (treeType_not_ctor univs cl).elim
+  have H : IsDefEqStrong Gamma (.const ``Tree [l]) (.const ``Tree [l])
+      (SExpr.mkInst [l] treeType.toVConstant.type) := by
+    refine .const (u := SLevel.imax l.succ.succ l.succ.succ)
+      d2Env_tree_lookup rfl ?_ F ?_ ?_
+    · change IsDefEqStrong Gamma
+        (.forallE (.sort l.succ) (.sort l.succ))
+        (.forallE (.sort l.succ) (.sort l.succ))
+        (.sort (SLevel.imax l.succ.succ l.succ.succ))
+      exact .forallEDF .sort .sort .sort
+    · intro cl
+      exact (treeType_not_ctor univs cl).elim
+    · intro r hpat
+      exact (d2Pat_no_const_fresh tree_fresh hpat).elim
+  exact H
+
+theorem d2TreeListStrong (univs : Nat)
+    (Gamma : List (@SExpr (d2Params univs)))
+    (l : @SLevel (d2Params univs)) :
+    @IsDefEqStrong (d2Params univs) Gamma
+      (@SExpr.const (d2Params univs) ``TreeList [l])
+      (@SExpr.const (d2Params univs) ``TreeList [l])
+      (@SExpr.forallE (d2Params univs)
+        (@SExpr.sort (d2Params univs) (@SLevel.succ (d2Params univs) l))
+        (@SExpr.sort (d2Params univs) (@SLevel.succ (d2Params univs) l))) := by
+  letI : Params := d2Params univs
+  let F : ∀ cl : CtorBundle.IsCtor ``TreeList, CtorBundle ``TreeList cl :=
+    fun cl => (treeListType_not_ctor univs cl).elim
+  have H : IsDefEqStrong Gamma
+      (.const ``TreeList [l]) (.const ``TreeList [l])
+      (SExpr.mkInst [l] treeListType.toVConstant.type) := by
+    refine .const (u := SLevel.imax l.succ.succ l.succ.succ)
+      d2Env_treeList_lookup rfl ?_ F ?_ ?_
+    · change IsDefEqStrong Gamma
+        (.forallE (.sort l.succ) (.sort l.succ))
+        (.forallE (.sort l.succ) (.sort l.succ))
+        (.sort (SLevel.imax l.succ.succ l.succ.succ))
+      exact .forallEDF .sort .sort .sort
+    · intro cl
+      exact (treeListType_not_ctor univs cl).elim
+    · intro r hpat
+      exact (d2Pat_no_const_fresh treeList_fresh hpat).elim
+  exact H
+
+/-- Application of the `Tree` head to a type argument. -/
+theorem d2TreeAppStrong (univs : Nat)
+    {Gamma : List (@SExpr (d2Params univs))} {x : @SExpr (d2Params univs)}
+    (l : @SLevel (d2Params univs))
+    (hx : @IsDefEqStrong (d2Params univs) Gamma x x
+      (@SExpr.sort (d2Params univs) (@SLevel.succ (d2Params univs) l))) :
+    @IsDefEqStrong (d2Params univs) Gamma
+      (@SExpr.app (d2Params univs)
+        (@SExpr.const (d2Params univs) ``Tree [l]) x)
+      (@SExpr.app (d2Params univs)
+        (@SExpr.const (d2Params univs) ``Tree [l]) x)
+      (@SExpr.sort (d2Params univs) (@SLevel.succ (d2Params univs) l)) := by
+  letI : Params := d2Params univs
+  have h := IsDefEqStrong.appDF (.sort : IsDefEqStrong Gamma
+      (.sort l.succ) (.sort l.succ) (.sort l.succ.succ))
+    (.sort : IsDefEqStrong (.sort l.succ :: Gamma)
+      (.sort l.succ) (.sort l.succ) (.sort l.succ.succ))
+    (d2TreeStrong univs Gamma l) hx
+    (.sort : IsDefEqStrong Gamma
+      (.sort l.succ) (.sort l.succ) (.sort l.succ.succ))
+  exact h
+
+theorem d2TreeListAppStrong (univs : Nat)
+    {Gamma : List (@SExpr (d2Params univs))} {x : @SExpr (d2Params univs)}
+    (l : @SLevel (d2Params univs))
+    (hx : @IsDefEqStrong (d2Params univs) Gamma x x
+      (@SExpr.sort (d2Params univs) (@SLevel.succ (d2Params univs) l))) :
+    @IsDefEqStrong (d2Params univs) Gamma
+      (@SExpr.app (d2Params univs)
+        (@SExpr.const (d2Params univs) ``TreeList [l]) x)
+      (@SExpr.app (d2Params univs)
+        (@SExpr.const (d2Params univs) ``TreeList [l]) x)
+      (@SExpr.sort (d2Params univs) (@SLevel.succ (d2Params univs) l)) := by
+  letI : Params := d2Params univs
+  have h := IsDefEqStrong.appDF (.sort : IsDefEqStrong Gamma
+      (.sort l.succ) (.sort l.succ) (.sort l.succ.succ))
+    (.sort : IsDefEqStrong (.sort l.succ :: Gamma)
+      (.sort l.succ) (.sort l.succ) (.sort l.succ.succ))
+    (d2TreeListStrong univs Gamma l) hx
+    (.sort : IsDefEqStrong Gamma
+      (.sort l.succ) (.sort l.succ) (.sort l.succ.succ))
+  exact h
+
+/-! ## `Params.Semantic.ctor` for the block-extended inventory
+
+The five block constructors are Type-sorted, so their bundles are
+unproblematic: each constructor's instantiated type is *literally* the
+bundle's `rhs` (the field telescope over the family head applied to the
+parameter), so the bundle obligation reduces to a self-typing of that Pi
+tower.  Old constants transport through `d1Ctor`. -/
+
+/-- The bundle level of a two-field Type-sorted constructor is nonzero. -/
+theorem d2CtorLevel_ne_zero (univs : Nat)
+    (u : @SLevel (d2Params univs)) (hu : ∀ v, 0 < u.1 v) :
+    u ≠ @SLevel.zero (d2Params univs) := by
+  intro h
+  have hv := congrArg (fun l : @SLevel (d2Params univs) => l.1 []) h
+  have hpos := hu []
+  have hz : (@SLevel.zero (d2Params univs)).1 [] = 0 := rfl
+  have hv' : u.1 [] = (@SLevel.zero (d2Params univs)).1 [] := hv
+  rw [hv', hz] at hpos
+  exact absurd hpos (Nat.lt_irrefl 0)
+
+theorem d2Imax_pos (univs : Nat) (u v : @SLevel (d2Params univs))
+    (hv : ∀ w, 0 < v.1 w) : ∀ w, 0 < (@SLevel.imax (d2Params univs) u v).1 w := by
+  intro w
+  have hw := hv w
+  show 0 < Lean.Nat.imax (u.1 w) (v.1 w)
+  simp only [Lean.Nat.imax]
+  rw [if_neg (by omega)]
+  exact Nat.lt_of_lt_of_le hw (Nat.le_max_right _ _)
+
+theorem d2Succ_pos (univs : Nat) (u : @SLevel (d2Params univs)) :
+    ∀ w, 0 < (@SLevel.succ (d2Params univs) u).1 w := fun _ => Nat.succ_pos _
+
+/-- Self-typing of the `α` binder variable at the head of every block
+constructor's telescope. -/
+theorem d2AlphaStrong (univs : Nat) (Gamma : List (@SExpr (d2Params univs)))
+    (l : @SLevel (d2Params univs)) :
+    @IsDefEqStrong (d2Params univs)
+      (@SExpr.sort (d2Params univs) (@SLevel.succ (d2Params univs) l) :: Gamma)
+      (@SExpr.bvar (d2Params univs) 0) (@SExpr.bvar (d2Params univs) 0)
+      (@SExpr.sort (d2Params univs) (@SLevel.succ (d2Params univs) l)) := by
+  letI : Params := d2Params univs
+  exact .bvar .zero (by exact IsDefEqStrong.sort)
+
+theorem d2BvarStrong (univs : Nat) {Gamma : List (@SExpr (d2Params univs))}
+    {i : Nat} {A : @SExpr (d2Params univs)}
+    {u : @SLevel (d2Params univs)}
+    (h : @Lookup (d2Params univs) Gamma i A)
+    (hA : @IsDefEqStrong (d2Params univs) Gamma A A
+      (@SExpr.sort (d2Params univs) u)) :
+    @IsDefEqStrong (d2Params univs) Gamma
+      (@SExpr.bvar (d2Params univs) i) (@SExpr.bvar (d2Params univs) i) A :=
+  @IsDefEqStrong.bvar (d2Params univs) Gamma i A u h hA
+
+/-- The result type of the D2 constructor bridge. -/
+def D2CtorResult (univs : Nat) {c : Name} {ci : VConstant}
+    (ls : List (@SLevel (d2Params univs)))
+    (Gamma : List (@SExpr (d2Params univs)))
+    (cl : @CtorBundle.IsCtor (d2Params univs) c) : Type :=
+  letI : Params := d2Params univs
+  {F : CtorBundle c cl //
+    IsDefEqStrong Gamma (SExpr.mkInst ls ci.type) (F.rhs ls) (.sort F.u)}
+
+section BlockBundles
+
+variable (univs : Nat)
+
+/-- `Tree.leaf`: one type parameter and one `α` field. -/
+theorem d2TreeLeafBundle {ls : List (@SLevel (d2Params univs))}
+    {Gamma : List (@SExpr (d2Params univs))}
+    (hlen : ls.length = 1)
+    (cl : @CtorBundle.IsCtor (d2Params univs) ``Tree.leaf) :
+    Nonempty (D2CtorResult (ci := treeType.ctors[0].toVConstant)
+      univs ls Gamma cl) := by
+  letI : Params := d2Params univs
+  obtain ⟨l, rfl⟩ := List.length_eq_one_iff.mp hlen
+  have hcl : cl.cl.1 = .ctor 2 := by
+    have hc := cl.cl.2.1
+    change d2Classify ``Tree.leaf = some cl.cl.1 at hc
+    simpa [d2Classify] using hc.symm
+  let u : SLevel := .imax l.succ.succ (.imax l.succ l.succ)
+  let F : CtorBundle ``Tree.leaf cl := {
+    I := ``Tree
+    Ts := [.sort l.succ, .bvar 0]
+    args := [.bvar 1]
+    u := u
+    hlen := by simp [hcl, Classification.arity]
+    hclI := by
+      change d2Classify ``Tree = some (.indTy 1)
+      simp [d2Classify]
+    hu0 := d2CtorLevel_ne_zero univs u
+      (d2Imax_pos univs _ _ (d2Imax_pos univs _ _ (d2Succ_pos univs _))) }
+  refine ⟨⟨F, ?_⟩⟩
+  change IsDefEqStrong Gamma
+    (.forallE (.sort l.succ)
+      (.forallE (.bvar 0) ((SExpr.const ``Tree [l]).app (.bvar 1))))
+    (.forallE (.sort l.succ)
+      (.forallE (.bvar 0) ((SExpr.const ``Tree [l]).app (.bvar 1))))
+    (.sort u)
+  refine .forallEDF (.sort) ?_ ?_ <;>
+    exact .forallEDF (d2AlphaStrong univs Gamma l)
+      (d2TreeAppStrong univs l (d2BvarStrong univs (.succ .zero)
+        (by exact IsDefEqStrong.sort)))
+      (d2TreeAppStrong univs l (d2BvarStrong univs (.succ .zero)
+        (by exact IsDefEqStrong.sort)))
+
+/-- `Tree.node`: one type parameter and one `TreeList α` field. -/
+theorem d2TreeNodeBundle {ls : List (@SLevel (d2Params univs))}
+    {Gamma : List (@SExpr (d2Params univs))}
+    (hlen : ls.length = 1)
+    (cl : @CtorBundle.IsCtor (d2Params univs) ``Tree.node) :
+    Nonempty (D2CtorResult (ci := treeType.ctors[1].toVConstant)
+      univs ls Gamma cl) := by
+  letI : Params := d2Params univs
+  obtain ⟨l, rfl⟩ := List.length_eq_one_iff.mp hlen
+  have hcl : cl.cl.1 = .ctor 2 := by
+    have hc := cl.cl.2.1
+    change d2Classify ``Tree.node = some cl.cl.1 at hc
+    simpa [d2Classify] using hc.symm
+  let u : SLevel := .imax l.succ.succ (.imax l.succ l.succ)
+  let F : CtorBundle ``Tree.node cl := {
+    I := ``Tree
+    Ts := [.sort l.succ, (SExpr.const ``TreeList [l]).app (.bvar 0)]
+    args := [.bvar 1]
+    u := u
+    hlen := by simp [hcl, Classification.arity]
+    hclI := by
+      change d2Classify ``Tree = some (.indTy 1)
+      simp [d2Classify]
+    hu0 := d2CtorLevel_ne_zero univs u
+      (d2Imax_pos univs _ _ (d2Imax_pos univs _ _ (d2Succ_pos univs _))) }
+  refine ⟨⟨F, ?_⟩⟩
+  change IsDefEqStrong Gamma
+    (.forallE (.sort l.succ)
+      (.forallE ((SExpr.const ``TreeList [l]).app (.bvar 0))
+        ((SExpr.const ``Tree [l]).app (.bvar 1))))
+    (.forallE (.sort l.succ)
+      (.forallE ((SExpr.const ``TreeList [l]).app (.bvar 0))
+        ((SExpr.const ``Tree [l]).app (.bvar 1))))
+    (.sort u)
+  refine .forallEDF (.sort) ?_ ?_ <;>
+    exact .forallEDF
+      (d2TreeListAppStrong univs l (d2AlphaStrong univs Gamma l))
+      (d2TreeAppStrong univs l (d2BvarStrong univs (.succ .zero)
+        (by exact IsDefEqStrong.sort)))
+      (d2TreeAppStrong univs l (d2BvarStrong univs (.succ .zero)
+        (by exact IsDefEqStrong.sort)))
+
+/-- `Tree.branch`: one type parameter and one higher-order
+`α → TreeList α` field. -/
+theorem d2TreeBranchBundle {ls : List (@SLevel (d2Params univs))}
+    {Gamma : List (@SExpr (d2Params univs))}
+    (hlen : ls.length = 1)
+    (cl : @CtorBundle.IsCtor (d2Params univs) ``Tree.branch) :
+    Nonempty (D2CtorResult (ci := treeType.ctors[2].toVConstant)
+      univs ls Gamma cl) := by
+  letI : Params := d2Params univs
+  obtain ⟨l, rfl⟩ := List.length_eq_one_iff.mp hlen
+  have hcl : cl.cl.1 = .ctor 2 := by
+    have hc := cl.cl.2.1
+    change d2Classify ``Tree.branch = some cl.cl.1 at hc
+    simpa [d2Classify] using hc.symm
+  let u : SLevel := .imax l.succ.succ (.imax (.imax l.succ l.succ) l.succ)
+  let F : CtorBundle ``Tree.branch cl := {
+    I := ``Tree
+    Ts := [.sort l.succ,
+      .forallE (.bvar 0) ((SExpr.const ``TreeList [l]).app (.bvar 1))]
+    args := [.bvar 1]
+    u := u
+    hlen := by simp [hcl, Classification.arity]
+    hclI := by
+      change d2Classify ``Tree = some (.indTy 1)
+      simp [d2Classify]
+    hu0 := d2CtorLevel_ne_zero univs u
+      (d2Imax_pos univs _ _ (d2Imax_pos univs _ _ (d2Succ_pos univs _))) }
+  refine ⟨⟨F, ?_⟩⟩
+  change IsDefEqStrong Gamma
+    (.forallE (.sort l.succ)
+      (.forallE (.forallE (.bvar 0) ((SExpr.const ``TreeList [l]).app (.bvar 1)))
+        ((SExpr.const ``Tree [l]).app (.bvar 1))))
+    (.forallE (.sort l.succ)
+      (.forallE (.forallE (.bvar 0) ((SExpr.const ``TreeList [l]).app (.bvar 1)))
+        ((SExpr.const ``Tree [l]).app (.bvar 1))))
+    (.sort u)
+  have hfield : ∀ Delta : List SExpr,
+      IsDefEqStrong (SExpr.sort l.succ :: Delta)
+        (.forallE (.bvar 0) ((SExpr.const ``TreeList [l]).app (.bvar 1)))
+        (.forallE (.bvar 0) ((SExpr.const ``TreeList [l]).app (.bvar 1)))
+        (.sort (.imax l.succ l.succ)) := by
+    intro Delta
+    exact .forallEDF (d2AlphaStrong univs Delta l)
+      (d2TreeListAppStrong univs l (d2BvarStrong univs (.succ .zero)
+        (by exact IsDefEqStrong.sort)))
+      (d2TreeListAppStrong univs l (d2BvarStrong univs (.succ .zero)
+        (by exact IsDefEqStrong.sort)))
+  refine .forallEDF (.sort) ?_ ?_ <;>
+    exact .forallEDF (hfield Gamma)
+      (d2TreeAppStrong univs l (d2BvarStrong univs (.succ .zero)
+        (by exact IsDefEqStrong.sort)))
+      (d2TreeAppStrong univs l (d2BvarStrong univs (.succ .zero)
+        (by exact IsDefEqStrong.sort)))
+
+/-- `TreeList.nil`: one type parameter and no fields. -/
+theorem d2TreeListNilBundle {ls : List (@SLevel (d2Params univs))}
+    {Gamma : List (@SExpr (d2Params univs))}
+    (hlen : ls.length = 1)
+    (cl : @CtorBundle.IsCtor (d2Params univs) ``TreeList.nil) :
+    Nonempty (D2CtorResult (ci := treeListType.ctors[0].toVConstant)
+      univs ls Gamma cl) := by
+  letI : Params := d2Params univs
+  obtain ⟨l, rfl⟩ := List.length_eq_one_iff.mp hlen
+  have hcl : cl.cl.1 = .ctor 1 := by
+    have hc := cl.cl.2.1
+    change d2Classify ``TreeList.nil = some cl.cl.1 at hc
+    simpa [d2Classify] using hc.symm
+  let u : SLevel := .imax l.succ.succ l.succ
+  let F : CtorBundle ``TreeList.nil cl := {
+    I := ``TreeList
+    Ts := [.sort l.succ]
+    args := [.bvar 0]
+    u := u
+    hlen := by simp [hcl, Classification.arity]
+    hclI := by
+      change d2Classify ``TreeList = some (.indTy 1)
+      simp [d2Classify]
+    hu0 := d2CtorLevel_ne_zero univs u
+      (d2Imax_pos univs _ _ (d2Succ_pos univs _)) }
+  refine ⟨⟨F, ?_⟩⟩
+  change IsDefEqStrong Gamma
+    (.forallE (.sort l.succ) ((SExpr.const ``TreeList [l]).app (.bvar 0)))
+    (.forallE (.sort l.succ) ((SExpr.const ``TreeList [l]).app (.bvar 0)))
+    (.sort u)
+  exact .forallEDF (.sort)
+    (d2TreeListAppStrong univs l (d2AlphaStrong univs Gamma l))
+    (d2TreeListAppStrong univs l (d2AlphaStrong univs Gamma l))
+
+/-- `TreeList.cons`: one type parameter, a `Tree α` head and a
+`TreeList α` tail. -/
+theorem d2TreeListConsBundle {ls : List (@SLevel (d2Params univs))}
+    {Gamma : List (@SExpr (d2Params univs))}
+    (hlen : ls.length = 1)
+    (cl : @CtorBundle.IsCtor (d2Params univs) ``TreeList.cons) :
+    Nonempty (D2CtorResult (ci := treeListType.ctors[1].toVConstant)
+      univs ls Gamma cl) := by
+  letI : Params := d2Params univs
+  obtain ⟨l, rfl⟩ := List.length_eq_one_iff.mp hlen
+  have hcl : cl.cl.1 = .ctor 3 := by
+    have hc := cl.cl.2.1
+    change d2Classify ``TreeList.cons = some cl.cl.1 at hc
+    simpa [d2Classify] using hc.symm
+  let u : SLevel := .imax l.succ.succ (.imax l.succ (.imax l.succ l.succ))
+  let F : CtorBundle ``TreeList.cons cl := {
+    I := ``TreeList
+    Ts := [.sort l.succ, (SExpr.const ``Tree [l]).app (.bvar 0),
+      (SExpr.const ``TreeList [l]).app (.bvar 1)]
+    args := [.bvar 2]
+    u := u
+    hlen := by simp [hcl, Classification.arity]
+    hclI := by
+      change d2Classify ``TreeList = some (.indTy 1)
+      simp [d2Classify]
+    hu0 := d2CtorLevel_ne_zero univs u
+      (d2Imax_pos univs _ _ (d2Imax_pos univs _ _
+        (d2Imax_pos univs _ _ (d2Succ_pos univs _)))) }
+  refine ⟨⟨F, ?_⟩⟩
+  change IsDefEqStrong Gamma
+    (.forallE (.sort l.succ)
+      (.forallE ((SExpr.const ``Tree [l]).app (.bvar 0))
+        (.forallE ((SExpr.const ``TreeList [l]).app (.bvar 1))
+          ((SExpr.const ``TreeList [l]).app (.bvar 2)))))
+    (.forallE (.sort l.succ)
+      (.forallE ((SExpr.const ``Tree [l]).app (.bvar 0))
+        (.forallE ((SExpr.const ``TreeList [l]).app (.bvar 1))
+          ((SExpr.const ``TreeList [l]).app (.bvar 2)))))
+    (.sort u)
+  have hinner : ∀ Delta : List SExpr,
+      IsDefEqStrong ((SExpr.const ``Tree [l]).app (.bvar 0) ::
+          SExpr.sort l.succ :: Delta)
+        (.forallE ((SExpr.const ``TreeList [l]).app (.bvar 1))
+          ((SExpr.const ``TreeList [l]).app (.bvar 2)))
+        (.forallE ((SExpr.const ``TreeList [l]).app (.bvar 1))
+          ((SExpr.const ``TreeList [l]).app (.bvar 2)))
+        (.sort (.imax l.succ l.succ)) := by
+    intro Delta
+    exact .forallEDF
+      (d2TreeListAppStrong univs l (d2BvarStrong univs (.succ .zero)
+        (by exact IsDefEqStrong.sort)))
+      (d2TreeListAppStrong univs l (d2BvarStrong univs
+        (.succ (.succ .zero)) (by exact IsDefEqStrong.sort)))
+      (d2TreeListAppStrong univs l (d2BvarStrong univs
+        (.succ (.succ .zero)) (by exact IsDefEqStrong.sort)))
+  refine .forallEDF (.sort) ?_ ?_ <;>
+    exact .forallEDF
+      (d2TreeAppStrong univs l (d2AlphaStrong univs Gamma l))
+      (hinner Gamma) (hinner Gamma)
+
+end BlockBundles
+
+/-- `Params.Semantic.ctor` for the complete D2 inventory. -/
+theorem d2Ctor_nonempty (univs : Nat) {c : Name} {ci : VConstant}
+    {ls : List (@SLevel (d2Params univs))}
+    {Gamma : List (@SExpr (d2Params univs))}
+    (hci : d2Env.constants c = some ci)
+    (hlen : ls.length = ci.uvars)
+    (cl : @CtorBundle.IsCtor (d2Params univs) c) :
+    Nonempty (D2CtorResult (ci := ci) univs ls Gamma cl) := by
+  letI : Params := d2Params univs
+  have hshape : ctorLike cl.cl.1 = true := by
+    have hs := cl.cl.2.2
+    cases hc : cl.cl.1 <;> simp [ctorLike, hc] at hs ⊢
+  have hcases := d2Classify_ctor_cases cl.cl.2.1 hshape
+  rcases hcases with ⟨rfl, -⟩ | ⟨rfl, -⟩ | ⟨rfl, -⟩ | ⟨rfl, -⟩ | ⟨rfl, -⟩ | hold
+  · obtain rfl : ci = treeType.ctors[0].toVConstant :=
+      Option.some.inj (hci.symm.trans d2Env_treeLeaf_lookup)
+    exact d2TreeLeafBundle univs hlen cl
+  · obtain rfl : ci = treeType.ctors[1].toVConstant :=
+      Option.some.inj (hci.symm.trans d2Env_treeNode_lookup)
+    exact d2TreeNodeBundle univs hlen cl
+  · obtain rfl : ci = treeType.ctors[2].toVConstant :=
+      Option.some.inj (hci.symm.trans d2Env_treeBranch_lookup)
+    exact d2TreeBranchBundle univs hlen cl
+  · obtain rfl : ci = treeListType.ctors[0].toVConstant :=
+      Option.some.inj (hci.symm.trans d2Env_treeListNil_lookup)
+    exact d2TreeListNilBundle univs hlen cl
+  · obtain rfl : ci = treeListType.ctors[1].toVConstant :=
+      Option.some.inj (hci.symm.trans d2Env_treeListCons_lookup)
+    exact d2TreeListConsBundle univs hlen cl
+  · -- an inherited constant: restrict, apply `d1Ctor`, and transport back.
+    -- `hold` classifies `c` in D1, and the nine block heads are unclassified
+    -- there, so `c` is none of them and its D2 constant is a D1 constant.
+    have hci' : d1Env.constants c = some ci :=
+      d2Env_constants_old
+        (by rintro rfl; rw [d1Classify_tree] at hold; cases hold)
+        (by rintro rfl; rw [d1Classify_treeList] at hold; cases hold)
+        (by rintro rfl; rw [d1Classify_treeLeaf] at hold; cases hold)
+        (by rintro rfl; rw [d1Classify_treeNode] at hold; cases hold)
+        (by rintro rfl; rw [d1Classify_treeBranch] at hold; cases hold)
+        (by rintro rfl; rw [d1Classify_treeListNil] at hold; cases hold)
+        (by rintro rfl; rw [d1Classify_treeListCons] at hold; cases hold)
+        (by rintro rfl; rw [d1Classify_treeRec] at hold; cases hold)
+        (by rintro rfl; rw [d1Classify_treeListRec] at hold; cases hold)
+        hci
+    let oldGamma := Gamma.map (transportExpr (d1d2 univs).symm)
+    let oldLs := ls.map (transportLevel (d1d2 univs).symm)
+    have oldLen : oldLs.length = ci.uvars := by simpa [oldLs] using hlen
+    let oldCl := d2CtorToD1 univs hci' cl
+    let oldF : @CtorBundle (d1Params univs) c oldCl :=
+      (d1Ctor univs (Gamma := oldGamma) (ls := oldLs) hci' oldLen oldCl).1
+    have oldProof : @IsDefEqStrong (d1Params univs) oldGamma
+        (@SExpr.mkInst (d1Params univs) oldLs ci.type)
+        (@CtorBundle.rhs (d1Params univs) c oldCl oldF oldLs)
+        (@SExpr.sort (d1Params univs)
+          (@CtorBundle.u (d1Params univs) c oldCl oldF)) :=
+      (d1Ctor univs (Gamma := oldGamma) (ls := oldLs) hci' oldLen oldCl).2
+    refine ⟨⟨d1CtorBundleToD2 univs hci' cl oldF, ?_⟩⟩
+    have H := d1StrongToD2 univs oldProof
+    dsimp only [oldGamma, oldLs] at H
+    simp only [transport_context_roundtrip, transportExpr_mkInst,
+      transportExpr_sort] at H
+    rw [d1CtorBundleToD2_rhs univs hci' cl oldF
+      (ls.map (transportLevel (d1d2 univs).symm))] at H
+    simpa only [transport_level_list_roundtrip,
+      d1CtorBundleToD2_u] using H
+
+noncomputable def d2Ctor (univs : Nat) {c : Name} {ci : VConstant}
+    {ls : List (@SLevel (d2Params univs))}
+    {Gamma : List (@SExpr (d2Params univs))}
+    (hci : d2Env.constants c = some ci)
+    (hlen : ls.length = ci.uvars)
+    (cl : @CtorBundle.IsCtor (d2Params univs) c) :
+    D2CtorResult (ci := ci) univs ls Gamma cl :=
+  Classical.choice (d2Ctor_nonempty univs hci hlen cl)
+
+/-! ## `Params.Semantic.defn` for the block-extended inventory
+
+The block contributes no constant pattern, so every `defn` obligation is an
+inherited D1 one, transported. -/
+
+theorem d2Defn (univs : Nat) {c : Name}
+    {r : (Pattern.const c).RHS × (Pattern.const c).Check}
+    (H : (d2Params univs).Pat (.const c) r) :
+    ∃ (value : VExpr) (closed : value.Closed),
+      r = (.fixed value closed, .true) ∧
+      ∀ {ci : VConstant} {ls : List (@SLevel (d2Params univs))}
+        {Gamma : List (@SExpr (d2Params univs))},
+        d2Env.constants c = some ci → ls.length = ci.uvars →
+        @IsDefEqStrong (d2Params univs) Gamma
+          (@SExpr.const (d2Params univs) c ls)
+          (@SExpr.mkInst (d2Params univs) ls value)
+          (@SExpr.mkInst (d2Params univs) ls ci.type) := by
+  letI : Params := d2Params univs
+  change D2Pat (.const c) r at H
+  obtain ⟨value, closed, rfl, hunfold⟩ := d1Defn univs (d2Pat_at_const H)
+  refine ⟨value, closed, rfl, ?_⟩
+  intro ci ls Gamma hci hlen
+  have hd1 : d1Env.constants c = some ci := by
+    have H1 := d2Pat_at_const H
+    cases H1 with
+    | old H0 =>
+      cases H0 with
+      | iota H' => exact (natPat_no_const univs (by exact H')).elim
+      | defn =>
+        have hlook := d0Env_le_d1Env.constants d0Env_d0Def_lookup
+        rw [hlook]
+        rw [d1Env_le_d2Env.constants hlook] at hci
+        exact hci.symm ▸ rfl
+    | defnA =>
+      rw [d1Env_d1MutA_lookup]
+      rw [d1Env_le_d2Env.constants d1Env_d1MutA_lookup] at hci
+      exact hci.symm ▸ rfl
+    | defnB =>
+      rw [d1Env_d1MutB_lookup]
+      rw [d1Env_le_d2Env.constants d1Env_d1MutB_lookup] at hci
+      exact hci.symm ▸ rfl
+  let oldGamma := Gamma.map (transportExpr (d1d2 univs).symm)
+  let oldLs := ls.map (transportLevel (d1d2 univs).symm)
+  have oldLen : oldLs.length = ci.uvars := by simpa [oldLs] using hlen
+  have H1 := d1StrongToD2 univs
+    (hunfold (ci := ci) (ls := oldLs) (Gamma := oldGamma) hd1 oldLen)
+  dsimp only [oldGamma, oldLs] at H1
+  simpa only [transport_context_roundtrip, transportExpr_const,
+    transportExpr_mkInst, transport_level_list_roundtrip] using H1
+
+/-! ## `Params.Semantic.registered`: inherited rules
+
+A registered defeq of `d2Env` is either one of the block's five generated
+rules or an inherited D1 rule.  The inherited half transports; the block
+half is one of the two parked obligations below. -/
+
+/-- The inherited half of `Params.Semantic.registered`, transported from
+D1's own certificate through the generic syntax transport. -/
+theorem d2Registered_old (univs : Nat)
+    {df : VDefEq} {ls : List (@SLevel (d2Params univs))}
+    {Gamma : List (@SExpr (d2Params univs))}
+    (hreg : d1Env.defeqs df) (hlen : ls.length = df.uvars) :
+    @IsDefEqStrong (d2Params univs) Gamma
+      (@SExpr.mkInst (d2Params univs) ls df.lhs)
+      (@SExpr.mkInst (d2Params univs) ls df.rhs)
+      (@SExpr.mkInst (d2Params univs) ls df.type) := by
+  let oldGamma := Gamma.map (transportExpr (d1d2 univs).symm)
+  let oldLs := ls.map (transportLevel (d1d2 univs).symm)
+  have oldLen : oldLs.length = df.uvars := by simpa [oldLs] using hlen
+  have oldLhs : @IsDefEqStrong (d1Params univs) oldGamma
+      (@SExpr.mkInst (d1Params univs) oldLs df.lhs)
+      (@SExpr.mkInst (d1Params univs) oldLs df.lhs)
+      (@SExpr.mkInst (d1Params univs) oldLs df.type) := by
+    letI : Params := d1Params univs
+    letI : Params.Semantic := d1Semantic univs
+    exact Params.Semantic.closedHasTypeStrong (d1Env_ordered.defEqWF hreg).1
+  have oldRhs : @IsDefEqStrong (d1Params univs) oldGamma
+      (@SExpr.mkInst (d1Params univs) oldLs df.rhs)
+      (@SExpr.mkInst (d1Params univs) oldLs df.rhs)
+      (@SExpr.mkInst (d1Params univs) oldLs df.type) := by
+    letI : Params := d1Params univs
+    letI : Params.Semantic := d1Semantic univs
+    exact Params.Semantic.closedHasTypeStrong (d1Env_ordered.defEqWF hreg).2
+  have oldEq := d1Registered univs hreg oldLen oldLhs oldRhs
+  have H := d1StrongToD2 univs oldEq
+  dsimp only [oldGamma, oldLs] at H
+  simpa only [transport_context_roundtrip, transportExpr_mkInst,
+    transport_level_list_roundtrip] using H
+
+/-! ## The parked block obligations
+
+Four obligations of the *block* half of `Params.Semantic` are not delivered
+here.  They are stated as named `Prop`s and bundled into one premise
+`D2BlockStep`, so that every downstream statement carries them explicitly
+and the residual is exactly stated rather than described.
+
+Only the first is genuinely blocked: it is `L4L-18A′` strength.  The other
+three are mechanical per-rule volume which the generic engine deliberately
+takes as input — exactly as Theory's own generic block-rule soundness
+theorem takes its capture spine as a hypothesis.
+
+**Scope note.**  The three site-shaped premises quantify over *every* iota
+rule of the D2 inventory, i.e. the block's five plus the two inherited
+`Nat` rules — not only the five new ones.  That is forced, not sloppy: a
+reduction-site certificate cannot be transported *downwards* along
+`d1Env ≤ d2Env`, because its inputs (`typing`, `matched`) are D2-instance
+derivations whose contexts and captures may mention the block's constants,
+and `d1StrongToD2` only runs in the growing direction.  D1 met exactly this
+and re-replayed D0's two `Nat` rules rather than transporting them
+(`SExprParamsD1.lean:1925-1929`); D2 would have to re-replay them a third
+time.  At the two `Nat` rules `checked` is trivial — `NatGeneration` has no
+parameters and no indices, so its `ruleCheck` is `.true` — so the genuinely
+18A′-gated content of `D2CheckedStep` is confined to the five block
+rules. -/
+
+/-- (i) The `Pattern.Check` discharge of a generated rule at a matched
+redex.  `TreeGen.ruleCheck` folds one `.defeq` per `treeDecl.nparams`; Tree
+has exactly one parameter and no indices, so this says: the
+constructor-side type parameter and the recursor-side type parameter of a
+matched redex are definitionally equal.  That is injectivity of a stuck
+inductive-type application, `L4L-18A′` strength — see
+`plans/probes/probeG-generic-instance.lean:320` (`iotaCheck_param`).  The
+semantic side cannot help: the logical relation realizes `indTy` arguments
+at `.bot` (`ShapeLogRel.lean:9244`), so it retains no argument information.
+This is the one genuinely blocked obligation. -/
+def D2CheckedStep (univs : Nat) : Prop :=
+  letI : Params := d2Params univs
+  ∀ {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    {Gamma : List SExpr} {recLs : List SLevel}
+    {mcap : (RecursorIotaPattern rec major ctor arity).Path → SExpr},
+    Params.Pat (RecursorIotaPattern rec major ctor arity) r →
+    ∃ dfs : List (SExpr × SExpr × SExpr),
+      dfs.map (·.2) = r.2.defeqsS recLs mcap ∧
+      ∀ a b B, (B, a, b) ∈ dfs → IsDefEq Gamma a b B
+
+/-- (ii) The rule's capture inventory re-indexed onto its own binder
+telescope, with the rule's level arity.  The generic engine
+(`SExpr.iotaSiteOf`) consumes this and supplies every other site field;
+Theory's own generic block-rule soundness theorem takes the same spine as a
+hypothesis (`InductivePatternWF.lean`, the `hcaps` argument), so this is the
+engine's interface boundary rather than an omission.  It is mechanical
+per-rule volume: eight recursor-spine peels plus the constructor's fields,
+for each of the five rules. -/
+def D2CaptureSpineStep (univs : Nat) : Prop :=
+  letI : Params := d2Params univs
+  ∀ {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    {Gamma : List SExpr} {A majorTerm : SExpr}
+    {recLs ctorLs : List SLevel} {recArgs ctorArgs : List SExpr}
+    {mcap : (RecursorIotaPattern rec major ctor arity).Path → SExpr}
+    (rule : Pattern.IotaRule r),
+    D2ContextValid univs Gamma →
+    Pattern.IotaTyping Gamma rec ctor recLs ctorLs
+      recArgs ctorArgs majorTerm A →
+    (RecursorIotaPattern rec major ctor arity).MatchesS
+      ((recArgs.foldr (fun (a f : SExpr) => f.app a) (SExpr.const rec recLs)).app
+        (ctorArgs.foldr (fun (a f : SExpr) => f.app a)
+          (SExpr.const ctor ctorLs))) recLs mcap →
+    recLs.length = rule.df.uvars ∧
+      SpineWF Gamma (SExpr.mkInst recLs rule.df.type)
+        (rule.capturePaths.map mcap) A
+
+/-- (iii) The β-collapse of the rule's applied left tower back onto the
+matched redex.  Given (ii) this is `SExpr.ruleCollapse` plus a per-rule
+`instRev` computation and one type conversion; it is listed separately
+because that computation is per-rule. -/
+def D2CollapseStep (univs : Nat) : Prop :=
+  letI : Params := d2Params univs
+  ∀ {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    {Gamma : List SExpr} {A majorTerm : SExpr}
+    {recLs ctorLs : List SLevel} {recArgs ctorArgs : List SExpr}
+    {mcap : (RecursorIotaPattern rec major ctor arity).Path → SExpr}
+    (rule : Pattern.IotaRule r),
+    D2ContextValid univs Gamma →
+    Pattern.IotaTyping Gamma rec ctor recLs ctorLs
+      recArgs ctorArgs majorTerm A →
+    (RecursorIotaPattern rec major ctor arity).MatchesS
+      ((recArgs.foldr (fun (a f : SExpr) => f.app a) (SExpr.const rec recLs)).app
+        (ctorArgs.foldr (fun (a f : SExpr) => f.app a)
+          (SExpr.const ctor ctorLs))) recLs mcap →
+    IsDefEq Gamma
+      ((recArgs.foldr (fun (a f : SExpr) => f.app a)
+        (SExpr.const rec recLs)).app
+        (ctorArgs.foldr (fun (a f : SExpr) => f.app a)
+          (SExpr.const ctor ctorLs)))
+      ((rule.capturePaths.map mcap).foldl
+        (fun (f a : SExpr) => f.app a) (SExpr.mkInst recLs rule.df.lhs)) A
+
+/-- (iv) `Params.Semantic.registered` at the five block rules: the D0-style
+lambda-tower descent (`SExprParamsD0.lean:2898-5496`) re-run for this
+block. -/
+def D2RegisteredTowerStep (univs : Nat) : Prop :=
+  letI : Params := d2Params univs
+  ∀ {df : VDefEq} {ls : List SLevel} {Gamma : List SExpr},
+    df ∈ TreeGen.generatedRules → ls.length = df.uvars →
+    IsDefEqStrong Gamma (SExpr.mkInst ls df.lhs) (SExpr.mkInst ls df.rhs)
+      (SExpr.mkInst ls df.type)
+
+/-- The block half of the D2 semantic bridge, as one named premise.  Only
+`checked` is genuinely blocked (`L4L-18A′`); the other three are mechanical
+per-rule volume that the generic engine deliberately takes as input. -/
+structure D2BlockStep (univs : Nat) : Prop where
+  checked : D2CheckedStep univs
+  captureSpine : D2CaptureSpineStep univs
+  lhsCollapse : D2CollapseStep univs
+  registeredTower : D2RegisteredTowerStep univs
+
+/-- The complete `Params.Semantic.iotaSite` for the D2 inventory, assembled
+by the generic engine `SExpr.iotaSiteOf` from the parked block data. -/
+noncomputable def d2IotaSite (univs : Nat) (h : D2BlockStep univs)
+    {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    {Gamma : List (@SExpr (d2Params univs))}
+    {A majorTerm : @SExpr (d2Params univs)}
+    {recLs ctorLs : List (@SLevel (d2Params univs))}
+    {recArgs ctorArgs : List (@SExpr (d2Params univs))}
+    {mcap : (RecursorIotaPattern rec major ctor arity).Path →
+      @SExpr (d2Params univs)}
+    (rule : @Pattern.IotaRule (d2Params univs) rec major ctor arity r)
+    (captureType : (RecursorIotaPattern rec major ctor arity).Path →
+      @SExpr (d2Params univs))
+    (captureTyping : @Pattern.CaptureTyping (d2Params univs) Gamma
+      (RecursorIotaPattern rec major ctor arity) mcap captureType)
+    (hGamma : D2ContextValid univs Gamma)
+    (typing : @Pattern.IotaTyping (d2Params univs) Gamma rec ctor recLs ctorLs
+      recArgs ctorArgs majorTerm A)
+    (matched : @Pattern.MatchesS (d2Params univs)
+      (RecursorIotaPattern rec major ctor arity)
+      (@SExpr.app (d2Params univs)
+        (recArgs.foldr (fun a f => @SExpr.app (d2Params univs) f a)
+          (@SExpr.const (d2Params univs) rec recLs))
+        (ctorArgs.foldr (fun a f => @SExpr.app (d2Params univs) f a)
+          (@SExpr.const (d2Params univs) ctor ctorLs))) recLs mcap) :
+    @Pattern.IotaReductionSite (d2Params univs) Gamma rec major ctor
+      arity r rule recLs ctorLs recArgs ctorArgs majorTerm A mcap captureType
+      captureTyping := by
+  letI : Params := d2Params univs
+  have hcap := h.captureSpine rule hGamma typing matched
+  have hck := h.checked (r := r) (Gamma := Gamma) (recLs := recLs)
+    (mcap := mcap) rule.pat
+  exact SExpr.iotaSiteOf (d2Replay univs) rule captureTyping hGamma typing
+    matched hcap.1 hcap.2 (h.lhsCollapse rule hGamma typing matched)
+    hck.choose hck.choose_spec.1 hck.choose_spec.2
+
+/-- `Params.Semantic.registered` for the complete D2 inventory. -/
+theorem d2Registered (univs : Nat) (h : D2BlockStep univs)
+    {df : VDefEq} {ls : List (@SLevel (d2Params univs))}
+    {Gamma : List (@SExpr (d2Params univs))}
+    (hreg : d2Env.defeqs df) (hlen : ls.length = df.uvars)
+    (_hLhs : @IsDefEqStrong (d2Params univs) Gamma
+      (@SExpr.mkInst (d2Params univs) ls df.lhs)
+      (@SExpr.mkInst (d2Params univs) ls df.lhs)
+      (@SExpr.mkInst (d2Params univs) ls df.type))
+    (_hRhs : @IsDefEqStrong (d2Params univs) Gamma
+      (@SExpr.mkInst (d2Params univs) ls df.rhs)
+      (@SExpr.mkInst (d2Params univs) ls df.rhs)
+      (@SExpr.mkInst (d2Params univs) ls df.type)) :
+    @IsDefEqStrong (d2Params univs) Gamma
+      (@SExpr.mkInst (d2Params univs) ls df.lhs)
+      (@SExpr.mkInst (d2Params univs) ls df.rhs)
+      (@SExpr.mkInst (d2Params univs) ls df.type) := by
+  rw [d2Env_defeqs_iff] at hreg
+  rcases hreg with hnew | hold
+  · exact h.registeredTower hnew hlen
+  · exact d2Registered_old univs hold hlen
+
+/-- The complete D2 bridge, conditional on the block step: the inherited
+Nat iota rules, the three inherited definition rules, the block's five
+constructor bundles, and the block's five generated iota rules. -/
+noncomputable def d2Semantic (univs : Nat) (h : D2BlockStep univs) :
+    letI : Params := d2Params univs
+    Params.Semantic := by
+  letI : Params := d2Params univs
+  exact {
+  structureEta := by
+    intro rule levels Gamma params major hreg
+    exact (d2Env_no_structEta rule hreg).elim
+  ctor := by
+    intro c ci ls Gamma hci hlen cl
+    exact d2Ctor univs hci hlen cl
+  defn := by
+    intro c r hpat
+    exact d2Defn univs hpat
+  iotaRule := by
+    intro rec major ctor arity r hpat
+    exact d2IotaRule univs hpat
+  iotaSite := by
+    intro rec major ctor arity r Gamma A majorTerm recLs ctorLs
+      recArgs ctorArgs mcap rule captureType captureTyping hGamma typing
+      matched _redexSelf _AType
+    exact d2IotaSite univs h rule captureType captureTyping hGamma typing
+      matched
+  registered := by
+    intro df ls Gamma hreg hlen hLhs hRhs
+    exact d2Registered univs h hreg hlen hLhs hRhs }
+
+/-- End-to-end D2 endpoint, conditional on the block step: the
+block-inductive environment supplies every semantic certificate required by
+the experimental sort-injectivity bridge. -/
+theorem d2SortInvS (univs : Nat) (h : D2BlockStep univs)
+    {Gamma : List VExpr} {u v : VLevel}
+    (hGamma : OnCtx Gamma (d2Env.IsType univs))
+    (hde : d2Env.IsDefEqU univs Gamma (.sort u) (.sort v)) : u ≈ v := by
+  letI : Params := d2Params univs
+  letI : Params.Semantic := d2Semantic univs h
+  exact VEnv.IsDefEqU.sort_invS hGamma hde
+
 /-! ## Endpoints and pins -/
 
 /-- The block-extended environment is well formed, ordered, and registers
@@ -856,30 +2326,55 @@ theorem d2Env_live :
 
 /-! ## What remains for the D2 `Params.Semantic` bridge
 
-The two forcing observations below make the residual obligation exact.
-Every generated rule of the live block is simultaneously a `Pat` member and
-a registered defeq of `d2Env`, so a `Params.Semantic (d2Params univs)` value
-must supply, for each of the five block rules,
+**Corrected record.**  Four of the six `Params.Semantic` fields are now
+delivered unconditionally: `structureEta` (`d2StructureEtaSound`),
+`iotaRule` (`d2IotaRule`), `ctor` (`d2Ctor`, including all five block
+constructor bundles) and `defn` (`d2Defn`).  `registered` is delivered for
+every inherited rule (`d2Registered_old`).  What remains is the *block*
+half of `iotaSite` and `registered`, packaged as the single named premise
+`D2BlockStep`, and `d2Semantic`/`d2SortInvS` are conditional on exactly
+that premise and nothing else.
 
-* `Params.Semantic.iotaSite` — an evidence-rich reduction-site certificate,
-  and
-* `Params.Semantic.registered` — the strong equality between the two
-  registered towers.
+The earlier record here called the residual "pure volume".  That is
+**wrong** for one of its four components:
 
-Neither is derivable from pattern membership; both are the per-rule replay
-that D0 performed for the two `Nat` rules (`SExprParamsD0.lean:1954-6829`,
-about 640 lines per rule) and D1 re-performed against the extended
-environment (`SExprParamsD1.lean:1930-2611`).  Unlike D1's quotient
-obstruction this is *not* an interface defect: the block is non-`Prop`, its
-constructors are ordinary, and nothing in `CtorBundle` disqualifies it.  The
-gap is the volume of a five-rule replay over an 8-argument major with two
-universe parameters, plus the D1→D2 transport functor
-(`SExprParamsD1.lean:484-1107`) that `Params.Semantic.ctor`/`.defn` need in
-order to move the inherited derivations into the new instance.  See the D3
-notes in the session report. -/
+* `D2CheckedStep` is *not* volume.  `TreeGen.ruleCheck` folds one `.defeq`
+  per `treeDecl.nparams`, and Tree has one parameter, so discharging it at
+  a matched redex means deriving `p ≡ a` from a stuck `I p ≡ I a`.  That is
+  injectivity of a stuck inductive-type application — `L4L-18A′` strength,
+  the same wall recorded for the quotient rule at
+  `SExprParamsD1.lean:2735`.  The semantic side cannot supply it either:
+  the logical relation realizes `indTy` arguments at `.bot`
+  (`ShapeLogRel.lean:9244`), so it retains no argument information at all.
+  D0/D1 never met this wall because `Nat` has no parameters and no indices,
+  which is why both discharge `checked` by `simp`.
+
+* `D2CaptureSpineStep`, `D2CollapseStep` and `D2RegisteredTowerStep` *are*
+  volume, but far less of it than the old note claimed, because the
+  rule-independent part has been factored out into the generic engine
+  `Lean4Lean/Experimental/SExprGenericReplay.lean`
+  (`SExpr.ruleCollapse`, `SExpr.iotaSiteOf`) and the syntax transport into
+  `Lean4Lean/Experimental/SExprTransport.lean`.  Notably `ruleCollapse` —
+  the whole reify/`instL_lamN`/`lamN_wf`/`retarget`/`appN_lamN`/`mkS`
+  chain that D0 and D1 inline once per rule — is proved once, generically,
+  and is `sorryAx`-free.  Theory's own generic block-rule soundness theorem
+  takes the capture spine as a hypothesis for the same reason this engine
+  does, so `D2CaptureSpineStep` marks an interface boundary, not an
+  omission.
+
+The old note also claimed the D1→D2 transport functor was missing; it is
+now landed (`d1StrongToD2` and the generic transport it rests on), which is
+what unblocked `ctor`/`defn`.
+
+The two forcing observations below are unchanged in content: every
+generated rule of the live block is simultaneously a `Pat` member and a
+registered defeq of `d2Env`, which is what obliges `iotaSite`/`registered`
+at it, hence what `D2BlockStep` must cover. -/
 
 /-- Forcing observation 1: every generated rule of the live block is a
-pattern member of the D2 registry. -/
+pattern member of the D2 registry.  This is what makes `D2CheckedStep`
+unavoidable: the pattern's `Check` payload is `TreeGen.ruleCheck`, whose
+parameter obligation is 18A′-gated. -/
 theorem d2Pat_block_rule {i : Nat} {c : NormalizedBlockCtor}
     (hentry : TreeGen.flatCtors[i]? = some c) :
     D2Pat ((TreeGen.rulePattern c).toPattern)
@@ -1027,6 +2522,243 @@ info: 'Lean4Lean.SExpr.ParamsD2.d2Registered_obligation' depends on axioms: [pro
 -/
 #guard_msgs in
 #print axioms d2Registered_obligation
+
+/-! ### New pins: the semantic layer landed by this slice
+
+`d2Ctor` and `d2Defn` are unconditional.  `d2Semantic` and
+`d2SortInvS` are conditional on `D2BlockStep` and inherit the ladder's
+existing `sorryAx` through `VEnv.IsDefEq.uniq` (the 16C′ leaf that
+`SExprParamsD1.lean:2654` already carries); they introduce no new
+admission of their own. -/
+
+/--
+info: 'Lean4Lean.SExpr.ParamsD2.d2Ctor' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ Lean.PersistentHashMap.findAux_isSome,
+ Lean.PersistentHashMap.WF.find?_eq,
+ Lean.PersistentHashMap.WF.toList'_insert,
+ d0Def_fresh._native.native_decide.ax_1_1,
+ d0Def_name_ne_natRec._native.native_decide.ax_1_1,
+ d0Def_name_ne_natSucc._native.native_decide.ax_1_1,
+ d0Def_name_ne_natZero._native.native_decide.ax_1_1,
+ natClassify_d0Def_none._native.native_decide.ax_1_1,
+ probeNatSuccCtorTypeV_eq._native.native_decide.ax_1_1,
+ probeNatTypeTypeV_eq._native.native_decide.ax_1_1,
+ d0Classify_d1MutA_none._native.native_decide.ax_1_1,
+ d0Classify_d1MutB_none._native.native_decide.ax_1_1,
+ d1MutA_fresh._native.native_decide.ax_1_1,
+ d1MutA_name_ne_d0Def._native.native_decide.ax_1_1,
+ d1MutA_name_ne_mutB._native.native_decide.ax_1_1,
+ d1MutA_name_ne_natRec._native.native_decide.ax_1_1,
+ d1MutA_name_ne_natSucc._native.native_decide.ax_1_1,
+ d1MutA_name_ne_natZero._native.native_decide.ax_1_1,
+ d1MutB_fresh._native.native_decide.ax_1_1,
+ d1MutB_name_ne_d0Def._native.native_decide.ax_1_1,
+ d1MutB_name_ne_natRec._native.native_decide.ax_1_1,
+ d1MutB_name_ne_natSucc._native.native_decide.ax_1_1,
+ d1MutB_name_ne_natZero._native.native_decide.ax_1_1,
+ d1Classify_tree._native.native_decide.ax_1_1,
+ d1Classify_treeBranch._native.native_decide.ax_1_1,
+ d1Classify_treeLeaf._native.native_decide.ax_1_1,
+ d1Classify_treeList._native.native_decide.ax_1_1,
+ d1Classify_treeListCons._native.native_decide.ax_1_1,
+ d1Classify_treeListNil._native.native_decide.ax_1_1,
+ d1Classify_treeListRec._native.native_decide.ax_1_1,
+ d1Classify_treeNode._native.native_decide.ax_1_1,
+ d1Classify_treeRec._native.native_decide.ax_1_1,
+ d2Env_isSome._native.native_decide.ax_1_1,
+ treeBranch_fresh._native.native_decide.ax_1_1,
+ treeLeaf_fresh._native.native_decide.ax_1_1,
+ treeListCons_fresh._native.native_decide.ax_1_1,
+ treeListNil_fresh._native.native_decide.ax_1_1,
+ treeListRec_fresh._native.native_decide.ax_1_1,
+ treeList_fresh._native.native_decide.ax_1_1,
+ treeNode_fresh._native.native_decide.ax_1_1,
+ treeRec_fresh._native.native_decide.ax_1_1,
+ tree_fresh._native.native_decide.ax_1_1]
+-/
+#guard_msgs in
+#print axioms d2Ctor
+
+/--
+info: 'Lean4Lean.SExpr.ParamsD2.d2Defn' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ Lean.PersistentHashMap.findAux_isSome,
+ Lean.PersistentHashMap.WF.find?_eq,
+ Lean.PersistentHashMap.WF.toList'_insert,
+ d0Def_fresh._native.native_decide.ax_1_1,
+ d0Def_name_ne_natRec._native.native_decide.ax_1_1,
+ d0Def_name_ne_natSucc._native.native_decide.ax_1_1,
+ d0Def_name_ne_natZero._native.native_decide.ax_1_1,
+ natClassify_d0Def_none._native.native_decide.ax_1_1,
+ probeNatSuccCtorTypeV_eq._native.native_decide.ax_1_1,
+ probeNatTypeTypeV_eq._native.native_decide.ax_1_1,
+ d0Classify_d1MutA_none._native.native_decide.ax_1_1,
+ d0Classify_d1MutB_none._native.native_decide.ax_1_1,
+ d1MutA_fresh._native.native_decide.ax_1_1,
+ d1MutA_name_ne_d0Def._native.native_decide.ax_1_1,
+ d1MutA_name_ne_mutB._native.native_decide.ax_1_1,
+ d1MutA_name_ne_natRec._native.native_decide.ax_1_1,
+ d1MutA_name_ne_natSucc._native.native_decide.ax_1_1,
+ d1MutA_name_ne_natZero._native.native_decide.ax_1_1,
+ d1MutB_fresh._native.native_decide.ax_1_1,
+ d1MutB_name_ne_d0Def._native.native_decide.ax_1_1,
+ d1MutB_name_ne_natRec._native.native_decide.ax_1_1,
+ d1MutB_name_ne_natSucc._native.native_decide.ax_1_1,
+ d1MutB_name_ne_natZero._native.native_decide.ax_1_1,
+ d2Env_isSome._native.native_decide.ax_1_1,
+ treeBranch_fresh._native.native_decide.ax_1_1,
+ treeLeaf_fresh._native.native_decide.ax_1_1,
+ treeListCons_fresh._native.native_decide.ax_1_1,
+ treeListNil_fresh._native.native_decide.ax_1_1,
+ treeListRec_fresh._native.native_decide.ax_1_1,
+ treeList_fresh._native.native_decide.ax_1_1,
+ treeNode_fresh._native.native_decide.ax_1_1,
+ treeRec_fresh._native.native_decide.ax_1_1,
+ tree_fresh._native.native_decide.ax_1_1]
+-/
+#guard_msgs in
+#print axioms d2Defn
+
+/--
+info: 'Lean4Lean.SExpr.ParamsD2.d2Semantic' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ Quot.sound,
+ Lean.PersistentHashMap.findAux_isSome,
+ Lean.PersistentHashMap.WF.find?_eq,
+ Lean.PersistentHashMap.WF.toList'_insert,
+ d0Def_fresh._native.native_decide.ax_1_1,
+ d0Def_name_ne_natRec._native.native_decide.ax_1_1,
+ d0Def_name_ne_natSucc._native.native_decide.ax_1_1,
+ d0Def_name_ne_natZero._native.native_decide.ax_1_1,
+ natClassify_d0Def_none._native.native_decide.ax_1_1,
+ natRule_rhs_ne_d0Def._native.native_decide.ax_1_2,
+ natRule_rhs_ne_d0Def._native.native_decide.ax_1_3,
+ probeNatGeneratedRuleSucc_lookup._native.native_decide.ax_1_1,
+ probeNatGeneratedRuleZero_lookup._native.native_decide.ax_1_1,
+ probeNatRecTypeV_eq._native.native_decide.ax_1_1,
+ probeNatRuleRhs_ne._native.native_decide.ax_1_1,
+ probeNatSuccCtorName._native.native_decide.ax_1_1,
+ probeNatSuccCtorTypeV_eq._native.native_decide.ax_1_1,
+ probeNatSuccRuleLhsV_eq._native.native_decide.ax_1_1,
+ probeNatSuccRuleRecName._native.native_decide.ax_1_1,
+ probeNatSuccRuleTypeV_eq._native.native_decide.ax_1_1,
+ probeNatTypeTypeV_eq._native.native_decide.ax_1_1,
+ probeNatZeroCtorName._native.native_decide.ax_1_1,
+ probeNatZeroRuleLhsV_eq._native.native_decide.ax_1_1,
+ probeNatZeroRuleRecName._native.native_decide.ax_1_1,
+ probeNatZeroRuleTypeV_eq._native.native_decide.ax_1_1,
+ d0Classify_d1MutA_none._native.native_decide.ax_1_1,
+ d0Classify_d1MutB_none._native.native_decide.ax_1_1,
+ d1MutA_fresh._native.native_decide.ax_1_1,
+ d1MutA_name_ne_d0Def._native.native_decide.ax_1_1,
+ d1MutA_name_ne_mutB._native.native_decide.ax_1_1,
+ d1MutA_name_ne_natRec._native.native_decide.ax_1_1,
+ d1MutA_name_ne_natSucc._native.native_decide.ax_1_1,
+ d1MutA_name_ne_natZero._native.native_decide.ax_1_1,
+ d1MutB_fresh._native.native_decide.ax_1_1,
+ d1MutB_name_ne_d0Def._native.native_decide.ax_1_1,
+ d1MutB_name_ne_natRec._native.native_decide.ax_1_1,
+ d1MutB_name_ne_natSucc._native.native_decide.ax_1_1,
+ d1MutB_name_ne_natZero._native.native_decide.ax_1_1,
+ natRule_rhs_ne_d1MutA._native.native_decide.ax_1_2,
+ natRule_rhs_ne_d1MutA._native.native_decide.ax_1_3,
+ natRule_rhs_ne_d1MutB._native.native_decide.ax_1_2,
+ natRule_rhs_ne_d1MutB._native.native_decide.ax_1_3,
+ d1Classify_tree._native.native_decide.ax_1_1,
+ d1Classify_treeBranch._native.native_decide.ax_1_1,
+ d1Classify_treeLeaf._native.native_decide.ax_1_1,
+ d1Classify_treeList._native.native_decide.ax_1_1,
+ d1Classify_treeListCons._native.native_decide.ax_1_1,
+ d1Classify_treeListNil._native.native_decide.ax_1_1,
+ d1Classify_treeListRec._native.native_decide.ax_1_1,
+ d1Classify_treeNode._native.native_decide.ax_1_1,
+ d1Classify_treeRec._native.native_decide.ax_1_1,
+ d2Env_isSome._native.native_decide.ax_1_1,
+ treeBranch_fresh._native.native_decide.ax_1_1,
+ treeLeaf_fresh._native.native_decide.ax_1_1,
+ treeListCons_fresh._native.native_decide.ax_1_1,
+ treeListNil_fresh._native.native_decide.ax_1_1,
+ treeListRec_fresh._native.native_decide.ax_1_1,
+ treeList_fresh._native.native_decide.ax_1_1,
+ treeNode_fresh._native.native_decide.ax_1_1,
+ treeRec_fresh._native.native_decide.ax_1_1,
+ tree_fresh._native.native_decide.ax_1_1]
+-/
+#guard_msgs in
+#print axioms d2Semantic
+
+/--
+info: 'Lean4Lean.SExpr.ParamsD2.d2SortInvS' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ Quot.sound,
+ Lean.PersistentHashMap.findAux_isSome,
+ Lean.PersistentHashMap.WF.find?_eq,
+ Lean.PersistentHashMap.WF.toList'_insert,
+ d0Def_fresh._native.native_decide.ax_1_1,
+ d0Def_name_ne_natRec._native.native_decide.ax_1_1,
+ d0Def_name_ne_natSucc._native.native_decide.ax_1_1,
+ d0Def_name_ne_natZero._native.native_decide.ax_1_1,
+ natClassify_d0Def_none._native.native_decide.ax_1_1,
+ natRule_rhs_ne_d0Def._native.native_decide.ax_1_2,
+ natRule_rhs_ne_d0Def._native.native_decide.ax_1_3,
+ probeNatGeneratedRuleSucc_lookup._native.native_decide.ax_1_1,
+ probeNatGeneratedRuleZero_lookup._native.native_decide.ax_1_1,
+ probeNatRecTypeV_eq._native.native_decide.ax_1_1,
+ probeNatRuleRhs_ne._native.native_decide.ax_1_1,
+ probeNatSuccCtorName._native.native_decide.ax_1_1,
+ probeNatSuccCtorTypeV_eq._native.native_decide.ax_1_1,
+ probeNatSuccRuleLhsV_eq._native.native_decide.ax_1_1,
+ probeNatSuccRuleRecName._native.native_decide.ax_1_1,
+ probeNatSuccRuleTypeV_eq._native.native_decide.ax_1_1,
+ probeNatTypeTypeV_eq._native.native_decide.ax_1_1,
+ probeNatZeroCtorName._native.native_decide.ax_1_1,
+ probeNatZeroRuleLhsV_eq._native.native_decide.ax_1_1,
+ probeNatZeroRuleRecName._native.native_decide.ax_1_1,
+ probeNatZeroRuleTypeV_eq._native.native_decide.ax_1_1,
+ d0Classify_d1MutA_none._native.native_decide.ax_1_1,
+ d0Classify_d1MutB_none._native.native_decide.ax_1_1,
+ d1MutA_fresh._native.native_decide.ax_1_1,
+ d1MutA_name_ne_d0Def._native.native_decide.ax_1_1,
+ d1MutA_name_ne_mutB._native.native_decide.ax_1_1,
+ d1MutA_name_ne_natRec._native.native_decide.ax_1_1,
+ d1MutA_name_ne_natSucc._native.native_decide.ax_1_1,
+ d1MutA_name_ne_natZero._native.native_decide.ax_1_1,
+ d1MutB_fresh._native.native_decide.ax_1_1,
+ d1MutB_name_ne_d0Def._native.native_decide.ax_1_1,
+ d1MutB_name_ne_natRec._native.native_decide.ax_1_1,
+ d1MutB_name_ne_natSucc._native.native_decide.ax_1_1,
+ d1MutB_name_ne_natZero._native.native_decide.ax_1_1,
+ natRule_rhs_ne_d1MutA._native.native_decide.ax_1_2,
+ natRule_rhs_ne_d1MutA._native.native_decide.ax_1_3,
+ natRule_rhs_ne_d1MutB._native.native_decide.ax_1_2,
+ natRule_rhs_ne_d1MutB._native.native_decide.ax_1_3,
+ d1Classify_tree._native.native_decide.ax_1_1,
+ d1Classify_treeBranch._native.native_decide.ax_1_1,
+ d1Classify_treeLeaf._native.native_decide.ax_1_1,
+ d1Classify_treeList._native.native_decide.ax_1_1,
+ d1Classify_treeListCons._native.native_decide.ax_1_1,
+ d1Classify_treeListNil._native.native_decide.ax_1_1,
+ d1Classify_treeListRec._native.native_decide.ax_1_1,
+ d1Classify_treeNode._native.native_decide.ax_1_1,
+ d1Classify_treeRec._native.native_decide.ax_1_1,
+ d2Env_isSome._native.native_decide.ax_1_1,
+ treeBranch_fresh._native.native_decide.ax_1_1,
+ treeLeaf_fresh._native.native_decide.ax_1_1,
+ treeListCons_fresh._native.native_decide.ax_1_1,
+ treeListNil_fresh._native.native_decide.ax_1_1,
+ treeListRec_fresh._native.native_decide.ax_1_1,
+ treeList_fresh._native.native_decide.ax_1_1,
+ treeNode_fresh._native.native_decide.ax_1_1,
+ treeRec_fresh._native.native_decide.ax_1_1,
+ tree_fresh._native.native_decide.ax_1_1]
+-/
+#guard_msgs in
+#print axioms d2SortInvS
 
 end ParamsD2
 end SExpr
