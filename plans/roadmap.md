@@ -851,6 +851,47 @@ so they go clean with it.
   Narrative:
   `plans/l4l-16c-adequacy-log.md`; gap audit:
   `plans/l4l-16c-buildp-premortem.md`.
+
+  **2026-08-15 (second session): the stratification lever is REFUTED
+  and the residual is renarrowed to the two root callbacks.** The
+  "missing stratification index" root-cause note is now an autopsy,
+  not a work item: `plans/l4l-16-stratified-observation-design.md` +
+  `probeT-stratpi.lean` machine-check that voucher-as-data is
+  conservative (`valTyPi2D_iff_bare`), the uniform bound is false
+  (`uniformStratBound_false` via an unbounded-minimal-depth β-redex
+  tower — and `chainAnchorAt_false`: the banked `ChainAnchorAt` Prop
+  is itself false at every depth), and a full `LogRel` re-indexing
+  inherits the wall at `trans` middles (`transMiddleCertAt_false`,
+  σ-instances unbounded). Do-not-open is now a theorem. The
+  **registered-endpoint narrowing** then landed
+  (`plans/l4l-16-registered-pi-design.md` + `probeU-regpi.lean`):
+  `PiPathInvReg` — Pi-path inversion with one endpoint a certificate
+  telescope — survives the vacuity kill-shot (the CR ladder's β site
+  has BOTH endpoints outside the registered class at every arity), and
+  `regSpine_result_uniq` (argument-list induction anchored at the
+  constructor's own telescope, replacing `SpineWF.result_path`'s
+  spine-derivation induction whose `conv` edges lose the anchor)
+  closes the entire chain-fold interior from `PiPathInvReg` alone.
+  General-`PiPathInv` demands on the leaf path drop from
+  chain-length × spine-length to exactly two — the root callbacks —
+  and both provably escape the registered class (`rootRed_meets_beta`;
+  `Pattern.Action` redex heads are never constructors). `PiPathInvReg`
+  itself is not provable by path induction (U8: the class is not
+  closed under one edge). Bankables landed the same session:
+  `IndTyHeadNorm` reclassified as banked-consumer plumbing (all five
+  consumers CR-conditional; soundness core `indTyShapeTransport`
+  landed), the RectFrame index-upgrade residual dissolved additively
+  (`CtorFrame.toRectFrame` at the recoverable `.indTy` type shape;
+  probeR13 superseded; remaining follow-up is a RectFrame at the
+  rec-app observation), and the δ-rank component has a
+  consumer-shaped design probe (`probeD-deltarank2.lean`:
+  `DeltaRankFields` + D0/D1 inhabitation with literal ranks;
+  `ConstDefnDeepInstStep` produced outright; wiring plan = a new
+  `Params.DeltaRank` class). Open probe: the typed constructor view
+  (retain `IsDefEq` in `LRS.CtorView`; the `whr`/`unwhr` iff cases are
+  the test) — its outcome decides whether the leaf's residual becomes
+  exactly `PiPathInvReg` or the map closes at
+  rootRed = general subject reduction.
 - *L4L-16D — live-environment instance.* The only route segment never
   executed end to end — therefore staged, thin vertical slice first:
   **D0 complete (2026-08-14, active working tree):** the generated Nat
@@ -864,14 +905,29 @@ so they go clean with it.
   `VDecl.WF.mutualDef`, D0→D1 transport, full `Params.Semantic`,
   pinned `d1SortInvS`; the quot environment layer is in and pinned
   sorryAx-free, while the quot `Params`/`Semantic` instance is blocked
-  on the recorded `CtorBundle.hu0` interface decision
-  (Prop-instantiable `Quot.mk`; candidate repairs in-file) plus
+  on the Prop-wall design (the `hu0` deletion is refuted — see the
+  16E entry and `probeA1-hu0.lean`) plus
   stuck-`Quot` injectivity of L4L-18A′ strength. **D2** ordinary/block
   inductive rules via `AssembledPat` — the union non-overlap
   mathematics is proved and landed in Theory 2026-08-15 (four laws +
   cross-term engine + exact `ExtSeparation` side conditions with a
   falsity witness; kernel `decide` only, `#guard_msgs`-pinned),
-  leaving registry consumption;
+  leaving registry consumption. **Second 2026-08-15 session:** the
+  rule-independent replay is now generic — `SExprTransport.lean` (R1:
+  syntax transport generic in `univs` agreement, proof-complete) and
+  `SExprGenericReplay.lean` (R2: the `Replay` certificate, generic
+  type-uniqueness/spine-view tower, and the sorryAx-free
+  `ruleCollapse` reify/`appN_lamN`/`mkS` chain proved once, plus the
+  `iotaSiteOf` assembler); D2 consumes them through `d1StrongToD2`
+  with unconditional `Semantic.ctor` (all five block bundles) and
+  `Semantic.defn`, and the endpoint `d2SortInvS` is pinned
+  conditionally on the single named premise `D2BlockStep`, whose
+  `checked` component is the L4L-18A′-gated stuck-inductive-application
+  injectivity (its other three components are per-rule capture/collapse
+  volume the engine takes as input, exactly as Theory's generic
+  block-rule theorem does). Reduction sites do not transport downward,
+  so `D2BlockStep` also re-covers the two inherited Nat rules, where
+  `checked` is trivially true;
   **D3** nested rules as registered equations only (nested pattern
   facts stay L4L-19A); **D4** registered structure eta from the
   L4L-15B registry certificate. Sources:
