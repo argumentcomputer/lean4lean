@@ -802,13 +802,48 @@ so they go clean with it.
   narrowing provably does not dodge the hard case (an explicit
   sort-typed β-redex witness). Note `weakN_iff` remains a real but
   DIFFERENT obligation: it gates `church_rosser`, not these two Props.
-  Only mapped escape: stratifying the ladder (depth-`d`
-  `ParRedSDefeqSort` from depth-`(d-1)` `PiEdgeInv`) — uncertain, and
-  the two machine-checked obstructions to depth-indexing recorded above
-  apply directly. Cheapest decision-changing step: machine-check the
-  loop by building `IsDefEqStrong.app_inv'`/`lam_inv'` and deriving
-  native `PiEdgeInv → ParRedSDefeq`, turning "circular" from argued
-  into proved. Root cause is not `SpineWF` but
+  **The loop is now PROVED, and the stratification escape is closed
+  too.** `LRS.piPathInv_iff_parRedSDefeq` establishes the ladder and
+  the leaf are interderivable: the native derivation
+  `PiPathInv → PatStep → ParRedSDefeq` goes through with no
+  Church–Rosser, no standardization and no adequacy (verified by a
+  dependency walker, and structurally — ShapeLogRel's 17-module import
+  closure contains none of ChurchRosser/HeadReduction/UniqueTyping/
+  Injectivity). Any proof of the rung is a proof of the leaf.
+  Three corrections came with it: the β case holds a *path* between
+  Pis, not a single edge, so the `PiEdgeInv` framing trades the leaf
+  for the L4L-17 co-deliverable via `TypeDefEqPath.collapse` rather
+  than avoiding it; there is a second, independent uniqueness site
+  (`LRS.PatStep`, from `Pattern.Action.sound` holding at the type the
+  action chose) which is NOT Π-injectivity and follows from raw type
+  uniqueness alone; and the leaf is charged at the *contraction*, not
+  the congruence — the β congruence needs no Π-inversion at all, while
+  `IsDefEq.beta` demands the argument at the abstraction's OWN domain.
+  The sort restriction does not help (sort-typedness constrains the
+  result type, never the domain — machine-checked witness in the empty
+  context). Stratification: probeS's producer-side obstruction does NOT
+  apply here (both IHs fire at the types the inversion suite returns,
+  before any path is traversed), but the consumer-side one applies
+  verbatim — the ladder must be handed an anchor manufactured from the
+  accumulated path, and that demand (`LRS.ChainAnchorAt`) is provably
+  equivalent to a uniform stratification bound. So a perfectly
+  stratified rung still could not be consumed. **Do not open the
+  stratification work.**
+
+  **Consolation, and it is substantial:** the same interderivability
+  makes the CR ladder a free downstream CONSUMER of the leaf. Landing
+  `ParRed(S).defeq_of_piPathInv` banks the whole ladder
+  (`SubjectRedS`, `PiEdgeInv`, `PiEdgeObs`, …) as a native consequence
+  that fires the moment the leaf lands — and retires the `sorryAx`
+  Theory's `ParRed.defeq`/`StRed.triangle` currently carry. The
+  inversion suite it needed (`IsDefEqStrong.app_inv'`/`.lam_inv'`/
+  `.forallE_inv_path`, ~145 lines, structural, first-try) is worth
+  landing on its own: each returns the `TypeDefEqPath` from the
+  subject's own type to the declared type, eliminating the
+  type-uniqueness fixups wherever the SExpr side inverts a typing at a
+  converted type. **Remaining route for the leaf: the joint/adequacy
+  route (`PiPathInv.of_adequacy`) — after this measurement it is the
+  only one standing.** Root cause is not `SpineWF` but
   `LRS.ValTyPi2`/`LogRel` being `WShape`-indexed with no stratification
   index. Closure records: `plans/probes/probeP-pipathinv.lean`,
   `probeS-spinedepth.lean`. N2 is decided (capture-domain link on the

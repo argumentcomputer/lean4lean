@@ -4076,3 +4076,150 @@ from the docstring corrections listed in §2, none of which touched a statement,
 proof, or name.  Everything downstream of `ShapeLogRel.lean` needs rebuilding.
 
 — session-C subagent 12
+
+### The CR ladder banks as a *consumer* of the leaf; `TypeDefEqPath` moves to `SExpr.lean` (2026-08-15, session-C subagent 13)
+
+Source: `plans/probes/probeR13-loop.lean` (740 lines, green, all 22
+`#print axioms` `sorryAx`-free).  R13 proved the ladder rung
+`LRS.ParRedSDefeq` and the L4L-16C′ leaf `LRS.PiPathInv` **interderivable**.
+That closes the ladder as a way to *discharge* the leaf — any proof of the
+rung is a proof of the leaf — but the very same fact makes the ladder a
+valuable downstream **consumer**.  This session banks the consumer direction.
+
+#### 1. The `TypeDefEqPath` relocation (the one non-additive change)
+
+`TypeDefEqPath` and its whole conversion API — `single`, `trans`, `leftType`,
+`rightType`, `left`, `right`, `symm`, `defeqDF`, `defeqDF_l`,
+`defeqDF_l_path`, `subst` — moved out of `ShapeLogRel.lean` (old :10244–:10317)
+and into `Lean4Lean/Experimental/SExpr.lean:3613`, immediately after
+`IsDefEq.defeqDF_l` (:3588) and `HasType.defeq_l` (:3592).
+
+* **It is clean.**  The API's only inputs are `IsDefEq.defeqDF`,
+  `IsDefEq.defeqDF_l` (:3588), `IsDefEq.subst` (:3255) and `Ctx.Subst` (:3025)
+  — every one SExpr-level.  Nothing about it was logical-relation-flavoured.
+* **Zero consumer fixups.**  `ShapeLogRel.lean` re-elaborated with every
+  existing consumer *unchanged*, and `ShapeLogRelAdequacy.lean` likewise: the
+  name `Lean4Lean.SExpr.TypeDefEqPath` is unchanged, and both files see it
+  through the same namespace.  The signal the brief asked for — a consumer
+  breaking — did not appear.  75 lines left SLR, replaced by a 9-line pointer
+  note: net −66.
+* **`TypeDefEqPath.collapse` deliberately stayed** in `ShapeLogRel.lean`
+  (now :10521).  It did not sit in the moved block and it has one extra input,
+  `LogRel.RawTypeUniq` (:10514), which is declared there.  Moving it would
+  have dragged raw type uniqueness into `SExpr.lean` for no gain.
+* **Placement deviation, recorded.**  The brief asked for the inversion suite
+  "beside `IsDefEqStrong.forallE_inv'` (:2284)".  That is not reachable:
+  `IsDefEq.hasType` is at :2370 and `Ctx.Subst` at :3025, both *after* :2284,
+  so no formulation of the path API can precede `forallE_inv'`.  The suite
+  therefore sits with the path API at :3705–:3844, with docstrings pointing
+  back to `forallE_inv'`, whose proof style it mirrors exactly.
+
+#### 2. S1 — the inversion suite (SExpr.lean)
+
+`IsDefEqStrong.app_inv'` (:3705), `.lam_inv'` (:3753), `.forallE_inv_path`
+(:3804).  Each also returns the `TypeDefEqPath` from the subject's **own**
+type to the declared type `V`; that is the whole novelty over Theory's
+`VEnv.HasType.app_inv` / `.lam_inv`, and it is what removes every
+`IsDefEq.trans_l` / `uniqU` fixup the Theory proofs spend.  Recorded in the
+docstrings.
+
+Each measures `[propext, Quot.sound]`, each is `#sorryRoots`-CLEAN, and the
+dependency walker confirms **none of them reaches `IsDefEq.strong`** — nor
+`LRS.PiPathInv`.  They are pure structural case analysis on `IsDefEqStrong`.
+
+#### 3. S2 — the loop as a downstream consumer (ShapeLogRel.lean, at EOF)
+
+`LRS.PatStep`, `.of_typeUniq`, `.of_piPathInv`, `applyS_congr`,
+`ParRed.defeq_of_piPathInv`, `ParRedS.defeq_of_piPathInv`,
+`LRS.parRedSDefeq_of_piPathInv`, `LRS.piPathInv_iff_parRedSDefeq` (headline),
+`LRS.PiEdgeInv.of_piPathInv`, `LRS.PiPathInv.of_piEdgeInv_collapse`,
+`LRS.patStep_nonvacuous`.
+
+**The payoff, docstringed prominently at the section head.**  The moment 16C′
+lands, the ladder is free: `LRS.ParRedSDefeq` outright, `LRS.SubjectRedS`
+(already landed as `WHRedS.defeq_of_piPathInv`), and the single-edge
+`LRS.PiEdgeInv`.  It also retires the `sorryAx` that Theory's
+`VEnv.ParRed.defeq` and `VEnv.StRed.triangle` carry — probeR12 measured their
+roots as `IsDefEqU.sort_inv` / `IsDefEqU.forallE_inv_stratified`, i.e. the
+16C′ deliverables themselves.  The walker confirms the route reaches
+`LRS.PiPathInv` and **not** `LRS.CRComplete`, `LRS.PiStandard`,
+`LRS.SubjectRedS`, `LRS.PiEdgeInv`, `LogRel.RawTypeUniq` or `LR.adequacy`.
+
+**One correction to the brief's framing, machine-checked.**  `LRS.PatStep` was
+to be banked as "the second, independent uniqueness site", and in *content* it
+is: `.of_typeUniq` proves it from raw type uniqueness and from nothing about
+Pi shapes.  But it is **not an extra residual on top of the leaf**.  Every
+redex a `Pattern.Action` can match is a constant-headed spine, and spine type
+uniqueness is already reduced to the leaf in this file
+(`LRS.constSpineTypeUniqPath`, :11458), so `LRS.PatStep.of_piPathInv` — five
+lines, mirroring the `extra` case of the landed `WHRed.defeq_of_piPathInv`
+(:11507) — discharges it from `LRS.PiPathInv` as well.  Hence
+`LRS.parRedSDefeq_of_piPathInv`: the rung from the leaf with **no side
+conditions**.  This strengthens rather than weakens the banked claim, and both
+docstrings say so.  `LRS.PiEdgeInv.of_piPathInv` was landed for the same
+reason: two existing docstrings (:15361, :15579) already referred to it as
+"a one-liner in the other direction"; it is now checked rather than asserted.
+
+`LRS.PiPathInv.of_piEdgeInv_collapse` carries the trade explicitly: collapsing
+a path to a single edge costs `LogRel.ContextualRawTypeUniq`, so the
+`PiEdgeInv` framing **trades the 16C′ leaf for the L4L-17 co-deliverable**
+rather than avoiding it.
+
+#### 4. S3 — the closure records
+
+`beta_congr_no_piInv` (the β *congruence* needs no Π-inversion at all),
+`LRS.BetaFire` + `.of_piPathInv` (the *contraction* is where the leaf is
+charged), `betaSort_domain_unconstrained` (sort-typedness constrains the
+result type, never the domain — the sort restriction is not an escape), and
+`LRS.ChainAnchorAt` + `.uniformDepthBound` / `.of_uniformDepthBound` (the
+stratification escape's consumer-side obstruction, *provably equivalent* to a
+uniform stratification bound — the same fatal proposition probeS identified).
+Banked so nobody re-attempts the dead routes.
+
+#### 5. Vacuity discipline
+
+Three new `Prop`s (`LRS.PatStep`, `LRS.BetaFire`, `LRS.ChainAnchorAt`), all
+witnessed:
+
+* `LRS.patStep_nonvacuous` — environment-conditional, like
+  `LRS.indTyHead_nonvacuous`: inhabited wherever `Pattern.Action` is, and at
+  the action's own type the conclusion *is* `action.sound`, so no derivation
+  of `False` is available that does not refute `Pattern.Action.sound`.  Two
+  independent derivations (`.of_typeUniq`, `.of_piPathInv`) rule out
+  underivability.
+* `LRS.betaFire_nonvacuous` — at a **non-degenerate** instance: the witness of
+  `betaSort_domain_unconstrained`, whose application domain is syntactically
+  different from the abstraction's own.  Empty context, no environment
+  assumptions.
+* `LRS.chainAnchorAt_nonvacuous` — hypothesis inhabited in the empty context
+  with no environment assumptions, which is what makes the
+  `.uniformDepthBound` equivalence a real obstruction rather than a vacuous
+  one.
+
+No new `Prop` was left unwitnessed and no derivation of `False` succeeded.
+
+#### 6. Build note
+
+Three targets, built in the prescribed order, all exit 0:
+`Lean4Lean.Experimental.SExpr`, then `...ShapeLogRel` (31s), then
+`...ShapeLogRelAdequacy` (12s).  Every block compiled **first try**.
+
+*Warning-profile delta: zero.*  SExpr 6, ShapeLogRel 23, Adequacy 100 — the
+same counts as the pre-change baseline, and verified by diff to be the same
+warnings (SLR modulo the line shift from the relocation; ADQ byte-identical).
+No `omit [Params.Semantic] in` was needed: every new declaration genuinely
+uses its section variables.
+
+*Sorry inventory, exact:*
+
+* `SExpr.lean` — **4**, the known off-path ones, unchanged in identity and
+  shifted +254 lines by the insertion: :4051, :4287, :4390, :4456 (was :3797,
+  :4033, :4136, :4202).
+* `ShapeLogRel.lean` — **0**.
+* `ShapeLogRelAdequacy.lean` — **exactly 1**, `LR.iotaWitnessStep`
+  (declaration :8716, token :8746), untouched.
+
+Everything downstream of `SExpr.lean` needs rebuilding; `SExprParams*` was
+deliberately not built here.
+
+— session-C subagent 13
