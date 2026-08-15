@@ -936,6 +936,108 @@ theorem NormalEq.apply_pat
       h2 (.defeqU_l henv hΓ ((ih2 h2).defeq hΓ) h2) (ih1 h1) (ih2 h2)
   | var path => exact ih path _ he
 
+/-!
+### Level congruence
+
+A registered contraction fires at whatever universe arguments the redex
+carries. When two `NormalEq`-related redexes differ only in `≈`-equivalent
+level arguments, the two contracta differ only in those same levels, so the
+pattern side conditions transport and the contracta are again `NormalEq`.
+`EqUpToLevels` (`Theory/Typing/Strong.lean`) is exactly that relation; what
+is added here is its purely syntactic instantiation law, its symmetry, its
+`Pattern.RHS.apply` congruence, and the bridge back into `NormalEq`.
+-/
+
+omit [Params] in
+theorem EqUpToLevels.symm' {U} {e e' : VExpr} (H : EqUpToLevels U e e') :
+    EqUpToLevels U e' e := by
+  induction H with
+  | bvar => exact .bvar
+  | const h1 h2 h3 => exact .const h2 h1 (h3.flip.imp fun _ _ h => h.symm)
+  | sort h1 h2 h3 => exact .sort h2 h1 h3.symm
+  | app _ _ ih1 ih2 => exact .app ih1 ih2
+  | lam _ _ ih1 ih2 => exact .lam ih1 ih2
+  | forallE _ _ ih1 ih2 => exact .forallE ih1 ih2
+
+/-!
+Instantiating *any* expression at two pointwise-equivalent well-formed level
+lists gives `EqUpToLevels`.  Unlike `EqUpToLevels.instL` this needs no
+derivation for the expression: it is pure syntax, which is what makes it
+usable on the closed templates sitting inside a `Pattern.RHS`.
+-/
+omit [Params] in
+theorem EqUpToLevels.instL_equiv {U} {ls ls' : List VLevel}
+    (hls : ∀ l ∈ ls, l.WF U) (hls' : ∀ l ∈ ls', l.WF U)
+    (heq : List.Forall₂ (· ≈ ·) ls ls') :
+    ∀ e : VExpr, EqUpToLevels U (e.instL ls) (e.instL ls')
+  | .bvar _ => .bvar
+  | .sort _ => .sort (.inst hls) (.inst hls') (VLevel.inst_congr rfl heq)
+  | .const _ _ => .const
+      (List.forall_mem_map.2 fun _ _ => .inst hls)
+      (List.forall_mem_map.2 fun _ _ => .inst hls')
+      (List.forall₂_map_left_iff.2 <| List.forall₂_map_right_iff.2 <|
+        .rfl fun _ _ => VLevel.inst_congr rfl heq)
+  | .app .. => .app (instL_equiv hls hls' heq _) (instL_equiv hls hls' heq _)
+  | .lam .. => .lam (instL_equiv hls hls' heq _) (instL_equiv hls hls' heq _)
+  | .forallE .. => .forallE (instL_equiv hls hls' heq _) (instL_equiv hls hls' heq _)
+
+omit [Params] in
+theorem EqUpToLevels.apply_instL {U} {p : Pattern} {ls ls' : List VLevel}
+    {m2 : p.Path → VExpr} (r : p.RHS)
+    (hls : ∀ l ∈ ls, l.WF U) (hls' : ∀ l ∈ ls', l.WF U)
+    (heq : List.Forall₂ (· ≈ ·) ls ls')
+    (hm : ∀ x, EqUpToLevels U (m2 x) (m2 x)) :
+    EqUpToLevels U (r.apply ls m2) (r.apply ls' m2) := by
+  induction r with
+  | fixed c _ => exact EqUpToLevels.instL_equiv hls hls' heq c
+  | app f a ih1 ih2 => exact .app ih1 ih2
+  | var x => exact hm x
+
+variable! (hΓ : OnCtx Γ (IsType env univs)) in
+theorem EqUpToLevels.normalEq (H : EqUpToLevels univs e1 e2)
+    {A} (he : Γ ⊢ e1 : A) : Γ ⊢ e1 ≡ₚ e2 := by
+  induction H generalizing Γ A with
+  | bvar => exact .refl he
+  | const h1 h2 h3 =>
+    have ⟨_, c1, _, c3⟩ := he.const_inv henv hΓ
+    exact .constDF c1 h1 h2 c3 h3
+  | sort h1 h2 h3 => exact .sortDF h1 h2 h3
+  | app _ _ ih1 ih2 =>
+    have ⟨_, _, hf, ha⟩ := he.app_inv henv hΓ
+    have n1 := ih1 hΓ hf
+    have n2 := ih2 hΓ ha
+    exact .appDF hf (.defeqU_l henv hΓ (n1.defeq hΓ) hf)
+      ha (.defeqU_l henv hΓ (n2.defeq hΓ) ha) n1 n2
+  | lam _ _ ih1 ih2 =>
+    have ⟨⟨_, hA⟩, _, hb⟩ := he.lam_inv henv hΓ
+    exact .lamDF hA (((ih1 hΓ hA).defeq hΓ).of_l henv hΓ hA)
+      (ih2 (by exact ⟨hΓ, _, hA⟩) hb)
+  | forallE _ _ ih1 ih2 =>
+    have ⟨⟨_, hA⟩, _, hB⟩ := he.forallE_inv henv
+    exact .forallEDF hA (ih1 hΓ hA) hB (ih2 (by exact ⟨hΓ, _, hA⟩) hB)
+
+variable! (hΓ : OnCtx Γ (IsType env univs)) in
+theorem EqUpToLevels.normalEq_r (H : EqUpToLevels univs e1 e2)
+    {A} (he : Γ ⊢ e2 : A) : Γ ⊢ e1 ≡ₚ e2 := (H.symm'.normalEq hΓ he).symm hΓ
+
+/-! The pattern side conditions transport along `≈`-equivalent level lists. -/
+variable! (hΓ : OnCtx Γ (IsType env univs)) in
+theorem _root_.Lean4Lean.Pattern.Check.OK.instL_equiv
+    {p : Pattern} (ck : p.Check) {ls ls' : List VLevel} {m2 : p.Path → VExpr}
+    (hls : ∀ l ∈ ls, l.WF univs) (hls' : ∀ l ∈ ls', l.WF univs)
+    (heq : List.Forall₂ (· ≈ ·) ls ls')
+    (hm : ∀ x, EqUpToLevels univs (m2 x) (m2 x))
+    (H : ck.OK (IsDefEqU env univs Γ) ls' m2) :
+    ck.OK (IsDefEqU env univs Γ) ls m2 := by
+  have heq' : List.Forall₂ (· ≈ ·) ls' ls := heq.flip.imp fun _ _ h => h.symm
+  refine H.map (fun a b h => ?_)
+  obtain ⟨T, hT⟩ := h
+  have ea := IsDefEq.eqUpToLevels henv hΓ hT.hasType.1
+    (EqUpToLevels.apply_instL a hls' hls heq' hm)
+  have eb := IsDefEq.eqUpToLevels henv hΓ hT.hasType.2
+    (EqUpToLevels.apply_instL b hls' hls heq' hm)
+  exact ⟨T, (ea.symm.trans hT).trans eb⟩
+
 set_option hygiene false
 local notation:65 Γ " ⊢ " e1 " ≫ " e2:36 => ParRed Γ e1 e2
 local notation:65 Γ " ⊢ " e1 " ⋙ " e2:36 => CParRed Γ e1 e2
@@ -1752,11 +1854,24 @@ theorem NormalEq.parRed (H1 : Γ ⊢ e₁ ≡ₚ e₂) (H2 : Γ ⊢ e₂ ≫ e�
     cases H2 with
     | sort => exact ⟨_, .tail .rfl .sort, .sortDF l1 l2 l3⟩
     | extra r1 r2 => cases r2
-  | constDF l1 l2 l3 l4 l5 =>
+  | @constDF c ci ls ls' _ l1 l2 l3 l4 l5 =>
     cases H2 with
     | const => exact ⟨_, .tail .rfl .const, .constDF l1 l2 l3 l4 l5⟩
-    | extra r1 r2 r3 r4 =>
-      sorry
+    | @extra p rr _ m1 m2 _ m2' r1 r2 r3 r4 r5 =>
+      -- The registered contraction fires at `ls'`; it fires equally at the
+      -- `≈`-equivalent `ls`, and the two contracta are `NormalEq` by level
+      -- congruence.  The pattern is `.const c`, so it captures nothing.
+      have hstep2 := ParRed.extra r1 r2 r3 r4 r5
+      cases r2
+      obtain ⟨T, hT⟩ := r4
+      refine ⟨rr.1.apply ls m2', .tail .rfl (.extra r1 .const ?_ ?_ nofun), ?_⟩
+      · exact r3.instL_equiv hΓ _ l2 l3 l5 nofun
+      · exact IsDefEqU.trans henv hΓ ⟨_, .constDF l1 l2 l3 l4 l5⟩ <|
+          IsDefEqU.trans henv hΓ ⟨T, hT⟩
+            ⟨T, IsDefEq.eqUpToLevels henv hΓ hT.hasType.2
+              (EqUpToLevels.symm' (EqUpToLevels.apply_instL rr.1 l2 l3 l5 nofun))⟩
+      · exact EqUpToLevels.normalEq_r hΓ (EqUpToLevels.apply_instL rr.1 l2 l3 l5 nofun)
+          (hstep2.hasType hΓ hT.hasType.1)
   | @appDF Γ f A B f₂ a b l1 l2 l3 l4 l5 l6 ih1 ih2 =>
     cases H2 with
     | app r1 r2 =>
