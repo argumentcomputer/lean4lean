@@ -916,10 +916,17 @@ so they go clean with it.
   is refuted as a route, the D-ladder's transport pattern *is* the
   induction step, and the recommendation is a named successor
   milestone **L4L-16F** rather than a 16E step or a D4 endpoint —
-  with `CtorBundle.hu0` recommended for outright deletion (the Prop
-  wall is intrinsic and hits every Prop-sorted inductive's
-  constructors, not just `Quot.mk`; deleting it also unblocks D1's
-  parked quotient half).
+  with `CtorBundle.hu0` recommended for outright deletion — **a
+  recommendation REFUTED 2026-08-15 by the executed discriminating
+  experiment** (`plans/probes/probeA1-hu0.lean`): the ADQ consumption
+  site is free, but `build_spine`'s post-deletion statement is false
+  for Prop-sorted ctor-classified pattern-argument heads, because the
+  shape algebra's proof-irrelevance law (`WShape.HasType.proofIrrel`)
+  requires `.indTy` non-Prop-sortedness and `hu0` is that law's
+  syntactic mirror. Resolving the Prop wall needs a
+  Matches/classification-level design (Prop-branch, or excluding
+  Prop-recursor iota patterns from `Pat`), so D1's quotient half stays
+  blocked on that design plus stuck-`Quot` injectivity.
 
 *Exit:* the public `sort_inv` sorry and the merged inversion/uniqueness
 statements are removed with exact accepted axiom closures — no

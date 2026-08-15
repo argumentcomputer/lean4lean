@@ -82,9 +82,9 @@ Current live `SExpr.lean` sorries (9), triaged:
 | # | Decl (≈line) | Verdict |
 |---|---|---|
 | S1 | `IsDefEqLift.subst` (2655) | **False as stated** — `HasType` is a free section variable, so the premise admits the trivial relation. The sound weak form `substDefEq` (2648) is already proved. Restate with a `:↑`-valued `Ctx.Subst` or **delete** if no consumer needs the lifted conclusion. |
-| S2 | `WHRed.weakU_inv` `.extra` (2796) | Real but bounded: needs lowering of `Pattern.Action`'s two `IsDefEq` fields; match-lowering (`matchesS_lift'`) already proved. Route: restate `Action`'s `checked`/`sound` at `:↑`, which also subsumes S1's consumer. |
-| S3 | `WHRedS.defeq` (2919) | **On the gate path now** (measured: 6 dot-notation call sites in the adequacy file, §1.1). As stated it needs a weak-`IsDefEq` typing-inversion layer (`isType`, `app_inv`, `lam_inv`…) that does not exist SExpr-side and is uniqueness-strength — see §2.3 circularity. Do not prove as stated; close via the narrowed form in §3 (16C′ step 2). |
-| S4/S5 | `InferType.hasType`/`InferTypeS.hasType` (3017/3097) | Routine ports **once S3-shaped facts exist**; S5 is a 3-line corollary. |
+| S2 | `WHRed.weakU_inv` `.extra` (2796) | Real but bounded: needs lowering of `Pattern.Action`'s two `IsDefEq` fields; match-lowering (`matchesS_lift'`) already proved. Route: restate `Action`'s `checked`/`sound` at `:↑`, which also subsumes S1's consumer. (2026-08-15: NOT deletable — `WHRedS.weakU_inv` is live via `InferType.weakU_inv`'s cases and `Experimental/LogRel.lean:210`; consumers now named in its doc comment.) |
+| S3 | `WHRedS.defeq` (2919) | **On the gate path now** (2026-08-15 re-measure: 11 live call sites, reduced to 3 — all on the adequacy trunk (`constDefEq`, `SelfAdequateConstStep.of_steps`, `adequacy_of_iotaWitnessStep`) — after the dead-wrapper deletions; original note said 6 dot-notation sites, §1.1). As stated it needs a weak-`IsDefEq` typing-inversion layer (`isType`, `app_inv`, `lam_inv`…) that does not exist SExpr-side and is uniqueness-strength — see §2.3 circularity. Do not prove as stated; close via the narrowed form in §3 (16C′ step 2). |
+| S4/S5 | `InferType.hasType`/`InferTypeS.hasType` (3017/3097) | **DELETED 2026-08-15** (zero consumers repo-wide; the adequacy development consumes neither `▷` nor `▷*`). |
 | S6 | `CRDefEq.trans` (3239) | **A whole-module port in disguise**: needs `CParRed`, `ParRed.triangle`, `ParRed.church_rosser`, `NormalEq.trans`, `NormalEq.parRed` — the last is itself the open L4L-18A Theory debt. Move out of L4L-16 entirely. |
 | S7–S9 | `InferType.whRed` cases (3263–3269) | **Statement wrong** (`▷` is syntactic; no conversion rule; all three cases unprovable as written). Restate (`▷*`/up-to-defeq) or delete; no Theory analogue exists. |
 
@@ -724,8 +724,18 @@ slice before full coverage:
   pattern layer) — the union machinery worked as designed on first
   live contact. Remaining D2: `Params.Semantic`'s
   `iotaSite`/`registered` for the 5 block rules plus `ctor`/`defn` via
-  the D1→D2 transport clone. NOT an interface defect (unlike D1's
-  quot) — pure volume: ~640 lines/rule of evidence-rich replay over an
+  the D1→D2 transport clone. **CORRECTED 2026-08-15: not pure volume.**
+  Tree's parameter makes each rule's iota `checked` discharge (one
+  `.defeq` of the ctor-side vs rec-side parameter capture per rule) a
+  stuck-inductive-application-injectivity obligation — L4L-18A′
+  strength (probeG `iotaCheck_param`), so D2's semantic layer closes
+  only conditionally on one named per-rule premise. The measured
+  volume figure was also an undercount: ~640 lines was `iotaSite` for
+  TWO rules; a new rule's full cost including the 6-theorem
+  `registered` tower is ~1400–1700 lines (D0's Nat towers measure
+  1166/1433), i.e. ~7000–8500 for five rules by hand — hence the
+  generic replay lemma below is mandatory, not optional. Original
+  record: ~640 lines/rule of evidence-rich replay over an
   8-argument major at `uvars = 2` (large elimination adds the motive
   universe; D0/D1 only ever saw `uvars = 1`). Forcing lemmas
   `d2Pat_block_rule`/`d2Registered_obligation` pin both fields as
@@ -877,12 +887,28 @@ plan had not assigned; they are 16E work items now:
   D1 recorded: not just `Quot.mk` at `[.zero]` but every constructor
   of a Prop-sorted inductive (`Eq.refl`, `And.intro`, `Acc.intro`) at
   *every* instantiation, since a constructor's type ends in its
-  inductive type and `imax _ 0 = 0`. Residual work is a case split at
-  exactly two sites (`ShapeLogRel.lean:9208-9251`,
-  `ShapeLogRelAdequacy.lean:6339`) with a discriminating probe staged
-  (`propCtor_membership`): either bot-absorption applies, or the Prop
-  case is contradictory and the deletion is free. Deciding this also
-  unblocks D1's parked quotient half.
+  inductive type and `imax _ 0 = 0`. **SUPERSEDED 2026-08-15: the
+  deletion is REFUTED by the executed discriminating experiment**
+  (`plans/probes/probeA1-hu0.lean`, run at both consumption sites).
+  The ADQ site is free (`u ≠ .zero` is derivable there from the
+  ambient `.indTy`-shaped interpretation — probe P4), but
+  `build_spine`'s post-deletion statement is FALSE for Prop-sorted
+  ctor-classified pattern-argument heads: `Matches.app` hard-codes the
+  `.ctor'` spine entry, whose realization forces
+  `.indTy.HasType .type`, provably impossible at Prop (probe P2). Root
+  cause: the shape algebra's proof-irrelevance law
+  (`WShape.HasType.proofIrrel`) requires `.indTy` non-Prop-sortedness,
+  and `hu0` is that law's syntactic mirror — relaxing the `hasType`
+  indTy row makes `proofIrrel` false. Landing any resolution therefore
+  needs a DESIGN, not a deletion: either a Prop-branch at the
+  Matches/classification level (not expressible in `Pattern.WF`'s
+  classify-only signature) or exclusion of Prop-recursor iota patterns
+  from `Pat` with a matching nonzero-sort law. Consequently D1's
+  quotient half remains blocked on that design (obstruction 1 stands),
+  in addition to obstruction 3's stuck-`Quot` injectivity (L4L-18A′);
+  only obstruction 2 would dissolve under any resolution that keeps
+  the pattern in `Pat`. The dead `Params.ctor_ty` re-export was
+  deleted independently (zero consumers).
 - Mechanical but previously unlisted: regenerate
   `Audit/SorryFrontier.lean`'s import block at promotion (else the
   moved modules silently leave the audited surface); resolve the

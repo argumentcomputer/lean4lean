@@ -1,5 +1,28 @@
 # L4L-16E promotion map — executable checklist
 
+**Addendum (2026-08-15, later the same day, after checkpoints
+`7b8a1b5e`/`b6896de1`).** Line references below predate two deletions
+(SExpr.lean −48 lines, ShapeLogRelAdequacy.lean −171; the leaf sorry is
+now ~ADQ:8583) — re-locate by declaration name. Status deltas against
+this map: (i) `InferType.hasType`/`InferTypeS.hasType` are DELETED
+(zero consumers, verified), as are `InferTypeS.weakU_inv`,
+`LRS.iotaDefEq_of_exactAt`, `LR.iotaActions_of_exact`; SExpr.lean's
+sorry count is now 2. (ii) The "dead chain" claim for
+`WHRed(S).weakU_inv` was WRONG: `WHRedS.weakU_inv` is live via the
+proved `InferType.weakU_inv`'s app/forallE cases and
+`Experimental/LogRel.lean:210` (`LRIsType.weak'` stuck case) — the
+`.extra` sorry stays, correctly documented in-source. (iii)
+`WHRedS.defeq` live sites are now exactly 3, all adequacy-trunk
+(`constDefEq`, `SelfAdequateConstStep.of_steps`,
+`adequacy_of_iotaWitnessStep`) — the delete-and-migrate disposition
+(iv) is therefore moot until the leaf closes; the sites shed with it.
+(iv) The `CtorBundle.hu0` deletion (decision (iii) below) is REFUTED —
+see `plans/probes/probeA1-hu0.lean` and the completion plan's corrected
+record; the Prop wall needs a Matches/classification-level design.
+(v) The stratification lever for the leaf is machine-refuted:
+`plans/l4l-16-stratified-observation-design.md` +
+`plans/probes/probeT-stratpi.lean`.
+
 Produced 2026-08-15 by a read-only recon session over the working tree
 (all citations verified against the live sources; draft statements
 type-checked against the current oleans). Companion to the 16E section
