@@ -961,17 +961,23 @@ so they go clean with it.
   `ruleCollapse` reify/`appN_lamN`/`mkS` chain proved once, plus the
   `iotaSiteOf` assembler); D2 consumes them through `d1StrongToD2`
   with unconditional `Semantic.ctor` (all five block bundles) and
-  `Semantic.defn`, and the endpoint `d2SortInvS` is pinned
-  conditionally on the single named premise `D2BlockStep`, whose
-  `checked` component is the L4L-18A′-gated stuck-inductive-application
-  injectivity (its other three components are per-rule capture/collapse
-  volume the engine takes as input, exactly as Theory's generic
-  block-rule theorem does). The D2 environment now also carries the same
+  `Semantic.defn`.  The replay boundary has since been tightened and is
+  exposed by `d2SortInvSExact` under `D2BlockStepExact`: the complete
+  ten-rule RHS registry proves descriptor subsingletonhood, and
+  `d2IotaRule_entry_elim` reduces every descriptor to the two literal Nat
+  or five literal Tree entries.  The earlier checked contract was repaired
+  to retain the actual capture typing, valid context, typed spines and
+  successful match; both Nat checks are discharged outright, so its only
+  remaining `D2TreeCheckedStep` premise is the five-rule
+  L4L-18A′-gated stuck-inductive-application injectivity.  Recursor
+  level-arity is also proved for all seven entries.  The other three exact
+  fields are the seven capture spines, seven β-collapses, and five block
+  registered towers—the per-rule volume the engine takes as input, exactly
+  as Theory's generic block-rule theorem does. The D2 environment now also carries the same
   checked δ-rank certificate as D0/D1; block heads are irreducible at rank
   zero and the inherited definition dependency chain is ranked literally.
-  Reduction sites do not transport downward,
-  so `D2BlockStep` also re-covers the two inherited Nat rules, where
-  `checked` is trivially true;
+  Reduction sites do not transport downward, so the capture/collapse fields
+  still re-cover the two inherited Nat rules;
   **D3** nested rules as registered equations only (nested pattern
   facts stay L4L-19A); **D4** registered structure eta from the
   L4L-15B registry certificate. Sources:

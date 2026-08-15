@@ -846,6 +846,80 @@ noncomputable def d2IotaRule (univs : Nat)
     @Pattern.IotaRule (d2Params univs) rec major ctor arity r :=
   Classical.choice (d2IotaRule_nonempty univs H)
 
+/-- Transport an inherited D1 iota descriptor into D2.  The syntax and
+payload indices are unchanged; only pattern membership and registration are
+weakened along the live environment extension. -/
+def d1IotaRuleToD2 (univs : Nat)
+    {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    (rule : @Pattern.IotaRule (d1Params univs) rec major ctor arity r) :
+    @Pattern.IotaRule (d2Params univs) rec major ctor arity r := by
+  letI : Params := d1Params univs
+  rcases rule with
+    ⟨pat, df, registered, rhsClosed, capturePaths, rhsTower⟩
+  letI : Params := d2Params univs
+  exact {
+    pat := d1Pat_to_d2 pat
+    df := df
+    registered := d1Env_le_d2Env.defeqs registered
+    rhsClosed := rhsClosed
+    capturePaths := capturePaths
+    rhsTower := rhsTower }
+
+/-- The canonical D2 descriptor of an inherited Nat rule. -/
+noncomputable def d2NatIotaRule (univs : Nat)
+    {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    (H : NatPat (RecursorIotaPattern rec major ctor arity) r) :
+    @Pattern.IotaRule (d2Params univs) rec major ctor arity r :=
+  d1IotaRuleToD2 univs
+    (d1IotaRule univs (D1Pat.old (D0Pat.iota H)))
+
+/-- The fully explicit D2 descriptor of one Nat rule entry.  This variant
+is indexed by the generated-rule lookup rather than an abstract `NatPat`
+proof, so its registered equation and capture inventory compute directly. -/
+def d2NatEntryIotaRule (univs : Nat) {i : Nat}
+    {constructor : NormalizedBlockCtor}
+    (hentry : NatGeneration.flatCtors[i]? = some constructor) :
+    @Pattern.IotaRule (d2Params univs)
+      (NatGeneration.ruleRecName constructor)
+      (NatGeneration.ruleMajorArity constructor) constructor.ctor.raw.name
+      (NatGeneration.ruleArgArity constructor)
+      (NatGeneration.ruleRHS natRuleClosure hentry,
+        NatGeneration.ruleCheck natRuleClosure
+          (List.mem_of_getElem? hentry)) := by
+  letI : Params := d2Params univs
+  exact {
+    pat := D2Pat.nat (.mk hentry)
+    df := NatGeneration.rule i constructor
+    registered := d1Env_le_d2Env.defeqs <|
+      d0Env_le_d1Env.defeqs <|
+        natFinalEnv_le_d0Env.defeqs (natRule_registered hentry)
+    rhsClosed := natRuleClosure.rhs_closed hentry
+    capturePaths := natCapturePaths constructor
+    rhsTower := natRuleRHS_tower hentry }
+
+/-- The canonical D2 descriptor of one generated Tree/TreeList rule. -/
+def d2TreeIotaRule (univs : Nat) {i : Nat}
+    {constructor : NormalizedBlockCtor}
+    (hentry : TreeGen.flatCtors[i]? = some constructor) :
+    @Pattern.IotaRule (d2Params univs)
+      (TreeGen.ruleRecName constructor)
+      (TreeGen.ruleMajorArity constructor) constructor.ctor.raw.name
+      (TreeGen.ruleArgArity constructor)
+      (TreeGen.ruleRHS treeRuleClosure hentry,
+        TreeGen.ruleCheck treeRuleClosure (List.mem_of_getElem? hentry)) := by
+  letI : Params := d2Params univs
+  exact {
+    pat := D2Pat.assembled (.rule (.mk hentry))
+    df := TreeGen.rule i constructor
+    registered := treeRule_registered hentry
+    rhsClosed := treeRuleClosure.rhs_closed hentry
+    capturePaths := treeCapturePaths constructor
+    rhsTower := treeRuleRHS_capture_tower hentry }
+
 /-! ## D1-to-D2 proof transport
 
 `SExpr` retains its complete `Params` value as an inductive parameter, so
@@ -1434,6 +1508,16 @@ theorem d2Env_treeListNil_lookup :
 theorem d2Env_treeListCons_lookup :
     d2Env.constants ``TreeList.cons = some treeListType.ctors[1].toVConstant :=
   d2Env_ctor_lookup (List.mem_of_getElem? (i := 4) rfl)
+
+theorem d2Env_treeRec_lookup :
+    d2Env.constants (.str ``Tree "rec") =
+      some TreeGen.recursors[0].toVConstant :=
+  d2Env_rec_lookup (List.mem_of_getElem? (i := 0) rfl)
+
+theorem d2Env_treeListRec_lookup :
+    d2Env.constants (.str ``TreeList "rec") =
+      some TreeGen.recursors[1].toVConstant :=
+  d2Env_rec_lookup (List.mem_of_getElem? (i := 1) rfl)
 
 /-- Constructor-shaped classifications of the D2 table: the five block
 constructors, or an inherited D1 classification. -/
@@ -2238,17 +2322,19 @@ def d2DeltaRank (univs : Nat) :
 /-! ## The parked block obligations
 
 Four obligations of the *block* half of `Params.Semantic` are not delivered
-here.  They are stated as named `Prop`s and bundled into one premise
-`D2BlockStep`, so that every downstream statement carries them explicitly
-and the residual is exactly stated rather than described.
+here.  They are stated as named `Prop`s and bundled by the preferred premise
+`D2BlockStepExact`, so that every downstream statement carries them
+explicitly and the residual is exactly stated rather than described.  The
+earlier pair-shaped `D2BlockStep` remains as the internal assembler input;
+`D2BlockStepExact.toBlockStep` supplies its now-proved bookkeeping fields.
 
 Only the first is genuinely blocked: it is `L4L-18A′` strength.  The other
 three are mechanical per-rule volume which the generic engine deliberately
 takes as input — exactly as Theory's own generic block-rule soundness
 theorem takes its capture spine as a hypothesis.
 
-**Scope note.**  The three site-shaped premises quantify over *every* iota
-rule of the D2 inventory, i.e. the block's five plus the two inherited
+**Scope note.**  Capture-spine and β-collapse premises quantify over *every*
+iota rule of the D2 inventory, i.e. the block's five plus the two inherited
 `Nat` rules — not only the five new ones.  That is forced, not sloppy: a
 reduction-site certificate cannot be transported *downwards* along
 `d1Env ≤ d2Env`, because its inputs (`typing`, `matched`) are D2-instance
@@ -2256,10 +2342,10 @@ derivations whose contexts and captures may mention the block's constants,
 and `d1StrongToD2` only runs in the growing direction.  D1 met exactly this
 and re-replayed D0's two `Nat` rules rather than transporting them
 (`SExprParamsD1.lean:1925-1929`); D2 would have to re-replay them a third
-time.  At the two `Nat` rules `checked` is trivial — `NatGeneration` has no
-parameters and no indices, so its `ruleCheck` is `.true` — so the genuinely
-18A′-gated content of `D2CheckedStep` is confined to the five block
-rules. -/
+time.  The two `Nat` checks are now discharged by `d2NatChecked`, and
+`D2CheckedStep.of_tree` lifts the five-entry `D2TreeCheckedStep` to the full
+inventory.  The genuinely 18A′-gated premise therefore quantifies over the
+five block rules only. -/
 
 /-- (i) The `Pattern.Check` discharge of a generated rule at a matched
 redex.  `TreeGen.ruleCheck` folds one `.defeq` per `treeDecl.nparams`; Tree
@@ -2276,12 +2362,126 @@ def D2CheckedStep (univs : Nat) : Prop :=
   ∀ {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
     {r : (RecursorIotaPattern rec major ctor arity).RHS ×
       (RecursorIotaPattern rec major ctor arity).Check}
-    {Gamma : List SExpr} {recLs : List SLevel}
-    {mcap : (RecursorIotaPattern rec major ctor arity).Path → SExpr},
+    {Gamma : List SExpr} {A majorTerm : SExpr}
+    {recLs ctorLs : List SLevel} {recArgs ctorArgs : List SExpr}
+    {mcap : (RecursorIotaPattern rec major ctor arity).Path → SExpr}
+    {captureType : (RecursorIotaPattern rec major ctor arity).Path → SExpr},
     Params.Pat (RecursorIotaPattern rec major ctor arity) r →
+    Pattern.CaptureTyping Gamma mcap captureType →
+    D2ContextValid univs Gamma →
+    Pattern.IotaTyping Gamma rec ctor recLs ctorLs
+      recArgs ctorArgs majorTerm A →
+    (RecursorIotaPattern rec major ctor arity).MatchesS
+      ((recArgs.foldr (fun (a f : SExpr) => f.app a) (SExpr.const rec recLs)).app
+        (ctorArgs.foldr (fun (a f : SExpr) => f.app a)
+          (SExpr.const ctor ctorLs))) recLs mcap →
     ∃ dfs : List (SExpr × SExpr × SExpr),
       dfs.map (·.2) = r.2.defeqsS recLs mcap ∧
       ∀ a b B, (B, a, b) ∈ dfs → IsDefEq Gamma a b B
+
+/-- The inherited Nat rules contribute no check obligations: Nat has no
+parameters and no indices, so every generated `ruleCheck` is `.true`.
+This is independent of the surrounding D2 context and match. -/
+theorem d2NatChecked (univs : Nat)
+    {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    (H : NatPat (RecursorIotaPattern rec major ctor arity) r)
+    {Gamma : List (@SExpr (d2Params univs))}
+    {recLs : List (@SLevel (d2Params univs))}
+    {mcap : (RecursorIotaPattern rec major ctor arity).Path →
+      @SExpr (d2Params univs)} :
+    letI : Params := d2Params univs
+    ∃ dfs : List (SExpr × SExpr × SExpr),
+      dfs.map (·.2) = r.2.defeqsS recLs mcap ∧
+      ∀ a b B, (B, a, b) ∈ dfs → IsDefEq Gamma a b B := by
+  letI : Params := d2Params univs
+  obtain ⟨i, constructor, hentry, hpattern, -⟩ :=
+    VInductDecl.BlockGenerationChecked.IotaPat.recover NatGeneration H
+  change RecursorIotaPattern rec major ctor arity =
+    RecursorIotaPattern (NatGeneration.ruleRecName constructor)
+      (NatGeneration.ruleMajorArity constructor) constructor.ctor.raw.name
+      (NatGeneration.ruleArgArity constructor) at hpattern
+  obtain ⟨rfl, rfl, rfl, rfl⟩ := RecursorIotaPattern.inj hpattern
+  let rgen :=
+    (NatGeneration.ruleRHS natRuleClosure hentry,
+      NatGeneration.ruleCheck natRuleClosure (List.mem_of_getElem? hentry))
+  have Hgen : NatPat
+      (RecursorIotaPattern (NatGeneration.ruleRecName constructor)
+        (NatGeneration.ruleMajorArity constructor) constructor.ctor.raw.name
+        (NatGeneration.ruleArgArity constructor)) rgen := .mk hentry
+  have hr : r ≍ rgen :=
+    (VInductDecl.BlockGenerationChecked.IotaPat.pat_uniq NatGeneration
+      H Hgen .refl (Pattern.inter_self _)).2.2
+  obtain rfl : r = rgen := eq_of_heq hr
+  have hi : i = 0 ∨ i = 1 := by
+    obtain ⟨hlt, -⟩ := List.getElem?_eq_some_iff.mp hentry
+    have : NatGeneration.flatCtors.length = 2 := rfl
+    omega
+  rcases hi with rfl | rfl
+  · have hc := Option.some.inj
+      (probeNatFlatCtorZero_lookup.symm.trans hentry)
+    subst constructor
+    exact ⟨[], by rfl, by simp⟩
+  · have hc := Option.some.inj
+      (probeNatFlatCtorSucc_lookup.symm.trans hentry)
+    subst constructor
+    exact ⟨[], by rfl, by simp⟩
+
+/-- The genuinely blocked check contract, restricted to the five generated
+rules of the new block.  Unlike the earlier over-strong draft, the contract
+retains the concrete capture typing, valid context, typed recursor and
+constructor spines, and successful match from the reduction site. -/
+def D2TreeCheckedStep (univs : Nat) : Prop :=
+  letI : Params := d2Params univs
+  ∀ {i : Nat} {constructor : NormalizedBlockCtor}
+    (hentry : TreeGen.flatCtors[i]? = some constructor)
+    {Gamma : List SExpr} {A majorTerm : SExpr}
+    {recLs ctorLs : List SLevel} {recArgs ctorArgs : List SExpr}
+    {mcap : ((TreeGen.rulePattern constructor).toPattern).Path → SExpr}
+    {captureType : ((TreeGen.rulePattern constructor).toPattern).Path → SExpr},
+    Pattern.CaptureTyping Gamma mcap captureType →
+    D2ContextValid univs Gamma →
+    Pattern.IotaTyping Gamma (TreeGen.ruleRecName constructor)
+      constructor.ctor.raw.name recLs ctorLs recArgs ctorArgs majorTerm A →
+    ((TreeGen.rulePattern constructor).toPattern).MatchesS
+      ((recArgs.foldr (fun (a f : SExpr) => f.app a)
+          (SExpr.const (TreeGen.ruleRecName constructor) recLs)).app
+        (ctorArgs.foldr (fun (a f : SExpr) => f.app a)
+          (SExpr.const constructor.ctor.raw.name ctorLs))) recLs mcap →
+    ∃ dfs : List (SExpr × SExpr × SExpr),
+      dfs.map (·.2) =
+        (TreeGen.ruleCheck treeRuleClosure
+          (List.mem_of_getElem? hentry)).defeqsS recLs mcap ∧
+      ∀ a b B, (B, a, b) ∈ dfs → IsDefEq Gamma a b B
+
+/-- Lift the five-rule block check to the complete D2 inventory.  The two
+Nat cases are discharged by `d2NatChecked`; definition extensions cannot
+inhabit a recursor-iota pattern. -/
+theorem D2CheckedStep.of_tree (univs : Nat)
+    (h : D2TreeCheckedStep univs) : D2CheckedStep univs := by
+  letI : Params := d2Params univs
+  intro rec major ctor arity r Gamma A majorTerm recLs ctorLs recArgs ctorArgs
+    mcap captureType hpat captureTyping hGamma typing matched
+  change D2Pat (RecursorIotaPattern rec major ctor arity) r at hpat
+  cases hpat with
+  | nat H =>
+    exact d2NatChecked univs H
+  | assembled H =>
+    rcases assembledPat_cases H with
+      ⟨i, c, hentry, hpattern, hr⟩ | ⟨ext, hmem, hpattern⟩
+    · change RecursorIotaPattern rec major ctor arity =
+        RecursorIotaPattern (TreeGen.ruleRecName c)
+          (TreeGen.ruleMajorArity c) c.ctor.raw.name
+          (TreeGen.ruleArgArity c) at hpattern
+      obtain ⟨rfl, rfl, rfl, rfl⟩ := RecursorIotaPattern.inj hpattern
+      obtain rfl : r = _ := eq_of_heq hr
+      exact h hentry captureTyping hGamma typing matched
+    · exfalso
+      simp only [d2Exts, List.mem_cons, List.not_mem_nil, or_false] at hmem
+      rcases hmem with rfl | rfl | rfl <;>
+        exact absurd hpattern
+          (by simp [RecursorIotaPattern, d0DefExt, d1MutAExt, d1MutBExt])
 
 /-- (ii) The rule's capture inventory re-indexed onto its own binder
 telescope, with the rule's level arity.  The generic engine
@@ -2289,8 +2489,10 @@ telescope, with the rule's level arity.  The generic engine
 Theory's own generic block-rule soundness theorem takes the same spine as a
 hypothesis (`InductivePatternWF.lean`, the `hcaps` argument), so this is the
 engine's interface boundary rather than an omission.  It is mechanical
-per-rule volume: eight recursor-spine peels plus the constructor's fields,
-for each of the five rules. -/
+per-rule volume: the recursor-spine peels plus the constructor's fields for
+the five block rules and the two inherited Nat rules.  The level-arity
+conjunct in this legacy form is proved unconditionally later by
+`d2IotaRule_levelsLength`; `D2CaptureSpineCoreStep` is the exact residual. -/
 def D2CaptureSpineStep (univs : Nat) : Prop :=
   letI : Params := d2Params univs
   ∀ {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
@@ -2353,7 +2555,7 @@ def D2RegisteredTowerStep (univs : Nat) : Prop :=
 `checked` is genuinely blocked (`L4L-18A′`); the other three are mechanical
 per-rule volume that the generic engine deliberately takes as input. -/
 structure D2BlockStep (univs : Nat) : Prop where
-  checked : D2CheckedStep univs
+  checked : D2TreeCheckedStep univs
   captureSpine : D2CaptureSpineStep univs
   lhsCollapse : D2CollapseStep univs
   registeredTower : D2RegisteredTowerStep univs
@@ -2390,8 +2592,9 @@ noncomputable def d2IotaSite (univs : Nat) (h : D2BlockStep univs)
       captureTyping := by
   letI : Params := d2Params univs
   have hcap := h.captureSpine rule hGamma typing matched
-  have hck := h.checked (r := r) (Gamma := Gamma) (recLs := recLs)
-    (mcap := mcap) rule.pat
+  have hchecked : D2CheckedStep univs :=
+    D2CheckedStep.of_tree univs h.checked
+  have hck := hchecked rule.pat captureTyping hGamma typing matched
   exact SExpr.iotaSiteOf (d2Replay univs) rule captureTyping hGamma typing
     matched hcap.1 hcap.2 (h.lhsCollapse rule hGamma typing matched)
     hck.choose hck.choose_spec.1 hck.choose_spec.2
@@ -2515,6 +2718,355 @@ theorem d2Registered_eq_of_rhs {df target : VDefEq}
     (hrhs : df.rhs = target.rhs) : df = target :=
   map_nodup_inj d2AllRules_rhs_nodup (d2Env_defeqs_mem.mp hreg) htarget hrhs
 
+/-- A D2 iota descriptor is uniquely determined by its pattern payload.
+
+The payload fixes the registered right tower.  Pairwise distinct right
+towers then identify the registered equation, and injectivity of a
+fixed-headed `RHS.appN` identifies the ordered capture paths.  This removes
+the proof-relevant descriptor choice from every subsequent replay: a caller
+may replace an arbitrary `Pattern.IotaRule r` by the canonical descriptor
+returned by `d2IotaRule`. -/
+theorem d2IotaRule_ext (univs : Nat)
+    {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    (x y : @Pattern.IotaRule (d2Params univs) rec major ctor arity r) :
+    x = y := by
+  letI : Params := d2Params univs
+  rcases x with ⟨xpat, xdf, xreg, xclosed, xpaths, xtower⟩
+  rcases y with ⟨ypat, ydf, yreg, yclosed, ypaths, ytower⟩
+  obtain ⟨hrhs, hpaths⟩ := rhsFixedAppN_inj (xtower.symm.trans ytower)
+  have hdf : xdf = ydf :=
+    d2Registered_eq_of_rhs xreg (d2Env_defeqs_mem.mp yreg) hrhs
+  subst ydf
+  subst ypaths
+  rfl
+
+instance d2IotaRule_subsingleton (univs : Nat)
+    {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check} :
+    Subsingleton (@Pattern.IotaRule (d2Params univs)
+      rec major ctor arity r) :=
+  ⟨d2IotaRule_ext univs⟩
+
+/-- Replace an arbitrary descriptor by the public canonical choice for its
+own pattern proof. -/
+theorem d2IotaRule_eq_canonical (univs : Nat)
+    {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    (rule : @Pattern.IotaRule (d2Params univs) rec major ctor arity r) :
+    rule = d2IotaRule univs (by
+      letI : Params := d2Params univs
+      exact rule.pat) :=
+  d2IotaRule_ext univs _ _
+
+/-- Recover the canonical origin of any D2 iota descriptor.
+
+The result has seven concrete leaves: the left disjunct contains the two
+inherited Nat rules, while the right disjunct contains the five entries of
+`TreeGen.flatCtors`.  `HEq` in the block branch carries the recovered
+recursor, major arity, constructor, argument arity, and payload indices in
+one equation, so downstream replay can eliminate it without a registry
+cross-product. -/
+theorem d2IotaRule_origin (univs : Nat)
+    {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    (rule : @Pattern.IotaRule (d2Params univs) rec major ctor arity r) :
+    (∃ H : NatPat (RecursorIotaPattern rec major ctor arity) r,
+      rule = d2NatIotaRule univs H) ∨
+    (∃ (i : Nat) (constructor : NormalizedBlockCtor)
+        (hentry : TreeGen.flatCtors[i]? = some constructor),
+      HEq rule (d2TreeIotaRule univs hentry)) := by
+  letI : Params := d2Params univs
+  have hpat := rule.pat
+  change D2Pat (RecursorIotaPattern rec major ctor arity) r at hpat
+  cases hpat with
+  | nat H =>
+    exact .inl ⟨H, d2IotaRule_ext univs _ _⟩
+  | assembled H =>
+    rcases assembledPat_cases H with
+      ⟨i, c, hentry, hpattern, hr⟩ | ⟨ext, hmem, hpattern⟩
+    · change RecursorIotaPattern rec major ctor arity =
+        RecursorIotaPattern (TreeGen.ruleRecName c)
+          (TreeGen.ruleMajorArity c) c.ctor.raw.name
+          (TreeGen.ruleArgArity c) at hpattern
+      obtain ⟨rfl, rfl, rfl, rfl⟩ := RecursorIotaPattern.inj hpattern
+      obtain rfl : r = _ := eq_of_heq hr
+      exact .inr ⟨i, c, hentry,
+        heq_of_eq (d2IotaRule_ext univs _ _)⟩
+    · exfalso
+      simp only [d2Exts, List.mem_cons, List.not_mem_nil, or_false] at hmem
+      rcases hmem with rfl | rfl | rfl <;>
+        exact absurd hpattern
+          (by simp [RecursorIotaPattern, d0DefExt, d1MutAExt, d1MutBExt])
+
+/-- Seven-case elimination for D2 iota descriptors.  All proof-relevant
+descriptor fields have already been canonicalized by
+`d2IotaRule_origin`; callers prove only the Nat-family and block-entry
+cases. -/
+theorem d2IotaRule_elim (univs : Nat)
+    (P : ∀ {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+      {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+        (RecursorIotaPattern rec major ctor arity).Check},
+      @Pattern.IotaRule (d2Params univs) rec major ctor arity r → Prop)
+    (hnat : ∀ {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+      {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+        (RecursorIotaPattern rec major ctor arity).Check}
+      (H : NatPat (RecursorIotaPattern rec major ctor arity) r),
+      P (d2NatIotaRule univs H))
+    (htree : ∀ {i : Nat} {constructor : NormalizedBlockCtor}
+      (hentry : TreeGen.flatCtors[i]? = some constructor),
+      P (d2TreeIotaRule univs hentry))
+    {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    (rule : @Pattern.IotaRule (d2Params univs) rec major ctor arity r) :
+    P rule := by
+  letI : Params := d2Params univs
+  have hpat := rule.pat
+  change D2Pat (RecursorIotaPattern rec major ctor arity) r at hpat
+  cases hpat with
+  | nat H =>
+    rw [d2IotaRule_ext univs rule (d2NatIotaRule univs H)]
+    exact hnat H
+  | assembled H =>
+    rcases assembledPat_cases H with
+      ⟨i, c, hentry, hpattern, hr⟩ | ⟨ext, hmem, hpattern⟩
+    · change RecursorIotaPattern rec major ctor arity =
+        RecursorIotaPattern (TreeGen.ruleRecName c)
+          (TreeGen.ruleMajorArity c) c.ctor.raw.name
+          (TreeGen.ruleArgArity c) at hpattern
+      obtain ⟨rfl, rfl, rfl, rfl⟩ := RecursorIotaPattern.inj hpattern
+      obtain rfl : r = _ := eq_of_heq hr
+      rw [d2IotaRule_ext univs rule (d2TreeIotaRule univs hentry)]
+      exact htree hentry
+    · exfalso
+      simp only [d2Exts, List.mem_cons, List.not_mem_nil, or_false] at hmem
+      rcases hmem with rfl | rfl | rfl <;>
+        exact absurd hpattern
+          (by simp [RecursorIotaPattern, d0DefExt, d1MutAExt, d1MutBExt])
+
+/-- Fully concrete seven-entry elimination.  Unlike `d2IotaRule_elim`, the
+Nat branch is indexed by its generated-rule lookup too, so every descriptor
+field reduces to literal `NatGeneration`/`TreeGen` data. -/
+theorem d2IotaRule_entry_elim (univs : Nat)
+    (P : ∀ {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+      {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+        (RecursorIotaPattern rec major ctor arity).Check},
+      @Pattern.IotaRule (d2Params univs) rec major ctor arity r → Prop)
+    (hnat : ∀ {i : Nat} {constructor : NormalizedBlockCtor}
+      (hentry : NatGeneration.flatCtors[i]? = some constructor),
+      P (d2NatEntryIotaRule univs hentry))
+    (htree : ∀ {i : Nat} {constructor : NormalizedBlockCtor}
+      (hentry : TreeGen.flatCtors[i]? = some constructor),
+      P (d2TreeIotaRule univs hentry))
+    {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    (rule : @Pattern.IotaRule (d2Params univs) rec major ctor arity r) :
+    P rule := by
+  letI : Params := d2Params univs
+  have hpat := rule.pat
+  change D2Pat (RecursorIotaPattern rec major ctor arity) r at hpat
+  cases hpat with
+  | nat H =>
+    obtain ⟨i, c, hentry, hpattern, -⟩ :=
+      VInductDecl.BlockGenerationChecked.IotaPat.recover NatGeneration H
+    change RecursorIotaPattern rec major ctor arity =
+        RecursorIotaPattern (NatGeneration.ruleRecName c)
+          (NatGeneration.ruleMajorArity c) c.ctor.raw.name
+          (NatGeneration.ruleArgArity c) at hpattern
+    obtain ⟨rfl, rfl, rfl, rfl⟩ := RecursorIotaPattern.inj hpattern
+    let rgen :=
+      (NatGeneration.ruleRHS natRuleClosure hentry,
+        NatGeneration.ruleCheck natRuleClosure
+          (List.mem_of_getElem? hentry))
+    have Hgen : NatPat
+        (RecursorIotaPattern (NatGeneration.ruleRecName c)
+          (NatGeneration.ruleMajorArity c) c.ctor.raw.name
+          (NatGeneration.ruleArgArity c)) rgen := .mk hentry
+    have hr : r ≍ rgen :=
+      (VInductDecl.BlockGenerationChecked.IotaPat.pat_uniq NatGeneration
+        H Hgen .refl (Pattern.inter_self _)).2.2
+    obtain rfl : r = rgen := eq_of_heq hr
+    rw [d2IotaRule_ext univs rule (d2NatEntryIotaRule univs hentry)]
+    exact hnat hentry
+  | assembled H =>
+    rcases assembledPat_cases H with
+      ⟨i, c, hentry, hpattern, hr⟩ | ⟨ext, hmem, hpattern⟩
+    · change RecursorIotaPattern rec major ctor arity =
+        RecursorIotaPattern (TreeGen.ruleRecName c)
+          (TreeGen.ruleMajorArity c) c.ctor.raw.name
+          (TreeGen.ruleArgArity c) at hpattern
+      obtain ⟨rfl, rfl, rfl, rfl⟩ := RecursorIotaPattern.inj hpattern
+      obtain rfl : r = _ := eq_of_heq hr
+      rw [d2IotaRule_ext univs rule (d2TreeIotaRule univs hentry)]
+      exact htree hentry
+    · exfalso
+      simp only [d2Exts, List.mem_cons, List.not_mem_nil, or_false] at hmem
+      rcases hmem with rfl | rfl | rfl <;>
+        exact absurd hpattern
+          (by simp [RecursorIotaPattern, d0DefExt, d1MutAExt, d1MutBExt])
+
+/-- The recursor levels at every D2 iota site have the arity stored by the
+selected generated equation.  This field is not per-rule replay volume: it
+comes from the typed recursor head and the generated rule's `rule_uvars`
+identity. -/
+theorem d2IotaRule_levelsLength (univs : Nat)
+    {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    {Gamma : List (@SExpr (d2Params univs))} {A majorTerm : @SExpr (d2Params univs)}
+    {recLs ctorLs : List (@SLevel (d2Params univs))}
+    {recArgs ctorArgs : List (@SExpr (d2Params univs))}
+    (rule : @Pattern.IotaRule (d2Params univs) rec major ctor arity r)
+    (typing : @Pattern.IotaTyping (d2Params univs) Gamma rec ctor recLs
+      ctorLs recArgs ctorArgs majorTerm A) :
+    letI : Params := d2Params univs
+    recLs.length = rule.df.uvars := by
+  letI : Params := d2Params univs
+  let P : ∀ {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+      {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+        (RecursorIotaPattern rec major ctor arity).Check},
+      @Pattern.IotaRule (d2Params univs) rec major ctor arity r → Prop :=
+    fun {rec} {_major} {ctor} {_arity} {_r} selected =>
+      ∀ {Gamma : List SExpr} {A majorTerm : SExpr}
+        {recLs ctorLs : List SLevel} {recArgs ctorArgs : List SExpr},
+        Pattern.IotaTyping Gamma rec ctor recLs ctorLs
+          recArgs ctorArgs majorTerm A →
+        recLs.length = selected.df.uvars
+  have hP : P rule := by
+    apply d2IotaRule_entry_elim univs P
+    · intro i constructor hentry Gamma A majorTerm recLs ctorLs recArgs
+        ctorArgs typing
+      have hi : i = 0 ∨ i = 1 := by
+        obtain ⟨hlt, -⟩ := List.getElem?_eq_some_iff.mp hentry
+        have : NatGeneration.flatCtors.length = 2 := rfl
+        omega
+      rcases hi with rfl | rfl
+      all_goals
+        first
+        | have hc := Option.some.inj
+            (probeNatFlatCtorZero_lookup.symm.trans hentry)
+        | have hc := Option.some.inj
+            (probeNatFlatCtorSucc_lookup.symm.trans hentry)
+        subst constructor
+        have hlen := typing.recHead.const_left_levelsLength
+          (d1Env_le_d2Env.constants d1NatRecEnvLookup)
+        change recLs.length = 1 at hlen
+        change recLs.length = (NatGeneration.rule _ _).uvars
+        change recLs.length = 1
+        exact hlen
+    · intro i constructor hentry Gamma A majorTerm recLs ctorLs recArgs
+        ctorArgs typing
+      have hi : i = 0 ∨ i = 1 ∨ i = 2 ∨ i = 3 ∨ i = 4 := by
+        obtain ⟨hlt, -⟩ := List.getElem?_eq_some_iff.mp hentry
+        have : TreeGen.flatCtors.length = 5 := rfl
+        omega
+      rcases hi with rfl | rfl | rfl | rfl | rfl
+      all_goals
+        first
+        | have hc := Option.some.inj
+            ((show TreeGen.flatCtors[0]? = some TreeGen.flatCtors[0] from rfl).symm.trans
+              hentry)
+        | have hc := Option.some.inj
+            ((show TreeGen.flatCtors[1]? = some TreeGen.flatCtors[1] from rfl).symm.trans
+              hentry)
+        | have hc := Option.some.inj
+            ((show TreeGen.flatCtors[2]? = some TreeGen.flatCtors[2] from rfl).symm.trans
+              hentry)
+        | have hc := Option.some.inj
+            ((show TreeGen.flatCtors[3]? = some TreeGen.flatCtors[3] from rfl).symm.trans
+              hentry)
+        | have hc := Option.some.inj
+            ((show TreeGen.flatCtors[4]? = some TreeGen.flatCtors[4] from rfl).symm.trans
+              hentry)
+        subst constructor
+      case inl | inr.inl | inr.inr.inl =>
+        have hlen :=
+          typing.recHead.const_left_levelsLength d2Env_treeRec_lookup
+        change recLs.length = 2 at hlen
+        change recLs.length = (TreeGen.rule _ _).uvars
+        change recLs.length = 2
+        exact hlen
+      case inr.inr.inr.inl | inr.inr.inr.inr =>
+        have hlen :=
+          typing.recHead.const_left_levelsLength d2Env_treeListRec_lookup
+        change recLs.length = 2 at hlen
+        change recLs.length = (TreeGen.rule _ _).uvars
+        change recLs.length = 2
+        exact hlen
+  exact hP typing
+
+/-- The actual per-rule capture obligation after removing the universe-arity
+field proved by `d2IotaRule_levelsLength`. -/
+def D2CaptureSpineCoreStep (univs : Nat) : Prop :=
+  letI : Params := d2Params univs
+  ∀ {rec : Name} {major : Nat} {ctor : Name} {arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    {Gamma : List SExpr} {A majorTerm : SExpr}
+    {recLs ctorLs : List SLevel} {recArgs ctorArgs : List SExpr}
+    {mcap : (RecursorIotaPattern rec major ctor arity).Path → SExpr}
+    (rule : Pattern.IotaRule r),
+    D2ContextValid univs Gamma →
+    Pattern.IotaTyping Gamma rec ctor recLs ctorLs
+      recArgs ctorArgs majorTerm A →
+    (RecursorIotaPattern rec major ctor arity).MatchesS
+      ((recArgs.foldr (fun (a f : SExpr) => f.app a) (SExpr.const rec recLs)).app
+        (ctorArgs.foldr (fun (a f : SExpr) => f.app a)
+          (SExpr.const ctor ctorLs))) recLs mcap →
+    SpineWF Gamma (SExpr.mkInst recLs rule.df.type)
+      (rule.capturePaths.map mcap) A
+
+/-- Restore the legacy pair-shaped capture contract from its genuine spine
+content and the unconditional level-arity theorem. -/
+theorem D2CaptureSpineStep.of_core (univs : Nat)
+    (h : D2CaptureSpineCoreStep univs) : D2CaptureSpineStep univs := by
+  letI : Params := d2Params univs
+  intro rec major ctor arity r Gamma A majorTerm recLs ctorLs recArgs ctorArgs
+    mcap rule hGamma typing matched
+  exact ⟨d2IotaRule_levelsLength univs rule typing,
+    h rule hGamma typing matched⟩
+
+/-- The exact remaining D2 bridge contract.
+
+Compared with the internal `D2BlockStep`, this removes both obligations now
+proved by the fixture itself: inherited Nat checks and recursor level arity.
+Its four fields are therefore the five-rule 18A′ check, the seven-rule
+capture spine, the seven-rule β-collapse, and the five generated strong
+towers. -/
+structure D2BlockStepExact (univs : Nat) : Prop where
+  checked : D2TreeCheckedStep univs
+  captureSpine : D2CaptureSpineCoreStep univs
+  lhsCollapse : D2CollapseStep univs
+  registeredTower : D2RegisteredTowerStep univs
+
+theorem D2BlockStepExact.toBlockStep (h : D2BlockStepExact univs) :
+    D2BlockStep univs where
+  checked := h.checked
+  captureSpine := D2CaptureSpineStep.of_core univs h.captureSpine
+  lhsCollapse := h.lhsCollapse
+  registeredTower := h.registeredTower
+
+/-- Preferred complete semantic bridge, conditional only on the exact
+residual contract. -/
+noncomputable def d2SemanticExact (univs : Nat) (h : D2BlockStepExact univs) :
+    letI : Params := d2Params univs
+    Params.Semantic :=
+  d2Semantic univs h.toBlockStep
+
+/-- Preferred D2 endpoint with inherited Nat checks and all level-arity
+bookkeeping discharged internally. -/
+theorem d2SortInvSExact (univs : Nat) (h : D2BlockStepExact univs)
+    {Gamma : List VExpr} {u v : VLevel}
+    (hGamma : OnCtx Gamma (d2Env.IsType univs))
+    (hde : d2Env.IsDefEqU univs Gamma (.sort u) (.sort v)) : u ≈ v :=
+  d2SortInvS univs h.toBlockStep hGamma hde
+
 /-! ## Endpoints and pins -/
 
 /-- The block-extended environment is well formed, ordered, and registers
@@ -2532,14 +3084,18 @@ delivered unconditionally: `structureEta` (`d2StructureEtaSound`),
 `iotaRule` (`d2IotaRule`), `ctor` (`d2Ctor`, including all five block
 constructor bundles) and `defn` (`d2Defn`).  `registered` is delivered for
 every inherited rule (`d2Registered_old`).  What remains is the *block*
-half of `iotaSite` and `registered`, packaged as the single named premise
-`D2BlockStep`, and `d2Semantic`/`d2SortInvS` are conditional on exactly
-that premise and nothing else.
+half of `iotaSite` and `registered`, packaged by the single preferred premise
+`D2BlockStepExact`; `d2SemanticExact`/`d2SortInvSExact` are conditional on
+exactly that premise and nothing else.  Descriptor uniqueness and
+`d2IotaRule_entry_elim` reduce arbitrary proof-relevant descriptors to the
+seven literal generated entries.  The inherited Nat check branches and the
+recursor level-arity field are proved outright and do not appear in the
+preferred premise.
 
 The earlier record here called the residual "pure volume".  That is
 **wrong** for one of its four components:
 
-* `D2CheckedStep` is *not* volume.  `TreeGen.ruleCheck` folds one `.defeq`
+* `D2TreeCheckedStep` is *not* volume.  `TreeGen.ruleCheck` folds one `.defeq`
   per `treeDecl.nparams`, and Tree has one parameter, so discharging it at
   a matched redex means deriving `p ≡ a` from a stuck `I p ≡ I a`.  That is
   injectivity of a stuck inductive-type application — `L4L-18A′` strength,
@@ -2550,7 +3106,8 @@ The earlier record here called the residual "pure volume".  That is
   D0/D1 never met this wall because `Nat` has no parameters and no indices,
   which is why both discharge `checked` by `simp`.
 
-* `D2CaptureSpineStep`, `D2CollapseStep` and `D2RegisteredTowerStep` *are*
+* `D2CaptureSpineCoreStep`, `D2CollapseStep` and
+  `D2RegisteredTowerStep` *are*
   volume, but far less of it than the old note claimed, because the
   rule-independent part has been factored out into the generic engine
   `Lean4Lean/Experimental/SExprGenericReplay.lean`
@@ -2560,7 +3117,7 @@ The earlier record here called the residual "pure volume".  That is
   chain that D0 and D1 inline once per rule — is proved once, generically,
   and is `sorryAx`-free.  Theory's own generic block-rule soundness theorem
   takes the capture spine as a hypothesis for the same reason this engine
-  does, so `D2CaptureSpineStep` marks an interface boundary, not an
+  does, so `D2CaptureSpineCoreStep` marks an interface boundary, not an
   omission.
 
 The old note also claimed the D1→D2 transport functor was missing; it is
@@ -2570,10 +3127,10 @@ what unblocked `ctor`/`defn`.
 The two forcing observations below are unchanged in content: every
 generated rule of the live block is simultaneously a `Pat` member and a
 registered defeq of `d2Env`, which is what obliges `iotaSite`/`registered`
-at it, hence what `D2BlockStep` must cover. -/
+at it, hence what `D2BlockStepExact` must cover. -/
 
 /-- Forcing observation 1: every generated rule of the live block is a
-pattern member of the D2 registry.  This is what makes `D2CheckedStep`
+pattern member of the D2 registry.  This is what makes `D2TreeCheckedStep`
 unavoidable: the pattern's `Check` payload is `TreeGen.ruleCheck`, whose
 parameter obligation is 18A′-gated. -/
 theorem d2Pat_block_rule {i : Nat} {c : NormalizedBlockCtor}
@@ -2726,11 +3283,13 @@ info: 'Lean4Lean.SExpr.ParamsD2.d2Registered_obligation' depends on axioms: [pro
 
 /-! ### New pins: the semantic layer landed by this slice
 
-`d2Ctor` and `d2Defn` are unconditional.  `d2Semantic` and
-`d2SortInvS` are conditional on `D2BlockStep` and inherit the ladder's
-existing `sorryAx` through `VEnv.IsDefEq.uniq` (the 16C′ leaf that
-`SExprParamsD1.lean:2654` already carries); they introduce no new
-admission of their own. -/
+`d2Ctor` and `d2Defn` are unconditional.  `d2Semantic`/`d2SortInvS` and
+their preferred exact-contract wrappers are conditional on the corresponding
+D2 block premise and inherit the ladder's existing `sorryAx` through
+`VEnv.IsDefEq.uniq` (the 16C′ leaf that `SExprParamsD1.lean:2654` already
+carries); they introduce no new admission of their own.  The descriptor
+uniqueness and level-arity mechanics added with the exact contract are
+`sorryAx`-free. -/
 
 /--
 info: 'Lean4Lean.SExpr.ParamsD2.d2Ctor' depends on axioms: [propext,
@@ -2960,6 +3519,122 @@ info: 'Lean4Lean.SExpr.ParamsD2.d2SortInvS' depends on axioms: [propext,
 -/
 #guard_msgs in
 #print axioms d2SortInvS
+
+/--
+info: 'Lean4Lean.SExpr.ParamsD2.d2IotaRule_ext' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ Lean.PersistentHashMap.findAux_isSome,
+ Lean.PersistentHashMap.WF.find?_eq,
+ Lean.PersistentHashMap.WF.toList'_insert,
+ d0Def_fresh._native.native_decide.ax_1_1,
+ probeNatSuccCtorTypeV_eq._native.native_decide.ax_1_1,
+ probeNatTypeTypeV_eq._native.native_decide.ax_1_1,
+ d0Classify_d1MutA_none._native.native_decide.ax_1_1,
+ d0Classify_d1MutB_none._native.native_decide.ax_1_1,
+ d1MutA_fresh._native.native_decide.ax_1_1,
+ d1MutA_name_ne_mutB._native.native_decide.ax_1_1,
+ d1MutB_fresh._native.native_decide.ax_1_1,
+ d2AllRules_rhs_nodup._native.native_decide.ax_1_1,
+ d2Env_isSome._native.native_decide.ax_1_1,
+ treeList_fresh._native.native_decide.ax_1_1,
+ tree_fresh._native.native_decide.ax_1_1]
+-/
+#guard_msgs in
+#print axioms d2IotaRule_ext
+
+/--
+info: 'Lean4Lean.SExpr.ParamsD2.d2IotaRule_levelsLength' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ Lean.PersistentHashMap.findAux_isSome,
+ Lean.PersistentHashMap.WF.find?_eq,
+ Lean.PersistentHashMap.WF.toList'_insert,
+ d0Def_fresh._native.native_decide.ax_1_1,
+ probeNatSuccCtorTypeV_eq._native.native_decide.ax_1_1,
+ probeNatTypeTypeV_eq._native.native_decide.ax_1_1,
+ d0Classify_d1MutA_none._native.native_decide.ax_1_1,
+ d0Classify_d1MutB_none._native.native_decide.ax_1_1,
+ d1MutA_fresh._native.native_decide.ax_1_1,
+ d1MutA_name_ne_mutB._native.native_decide.ax_1_1,
+ d1MutB_fresh._native.native_decide.ax_1_1,
+ d2AllRules_rhs_nodup._native.native_decide.ax_1_1,
+ d2Env_isSome._native.native_decide.ax_1_1,
+ treeList_fresh._native.native_decide.ax_1_1,
+ tree_fresh._native.native_decide.ax_1_1]
+-/
+#guard_msgs in
+#print axioms d2IotaRule_levelsLength
+
+/--
+info: 'Lean4Lean.SExpr.ParamsD2.d2SortInvSExact' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
+ Quot.sound,
+ Lean.PersistentHashMap.findAux_isSome,
+ Lean.PersistentHashMap.WF.find?_eq,
+ Lean.PersistentHashMap.WF.toList'_insert,
+ d0Def_fresh._native.native_decide.ax_1_1,
+ d0Def_name_ne_natRec._native.native_decide.ax_1_1,
+ d0Def_name_ne_natSucc._native.native_decide.ax_1_1,
+ d0Def_name_ne_natZero._native.native_decide.ax_1_1,
+ natClassify_d0Def_none._native.native_decide.ax_1_1,
+ natRule_rhs_ne_d0Def._native.native_decide.ax_1_2,
+ natRule_rhs_ne_d0Def._native.native_decide.ax_1_3,
+ probeNatGeneratedRuleSucc_lookup._native.native_decide.ax_1_1,
+ probeNatGeneratedRuleZero_lookup._native.native_decide.ax_1_1,
+ probeNatRecTypeV_eq._native.native_decide.ax_1_1,
+ probeNatRuleRhs_ne._native.native_decide.ax_1_1,
+ probeNatSuccCtorName._native.native_decide.ax_1_1,
+ probeNatSuccCtorTypeV_eq._native.native_decide.ax_1_1,
+ probeNatSuccRuleLhsV_eq._native.native_decide.ax_1_1,
+ probeNatSuccRuleRecName._native.native_decide.ax_1_1,
+ probeNatSuccRuleTypeV_eq._native.native_decide.ax_1_1,
+ probeNatTypeTypeV_eq._native.native_decide.ax_1_1,
+ probeNatZeroCtorName._native.native_decide.ax_1_1,
+ probeNatZeroRuleLhsV_eq._native.native_decide.ax_1_1,
+ probeNatZeroRuleRecName._native.native_decide.ax_1_1,
+ probeNatZeroRuleTypeV_eq._native.native_decide.ax_1_1,
+ d0Classify_d1MutA_none._native.native_decide.ax_1_1,
+ d0Classify_d1MutB_none._native.native_decide.ax_1_1,
+ d1MutA_fresh._native.native_decide.ax_1_1,
+ d1MutA_name_ne_d0Def._native.native_decide.ax_1_1,
+ d1MutA_name_ne_mutB._native.native_decide.ax_1_1,
+ d1MutA_name_ne_natRec._native.native_decide.ax_1_1,
+ d1MutA_name_ne_natSucc._native.native_decide.ax_1_1,
+ d1MutA_name_ne_natZero._native.native_decide.ax_1_1,
+ d1MutB_fresh._native.native_decide.ax_1_1,
+ d1MutB_name_ne_d0Def._native.native_decide.ax_1_1,
+ d1MutB_name_ne_natRec._native.native_decide.ax_1_1,
+ d1MutB_name_ne_natSucc._native.native_decide.ax_1_1,
+ d1MutB_name_ne_natZero._native.native_decide.ax_1_1,
+ natRule_rhs_ne_d1MutA._native.native_decide.ax_1_2,
+ natRule_rhs_ne_d1MutA._native.native_decide.ax_1_3,
+ natRule_rhs_ne_d1MutB._native.native_decide.ax_1_2,
+ natRule_rhs_ne_d1MutB._native.native_decide.ax_1_3,
+ d1Classify_tree._native.native_decide.ax_1_1,
+ d1Classify_treeBranch._native.native_decide.ax_1_1,
+ d1Classify_treeLeaf._native.native_decide.ax_1_1,
+ d1Classify_treeList._native.native_decide.ax_1_1,
+ d1Classify_treeListCons._native.native_decide.ax_1_1,
+ d1Classify_treeListNil._native.native_decide.ax_1_1,
+ d1Classify_treeListRec._native.native_decide.ax_1_1,
+ d1Classify_treeNode._native.native_decide.ax_1_1,
+ d1Classify_treeRec._native.native_decide.ax_1_1,
+ d2AllRules_rhs_nodup._native.native_decide.ax_1_1,
+ d2Env_isSome._native.native_decide.ax_1_1,
+ treeBranch_fresh._native.native_decide.ax_1_1,
+ treeLeaf_fresh._native.native_decide.ax_1_1,
+ treeListCons_fresh._native.native_decide.ax_1_1,
+ treeListNil_fresh._native.native_decide.ax_1_1,
+ treeListRec_fresh._native.native_decide.ax_1_1,
+ treeList_fresh._native.native_decide.ax_1_1,
+ treeNode_fresh._native.native_decide.ax_1_1,
+ treeRec_fresh._native.native_decide.ax_1_1,
+ tree_fresh._native.native_decide.ax_1_1]
+-/
+#guard_msgs in
+#print axioms d2SortInvSExact
 
 end ParamsD2
 end SExpr
