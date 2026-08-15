@@ -258,6 +258,31 @@ theorem JointStratifiedPathInversion.of_adequacy
     exact ⟨⟨up, uL, uR, hAA, hAL, hAR⟩,
       vp, vL, vR, hBB, hBL, hBR⟩
 
+/-- Positive adequacy supplies the residual of the repaired chain wall.
+
+`LRS.PiPathInv` (SLR) is exactly `TypeDefEqPath.forallE_inv_of_adequacy`
+above, packaged contextually.  Nothing is added in the packaging: that
+theorem already requests no stratification certificate, which is why the
+constructor-spine discipline it discharges carries no depth index either. -/
+theorem LRS.PiPathInv.of_adequacy (adequacy : LR.ContextualAdequacyAt 1) :
+    LRS.PiPathInv := fun hΓ H =>
+  TypeDefEqPath.forallE_inv_of_adequacy (adequacy hΓ) hΓ H
+
+/-- Faithfulness certificate: the path-valued inversion package the tree
+already builds implies the residual, so this is a weakening rather than a
+restatement.  The endpoint stratifications that `forallEInv` demands are
+recovered from the path's own two self-typings — retaining the path is what
+makes the narrower statement sufficient. -/
+theorem LRS.PiPathInv.of_jointStratifiedPathInversion
+    (inv : JointStratifiedPathInversion) : LRS.PiPathInv := by
+  intro Γ A B A' B' s hΓ H
+  obtain ⟨n₁, h₁, _⟩ := (H.leftType.strong hΓ).stratify
+  obtain ⟨_, H'⟩ := H.right
+  obtain ⟨n₂, h₂, _⟩ := (H'.leftType.strong hΓ).stratify
+  obtain ⟨⟨up, _, _, hdom, _, _⟩, vp, _, _, hcod, _, _⟩ :=
+    inv.forallEInv hΓ H h₁ h₂
+  exact ⟨up, vp, hdom, hcod⟩
+
 /-- Weak type uniqueness with a heterogeneous path as its result.
 
 This is the acyclic form of the stratified proof: path-level Pi inversion is
@@ -1044,6 +1069,34 @@ theorem LR.MajorChainAnchorStep.of_majorChainFoldStep
     (fun V he => by
       cases V with
       | intro _ hred => exact step.subjectRed hred he)
+
+/-- **Both fields of the repaired residual, from one depth-free proposition.**
+
+`LRS.PiPathInv` — Pi injectivity for heterogeneous type paths — discharges
+`ctorRetype` and `rootRed` together.  What that replaces is worth stating
+exactly, since it is the whole content of the 2026-08-15 repair:
+
+* `ctorRetype` used to be `LogRel.RawTypeUniq Γ₀` at arbitrary terms.  It is
+  now the environment-level fact that a *registered-constant* spine has one
+  result type (`LRS.constSpineTypeUniqPath`), which reduces to Pi injectivity
+  plus two premise-free steps — `HasTypeStratifiedS.spineWF_of_foldl` and
+  `LRS.constTypeUniqPath`, the latter consuming nothing at all.
+* `rootRed` used to be subject reduction from the full
+  `JointStratifiedInversion` package.  It is now
+  `WHRedS.defeq_of_piPathInv`, whose per-step lemma names no depth, so the
+  multi-step induction re-certifies nothing.  The general form is proved:
+  the restriction to classified spines is not used.
+
+Nothing below charges `TypeDefEqPath.collapse` (raw type uniqueness),
+`sortPathInv`, or any stratification index. -/
+theorem LR.MajorChainAnchorStep.of_piPathInv
+    (piInv : LRS.PiPathInv) (hΓ₀ : Ctx.WF Γ₀) :
+    LR.MajorChainAnchorStep Γ₀ :=
+  LR.MajorChainAnchorStep.of_ctorSpineTypeUniqPath
+    (LRS.CtorSpineTypeUniqPath.of_piPathInv piInv hΓ₀)
+    (fun V he => by
+      cases V with
+      | intro _ hred => exact hred.defeq_of_piPathInv piInv hΓ₀ he)
 
 /-- The free constructor-observation closure folds from the repaired residual
 alone.  Same statement as `LRS.CtorDefEq.foldRaw_of_majorChainFoldStep`, with
@@ -2012,6 +2065,174 @@ theorem LR.FixedHeadTelescope.withWitnessAndChain
   exact ⟨headLevel, headElem, headElemTy, hhead, htyped,
     ⟨hTy.mono hheadTy⟩, chain⟩
 
+/-! ### The monotone fixed-head telescope
+
+`LR.FixedHeadTelescope`'s terminal index is an *equality* index: its base
+constructor identifies the observation the ordered type peel reaches with the
+result observation the telescope is read at.  Those two are independently
+determined — the reached observation is a function of the registered type and
+the aligned capture shapes, while the result observation `outTy` is an input of
+`LR.constDefEq`, fixed by the adequacy caller before any pattern is matched and
+threaded verbatim to the leaf.  Identifying them is not merely unproved, it is
+refutable (`LR.FixedHeadTerminalRetarget.not_general`).
+
+`LR.FixedHeadTelescopeLE` replaces that equality by the single comparison
+`outTy ≤ reached` at the base.  Every consumer below is the same theorem with
+the same proof: the terminal index is read exactly twice — once for the
+caller's own `out.HasType outTy`, which the monotone base records directly, and
+once for the returned `headElemTy.T ≤ headTy` bound, which now travels through
+the comparison. -/
+
+/-- The synchronized producer certificate with a monotone terminal index. -/
+def LR.FixedHeadTelescopeLE (Γ₀ : List SExpr)
+    {p : Pattern} {mcap : p.Path → TShape}
+    (mx my captureType : p.Path → SExpr)
+    {head out headTy outTy : TShape} {paths : List p.Path}
+    (spine : LE_Interp.RHS.ShapeSpine mcap head paths out) : Prop :=
+  LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE
+    (m2 := mcap)
+    (fun {n} path (elemShape typeShape : WShape n) =>
+      LRS.CaptureDefEqAligned.AtShapes (LR Γ₀)
+        (mcap path) (mx path) (my path) (captureType path)
+        elemShape typeShape)
+    head paths out headTy outTy
+
+/-- Faithfulness: an exact telescope is a monotone one at the reflexive
+comparison, so every existing producer still supplies the weakened premise. -/
+theorem LR.FixedHeadTelescope.toLE
+    {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr}
+    {head out headTy outTy : TShape} {paths : List p.Path}
+    {spine : LE_Interp.RHS.ShapeSpine mcap head paths out}
+    (H : LR.FixedHeadTelescope (headTy := headTy) (outTy := outTy)
+      Γ₀ mx my captureType spine) :
+    LR.FixedHeadTelescopeLE (headTy := headTy) (outTy := outTy)
+      Γ₀ mx my captureType spine :=
+  LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCaptures.toLE H
+
+/-- **THE O1 REPAIR AT THE TELESCOPE.**  Read a finished telescope at the
+caller's own result observation, given the caller's own result typing and the
+one comparison against the observation the peel reached.
+
+This is what `LR.FixedHeadTerminalRetarget` tried and could not be: the
+retarget demanded the two observations be *equal*, which is `HasType`
+functionality at the terminal head and is false.  Here they are merely
+compared, and the direction is the one every consumer needs — the head
+observation is used only as an upper bound. -/
+theorem LR.FixedHeadTelescope.retarget
+    {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr}
+    {head out headTy reachedTy outTy : TShape} {paths : List p.Path}
+    {spine : LE_Interp.RHS.ShapeSpine mcap head paths out}
+    (H : LR.FixedHeadTelescope (headTy := headTy) (outTy := reachedTy)
+      Γ₀ mx my captureType spine)
+    (htyped : out.HasType outTy) (hle : outTy ≤ reachedTy) :
+    LR.FixedHeadTelescopeLE (headTy := headTy) (outTy := outTy)
+      Γ₀ mx my captureType spine :=
+  LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCaptures.retarget H htyped hle
+
+/-- Empty monotone telescope: the caller's result typing plus the base
+comparison. -/
+theorem LR.FixedHeadTelescopeLE.nil
+    {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr} {head headTy outTy : TShape}
+    (htyped : head.HasType outTy) (hle : outTy ≤ headTy) :
+    LR.FixedHeadTelescopeLE (headTy := headTy) (outTy := outTy)
+      Γ₀ mx my captureType
+      (LE_Interp.RHS.ShapeSpine.nil (m2 := mcap) (head := head)) :=
+  LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE.nil htyped hle
+
+/-- Prepend one synchronized application layer to a monotone telescope.
+Verbatim `LR.FixedHeadTelescope.cons`; only the base differs. -/
+theorem LR.FixedHeadTelescopeLE.cons
+    {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr}
+    {n : Nat} {f : WShape (n + 1)} {a : WShape n}
+    {m out : TShape} {path : p.Path} {paths : List p.Path}
+    (harg : a.T ≤ mcap path) (happ : m ≤ (f.app a).T)
+    (rest : LE_Interp.RHS.ShapeSpine mcap m paths out)
+    {tyDom : WShape n} {tyFun : WShapeFun n} {argCap : WShape n}
+    {outTy : TShape}
+    (capture : LRS.CaptureDefEqAligned.AtShapes (LR Γ₀)
+      (mcap path) (mx path) (my path) (captureType path)
+      argCap tyDom)
+    (tail : LR.FixedHeadTelescopeLE
+      (headTy := (tyFun.app argCap).T) (outTy := outTy)
+      Γ₀ mx my captureType rest) :
+    LR.FixedHeadTelescopeLE
+      (headTy := (WShape.forallE tyDom tyFun).T) (outTy := outTy)
+      Γ₀ mx my captureType
+      (LE_Interp.RHS.ShapeSpine.cons harg happ rest) := by
+  have hargCap : a ≤ argCap :=
+    WShape.LE.T_iff.1 (harg.trans capture.1)
+  exact LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE.cons
+    harg happ hargCap capture.2.1 capture tail
+
+/-- The monotone certificate still lands at the caller's exact result type
+shape — that is now recorded by its base rather than derived from an index
+equality. -/
+theorem LR.FixedHeadTelescopeLE.outHasType
+    {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr}
+    {head out headTy outTy : TShape} {paths : List p.Path}
+    {spine : LE_Interp.RHS.ShapeSpine mcap head paths out}
+    (H : LR.FixedHeadTelescopeLE (headTy := headTy) (outTy := outTy)
+      Γ₀ mx my captureType spine) :
+    out.HasType outTy :=
+  LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE.outHasType H
+
+/-- Forget the logical capture payload of a monotone telescope. -/
+theorem LR.FixedHeadTelescopeLE.lowerHead
+    {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr}
+    {head out headTy outTy : TShape} {paths : List p.Path}
+    {spine : LE_Interp.RHS.ShapeSpine mcap head paths out}
+    (H : LR.FixedHeadTelescopeLE (headTy := headTy) (outTy := outTy)
+      Γ₀ mx my captureType spine) :
+    spine.TypedLowerHead headTy := by
+  simpa only using
+    LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE.lowerHead H
+
+/-- Add the registered-type witness to a monotone telescope's synchronized
+lower endpoint. -/
+theorem LR.FixedHeadTelescopeLE.withWitness
+    {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr}
+    {head out headTy outTy : TShape} {paths : List p.Path}
+    {spine : LE_Interp.RHS.ShapeSpine mcap head paths out}
+    (H : LR.FixedHeadTelescopeLE (headTy := headTy) (outTy := outTy)
+      Γ₀ mx my captureType spine)
+    (hTy : LE_Interp.Witness ρ headTy B) :
+    ∃ headElem headElemTy : TShape,
+      headElem ≤ head ∧ headElem.HasType headElemTy ∧
+        Nonempty (LE_Interp.Witness ρ headElemTy B) :=
+  (LR.FixedHeadTelescopeLE.lowerHead H).withWitness hTy
+
+/-- The packed producer for the monotone telescope: same conclusion, same
+proof, one comparison instead of one index equality. -/
+theorem LR.FixedHeadTelescopeLE.withWitnessAndChain
+    {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr}
+    {paths : List p.Path} {head headTy : TShape}
+    {outLevel : Nat} {out outTy : WShape outLevel}
+    {spine : LE_Interp.RHS.ShapeSpine mcap head paths out.T}
+    (H : LR.FixedHeadTelescopeLE
+      (headTy := headTy) (outTy := outTy.T)
+      Γ₀ mx my captureType spine)
+    (hTy : LE_Interp.Witness ρ headTy B)
+    (houtNonbot : ¬out.T ≤ TShape.bot) :
+    ∃ (headLevel : Nat) (headElem headElemTy : WShape headLevel),
+      headElem.T ≤ head ∧ headElem.HasType headElemTy ∧
+        Nonempty (LE_Interp.Witness ρ headElemTy.T B) ∧
+        LR.FixedHeadShapeChain Γ₀ mcap mx my captureType
+          paths headElem headElemTy out outTy := by
+  obtain ⟨headLevel, headElem, headElemTy, hhead, htyped,
+    hheadTy, _hheadNonbot, chain⟩ :=
+    LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE.fixedHeadShapeChain
+      H rfl rfl houtNonbot
+  exact ⟨headLevel, headElem, headElemTy, hhead, htyped,
+    ⟨hTy.mono hheadTy⟩, chain⟩
+
 /-- Everything the fixed-head application consumer needs after the ordered
 producer has finished.
 
@@ -2072,6 +2293,135 @@ theorem LR.AdequacyAtDepth.closedHeadSelf
   exact ⟨hrel, LR.toValTy le_n le_type htyped.isType
     hSortInterp hTypeTyped hTypeAdequate⟩
 
+/-- Depth-bounded adequacy is contravariant in its depth index: a rung that
+accepts every certificate of depth `depth` accepts every smaller one after
+`HasTypeStratifiedS.mono`.  Larger index means strictly more admissible
+inputs, hence a strictly stronger package. -/
+theorem LR.AdequacyAtDepth.of_le {d depth : Nat} (hle : d ≤ depth)
+    (adequacy : LR.AdequacyAtDepth Γ₀ depth) :
+    LR.AdequacyAtDepth Γ₀ d := by
+  intro n Γ ρ M N A B core m a H hstrat hM hA hmem
+  exact adequacy H (hstrat.mono hle) hM hA hmem
+
+/-- THE TYPE-RUNG RESIDUAL of the fixed-head application fold.
+
+`LR.AdequacyAtDepth.closedHeadSelf` returns two components and consumes the
+one `adequacy` hypothesis twice.  The two calls are *not* at the same rung:
+
+* the term call has subject `X` and certificate `hstrat` at `depth` — that
+  instance is literally an instance of `LR.SelfAdequateAt Γ₀ hX depth`, which
+  the coherent algebra already holds at the same witness and depth;
+* the type call has subject `headType` and certificate `hstrat.isType`, whose
+  index is `depth - 1` (`HasTypeStratifiedS.isType`).  `closedHeadSelf` raises
+  it back with `mono` only so that a single hypothesis can serve both calls.
+
+This Prop isolates the second call.  Its depth index is the rung's, but the
+adequacy it consumes is at `depth - 1`; see `of_predecessorAdequacy`, which
+is a strict predecessor exactly when `0 < depth` (`of_lowerAdequacy`).
+Nothing here is manufactured inside the induction: the demand is an interface
+hypothesis of `LR.CoherentFixedHeadStep.of_steps`. -/
+def LR.FixedHeadTypeValidStep (Γ₀ : List SExpr) (depth : Nat) : Prop :=
+  ∀ {Δ : List SExpr} {ρ : Valuation} {σ σ' : Subst}
+      {X headType : SExpr} {core : Bool}
+      {n : Nat} {headElem headElemTy : WShape n},
+    LR.SubstWF Γ₀ σ σ' Δ ρ →
+    HasTypeStratifiedS Δ X headType core depth →
+    headType.ClosedN →
+    headElem.HasType headElemTy →
+    LE_Interp.Witness ρ headElemTy.T headType →
+    (LR Γ₀).TyDefEq headType headType headElemTy
+
+/-- The type rung is discharged by adequacy at `depth - 1`, with no `mono`
+anywhere: `HasTypeStratifiedS.isType` already lands there.  This is the exact
+depth arithmetic of the fixed-head application fold. -/
+theorem LR.FixedHeadTypeValidStep.of_predecessorAdequacy
+    (adequacy : LR.AdequacyAtDepth Γ₀ (depth - 1)) :
+    LR.FixedHeadTypeValidStep Γ₀ depth := by
+  intro Δ ρ σ σ' X headType core n headElem headElemTy W hstrat
+    hTypeClosed htyped hTy
+  obtain ⟨u, hTypeStrat⟩ := hstrat.isType
+  have hTypeStrong : IsDefEqStrong Δ headType headType (.sort u) :=
+    hTypeStrat.strong
+  obtain ⟨n', typeElem, sortElem, le_n, le_type,
+      hTypeInterp, hSortInterp, hTypeTyped⟩ :=
+    (LE_Interp.sound hTypeStrong W.left.fits).2 hTy.toInterp |>.out
+  have hTypeAdequate :=
+    (adequacy hTypeStrong hTypeStrat hTypeInterp hSortInterp hTypeTyped).2
+      W.left
+  simp only [SExpr.subst] at hTypeAdequate
+  rw [hTypeClosed.subst_eq .zero] at hTypeAdequate
+  exact LR.toValTy le_n le_type htyped.isType
+    hSortInterp hTypeTyped hTypeAdequate
+
+/-- Faithfulness: the same-rung package `closedHeadSelf` used to demand still
+discharges the isolated type rung. -/
+theorem LR.FixedHeadTypeValidStep.of_adequacyAtDepth
+    (adequacy : LR.AdequacyAtDepth Γ₀ depth) :
+    LR.FixedHeadTypeValidStep Γ₀ depth :=
+  LR.FixedHeadTypeValidStep.of_predecessorAdequacy
+    (adequacy.of_le (Nat.sub_le depth 1))
+
+/-- The strict-predecessor form, stated so the decrease is visible.  At
+`depth = 0` truncated subtraction collapses `depth - 1` onto the rung itself,
+so this producer deliberately requires `0 < depth`: the depth-zero rung is
+where the demand stops being a predecessor demand. -/
+theorem LR.FixedHeadTypeValidStep.of_lowerAdequacy
+    (hΓ₀ : Ctx.WF Γ₀) {depth : Nat} (hdepth : 0 < depth)
+    (lower : ∀ d, d < depth → LR.ContextualAdequacyAtDepth d) :
+    LR.FixedHeadTypeValidStep Γ₀ depth :=
+  LR.FixedHeadTypeValidStep.of_predecessorAdequacy
+    (lower (depth - 1) (Nat.sub_lt hdepth Nat.one_pos) hΓ₀)
+
+/-- The conversion transport consumed while zipping the fixed-head
+application chain, named rather than left as an anonymous callback.
+
+It is *not* an instance of `LR.TyDefEq.of_defeq_of_stratifiedInversion`: that
+lemma also demands the right endpoint's own validity `(LR Γ₀).TyDefEq B B a`,
+which the chain zip has no producer for.  Recorded as a separate obligation
+because `LR.FixedHeadTelescope.toApplicationWith` has always required it and
+`LR.FixedHeadShapeChain.pathSemantics` fixes its shape. -/
+def LR.FixedHeadConvertStep (Γ₀ : List SExpr) : Prop :=
+  ∀ {n : Nat} {A B : SExpr} {u : SLevel} {a : WShape n},
+    IsDefEq Γ₀ A B (.sort u) →
+    (LR Γ₀).TyDefEq A A a →
+    (LR Γ₀).TyDefEq A B a
+
+/-- THE ONE MISSING INPUT of `LR.FixedHeadConvertStep`: a raw type conversion
+transports validity to its right endpoint at the *same* observation.
+
+Naming it is what makes the recorded dead end usable.
+`LR.TyDefEq.of_defeq_of_stratifiedInversion` (ADQ:1168) was rejected because
+it additionally demands `(LR Γ₀).TyDefEq B B a`; that demand is exactly this
+Prop, so the convert step is one line away from it (`of_rightValid` below)
+rather than out of reach.
+
+It is not leaf-local, and the reason is visible by unfolding the goal at each
+observation.  At `a = .sort r`, `LogRel.sort_iff_ty` reads
+`TyDefEq B B (.sort r) ↔ ∃ u, Γ₀ ⊢ B ⤳* .sort u ∧ …`, so the residual is
+literally "`B` has a weak-head normal form and it is a sort"; at
+`a = .forallE b f` it is the same claim with "Pi" in place of "sort".  That is
+`PiHeadNorm` = `TypeWHNFEx` + `PiHeadStable`, the single irreducible factor of
+`PiPathInv` isolated by `plans/probes/probeP-pipathinv.lean`.  Nothing weaker
+is available at the consumer: `SExpr.PathSpineWF`'s `conv`/`ret` edges
+(SExpr:1650-1658) carry a bare `IsDefEq` and no shape, witness, or endpoint
+validity at all — the G5 gap in its exact position. -/
+def LR.FixedHeadConvertRightValid (Γ₀ : List SExpr) : Prop :=
+  ∀ {n : Nat} {A B : SExpr} {u : SLevel} {a : WShape n},
+    IsDefEq Γ₀ A B (.sort u) →
+    (LR Γ₀).TyDefEq A A a →
+    (LR Γ₀).TyDefEq B B a
+
+/-- The convert step from the right-endpoint residual.  Recorded so the
+inventory names the honest obligation: `FixedHeadConvertStep` is not an extra
+gap beside the inversion package, it is that package plus validity transport. -/
+theorem LR.FixedHeadConvertStep.of_rightValid
+    (inv : JointStratifiedInversion) (hΓ₀ : Ctx.WF Γ₀)
+    (right : LR.FixedHeadConvertRightValid Γ₀) :
+    LR.FixedHeadConvertStep Γ₀ := by
+  intro n A B u a hEq hAA
+  exact LR.TyDefEq.of_defeq_of_stratifiedInversion inv hΓ₀ hEq hAA
+    (right hEq hAA)
+
 /-- Finish a fixed-head application package from one packed telescope and
 the semantic type equalities justified at the caller's derivation-aware
 boundary.
@@ -2091,6 +2441,51 @@ theorem LR.FixedHeadTelescope.toApplicationWith
     {headType resultType : SExpr}
     {hX : LE_Interp.Witness rho root X} {depth : Nat}
     (H : LR.FixedHeadTelescope
+      (headTy := headTy) (outTy := outTy.T)
+      Γ₀ mx my captureType spine)
+    (hTy : LE_Interp.Witness rho headTy headType)
+    (houtNonbot : ¬out.T ≤ TShape.bot)
+    (raw : SExpr.PathSpineWF Γ₀ mx captureType
+      headType paths resultType)
+    (resultRel : (LR Γ₀).TyDefEq
+      resultType resultType outTy)
+    (convert : ∀ {n : Nat} {A B : SExpr} {u : SLevel}
+        {a : WShape n},
+      IsDefEq Γ₀ A B (.sort u) →
+      (LR Γ₀).TyDefEq A A a →
+      (LR Γ₀).TyDefEq A B a)
+    (headSelf : ∀ {headLevel : Nat}
+        {headElem headElemTy : WShape headLevel},
+      headElem.T ≤ head →
+      headElem.HasType headElemTy →
+      LE_Interp.Witness rho headElemTy.T headType →
+      (LR Γ₀).DefEq X X headType headElem headElemTy ∧
+        (LR Γ₀).TyDefEq headType headType headElemTy) :
+    LR.FixedHeadApplication Γ₀ hX depth
+      mcap mx my captureType paths headType resultType head out outTy := by
+  obtain ⟨headLevel, headElem, headElemTy, hhead, htyped,
+    ⟨hheadTy⟩, chain⟩ :=
+    H.withWitnessAndChain hTy houtNonbot
+  have ⟨hheadTermRel, hheadRel⟩ :=
+    headSelf hhead htyped hheadTy
+  have semantics : LR.FixedHeadPathSemantics Γ₀
+      mcap mx my captureType chain raw :=
+    chain.pathSemantics raw hheadRel resultRel convert
+  exact ⟨headLevel, headElem, headElemTy, hhead, htyped,
+    ⟨hheadTy⟩, hheadTermRel, semantics.exposed⟩
+
+/-- The same fold for the monotone telescope.  Every input is unchanged,
+including `resultRel` — the caller's `hA`, at the caller's own `outTy`, which
+is where the terminal observation was always going to have to be reconciled. -/
+theorem LR.FixedHeadTelescopeLE.toApplicationWith
+    {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr}
+    {paths : List p.Path} {head headTy : TShape}
+    {outLevel : Nat} {out outTy : WShape outLevel}
+    {spine : LE_Interp.RHS.ShapeSpine mcap head paths out.T}
+    {headType resultType : SExpr}
+    {hX : LE_Interp.Witness rho root X} {depth : Nat}
+    (H : LR.FixedHeadTelescopeLE
       (headTy := headTy) (outTy := outTy.T)
       Γ₀ mx my captureType spine)
     (hTy : LE_Interp.Witness rho headTy headType)
@@ -2182,7 +2577,7 @@ def LR.FixedHeadResult (Γ₀ : List SExpr)
       {r : (RecursorIotaPattern rec major ctor arity).RHS ×
         (RecursorIotaPattern rec major ctor arity).Check}
       {rule : Pattern.IotaRule r} {out : WShape (n + 1)}
-      {head : TShape}
+      {head headTy : TShape}
       {mx my : (RecursorIotaPattern rec major ctor arity).Path → SExpr}
       {captureType :
         (RecursorIotaPattern rec major ctor arity).Path → SExpr}
@@ -2190,10 +2585,11 @@ def LR.FixedHeadResult (Γ₀ : List SExpr)
     X = SExpr.mkInst recLs rule.df.rhs →
     head ≤ root →
     IsDefEqStrong Δ X X (SExpr.mkInst recLs rule.df.type) →
-    LE_Interp.RHS.ShapeSpine (Sum.elim mrec mctor)
-      head rule.capturePaths out.T →
-    (∃ headElem headTy : TShape,
-      headElem ≤ head ∧ headElem.HasType headTy) →
+    ∀ hshape : LE_Interp.RHS.ShapeSpine (Sum.elim mrec mctor)
+      head rule.capturePaths out.T,
+    LR.FixedHeadTelescopeLE (headTy := headTy) (outTy := outTy.T)
+      Γ₀ mx my captureType hshape →
+    LE_Interp.Witness ρ headTy (SExpr.mkInst recLs rule.df.type) →
     SExpr.PathSpineWF Γ₀ mx captureType
       (SExpr.mkInst recLs rule.df.type) rule.capturePaths A →
     SExpr.PathSpineWF Γ₀ my captureType
@@ -2229,7 +2625,7 @@ def LR.FixedHeadResultAt (Γ₀ : List SExpr)
       {r : (RecursorIotaPattern rec major ctor arity).RHS ×
         (RecursorIotaPattern rec major ctor arity).Check}
       {rule : Pattern.IotaRule r} {out : WShape (n + 1)}
-      {head : TShape}
+      {head headTy : TShape}
       {mx my : (RecursorIotaPattern rec major ctor arity).Path → SExpr}
       {captureType :
         (RecursorIotaPattern rec major ctor arity).Path → SExpr}
@@ -2238,10 +2634,11 @@ def LR.FixedHeadResultAt (Γ₀ : List SExpr)
     head ≤ root →
     IsDefEqStrong Δ X X (SExpr.mkInst recLs rule.df.type) →
     HasTypeStratifiedS Δ X (SExpr.mkInst recLs rule.df.type) true depth →
-    LE_Interp.RHS.ShapeSpine (Sum.elim mrec mctor)
-      head rule.capturePaths out.T →
-    (∃ headElem headTy : TShape,
-      headElem ≤ head ∧ headElem.HasType headTy) →
+    ∀ hshape : LE_Interp.RHS.ShapeSpine (Sum.elim mrec mctor)
+      head rule.capturePaths out.T,
+    LR.FixedHeadTelescopeLE (headTy := headTy) (outTy := outTy.T)
+      Γ₀ mx my captureType hshape →
+    LE_Interp.Witness ρ headTy (SExpr.mkInst recLs rule.df.type) →
     SExpr.PathSpineWF Γ₀ mx captureType
       (SExpr.mkInst recLs rule.df.type) rule.capturePaths A →
     SExpr.PathSpineWF Γ₀ my captureType
@@ -2263,9 +2660,9 @@ theorem LR.FixedHeadResult.at
     (H : LR.FixedHeadResult Γ₀ hX) (depth : Nat) :
     LR.FixedHeadResultAt Γ₀ hX depth := by
   intro Δ σ σ' W n rec ctor major arity recLs mrec mctor r rule out head
-    mx my captureType A outTy hsyntax hhead hstrong _hstrat hshape htyped
-    hspineX hspineY hcap hout hA
-  exact H W hsyntax hhead hstrong hshape htyped
+    headTy mx my captureType A outTy hsyntax hhead hstrong _hstrat hshape
+    htel hTyReg hspineX hspineY hcap hout hA
+  exact H W hsyntax hhead hstrong hshape htel hTyReg
     hspineX hspineY hcap hout hA
 
 /-- Recover the proof-independent API once the Nat-first recursion has
@@ -2274,10 +2671,10 @@ theorem LR.FixedHeadResult.of_forall_at
     (H : ∀ depth, LR.FixedHeadResultAt Γ₀ hX depth) :
     LR.FixedHeadResult Γ₀ hX := by
   intro Δ σ σ' W n rec ctor major arity recLs mrec mctor r rule out head
-    mx my captureType A outTy hsyntax hhead hstrong hshape htyped
-    hspineX hspineY hcap hout hA
+    headTy mx my captureType A outTy hsyntax hhead hstrong hshape
+    htel hTyReg hspineX hspineY hcap hout hA
   obtain ⟨depth, hleft, _⟩ := hstrong.stratify
-  exact H depth W hsyntax hhead hstrong hleft hshape htyped
+  exact H depth W hsyntax hhead hstrong hleft hshape htel hTyReg
     hspineX hspineY hcap hout hA
 
 theorem LR.FixedHeadResultAt.mono
@@ -2286,9 +2683,9 @@ theorem LR.FixedHeadResultAt.mono
     (H : LR.FixedHeadResultAt Γ₀ hX depth) :
     LR.FixedHeadResultAt Γ₀ (hX.mono hle) depth := by
   intro Δ σ σ' W n rec ctor major arity recLs mrec mctor r rule out head
-    mx my captureType A outTy hsyntax hhead hstrong hstrat hshape htyped
-    hspineX hspineY hcap hout hA
-  exact H W hsyntax (hhead.trans hle) hstrong hstrat hshape htyped
+    headTy mx my captureType A outTy hsyntax hhead hstrong hstrat hshape
+    htel hTyReg hspineX hspineY hcap hout hA
+  exact H W hsyntax (hhead.trans hle) hstrong hstrat hshape htel hTyReg
     hspineX hspineY hcap hout hA
 
 theorem LR.FixedHeadResult.mono
@@ -2297,9 +2694,9 @@ theorem LR.FixedHeadResult.mono
     (H : LR.FixedHeadResult Γ₀ hX) :
     LR.FixedHeadResult Γ₀ (hX.mono hle) := by
   intro Δ σ σ' W n rec ctor major arity recLs mrec mctor r rule out head
-    mx my captureType A outTy hsyntax hhead hstrong hshape htyped
-    hspineX hspineY hcap hout hA
-  exact H W hsyntax (hhead.trans hle) hstrong hshape htyped
+    headTy mx my captureType A outTy hsyntax hhead hstrong hshape
+    htel hTyReg hspineX hspineY hcap hout hA
+  exact H W hsyntax (hhead.trans hle) hstrong hshape htel hTyReg
     hspineX hspineY hcap hout hA
 
 theorem LR.FixedHeadResult.bot
@@ -2307,8 +2704,8 @@ theorem LR.FixedHeadResult.bot
     LR.FixedHeadResult Γ₀
       (LE_Interp.Witness.bot (ρ := ρ) (n := nroot) (M := X)) := by
   intro Δ σ σ' W n rec ctor major arity recLs mrec mctor r rule out head
-    mx my captureType A outTy hsyntax hhead hstrong hshape htyped
-    hspineX hspineY hcap hout hA
+    headTy mx my captureType A outTy hsyntax hhead hstrong hshape
+    htel hTyReg hspineX hspineY hcap hout hA
   have hheadBot : head ≤ TShape.bot :=
     hhead.trans TShape.bot_eqv.1
   have houtBot : out.T ≤ TShape.bot := hshape.le_bot hheadBot
@@ -2324,8 +2721,8 @@ theorem LR.FixedHeadResult.bvar
     (hle : root ≤ ρ i) :
     LR.FixedHeadResult Γ₀ (LE_Interp.Witness.bvar hle) := by
   intro Δ σ σ' W n rec ctor major arity recLs mrec mctor r rule out head
-    mx my captureType A outTy hsyntax hhead hstrong hshape htyped
-    hspineX hspineY hcap hout hA
+    headTy mx my captureType A outTy hsyntax hhead hstrong hshape
+    htel hTyReg hspineX hspineY hcap hout hA
   have hclosed : (SExpr.bvar i).ClosedN 0 := by
     rw [hsyntax]
     exact rule.rhsClosed.mkInstS
@@ -2340,8 +2737,8 @@ theorem LR.FixedHeadResult.sort
     LR.FixedHeadResult Γ₀
       (LE_Interp.Witness.sort (ρ := ρ) (l := l) hroot) := by
   intro Δ σ σ' W n rec ctor major arity recLs mrec mctor r rule out head
-    mx my captureType A outTy hsyntax hhead hstrong hshape htyped
-    hspineX hspineY hcap hout hA
+    headTy mx my captureType A outTy hsyntax hhead hstrong hshape
+    htel hTyReg hspineX hspineY hcap hout hA
   generalize hpaths : rule.capturePaths = paths at hshape hspineX hspineY
   cases hshape with
   | nil =>
@@ -2384,6 +2781,457 @@ theorem LR.FixedHeadResult.sort
     have houtEq : out = .bot := TShape.le_bot.1 houtBot
     subst out
     exact (LR Γ₀).bot hout.isType
+
+/-! ### The ordered telescope producer
+
+`WShape.HasTypeLam.peelLayer` is the TERM side of the peel; the recursion
+itself is driven by the TYPE side, and the lemma that moves a registered-type
+witness across one binder in lockstep with `LR.FixedHeadTelescope.cons`'s
+codomain index is `LE_Interp.Witness.forallE_inst`.  That coincidence is the
+producer: `cons` demands its tail at `(tyFun.app argCap).T`, and
+`forallE_inst` delivers the next registered-type witness at exactly that
+observation, instantiated at the same `argCap` the capture is aligned at.
+
+Everything is continuation-passing.  No component of a layer is
+existentially re-chosen and no `Nonempty` appears, which is what keeps the
+`Type`-valued witness usable (N2 decision (ii)). -/
+
+/-- The per-layer input of the ordered peel.
+
+The equation `headTy = (WShape.forallE tyDom tyFun).T` is the capture-domain
+link proper: the registered type's observation at this layer *is* a Pi
+observation whose domain is the shape the aligned capture is indexed by, at
+the semantic layer's own level.  `B = .forallE Bdom Bbody` is carried as part
+of the layer datum rather than derived, because `PathSpineWF` reaches the
+syntactic Pi form only through `conv`/`ret` edges carrying bare `IsDefEq`
+(the G5 gap); keeping it a datum leaves that cost visible and outside the
+fold. -/
+def LR.FixedHeadOrderedLink (Γ₀ : List SExpr) (ρ : Valuation) {p : Pattern}
+    (mcap : p.Path → TShape) (mx my captureType : p.Path → SExpr) : Prop :=
+  ∀ {C : Prop} {n : Nat} (path : p.Path) (a : WShape n)
+      (headTy : TShape) (B : SExpr),
+    a.T ≤ mcap path →
+    LE_Interp.Witness ρ headTy B →
+    (∀ (tyDom : WShape n) (tyFun : WShapeFun n) (argCap : WShape n)
+        (Bdom Bbody : SExpr),
+      headTy = (WShape.forallE tyDom tyFun).T →
+      B = .forallE Bdom Bbody →
+      a ≤ argCap →
+      LRS.CaptureDefEqAligned.AtShapes (LR Γ₀) (mcap path)
+        (mx path) (my path) (captureType path) argCap tyDom →
+      LE_Interp.Witness ρ argCap.T (mx path) → C) → C
+
+/-- The terminal input of the first ordered peel: at the observation the peel
+reaches, the semantic result of the spine is typed.
+
+**REFUTED — see `LR.FixedHeadTerminalLink.not_nonbot` below.**  It quantifies
+over *every* observation carrying a witness, and `LE_Interp.Witness.bot` is a
+witness of every syntax at `TShape.bot`, so the Prop forces `out ≤ TShape.bot`.
+Every consumer of the ordered peel holds `¬out.T ≤ TShape.bot`, so no consumer
+can ever supply it.  This is the same disease as
+`LR.FixedHeadTerminalRetarget`: a terminal fact stated as a *law over
+observations* rather than as a datum at the observation actually reached.
+`LR.FixedHeadTelescopeLE.ofOrderedLink` is the repaired peel — it takes no
+terminal law at all and hands the reached observation back to its caller. -/
+def LR.FixedHeadTerminalLink (ρ : Valuation) (out : TShape) : Prop :=
+  ∀ (headTy : TShape) (B : SExpr),
+    LE_Interp.Witness ρ headTy B → out.HasType headTy
+
+/-- **`LR.FixedHeadTerminalLink` FORCES ITS SUBJECT TO BE BOTTOM.**
+`LE_Interp.Witness.bot` (SLR:3928) is a witness of an arbitrary syntax at
+`TShape.bot`, and `TShape.HasType.bot_r` (SLR:3120) turns the resulting typing
+into `out ≤ TShape.bot`. -/
+theorem LR.FixedHeadTerminalLink.le_bot {ρ : Valuation} {out : TShape}
+    (H : LR.FixedHeadTerminalLink ρ out) : out ≤ TShape.bot :=
+  TShape.HasType.bot_r
+    (H TShape.bot (.sort .zero) (LE_Interp.Witness.bot (n := 0)))
+
+/-- **THE ORDERED PEEL'S TERMINAL LAW IS ALSO REFUTABLE**, independently of
+`LR.FixedHeadTerminalRetarget`.  Every consumer of the fixed-head fold carries
+`houtNonbot : ¬out.T ≤ TShape.bot` — the bottom result shape is discharged
+before the telescope is ever consumed — so this Prop is false exactly where it
+would be used.  `LR.FixedHeadProducer.of_orderedLink` is therefore vacuous for
+two independent reasons, and neither is repairable at the leaf. -/
+theorem LR.FixedHeadTerminalLink.not_nonbot {ρ : Valuation} {out : TShape}
+    (hnonbot : ¬out ≤ TShape.bot) : ¬ LR.FixedHeadTerminalLink ρ out :=
+  fun H => hnonbot H.le_bot
+
+/-- One ordered layer step, returning the telescope layer and the peeled
+registered-type witness from ONE declaration.
+
+Returning both halves together is the non-erasing form: a caller cannot pair
+this telescope layer with a type witness peeled at some other domain.
+`peelLayer`'s `hcapDom` is `capture.2.1` here, taken at the domain of the
+very observation the type witness is peeled at. -/
+noncomputable def LR.FixedHeadTelescope.consPeel
+    {Γ₀ : List SExpr} {ρ : Valuation}
+    {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr}
+    {n : Nat} {f : WShape (n + 1)} {a : WShape n}
+    {m out : TShape} {path : p.Path} {paths : List p.Path}
+    (harg : a.T ≤ mcap path) (happ : m ≤ (f.app a).T)
+    (rest : LE_Interp.RHS.ShapeSpine mcap m paths out)
+    {tyDom : WShape n} {tyFun : WShapeFun n} {argCap : WShape n}
+    {outTy : TShape} {Bdom Bbody : SExpr}
+    (capture : LRS.CaptureDefEqAligned.AtShapes (LR Γ₀)
+      (mcap path) (mx path) (my path) (captureType path) argCap tyDom)
+    (hTy : LE_Interp.Witness ρ (WShape.forallE tyDom tyFun).T
+      (.forallE Bdom Bbody))
+    (hArg : LE_Interp.Witness ρ argCap.T (mx path))
+    (tail : LR.FixedHeadTelescope
+      (headTy := (tyFun.app argCap).T) (outTy := outTy)
+      Γ₀ mx my captureType rest) :
+    PProd
+      (LR.FixedHeadTelescope
+        (headTy := (WShape.forallE tyDom tyFun).T) (outTy := outTy)
+        Γ₀ mx my captureType
+        (LE_Interp.RHS.ShapeSpine.cons harg happ rest))
+      (LE_Interp.Witness ρ (tyFun.app argCap).T (Bbody.inst (mx path))) :=
+  ⟨LR.FixedHeadTelescope.cons harg happ rest capture tail,
+    hTy.forallE_inst hArg⟩
+
+/-- THE ORDERED PRODUCER.  Peel the head's binder layers in order: at every
+layer the registered type's witness is instantiated at the very `argCap` the
+aligned capture is indexed by, so the telescope's captures line up with the
+pattern's ordered path list by construction.
+
+Continuation-passing keeps the produced `outTy` index and the produced
+registered-type witness attached to the same telescope, so the changed third
+premise of `LR.FixedHeadResult` is discharged in one elimination. -/
+theorem LR.FixedHeadTelescope.ofOrderedLink
+    {Γ₀ : List SExpr} {ρ : Valuation}
+    {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr}
+    {paths : List p.Path} {head out : TShape}
+    (spine : LE_Interp.RHS.ShapeSpine mcap head paths out)
+    (link : LR.FixedHeadOrderedLink Γ₀ ρ mcap mx my captureType)
+    (term : LR.FixedHeadTerminalLink ρ out) :
+    ∀ {C : Prop} {headTy : TShape} {B : SExpr},
+      LE_Interp.Witness ρ headTy B →
+      (∀ outTy : TShape,
+        LR.FixedHeadTelescope (headTy := headTy) (outTy := outTy)
+          Γ₀ mx my captureType spine → C) → C := by
+  induction spine with
+  | @nil head0 =>
+    intro C headTy B hTy K
+    exact K headTy (LR.FixedHeadTelescope.nil (term headTy B hTy))
+  | @cons n f a m out path paths harg happ rest ih =>
+    intro C headTy B hTy K
+    refine link path a headTy B harg hTy ?_
+    intro tyDom tyFun argCap Bdom Bbody hheadTy hB hargCap capture hArg
+    subst hheadTy
+    subst hB
+    refine ih term (hTy.forallE_inst hArg) ?_
+    intro outTy tail
+    exact K outTy (LR.FixedHeadTelescope.cons harg happ rest capture tail)
+
+/-- **THE REPAIRED ORDERED PRODUCER.**  Peel the head's binder layers in order,
+taking no terminal law whatsoever, and hand the caller both the observation the
+peel actually reached (with its witness) and a *factory* that builds the
+telescope at any result observation the caller can type and compare.
+
+Two things move relative to `LR.FixedHeadTelescope.ofOrderedLink`.
+
+* `LR.FixedHeadTerminalLink` is gone.  It was a law quantified over every
+  observation carrying a witness, and `LE_Interp.Witness.bot` refutes every such
+  law (`LR.FixedHeadTerminalLink.not_nonbot`).  The peel never needed it: the
+  base typing it was used for is the caller's own `out.HasType outTy`.
+* The terminal index is no longer existentially produced and then retargeted.
+  It is an *argument of the factory*, so the caller supplies it — which is the
+  only place `hout`/`hA` are available, since they are inputs of
+  `LR.constDefEq` fixed before any pattern is matched.
+
+What is left over is exactly one comparison, `outTy ≤ reachedTy`, at an
+observation the caller now holds.  That is the entire residual content of
+obstruction O1. -/
+theorem LR.FixedHeadTelescopeLE.ofOrderedLink
+    {Γ₀ : List SExpr} {ρ : Valuation}
+    {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr}
+    {paths : List p.Path} {head out : TShape}
+    (spine : LE_Interp.RHS.ShapeSpine mcap head paths out)
+    (link : LR.FixedHeadOrderedLink Γ₀ ρ mcap mx my captureType) :
+    ∀ {C : Prop} {headTy : TShape} {B : SExpr},
+      LE_Interp.Witness ρ headTy B →
+      (∀ (reachedTy : TShape) (Bend : SExpr),
+        LE_Interp.Witness ρ reachedTy Bend →
+        (∀ outTy : TShape, out.HasType outTy → outTy ≤ reachedTy →
+          LR.FixedHeadTelescopeLE (headTy := headTy) (outTy := outTy)
+            Γ₀ mx my captureType spine) → C) → C := by
+  induction spine with
+  | @nil head0 =>
+    intro C headTy B hTy K
+    exact K headTy B hTy
+      (fun _ htyped hle => LR.FixedHeadTelescopeLE.nil htyped hle)
+  | @cons n f a m out path paths harg happ rest ih =>
+    intro C headTy B hTy K
+    refine link path a headTy B harg hTy ?_
+    intro tyDom tyFun argCap Bdom Bbody hheadTy hB hargCap capture hArg
+    subst hheadTy
+    subst hB
+    refine ih (hTy.forallE_inst hArg) ?_
+    intro reachedTy Bend hEnd factory
+    exact K reachedTy Bend hEnd
+      (fun outTy htyped hle =>
+        LR.FixedHeadTelescopeLE.cons harg happ rest capture
+          (factory outTy htyped hle))
+
+/-- The exact interface the changed third premise of `LR.FixedHeadResult`
+consumes: one elimination delivering the ordered capture telescope AND the
+registered type's own semantic witness at ONE shape index, at the caller's
+own result-type observation `outTy.T`.
+
+Continuation-passing is load-bearing.  `LE_Interp.Witness` is `Type`-valued,
+so an existential package would need `Nonempty` and would re-choose the
+index; here no component of the pair is chosen twice, and the telescope and
+the witness provably come from the same peel. -/
+def LR.FixedHeadProducer (Γ₀ : List SExpr) (ρ : Valuation)
+    {n : Nat} {rec ctor : Name} {major arity : Nat}
+    {recLs : List SLevel}
+    {mrec : (Pattern.varN (.const rec) major).Path → TShape}
+    {mctor : (Pattern.varN (.const ctor) arity).Path → TShape}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    (rule : Pattern.IotaRule r) {out : WShape (n + 1)} {head : TShape}
+    (mx my captureType :
+      (RecursorIotaPattern rec major ctor arity).Path → SExpr)
+    {outTy : WShape (n + 1)}
+    (hshape : LE_Interp.RHS.ShapeSpine (Sum.elim mrec mctor)
+      head rule.capturePaths out.T) : Prop :=
+  ∀ {C : Prop},
+    (∀ headTy : TShape,
+      LR.FixedHeadTelescopeLE (headTy := headTy) (outTy := outTy.T)
+        Γ₀ mx my captureType hshape →
+      LE_Interp.Witness ρ headTy (SExpr.mkInst recLs rule.df.type) → C) → C
+
+/-- Closedness of a registered iota rule's *displayed type*.
+
+`Pattern.IotaRule` carries `rhsClosed` and no `typeClosed` field, but the fact
+is available anyway and needs no new field: the environment's own ordering
+invariant `VEnv.Ordered.closed` closes all three components of every
+registered `VDefEq`.  This discharges the side condition recorded when the
+nil-valuation fixed-head producer was landed. -/
+theorem _root_.Lean4Lean.Pattern.IotaRule.typeClosed
+    {rec ctor : Name} {major arity : Nat}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    (rule : Pattern.IotaRule r) (ls : List SLevel) :
+    (SExpr.mkInst ls rule.df.type).ClosedN :=
+  (Params.henv.closed.2 rule.registered).2.2.mkInstS
+
+/-- THE ISOLATED O1 RESIDUAL: read a finished fixed-head telescope at the
+caller's own result-type observation instead of the one the peel reached.
+
+`WithCaptures.nil` identifies the telescope's two type indices, so the peel's
+terminal observation is a function of the registered type and the aligned
+capture shapes, whereas `outTy` is an *input* of the constant-evaluation fold.
+`LR.constDefEq` receives `hout`/`hA`; it recomputes them only at an
+application layer, and hands them to the pattern leaf unchanged in its `pat`
+branch; `LR.PatternLeafDefEq.of_iota`, `LR.IotaLeafDefEq` and
+`LRS.IotaRHSDefEq` then thread them verbatim.  So `outTy` is already fixed
+before any pattern is matched, and producing `hout`/`hA` "from the peel" is
+not available anywhere at or below the matched leaf.  The whole gap is this
+one retarget, and it is not a lemma: `WithCaptures` has no terminal-index
+monotonicity (the same absence O2 records for its level index), and the
+retarget is an equality of indices, not a comparison.
+
+Its natural producer is a uniqueness statement, not a construction: the peel's
+terminal witness observes the syntactic spine result `A` (the right endpoint
+of `SExpr.PathSpineWF`), and the caller's `hA : (LR Γ₀).TyDefEq A A outTy`
+observes the same `A` at `outTy`. -/
+def LR.FixedHeadTerminalRetarget (Γ₀ : List SExpr)
+    {p : Pattern} {mcap : p.Path → TShape}
+    (mx my captureType : p.Path → SExpr)
+    {head out : TShape} {paths : List p.Path}
+    (spine : LE_Interp.RHS.ShapeSpine mcap head paths out)
+    (outTy : TShape) : Prop :=
+  ∀ {headTy reachedTy : TShape},
+    LR.FixedHeadTelescope (headTy := headTy) (outTy := reachedTy)
+      Γ₀ mx my captureType spine →
+    LR.FixedHeadTelescope (headTy := headTy) (outTy := outTy)
+      Γ₀ mx my captureType spine
+
+/-- **`LR.FixedHeadTerminalRetarget` IS `HasType`-functionality at the
+telescope's terminal head shape**, which is what makes it unprovable as
+stated rather than merely open.
+
+`WithCaptures.nil` (SLR:3661) identifies the two type indices, so at a
+nil-terminated spine the retarget says: every type of `head` equals the
+caller's `outTy`.  `WithCaptures.cons` threads `outTy` unchanged, so on a
+longer spine the same demand simply reappears at the base. -/
+theorem LR.FixedHeadTerminalRetarget.hasType_functional
+    {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr} {head outTy : TShape}
+    (H : LR.FixedHeadTerminalRetarget Γ₀ mx my captureType
+      (LE_Interp.RHS.ShapeSpine.nil (m2 := mcap) (head := head)) outTy)
+    {headTy : TShape} (htyped : head.HasType headTy) :
+    headTy = outTy := by
+  have tel := H (LR.FixedHeadTelescope.nil (Γ₀ := Γ₀) (mx := mx) (my := my)
+    (captureType := captureType) (mcap := mcap) htyped)
+  cases tel
+  rfl
+
+/-- **THE O1 RESIDUAL AS NAMED IS REFUTABLE.**  `TShape.HasType.bot`
+(SLR:3135) types `.bot` at every sort, so the functionality forced above
+fails outright.
+
+This closes the O1 question in the negative and redirects it: no producer can
+discharge `LR.FixedHeadTerminalRetarget`, because there is nothing to
+discharge — the statement is false.  The previous session's suggested
+"uniqueness statement" producer is refuted along with the Prop.
+
+**REPAIRED.**  The terminal-index monotonicity is
+`LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE` (SLR), landed as an
+additive parallel structure; the retarget as a *comparison* is
+`LR.FixedHeadTelescope.retarget`, and the residual it leaves is
+`LR.FixedHeadTerminalDominance`.  The other candidate route — letting
+`LR.FixedHeadShapeChain.pathSemantics` consume a chain at the reached
+observation plus a semantic bridge to `outTy` — is not available: the chain's
+terminal index feeds `LR.FixedHeadApplication` and thence the conclusion of
+`LR.FixedHeadResult` verbatim, so it must literally be the caller's `outTy`,
+and `resultRel` (which is the caller's `hA`) is already consumed there. -/
+theorem LR.FixedHeadTerminalRetarget.not_general
+    {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr} {outTy : TShape} :
+    ¬ LR.FixedHeadTerminalRetarget Γ₀ mx my captureType
+        (LE_Interp.RHS.ShapeSpine.nil (m2 := mcap)
+          (head := TShape.bot)) outTy := by
+  intro H
+  have h1 := LR.FixedHeadTerminalRetarget.hasType_functional H
+    (TShape.HasType.bot' (TShape.HasType.sort (r := true)))
+  have h2 := LR.FixedHeadTerminalRetarget.hasType_functional H
+    (TShape.HasType.bot' (TShape.HasType.sort (r := false)))
+  have hEq : TShape.sort true = TShape.sort false := h1.trans h2.symm
+  simp [TShape, WShape, TShape.sort, WShape.T, WShape.sort] at hEq
+  have h0 : Shape0.sort true = Shape0.sort false := hEq
+  injection h0 with hb
+  exact absurd hb (by decide)
+
+/-- **VACUOUS TWICE OVER — kept only as the reference statement.**  Two of its
+four inputs are refutable: `term` by `LR.FixedHeadTerminalLink.not_nonbot` (at
+every non-bottom result shape, i.e. wherever the fold runs) and `retarget` by
+`LR.FixedHeadTerminalRetarget.not_general`.  It must not be counted as progress
+toward the four leaf-local `producer` hypotheses.
+
+`LR.FixedHeadProducer.of_dominance` below is the live replacement, and
+`LR.FixedHeadTelescopeLE.ofOrderedLink` is the repaired peel it rests on. -/
+theorem LR.FixedHeadProducer.of_orderedLink
+    {Γ₀ : List SExpr} {ρ : Valuation}
+    {n : Nat} {rec ctor : Name} {major arity : Nat}
+    {recLs : List SLevel}
+    {mrec : (Pattern.varN (.const rec) major).Path → TShape}
+    {mctor : (Pattern.varN (.const ctor) arity).Path → TShape}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    {rule : Pattern.IotaRule r} {out : WShape (n + 1)} {head : TShape}
+    {mx my captureType :
+      (RecursorIotaPattern rec major ctor arity).Path → SExpr}
+    {outTy : WShape (n + 1)}
+    {hshape : LE_Interp.RHS.ShapeSpine (Sum.elim mrec mctor)
+      head rule.capturePaths out.T}
+    {headTy : TShape}
+    (hTyReg : LE_Interp.Witness ρ headTy (SExpr.mkInst recLs rule.df.type))
+    (link : LR.FixedHeadOrderedLink Γ₀ ρ (Sum.elim mrec mctor)
+      mx my captureType)
+    (term : LR.FixedHeadTerminalLink ρ out.T)
+    (retarget : LR.FixedHeadTerminalRetarget Γ₀ mx my captureType
+      hshape outTy.T) :
+    LR.FixedHeadProducer Γ₀ ρ rule mx my captureType hshape
+      (recLs := recLs) (outTy := outTy) := by
+  intro C K
+  refine LR.FixedHeadTelescope.ofOrderedLink hshape link term hTyReg ?_
+  intro _reachedTy tel
+  exact K headTy (retarget tel).toLE hTyReg
+
+/-- **THE O1 RESIDUAL, CORRECTLY STATED.**  Some run of the ordered peel
+terminates at an observation that *dominates* the caller's result observation.
+
+This is what survives after the two refutations.  Compare what it replaces:
+
+* `LR.FixedHeadTerminalRetarget` demanded the two observations be *equal*.  That
+  is `HasType`-functionality at the terminal head, and `TShape.HasType.bot`
+  refutes it (`.not_general`).
+* `LR.FixedHeadTerminalLink` demanded a typing at *every* witnessed
+  observation.  `LE_Interp.Witness.bot` refutes it (`.not_nonbot`).
+
+Both failed for the same structural reason: they are laws quantified over
+observations, and the observation lattice has a bottom that every syntax is
+witnessed at.  This Prop is instead *existential in the reached observation* —
+continuation-passing, so the peel's own choice is what is compared — and is
+therefore not refutable by that argument.  `.of_exact` shows it is strictly
+weaker than the demand it replaces; `.nil` inhabits it at exactly the instance
+where the retarget is false. -/
+def LR.FixedHeadTerminalDominance (Γ₀ : List SExpr)
+    {p : Pattern} {mcap : p.Path → TShape}
+    (mx my captureType : p.Path → SExpr)
+    {head out : TShape} {paths : List p.Path}
+    (spine : LE_Interp.RHS.ShapeSpine mcap head paths out)
+    (headTy outTy : TShape) : Prop :=
+  ∀ {C : Prop},
+    (∀ reachedTy : TShape, outTy ≤ reachedTy →
+      LR.FixedHeadTelescope (headTy := headTy) (outTy := reachedTy)
+        Γ₀ mx my captureType spine → C) → C
+
+/-- Faithfulness: the old (exact) demand implies the dominance, at the
+reflexive comparison.  So nothing that used to discharge the producer stops
+discharging it. -/
+theorem LR.FixedHeadTerminalDominance.of_exact
+    {Γ₀ : List SExpr} {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr}
+    {head out headTy outTy : TShape} {paths : List p.Path}
+    {spine : LE_Interp.RHS.ShapeSpine mcap head paths out}
+    (H : LR.FixedHeadTelescope (headTy := headTy) (outTy := outTy)
+      Γ₀ mx my captureType spine) :
+    LR.FixedHeadTerminalDominance Γ₀ mx my captureType spine headTy outTy :=
+  fun K => K outTy TShape.LE.rfl H
+
+/-- **THE NON-VACUITY CERTIFICATE.**  At the empty capture spine the dominance
+is inhabited from the caller's own result typing alone — including at
+`head = .bot`, which is the very instance at which
+`LR.FixedHeadTerminalRetarget.not_general` derives `False`.  So the replacement
+Prop is genuinely satisfiable where its predecessor was refutable. -/
+theorem LR.FixedHeadTerminalDominance.nil
+    {Γ₀ : List SExpr} {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr} {head outTy : TShape}
+    (htyped : head.HasType outTy) :
+    LR.FixedHeadTerminalDominance Γ₀ mx my captureType
+      (LE_Interp.RHS.ShapeSpine.nil (m2 := mcap) (head := head))
+      outTy outTy :=
+  fun K => K outTy TShape.LE.rfl (LR.FixedHeadTelescope.nil htyped)
+
+/-- The four leaf-local `producer` hypotheses reduce to the registered type's
+own observation, the caller's own result typing, and the terminal dominance.
+
+Everything else the ordered peel needs is proved:
+`LR.FixedHeadTelescopeLE.ofOrderedLink` runs the layers from `link` alone, and
+`LR.FixedHeadTelescope.retarget` moves the finished telescope down to the
+caller's observation.  Contrast `LR.FixedHeadProducer.of_orderedLink`, which is
+vacuous twice over. -/
+theorem LR.FixedHeadProducer.of_dominance
+    {Γ₀ : List SExpr} {ρ : Valuation}
+    {n : Nat} {rec ctor : Name} {major arity : Nat}
+    {recLs : List SLevel}
+    {mrec : (Pattern.varN (.const rec) major).Path → TShape}
+    {mctor : (Pattern.varN (.const ctor) arity).Path → TShape}
+    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
+      (RecursorIotaPattern rec major ctor arity).Check}
+    {rule : Pattern.IotaRule r} {out : WShape (n + 1)} {head : TShape}
+    {mx my captureType :
+      (RecursorIotaPattern rec major ctor arity).Path → SExpr}
+    {outTy : WShape (n + 1)}
+    {hshape : LE_Interp.RHS.ShapeSpine (Sum.elim mrec mctor)
+      head rule.capturePaths out.T}
+    {headTy : TShape}
+    (hTyReg : LE_Interp.Witness ρ headTy (SExpr.mkInst recLs rule.df.type))
+    (hout : out.HasType outTy)
+    (dom : LR.FixedHeadTerminalDominance Γ₀ mx my captureType
+      hshape headTy outTy.T) :
+    LR.FixedHeadProducer Γ₀ ρ rule mx my captureType hshape
+      (recLs := recLs) (outTy := outTy) := by
+  intro C K
+  refine dom ?_
+  intro reachedTy hle tel
+  exact K headTy (tel.retarget hout.T hle) hTyReg
 
 /-- Logical-relation congruence for one generated iota RHS at adjacent
 stratification levels.  The two endpoints share the rule's ordered paths and
@@ -3039,6 +3887,14 @@ theorem LRS.iotaDefEq_of_ctorExactAt_fixedHead
       (LE_Interp.Lower R) out.T r.1)
     (hR : ∀ {m M}, R m M → LE_Interp.Witness ρ m M)
     (hP : ∀ {m M} (hr : R m M), LR.FixedHeadResult Γ₀ (hR hr))
+    (producer : ∀ (rule : Pattern.IotaRule r) {head : TShape}
+      (mx my captureType :
+        (RecursorIotaPattern rec major ctor arity).Path → SExpr)
+      {outTyP : WShape (n + 1)}
+      (hshape : LE_Interp.RHS.ShapeSpine (Sum.elim mrec mctor)
+        head rule.capturePaths out.T),
+      LR.FixedHeadProducer Γ₀ ρ rule mx my captureType hshape
+        (recLs := recLs) (outTy := outTyP))
     (leaf : LRS.CtorExact Γ₀ (LR Γ₀) majorX majorY
       (.ctor ctor ctorShapes.reverse hwf))
     (hleaf : LR.PatternLeafSpine Γ₀ (LR Γ₀) recHeadType
@@ -3061,8 +3917,10 @@ theorem LRS.iotaDefEq_of_ctorExactAt_fixedHead
   · intro m m' M hle hM H
     exact LR.FixedHeadResult.mono (ρ := ρ) (hX := hM) hle H
   · intro head mx my captureType A outTy hhead hfixed _hstrong hshape
-      htyped hspineX hspineY hcap hout hA
-    exact hfixed W rfl .rfl (rule.rhsStrong recLs) hshape htyped
+      _htyped hspineX hspineY hcap hout hA
+    refine producer rule mx my captureType hshape (outTyP := outTy) ?_
+    intro headTy htel hTyReg
+    exact hfixed W rfl .rfl (rule.rhsStrong recLs) hshape htel hTyReg
       hspineX hspineY hcap hout hA
 
 /-- Close one native exact iota leaf from closed-valuation fixed-head
@@ -3105,6 +3963,14 @@ theorem LRS.iotaDefEq_of_ctorExactAt_closedFixedHead
     (fixedHead : ∀ {root : TShape} {X : SExpr}
       (hX : LE_Interp.Witness Valuation.nil root X),
       LR.FixedHeadResult Γ₀ hX)
+    (producer : ∀ (rule : Pattern.IotaRule r) {head : TShape}
+      (mx my captureType :
+        (RecursorIotaPattern rec major ctor arity).Path → SExpr)
+      {outTyP : WShape (n + 1)}
+      (hshape : LE_Interp.RHS.ShapeSpine (Sum.elim mrec mctor)
+        head rule.capturePaths out.T),
+      LR.FixedHeadProducer Γ₀ Valuation.nil rule mx my captureType hshape
+        (recLs := recLs) (outTy := outTyP))
     (leaf : LRS.CtorExact Γ₀ (LR Γ₀) majorX majorY
       (.ctor ctor ctorShapes.reverse hwf))
     (hleaf : LR.PatternLeafSpine Γ₀ (LR Γ₀) recHeadType
@@ -3124,11 +3990,13 @@ theorem LRS.iotaDefEq_of_ctorExactAt_closedFixedHead
   intro rule
   apply LRS.IotaRHSDefEq.of_nonbotWitness hR
   intro head mx my captureType A' outTy' hhead hstrong hshape
-    htyped hspineX hspineY hcap hout' hA'
+    _htyped hspineX hspineY hcap hout' hA'
   have hclosed : (SExpr.mkInst recLs rule.df.rhs).ClosedN :=
     rule.rhsClosed.mkInstS
+  refine producer rule mx my captureType hshape (outTyP := outTy') ?_
+  intro headTy htel hTyReg
   exact fixedHead (hhead.closedAt hclosed) LR.SubstWF.id rfl .rfl
-    hstrong hshape htyped hspineX hspineY hcap hout' hA'
+    hstrong hshape htel hTyReg hspineX hspineY hcap hout' hA'
 
 /-- Canonical wrapper for `iotaActions_of_exactEqAt`.  It forgets whether a
 capture came from the predecessor or successor relation by existentially
@@ -3957,6 +4825,110 @@ theorem LR.SelfAdequateAt.of_fixedHeadTelescope
   H.of_typedLowerWitness hhead hstrat
     (telescope.withWitness hTy)
 
+/-- The `headSelf` callback of the fixed-head application fold, produced
+without any global adequacy package at the rung's own depth.
+
+This is the depth-refined replacement for `LR.AdequacyAtDepth.closedHeadSelf`.
+The term half is the consumer's own `LR.SelfAdequateAt` at the *same* witness
+and the *same* depth — the coherent algebra already holds it, so nothing is
+manufactured; the type half is the isolated `LR.FixedHeadTypeValidStep`,
+whose real demand sits at `depth - 1`.  Both endpoints are the literal ones
+the packed telescope selected: no shape or index is re-chosen here. -/
+theorem LR.SelfAdequateAt.closedHeadSelf
+    {hX : LE_Interp.Witness ρ root X}
+    (H : LR.SelfAdequateAt Γ₀ hX depth)
+    (typeValid : LR.FixedHeadTypeValidStep Γ₀ depth)
+    {Δ : List SExpr} {σ σ' : Subst} {headType : SExpr} {core : Bool}
+    {head : TShape}
+    (hhead : head ≤ root)
+    (hstrat : HasTypeStratifiedS Δ X headType core depth)
+    (W : LR.SubstWF Γ₀ σ σ' Δ ρ)
+    (hXClosed : X.ClosedN) (hTypeClosed : headType.ClosedN)
+    {n : Nat} {headElem headElemTy : WShape n}
+    (helem : headElem.T ≤ head)
+    (htyped : headElem.HasType headElemTy)
+    (hTy : LE_Interp.Witness ρ headElemTy.T headType) :
+    (LR Γ₀).DefEq X X headType headElem headElemTy ∧
+      (LR Γ₀).TyDefEq headType headType headElemTy := by
+  have hrel := ((H (helem.trans hhead) hstrat htyped hTy).1 W).1
+  rw [hXClosed.subst_eq .zero, hXClosed.subst_eq .zero,
+    hTypeClosed.subst_eq .zero] at hrel
+  exact ⟨hrel, typeValid W hstrat hTypeClosed htyped hTy⟩
+
+/-- Finish the packed fixed-head application from the consumer's own
+self-adequacy instead of a same-rung `LR.AdequacyAtDepth`.
+
+Compare `LR.FixedHeadTelescope.toApplicationWithAdequacyAtDepth`, which
+demands `LR.AdequacyAtDepth Γ₀ depth`.  That input is replaced here by two
+strictly weaker ones that the coherent algebra can actually meet: the
+self-adequacy result at this witness and depth, and the isolated type rung
+`LR.FixedHeadTypeValidStep Γ₀ depth`.  Everything else is unchanged, so this
+is a drop-in strengthening of the producer, not a new route. -/
+theorem LR.FixedHeadTelescope.toApplicationWithSelfAdequacy
+    {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr}
+    {paths : List p.Path} {head headTy : TShape}
+    {outLevel : Nat} {out outTy : WShape outLevel}
+    {spine : LE_Interp.RHS.ShapeSpine mcap head paths out.T}
+    {headType resultType : SExpr}
+    {hX : LE_Interp.Witness ρ root X} {depth : Nat}
+    (H : LR.FixedHeadTelescope
+      (headTy := headTy) (outTy := outTy.T)
+      Γ₀ mx my captureType spine)
+    (hTy : LE_Interp.Witness ρ headTy headType)
+    (houtNonbot : ¬out.T ≤ TShape.bot)
+    (raw : SExpr.PathSpineWF Γ₀ mx captureType
+      headType paths resultType)
+    (resultRel : (LR Γ₀).TyDefEq
+      resultType resultType outTy)
+    (convert : LR.FixedHeadConvertStep Γ₀)
+    (hself : LR.SelfAdequateAt Γ₀ hX depth)
+    (typeValid : LR.FixedHeadTypeValidStep Γ₀ depth)
+    (hhead : head ≤ root)
+    {Δ : List SExpr} {σ σ' : Subst} {core : Bool}
+    (hstrat : HasTypeStratifiedS Δ X headType core depth)
+    (W : LR.SubstWF Γ₀ σ σ' Δ ρ)
+    (hXClosed : X.ClosedN) (hTypeClosed : headType.ClosedN) :
+    LR.FixedHeadApplication Γ₀ hX depth
+      mcap mx my captureType paths headType resultType head out outTy := by
+  apply H.toApplicationWith hTy houtNonbot raw resultRel convert
+  intro headLevel headElem headElemTy helem htyped hheadTy
+  exact hself.closedHeadSelf typeValid hhead hstrat W hXClosed hTypeClosed
+    helem htyped hheadTy
+
+/-- The same producer adapter for the monotone telescope. -/
+theorem LR.FixedHeadTelescopeLE.toApplicationWithSelfAdequacy
+    {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr}
+    {paths : List p.Path} {head headTy : TShape}
+    {outLevel : Nat} {out outTy : WShape outLevel}
+    {spine : LE_Interp.RHS.ShapeSpine mcap head paths out.T}
+    {headType resultType : SExpr}
+    {hX : LE_Interp.Witness ρ root X} {depth : Nat}
+    (H : LR.FixedHeadTelescopeLE
+      (headTy := headTy) (outTy := outTy.T)
+      Γ₀ mx my captureType spine)
+    (hTy : LE_Interp.Witness ρ headTy headType)
+    (houtNonbot : ¬out.T ≤ TShape.bot)
+    (raw : SExpr.PathSpineWF Γ₀ mx captureType
+      headType paths resultType)
+    (resultRel : (LR Γ₀).TyDefEq
+      resultType resultType outTy)
+    (convert : LR.FixedHeadConvertStep Γ₀)
+    (hself : LR.SelfAdequateAt Γ₀ hX depth)
+    (typeValid : LR.FixedHeadTypeValidStep Γ₀ depth)
+    (hhead : head ≤ root)
+    {Δ : List SExpr} {σ σ' : Subst} {core : Bool}
+    (hstrat : HasTypeStratifiedS Δ X headType core depth)
+    (W : LR.SubstWF Γ₀ σ σ' Δ ρ)
+    (hXClosed : X.ClosedN) (hTypeClosed : headType.ClosedN) :
+    LR.FixedHeadApplication Γ₀ hX depth
+      mcap mx my captureType paths headType resultType head out outTy := by
+  apply H.toApplicationWith hTy houtNonbot raw resultRel convert
+  intro headLevel headElem headElemTy helem htyped hheadTy
+  exact hself.closedHeadSelf typeValid hhead hstrat W hXClosed hTypeClosed
+    helem htyped hheadTy
+
 /-- Consume a completed fixed-head application package.
 
 The exact fixed-head term relation is stored by the producer together with
@@ -4405,6 +5377,103 @@ theorem LR.CoherentRetainedAt.restartWithTree
       (seed := fun hX children => lower depth hdepth hX children)
   exact ⟨lower depth hdepth hX children, children⟩
 
+/-- THE DEPTH DISCHARGE.  The type rung follows from the *coherent* strict
+predecessor family that `LR.CoherentFixedHeadStep` already carries — no
+`LR.AdequacyAtDepth` at any rung, and nothing manufactured inside the
+induction.
+
+Two facts make this work, and both are specific to this obligation.
+
+* The demand sits at `depth - 1` (`HasTypeStratifiedS.isType`), so it is a
+  strict predecessor exactly when `0 < depth`; `LR.CoherentRetainedAt.restart`
+  then supplies a completed rung at an **arbitrary** witness, rebuilding the
+  evaluator tree itself (`LR.CoherentSeedAt.rebuild`).  The witness needed
+  here — the registered type's own interpretation — is not a child of the
+  fixed head's witness, so the `children` tree could not have supplied it;
+  the guarded restart is what makes an unrelated witness admissible.
+* The conclusion is **homogeneous** (`TyDefEq headType headType headElemTy`),
+  and `LR.CoherentRetainedAt` carries exactly homogeneous self-adequacy.
+  This is precisely why the same move does *not* discharge
+  `LR.SelfAdequateDefeqStepAt`, whose conversion callback needs
+  `LR.Adequate Γ₀ Γ ρ A B (.sort u) ma sa` with two *different* endpoints. -/
+theorem LR.FixedHeadTypeValidStep.of_lowerCoherent
+    {depth : Nat} (hdepth : 0 < depth)
+    (lower : ∀ (d' : Nat), d' < depth → ∀ {ρ root X}
+      (hX' : LE_Interp.Witness ρ root X),
+      hX'.RDeepChildren (LR.CoherentSeedAt Γ₀ d') →
+      LR.CoherentRetainedAt Γ₀ hX' d') :
+    LR.FixedHeadTypeValidStep Γ₀ depth := by
+  intro Δ ρ σ σ' X headType core n headElem headElemTy W hstrat
+    hTypeClosed htyped hTy
+  obtain ⟨u, hTypeStrat⟩ := hstrat.isType
+  have hTypeStrong : IsDefEqStrong Δ headType headType (.sort u) :=
+    hTypeStrat.strong
+  obtain ⟨n', typeElem, sortElem, le_n, le_type,
+      hTypeInterp, hSortInterp, hTypeTyped⟩ :=
+    (LE_Interp.sound hTypeStrong W.left.fits).2 hTy.toInterp |>.out
+  have hselfTy : LR.SelfAdequateAt Γ₀ hTypeInterp.witness (depth - 1) :=
+    (LR.CoherentRetainedAt.restart lower
+      (Nat.sub_lt hdepth Nat.one_pos) (hX := hTypeInterp.witness)).1
+  have hTypeAdequate :=
+    (hselfTy .rfl hTypeStrat hTypeTyped hSortInterp.witness).2 W.left
+  simp only [SExpr.subst] at hTypeAdequate
+  rw [hTypeClosed.subst_eq .zero] at hTypeAdequate
+  exact LR.toValTy le_n le_type htyped.isType
+    hSortInterp hTypeTyped hTypeAdequate
+
+/-- The depth-zero rung, where `of_lowerCoherent`'s strict decrease is
+unavailable, is nevertheless free.
+
+Every `HasTypeStratifiedS` constructor except `sort'` and `base` carries the
+index `n + 1`, so a depth-`0` certificate forces the subject to be a sort and
+its displayed type to be the successor sort.  That case needs no adequacy at
+all: the fixed-head displayed type is then a sort, and its validity at the
+observation is the `sort_iff` / `bot` split already used by the `sort'` case
+of `LR.selfAdequateExactAtStep`. -/
+theorem LR.FixedHeadTypeValidStep.zero : LR.FixedHeadTypeValidStep Γ₀ 0 := by
+  intro Δ ρ σ σ' X headType core n headElem headElemTy W hstrat
+    hTypeClosed htyped hTy
+  obtain ⟨u, hTypeStrat⟩ := hstrat.isType
+  have hTypeStrong : IsDefEqStrong Δ headType headType (.sort u) :=
+    hTypeStrat.strong
+  obtain ⟨n', typeElem, sortElem, le_n, le_type,
+      hTypeInterp, hSortInterp, hTypeTyped⟩ :=
+    (LE_Interp.sound hTypeStrong W.left.fits).2 hTy.toInterp |>.out
+  refine LR.toValTy le_n le_type htyped.isType hSortInterp hTypeTyped ?_
+  have hsort : ∃ l : SLevel, headType = .sort l.succ := by
+    cases hstrat with
+    | sort' => exact ⟨_, rfl⟩
+    | base h => cases h with | sort' => exact ⟨_, rfl⟩
+  obtain ⟨l, rfl⟩ := hsort
+  cases hTypeTyped.unfold with
+  | bot hm => exact (LR _).bot hm
+  | sort => exact (LR _).sort_iff.2 ⟨_, .rfl, .rfl⟩
+  | _ =>
+    obtain h | h := WShape.le_sort.1 hTypeInterp.le_sort'
+    · dsimp only at h
+      rw [h]
+      exact (LR _).bot hTypeTyped.isType
+    · simp [WShape.ext_iff, WShape.forallE, WShape.sort, Shape.sort,
+        WShape.lam', WShape.lam, WShape.bot, WShape.ctor, WShape.indTy,
+        Shape.bot] at h <;>
+        first
+        | split at h <;> simp_all only [reduceCtorEq]
+        | simp_all
+
+/-- The whole family at one rung, from the coherent predecessor family alone.
+This is what `LR.CoherentFixedHeadStep.of_convertStep` consumes, and it is why
+`∀ depth, LR.FixedHeadTypeValidStep Γ₀ depth` is no longer an obligation. -/
+theorem LR.FixedHeadTypeValidStep.of_coherentLower
+    {depth : Nat}
+    (lower : ∀ (d' : Nat), d' < depth → ∀ {ρ root X}
+      (hX' : LE_Interp.Witness ρ root X),
+      hX'.RDeepChildren (LR.CoherentSeedAt Γ₀ d') →
+      LR.CoherentRetainedAt Γ₀ hX' d') :
+    LR.FixedHeadTypeValidStep Γ₀ depth := by
+  rcases Nat.eq_zero_or_pos depth with rfl | hdepth
+  · exact LR.FixedHeadTypeValidStep.zero
+  · exact LR.FixedHeadTypeValidStep.of_lowerCoherent hdepth lower
+
 /-- Rebuild a transportable semantic-typing tree from an inspectable local
 seed constructor.  The transport closure is introduced only after the
 underlying witness has obtained a canonical `CoherentSeedAt` tree. -/
@@ -4537,9 +5606,9 @@ theorem LR.FixedHeadResultAt.of_le
     (H : LR.FixedHeadResultAt Γ₀ hX outerDepth) :
     LR.FixedHeadResultAt Γ₀ hX depth := by
   intro Δ σ σ' W n rec ctor major arity recLs mrec mctor r rule out head
-    mx my captureType A outTy hsyntax hhead hstrong hstrat hshape htyped
-    hspineX hspineY hcap hout hA
-  exact H W hsyntax hhead hstrong (hstrat.mono hdepth) hshape htyped
+    headTy mx my captureType A outTy hsyntax hhead hstrong hstrat hshape
+    htel hTyReg hspineX hspineY hcap hout hA
+  exact H W hsyntax hhead hstrong (hstrat.mono hdepth) hshape htel hTyReg
     hspineX hspineY hcap hout hA
 
 /-- Lower the depth of both halves of the coherent retained package. -/
@@ -4733,6 +5802,76 @@ theorem LR.CoherentRetainedNatStep.of_steps
     selfStep depth hX children lower
   exact ⟨hself, fixedStep depth hX hself children lower⟩
 
+/-- THE FIXED-HEAD HALF OF THE COHERENT NAT ALGEBRA.
+
+Neither the seed tree nor the strict predecessor family is consumed.  Once the
+N2 premise change hands the step its ordered capture telescope together with
+the registered type's own witness at one index, the fixed-head half is a pure
+fold: its only semantic inputs are the self-adequacy result supplied at the
+same witness and the same depth by `LR.CoherentRetainedNatStep.of_steps`, and
+the two named obligations below.  The redundant existential capture family is
+never opened — the telescope already carries every capture at its own shapes,
+which is exactly what the N2 decision was for.
+
+Both closedness facts are free, and neither needs a new field on
+`Pattern.IotaRule`.  The generated RHS is closed by `rhsClosed`; the
+*registered type* is closed by `Params.henv.closed`, i.e. by the environment's
+own ordering invariant.  The `typeClosed` field the previous port recorded as
+missing is not needed after all.
+
+The bottom observation is discharged before any of that, exactly as in
+`LR.FixedHeadResult.bot`: a bottom result shape forces `out = .bot`. -/
+theorem LR.CoherentFixedHeadStep.of_steps
+    (convert : LR.FixedHeadConvertStep Γ₀)
+    (typeValid : ∀ depth, LR.FixedHeadTypeValidStep Γ₀ depth) :
+    LR.CoherentFixedHeadStep Γ₀ := by
+  intro depth ρ root X hX hself _children _lower
+  intro Δ σ σ' W n rec ctor major arity recLs mrec mctor r rule out head
+    headTy mx my captureType A outTy hsyntax hhead _hstrong hstrat hshape
+    htel hTyReg hspineX _hspineY _hcap hout hA
+  subst hsyntax
+  by_cases hbot : out.T ≤ TShape.bot
+  · have houtEq : out = .bot := TShape.le_bot.1 hbot
+    subst houtEq
+    exact (LR Γ₀).bot hout.isType
+  · exact LR.FixedHeadApplication.applyRule (hX := hX)
+      (htel.toApplicationWithSelfAdequacy (hX := hX) hTyReg hbot hspineX hA
+        convert hself (typeValid depth) hhead hstrat W
+        rule.rhsClosed.mkInstS (rule.typeClosed recLs))
+
+/-- THE FIXED-HEAD HALF, with the type rung discharged rather than assumed.
+
+Identical to `of_steps` except that the `typeValid` family is no longer a
+hypothesis: `LR.FixedHeadTypeValidStep.of_coherentLower` builds the instance
+needed at this rung out of `lower`, the step's own strict predecessor family.
+`of_steps` is kept unchanged as the reference statement (the treatment
+`LR.FixedHeadTelescope.toApplicationWithAdequacyAtDepth` and
+`LR.ConstDefnLocalStep` also received).
+
+G4: `lower` arrives through the step interface — `LR.CoherentRetainedNatStep`
+hands it over from `recRDeepNatProvenance` — and is consumed only through the
+sanctioned guarded restart `LR.CoherentRetainedAt.restart`, exactly as
+`LR.selfAdequateExactAtStep` already consumes it.  Nothing predecessor-shaped
+is manufactured inside the induction, and no index a consumer fixed is
+re-chosen. -/
+theorem LR.CoherentFixedHeadStep.of_convertStep
+    (convert : LR.FixedHeadConvertStep Γ₀) :
+    LR.CoherentFixedHeadStep Γ₀ := by
+  intro depth ρ root X hX hself _children lower
+  intro Δ σ σ' W n rec ctor major arity recLs mrec mctor r rule out head
+    headTy mx my captureType A outTy hsyntax hhead _hstrong hstrat hshape
+    htel hTyReg hspineX _hspineY _hcap hout hA
+  subst hsyntax
+  by_cases hbot : out.T ≤ TShape.bot
+  · have houtEq : out = .bot := TShape.le_bot.1 hbot
+    subst houtEq
+    exact (LR Γ₀).bot hout.isType
+  · exact LR.FixedHeadApplication.applyRule (hX := hX)
+      (htel.toApplicationWithSelfAdequacy (hX := hX) hTyReg hbot hspineX hA
+        convert hself (LR.FixedHeadTypeValidStep.of_coherentLower lower)
+        hhead hstrat W
+        rule.rhsClosed.mkInstS (rule.typeClosed recLs))
+
 /-- Close the semantic fixed point from one provenance-sensitive algebra.
 No typing-depth index is fixed before following an evaluator `R` edge. -/
 theorem LR.coherentRetainedResult_of_step
@@ -4784,6 +5923,14 @@ theorem LRS.iotaDefEq_of_ctorExactAt_natStep
     {out outTy : WShape (n + 1)}
     {hwf : IsStruct ctor → WShape.ListNonZero ctorShapes.reverse}
     (step : LR.CoherentRetainedNatStep Γ₀)
+    (producer : ∀ (rule : Pattern.IotaRule r) {head : TShape}
+      (mx my captureType :
+        (RecursorIotaPattern rec major ctor arity).Path → SExpr)
+      {outTyP : WShape (n + 1)}
+      (hshape : LE_Interp.RHS.ShapeSpine (Sum.elim mrec mctor)
+        head rule.capturePaths out.T),
+      LR.FixedHeadProducer Γ₀ Valuation.nil rule mx my captureType hshape
+        (recLs := recLs) (outTy := outTyP))
     (hΓ : Ctx.WF Γ₀)
     (hpat : Params.Pat (RecursorIotaPattern rec major ctor arity) r)
     (hmf : LE_Interp.Matches (n := n + 1)
@@ -4810,7 +5957,7 @@ theorem LRS.iotaDefEq_of_ctorExactAt_natStep
   LRS.iotaDefEq_of_ctorExactAt_closedFixedHead hΓ hpat hmf hma hrhs hR
     (fun hX =>
       (LR.coherentRetainedResult_of_natStep step hX).fixedHead)
-    leaf hleaf hrecHead hout hA
+    producer leaf hleaf hrecHead hout hA
 
 /-- Close one exact constructor iota leaf from provenance-sensitive
 fixed-head seeds at a single stratification depth.
@@ -4849,6 +5996,14 @@ theorem LRS.iotaDefEq_of_ctorExactAt_coherent
       (hr : R m (SExpr.mkInst recLs rule.df.rhs)),
       LR.CoherentRhsSeedAt Γ₀ Δ depth (hR hr)
         (SExpr.mkInst recLs rule.df.type))
+    (producer : ∀ (rule : Pattern.IotaRule r) {head : TShape}
+      (mx my captureType :
+        (RecursorIotaPattern rec major ctor arity).Path → SExpr)
+      {outTyP : WShape (n + 1)}
+      (hshape : LE_Interp.RHS.ShapeSpine (Sum.elim mrec mctor)
+        head rule.capturePaths out.T),
+      LR.FixedHeadProducer Γ₀ ρ rule mx my captureType hshape
+        (recLs := recLs) (outTy := outTyP))
     (leaf : LRS.CtorExact Γ₀ (LR Γ₀) majorX majorY
       (.ctor ctor ctorShapes.reverse hwf))
     (hleaf : LR.PatternLeafSpine Γ₀ (LR Γ₀) recHeadType
@@ -4877,21 +6032,23 @@ theorem LRS.iotaDefEq_of_ctorExactAt_coherent
   · intro m m' M hle hM H hMrhs
     exact LR.CoherentRhsSeedAt.mono (hX := hM) hle (H hMrhs)
   · intro head mx my captureType A outTy hhead hseed _hstrong hshape
-      htyped hspineX hspineY hcap hout hA
+      _htyped hspineX hspineY hcap hout hA
     have hseed := hseed rfl
     have hstrong : IsDefEqStrong Δ
         (SExpr.mkInst recLs rule.df.rhs)
         (SExpr.mkInst recLs rule.df.rhs)
         (SExpr.mkInst recLs rule.df.type) :=
       rule.rhsStrong recLs
+    refine producer rule mx my captureType hshape (outTyP := outTy) ?_
+    intro headTy htel hTyReg
     cases hseed with
     | inl hall =>
       obtain ⟨rhsDepth, hstrat, _⟩ := hstrong.stratify
-      exact (hall rhsDepth).2 W rfl .rfl hstrong hstrat hshape htyped
+      exact (hall rhsDepth).2 W rfl .rfl hstrong hstrat hshape htel hTyReg
         hspineX hspineY hcap hout hA
     | inr hlocal =>
       exact hlocal.1.2 W rfl .rfl hstrong hlocal.2 hshape
-        htyped hspineX hspineY hcap hout hA
+        htel hTyReg hspineX hspineY hcap hout hA
 
 /-- Proof-relevant semantic transport for the one non-syntax-directed case
 of stratified typing.  The output witness stays at the same shape and retains
@@ -6040,6 +7197,134 @@ theorem LR.ConstDefnLocalStep.of_deepStep
   · intro n mx bx Δ core B hroot hstrat hmem hB
     exact hlocal.1 hroot (hstrat.mono hle) hmem hB
 
+/-! ### Retention and demand narrowing for the definitional-unfold budget
+
+The two Props above commit two erasures at their single call site
+(`LR.SelfAdequateConstStep.of_steps`).  In the *supply* direction they drop
+the strictly smaller coherent restart family `lower` and `Ctx.WF Γ₀`, both
+of which are in scope where they are consumed: the producer knew more than
+it handed over.  In the *demand* direction their conclusion quantifies over
+every `Δ`, `B` and `core` of `LR.SelfAdequateAt`, while the call site
+consumes exactly one instance, pinned to `B := SExpr.mkInst ls ci.type` and
+`core := true` by the registered definitional equation
+`Params.Semantic.defn_whRed`.
+
+Unlike the depth index, the *type* index is fixed by the declaration rather
+than chosen downstream, so it can be narrowed leaf-locally — the same move
+the chain-wall repair made (narrow the subject, keep the position).  The
+declarations below carry out both narrowings; the originals are kept
+unchanged as reference statements, and the faithfulness lemmas record that
+the new forms are weakenings, so whatever discharges the old obligations
+discharges these.
+
+This does NOT discharge the residual: it narrows it.  What remains still
+needs the δ-rank well-founded component (separate design pass). -/
+
+/-- Retentive form of `LR.ConstDefnLocalStep`: the restart family `lower`
+and `Ctx.WF Γ₀` are retained instead of erased. -/
+def LR.ConstDefnLocalStepR (Γ₀ : List SExpr) : Prop :=
+  ∀ {c : Name} {ci : VConstant} {value : VExpr} {closed : value.Closed},
+    Params.Pat (.const c) (.fixed value closed, .true) →
+    Params.env.constants c = some ci →
+    ∀ {ls : List SLevel}, ls.length = ci.uvars →
+    ∀ (depth : Nat) {ρ : Valuation} {root : TShape}
+      (hV : LE_Interp.Witness ρ root (SExpr.mkInst ls value)),
+      LR.CoherentRetainedAt Γ₀ hV depth →
+      hV.RDeepChildren (LR.CoherentSeedAt Γ₀ depth) →
+      (∀ (d' : Nat), d' < depth →
+        ∀ {ρ' : Valuation} {root' : TShape} {X : SExpr}
+          (hX : LE_Interp.Witness ρ' root' X),
+          hX.RDeepChildren (LR.CoherentSeedAt Γ₀ d') →
+          LR.CoherentRetainedAt Γ₀ hX d') →
+      Ctx.WF Γ₀ →
+      ∀ (depth' : Nat), LR.SelfAdequateAt Γ₀ hV depth'
+
+/-- Retentive form of `LR.ConstDefnDeepStep`. -/
+def LR.ConstDefnDeepStepR (Γ₀ : List SExpr) : Prop :=
+  ∀ {c : Name} {ci : VConstant} {value : VExpr} {closed : value.Closed},
+    Params.Pat (.const c) (.fixed value closed, .true) →
+    Params.env.constants c = some ci →
+    ∀ {ls : List SLevel}, ls.length = ci.uvars →
+    ∀ (depth : Nat) {ρ : Valuation} {root : TShape}
+      (hV : LE_Interp.Witness ρ root (SExpr.mkInst ls value)),
+      LR.CoherentRetainedAt Γ₀ hV depth →
+      hV.RDeepChildren (LR.CoherentSeedAt Γ₀ depth) →
+      (∀ (d' : Nat), d' < depth →
+        ∀ {ρ' : Valuation} {root' : TShape} {X : SExpr}
+          (hX : LE_Interp.Witness ρ' root' X),
+          hX.RDeepChildren (LR.CoherentSeedAt Γ₀ d') →
+          LR.CoherentRetainedAt Γ₀ hX d') →
+      Ctx.WF Γ₀ →
+      ∀ (depth' : Nat), depth < depth' → LR.SelfAdequateAt Γ₀ hV depth'
+
+/-- Only strictly deeper certificates are residual — the
+`LR.ConstDefnLocalStep.of_deepStep` argument, threaded through the retained
+restart family unchanged. -/
+theorem LR.ConstDefnDeepStepR.toLocal {Γ₀ : List SExpr}
+    (deep : LR.ConstDefnDeepStepR Γ₀) : LR.ConstDefnLocalStepR Γ₀ := by
+  intro c ci value closed hpat hreg ls hlen depth ρ root hV hlocal children
+    lower hΓ₀ depth'
+  rcases Nat.lt_or_ge depth depth' with hlt | hle
+  · exact deep hpat hreg hlen depth hV hlocal children lower hΓ₀ depth' hlt
+  · intro n mx bx Δ core B hroot hstrat hmem hB
+    exact hlocal.1 hroot (hstrat.mono hle) hmem hB
+
+/-- Faithfulness: the retentive Props are *weakenings*, not restatements. -/
+theorem LR.ConstDefnDeepStepR.of_constDefnDeepStep {Γ₀ : List SExpr}
+    (H : LR.ConstDefnDeepStep Γ₀) : LR.ConstDefnDeepStepR Γ₀ := by
+  intro c ci value closed hpat hreg ls hlen depth ρ root hV hlocal children
+    _lower _hΓ₀ depth' hlt
+  exact H hpat hreg hlen depth hV hlocal children depth' hlt
+
+/-- Faithfulness for the local form. -/
+theorem LR.ConstDefnLocalStepR.of_constDefnLocalStep {Γ₀ : List SExpr}
+    (H : LR.ConstDefnLocalStep Γ₀) : LR.ConstDefnLocalStepR Γ₀ := by
+  intro c ci value closed hpat hreg ls hlen depth ρ root hV hlocal children
+    _lower _hΓ₀ depth'
+  exact H hpat hreg hlen depth hV hlocal children depth'
+
+/-- The δ-unfold obligation as the single instance the call site consumes.
+
+Strictly weaker than `LR.ConstDefnDeepStepR`: the certificate depth `nV` is
+now bound where the certificate is supplied rather than universally ahead of
+it, and the observed type is pinned to the registered `SExpr.mkInst ls
+ci.type` at `core := true`. -/
+def LR.ConstDefnDeepInstStep (Γ₀ : List SExpr) : Prop :=
+  ∀ {c : Name} {ci : VConstant} {value : VExpr} {closed : value.Closed},
+    Params.Pat (.const c) (.fixed value closed, .true) →
+    Params.env.constants c = some ci →
+    ∀ {ls : List SLevel}, ls.length = ci.uvars →
+    ∀ (depth : Nat) {ρ : Valuation} {root : TShape}
+      (hV : LE_Interp.Witness ρ root (SExpr.mkInst ls value)),
+      LR.CoherentRetainedAt Γ₀ hV depth →
+      hV.RDeepChildren (LR.CoherentSeedAt Γ₀ depth) →
+      (∀ (d' : Nat), d' < depth →
+        ∀ {ρ' : Valuation} {root' : TShape} {X : SExpr}
+          (hX : LE_Interp.Witness ρ' root' X),
+          hX.RDeepChildren (LR.CoherentSeedAt Γ₀ d') →
+          LR.CoherentRetainedAt Γ₀ hX d') →
+      Ctx.WF Γ₀ →
+      ∀ {Γ : List SExpr} {n : Nat} {mx bx : WShape n} {nV : Nat},
+        mx.T ≤ root →
+        HasTypeStratifiedS Γ (SExpr.mkInst ls value)
+          (SExpr.mkInst ls ci.type) true nV →
+        mx.HasType bx →
+        LE_Interp.Witness ρ bx.T (SExpr.mkInst ls ci.type) →
+        LR.Adequate Γ₀ Γ ρ (SExpr.mkInst ls value) (SExpr.mkInst ls value)
+          (SExpr.mkInst ls ci.type) mx bx
+
+/-- Faithfulness: the narrowed form is implied by the retentive form, hence
+(through `LR.ConstDefnDeepStepR.of_constDefnDeepStep`) by the current
+`LR.ConstDefnDeepStep`. -/
+theorem LR.ConstDefnDeepInstStep.of_deepStepR {Γ₀ : List SExpr}
+    (H : LR.ConstDefnDeepStepR Γ₀) : LR.ConstDefnDeepInstStep Γ₀ := by
+  intro c ci value closed hpat hreg ls hlen depth ρ root hV hlocal children
+    lower hΓ₀ Γ n mx bx nV hroot hstrat htyped hB
+  rcases Nat.lt_or_ge depth nV with hlt | hle
+  · exact H hpat hreg hlen depth hV hlocal children lower hΓ₀ nV hlt
+      hroot hstrat htyped hB
+  · exact hlocal.1 hroot (hstrat.mono hle) htyped hB
+
 /-- Produce the constant case of retained self-adequacy from the witness's
 own `children`/`lower` data.
 
@@ -6055,7 +7340,7 @@ seeds under the ambient substitution certificate.  Neither the global
 theorem LR.SelfAdequateConstStep.of_steps
     (hΓ₀ : Ctx.WF Γ₀)
     (leafStep : LR.CoherentIotaLeafStep Γ₀)
-    (defnStep : LR.ConstDefnLocalStep Γ₀) :
+    (defnStep : LR.ConstDefnDeepInstStep Γ₀) :
     LR.SelfAdequateConstStep Γ₀ := by
   intro c ci Γ ls u depth ρ n mx bx hreg hlen hTy lower htyped hB hX children
   cases children with
@@ -6287,13 +7572,14 @@ theorem LR.SelfAdequateConstStep.of_steps
       | const hvalue =>
         obtain ⟨m₁, hle₁, hr₁⟩ := hvalue
         obtain ⟨nV, -, hstratV⟩ := hdefΓ.stratify
-        have hself : LR.SelfAdequateAt Γ₀ (hR m₁ _ hr₁) nV := by
+        have adV : LR.Adequate Γ₀ Γ ρ (SExpr.mkInst ls value)
+            (SExpr.mkInst ls value) (SExpr.mkInst ls ci.type) mx bx := by
           cases pR m₁ _ hr₁ with
-          | inl hall => exact (hall nV).1
+          | inl hall => exact (hall nV).1 hle₁ hstratV htyped hB
           | inr hlocal =>
             exact defnStep hpat hreg hlen (depth + 1)
-              (hR m₁ _ hr₁) hlocal (cR m₁ _ hr₁) nV
-        have adV := hself hle₁ hstratV htyped hB
+              (hR m₁ _ hr₁) hlocal (cR m₁ _ hr₁) lower hΓ₀
+              hle₁ hstratV htyped hB
         have hredS : Γ₀ ⊢ .const c ls ⤳* SExpr.mkInst ls value :=
           .tail .rfl hred₀
         refine ((LR Γ₀).whr hredS hredS).2 ?_
@@ -6307,7 +7593,7 @@ theorem LR.CoherentSelfStep.of_leafSteps
     (hΓ₀ : Ctx.WF Γ₀)
     (defeqStep : ∀ depth, LR.SelfAdequateDefeqStepAt Γ₀ depth)
     (leafStep : LR.CoherentIotaLeafStep Γ₀)
-    (defnStep : LR.ConstDefnLocalStep Γ₀) :
+    (defnStep : LR.ConstDefnDeepInstStep Γ₀) :
     LR.CoherentSelfStep Γ₀ :=
   LR.coherentSelfStep_of_steps defeqStep hΓ₀
     (LR.SelfAdequateConstStep.of_steps hΓ₀ leafStep defnStep)
@@ -6319,10 +7605,10 @@ theorem LR.CoherentSelfStep.of_leafStepsDeep
     (hΓ₀ : Ctx.WF Γ₀)
     (defeqStep : ∀ depth, LR.SelfAdequateDefeqStepAt Γ₀ depth)
     (leafStep : LR.CoherentIotaLeafStep Γ₀)
-    (deepStep : LR.ConstDefnDeepStep Γ₀) :
+    (deepStep : LR.ConstDefnDeepStepR Γ₀) :
     LR.CoherentSelfStep Γ₀ :=
   LR.CoherentSelfStep.of_leafSteps hΓ₀ defeqStep leafStep
-    (LR.ConstDefnLocalStep.of_deepStep deepStep)
+    (LR.ConstDefnDeepInstStep.of_deepStepR deepStep)
 
 /-- Derivation induction once the recursive constructor-major leaf has been
 supplied explicitly.  This is the non-circular adequacy core used by the

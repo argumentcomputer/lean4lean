@@ -3839,6 +3839,133 @@ theorem LE_Interp.RHS.ShapeSpine.TypedTelescope.outHasType
   | nil htyped => exact htyped
   | cons _ _ _ ih => exact ih
 
+/-! ### Terminal-index monotonicity for the packed ordered telescope
+
+`WithCaptures.nil` identifies the telescope's head observation with its
+terminal observation as an *index equality*.  That equality is what forces a
+finished telescope to terminate at exactly the codomain observation an ordered
+type peel reaches, while every consumer of the telescope reads its terminal
+index at the result observation its own caller already fixed.  Those two are
+independently determined, and identifying them is refutable: the corresponding
+retarget statement is `HasType`-functionality at the terminal head, and
+`TShape.HasType.bot` types `.bot` at every sort.
+
+`WithCapturesLE` is the additive repair.  Only the base changes: the terminal
+observation is recorded *below* the head observation the peel reached rather
+than equal to it, and the base typing is stated at the terminal observation —
+which is the fact a consumer's caller already holds.  Nothing else moves;
+`cons` is verbatim, so every layer is the same layer.
+
+The direction is forced by how the head index is used.  Every consumer reads it
+only as an upper bound (`TypedLowerHead` bounds the synthesized lower type by
+it; `fixedHeadShapeChain` returns `headElemTy.T ≤ headTy`), so weakening it
+upward at the base is sound and is exactly what lets a peel-reached observation
+sit above a caller-fixed one. -/
+
+/-- The packed ordered telescope with a monotone terminal index.
+
+`nil` records the caller's result-type observation `outTy` together with the
+one comparison `outTy ≤ headTy` against the observation the ordered peel
+reached.  `WithCaptures` is the special case `outTy = headTy`
+(`WithCaptures.toLE`). -/
+inductive LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE
+    {p : Pattern} {m2 : p.Path → TShape}
+    (Cap : ∀ {n}, p.Path → WShape n → WShape n → Prop) :
+    TShape → List p.Path → TShape → TShape → TShape → Prop where
+  | nil {head headTy outTy : TShape}
+      (htyped : head.HasType outTy) (hle : outTy ≤ headTy) :
+      WithCapturesLE Cap head [] head headTy outTy
+  | cons
+      {n : Nat} {f : WShape (n + 1)} {a : WShape n}
+      {m out : TShape} {path : p.Path} {paths : List p.Path}
+      {tyDom : WShape n} {tyFun : WShapeFun n} {argCap : WShape n}
+      {outTy : TShape} :
+      a.T ≤ m2 path → m ≤ (f.app a).T →
+      a ≤ argCap → argCap.HasType tyDom →
+      Cap path argCap tyDom →
+      WithCapturesLE Cap m paths out (tyFun.app argCap).T outTy →
+      WithCapturesLE Cap f.T (path :: paths) out
+        (WShape.forallE tyDom tyFun).T outTy
+
+/-- Faithfulness: the exact packed telescope is the reflexive case of the
+monotone one, so every producer of the old form still supplies the new. -/
+theorem LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCaptures.toLE
+    {p : Pattern} {m2 : p.Path → TShape}
+    {Cap : ∀ {n}, p.Path → WShape n → WShape n → Prop}
+    {head out headTy outTy : TShape} {paths : List p.Path}
+    (H : LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCaptures
+      (m2 := m2) Cap head paths out headTy outTy) :
+    LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE
+      (m2 := m2) Cap head paths out headTy outTy := by
+  induction H with
+  | nil htyped => exact .nil htyped TShape.LE.rfl
+  | cons harg happ hargCap hcapDom capture _ ih =>
+    exact .cons harg happ hargCap hcapDom capture ih
+
+/-- **THE TERMINAL-INDEX MONOTONICITY.**  A finished telescope may be read at
+any result observation below the one it terminates at, provided that
+observation types the spine's result.
+
+This is the lemma `WithCaptures` cannot have: its `nil` identifies the two
+indices, so the rebuild has to happen at the base, and only the monotone base
+admits it.  Both extra inputs are held by the consumer's caller — `htyped` is
+the caller's own `out.HasType outTy`, and `hle` is the single residual
+comparison against the observation the ordered peel reached. -/
+theorem LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCaptures.retarget
+    {p : Pattern} {m2 : p.Path → TShape}
+    {Cap : ∀ {n}, p.Path → WShape n → WShape n → Prop}
+    {head out headTy reachedTy outTy : TShape} {paths : List p.Path}
+    (H : LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCaptures
+      (m2 := m2) Cap head paths out headTy reachedTy)
+    (htyped : out.HasType outTy) (hle : outTy ≤ reachedTy) :
+    LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE
+      (m2 := m2) Cap head paths out headTy outTy := by
+  induction H with
+  | nil _ => exact .nil htyped hle
+  | cons harg happ hargCap hcapDom capture _ ih =>
+    exact .cons harg happ hargCap hcapDom capture (ih htyped hle)
+
+/-- Recover the semantic spine retained by a monotone packed telescope. -/
+theorem LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE.spine
+    {p : Pattern} {m2 : p.Path → TShape}
+    {Cap : ∀ {n}, p.Path → WShape n → WShape n → Prop}
+    {head out headTy outTy : TShape} {paths : List p.Path}
+    (H : LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE
+      (m2 := m2) Cap head paths out headTy outTy) :
+    LE_Interp.RHS.ShapeSpine m2 head paths out := by
+  induction H with
+  | nil _ _ => exact .nil
+  | cons harg happ _ _ _ _ ih => exact .cons harg happ ih
+
+/-- The monotone telescope still lands at the caller's exact result typing:
+that fact is what its base now records directly. -/
+theorem LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE.outHasType
+    {p : Pattern} {m2 : p.Path → TShape}
+    {Cap : ∀ {n}, p.Path → WShape n → WShape n → Prop}
+    {head out headTy outTy : TShape} {paths : List p.Path}
+    (H : LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE
+      (m2 := m2) Cap head paths out headTy outTy) :
+    out.HasType outTy := by
+  induction H with
+  | nil htyped _ => exact htyped
+  | cons _ _ _ _ _ _ ih => exact ih
+
+/-- The synchronized lower head survives the weakening: the head observation
+is used only as an upper bound, and the base now bounds the caller's result
+observation by the reached one. -/
+theorem LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE.lowerHead
+    {p : Pattern} {m2 : p.Path → TShape}
+    {Cap : ∀ {n}, p.Path → WShape n → WShape n → Prop}
+    {head out headTy outTy : TShape} {paths : List p.Path}
+    (H : LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE
+      (m2 := m2) Cap head paths out headTy outTy) :
+    LE_Interp.RHS.ShapeSpine.TypedLowerHead H.spine headTy := by
+  induction H with
+  | nil htyped hle => exact ⟨_, _, TShape.LE.rfl, htyped, hle⟩
+  | cons harg happ hargCap hcapDom _ tail ih =>
+    exact LE_Interp.RHS.ShapeSpine.TypedLowerHead.cons
+      harg happ tail.spine hargCap hcapDom ih
+
 /-- Extract the semantic application chain from an `appN` tower of capture
 variables.  A proof may interpret any syntax as bottom; otherwise its head
 is an interpretation of the fixed tower and every capture application is
@@ -11153,6 +11280,348 @@ theorem LRS.CtorSpineTypeUniqPath.of_rawTypeUniq
   obtain ⟨u, hAD⟩ := uniq hXA hXD
   exact ⟨u, .single hAD⟩
 
+/-! #### Generation-side discharge of the constructor result-type discipline
+
+Everything below discharges `LRS.CtorSpineTypeUniqPath` — and, with it, root
+subject reduction — from one named residual, without any depth index and
+without any derivation induction on the ambient equality.
+
+The pivot is an erasure repair.  `HasTypeStratifiedS.to_core` (SExpr:2580)
+*discards* the outer conversions of a stratified typing, and that discard is
+the only reason `core_aligned_of_typeUniq` has to buy the alignment back with
+`LogRel.RawTypeUniq`.  Those conversions are already `IsDefEqStrong` type
+equalities, so retaining them as a `TypeDefEqPath` costs nothing
+(`HasTypeStratifiedS.to_core_path`).  Once retained, three free steps follow:
+
+1. *Any* typing of an application spine reconstructs, one `app` node at a
+   time, as a `SExpr.SpineWF` starting from a typing of the spine's literal
+   head (`HasTypeStratifiedS.spineWF_of_foldl`).  `SpineWF` already absorbs
+   conversion paths at both ends, so no type is identified in the process.
+2. The head of a classified constructor spine is a *registered constant*, and
+   the environment assigns it exactly one declaration.  Two typings of
+   `.const c ls` therefore expose literally the same core type
+   (`LRS.constTypeUniqPath`).  This is the generation-side step, and it
+   consumes nothing at all.
+3. The two `SpineWF` runs are then compared layer by layer
+   (`SExpr.SpineWF.result_path`).
+
+Only step 3 has content, and its content is exactly Pi injectivity for type
+paths — `LRS.PiPathInv`.  Nothing here charges `TypeDefEqPath.collapse`
+(which is the whole of raw type uniqueness), nothing aligns two universe
+indices, and nothing mentions a stratification depth in its statement. -/
+
+/-- Strip the outer conversions of a stratified typing while *retaining* them
+as a heterogeneous type path.
+
+This is `HasTypeStratifiedS.to_core` (SExpr:2580) with the erasure removed.
+Every `defeq` node of a stratified derivation carries an `IsDefEqStrong` type
+equality, so the discarded conversions already form a `TypeDefEqPath`; the
+base case closes because a syntax-directed core derivation always retains a
+typing of its own type (`HasTypeStratifiedS.isType`, SExpr:2716). -/
+theorem HasTypeStratifiedS.to_core_path
+    {Γ : List SExpr} {e A : SExpr} {n : Nat}
+    (H : HasTypeStratifiedS Γ e A true n) :
+    ∃ A' u, HasTypeStratifiedS Γ e A' false n ∧ TypeDefEqPath Γ A' A u := by
+  generalize hb : true = b at H
+  induction H with cases hb
+  | base h _ =>
+    obtain ⟨u, hty⟩ := h.isType
+    exact ⟨_, u, h, .single hty.hasType⟩
+  | defeq hEq _ _ _ _ _ ih =>
+    obtain ⟨A', u, hcore, hpath⟩ := ih rfl
+    exact ⟨A', u, hcore.mono (Nat.le_succ _), hpath.trans (.single hEq.defeq)⟩
+
+/-- Align a weak self-typing with a syntax-directed core, path-valued.
+
+This is `IsDefEq.core_aligned_of_stratified_inversion` (ADQ:780) with its
+inversion package deleted: the alignment that theorem obtains from raw type
+uniqueness is the path `to_core_path` never threw away. -/
+theorem IsDefEq.core_aligned_path [Params.Semantic]
+    {Γ : List SExpr} {e A : SExpr}
+    (hΓ : Ctx.WF Γ) (H : IsDefEq Γ e e A) :
+    ∃ n A' u, HasTypeStratifiedS Γ e A' false n ∧ TypeDefEqPath Γ A' A u := by
+  obtain ⟨n, hs, _⟩ := (H.strong hΓ).stratify
+  obtain ⟨A', u, hcore, hpath⟩ := hs.to_core_path
+  exact ⟨n, A', u, hcore, hpath⟩
+
+/-- A spine absorbs an entire conversion path on its head type, one `conv`
+edge at a time.  No universe alignment between adjacent edges is needed,
+which is why the path never has to be collapsed first. -/
+theorem SpineWF.conv_path {Γ : List SExpr} {A A' B : SExpr} {u : SLevel}
+    {es : List SExpr} (P : TypeDefEqPath Γ A A' u) :
+    SExpr.SpineWF Γ A' es B → SExpr.SpineWF Γ A es B := by
+  induction P with
+  | single h => exact fun H => .conv h H
+  | trans _ _ ih₁ ih₂ => exact fun H => ih₁ (ih₂ H)
+
+/-- The `ret` dual of `SpineWF.conv_path`: a spine absorbs an entire
+conversion path on its *result* type as well.  Ported from the green probe
+`plans/probes/probeS-spinedepth.lean`. -/
+theorem SpineWF.ret_path {Γ : List SExpr} {B B' : SExpr} {u : SLevel}
+    (P : TypeDefEqPath Γ B B' u) :
+    ∀ {A : SExpr} {es : List SExpr},
+      SExpr.SpineWF Γ A es B → SExpr.SpineWF Γ A es B' := by
+  induction P with
+  | single h => exact fun H => H.ret h
+  | trans _ _ ih₁ ih₂ => exact fun H => ih₂ (ih₁ H)
+
+/-- Path-threading inversion of an empty spine.  The incoming path is carried
+through the `conv`/`ret` edges rather than being re-created, so no typing of
+the head is required. -/
+theorem SpineWF.nil_path {Γ : List SExpr} {A B : SExpr} {es : List SExpr}
+    (H : SExpr.SpineWF Γ A es B) (hes : es = []) :
+    ∀ {C : SExpr} {u : SLevel}, TypeDefEqPath Γ C A u →
+      ∃ v, TypeDefEqPath Γ C B v := by
+  induction H with
+  | nil => exact fun P => ⟨_, P⟩
+  | cons => exact absurd hes (by simp)
+  | conv hty _ ih => exact fun P => ih hes (P.trans (.single hty))
+  | ret _ hret ih =>
+    intro C u P
+    obtain ⟨v, Q⟩ := ih hes P
+    exact ⟨v, Q.trans (.single hret)⟩
+
+/-- Path-threading inversion of a nonempty spine: the incoming path is
+extended until it reaches the syntactic Pi at which the first argument is
+consumed.  The Pi is exposed *as the path's right endpoint*, which is exactly
+the form `LRS.PiPathInv` inverts. -/
+theorem SpineWF.cons_path {Γ : List SExpr} {A B : SExpr} {es : List SExpr}
+    {e : SExpr} {es' : List SExpr}
+    (H : SExpr.SpineWF Γ A es B) (hes : es = e :: es') :
+    ∀ {C : SExpr} {u : SLevel}, TypeDefEqPath Γ C A u →
+      ∃ D₁ D₂ w, TypeDefEqPath Γ C (.forallE D₁ D₂) w ∧
+        IsDefEq Γ e e D₁ ∧ SExpr.SpineWF Γ (D₂.inst e) es' B := by
+  induction H with
+  | nil => exact absurd hes (by simp)
+  | cons he rest _ =>
+    intro C u P
+    injection hes with hee hess
+    subst hee
+    subst hess
+    exact ⟨_, _, u, P, he, rest⟩
+  | conv hty _ ih => exact fun P => ih hes (P.trans (.single hty))
+  | ret _ hret ih =>
+    intro C u P
+    obtain ⟨D₁, D₂, w, Q, hD, rest⟩ := ih hes P
+    exact ⟨D₁, D₂, w, Q, hD, rest.ret hret⟩
+
+/-- Every stratified typing of a left-associated application spine *is* a
+`SExpr.SpineWF` from a typing of the spine's literal head.
+
+`HasTypeStratifiedS.foldl_app_head` (SExpr:2634) already walks the spine, but
+retains only the head; this retains the whole layer structure and the exact
+result type of the walk.  The proof consumes nothing: the recursion is on the
+argument list, each `app` node is exposed by `to_core_path`, and the discarded
+conversions are absorbed by `SpineWF.conv_path`. -/
+theorem HasTypeStratifiedS.spineWF_of_foldl_bound {Γ : List SExpr} :
+    ∀ {es : List SExpr} {hd V : SExpr} {n : Nat},
+      HasTypeStratifiedS Γ (es.foldl (fun f a => f.app a) hd) V true n →
+      ∃ HdTy m, m + es.length ≤ n ∧ HasTypeStratifiedS Γ hd HdTy true m ∧
+        SExpr.SpineWF Γ HdTy es V := by
+  intro es
+  induction es with
+  | nil => intro hd V n H; exact ⟨V, n, by simp, H, .nil⟩
+  | cons a es ih =>
+    intro hd V n H
+    simp only [List.foldl_cons] at H
+    obtain ⟨HdTy', m, hle, hHead', hspine⟩ := ih H
+    obtain ⟨T, u, hcore, hpath⟩ := hHead'.to_core_path
+    cases hcore with
+    | app hA hB hf ha hR =>
+      simp only [List.length_cons] at hle ⊢
+      exact ⟨_, _, by omega, hf,
+        .cons ha.hasType (SpineWF.conv_path hpath hspine)⟩
+
+/-- The unbounded form.  Statement unchanged; the bound follows by `omega`
+wherever a consumer wants it. -/
+theorem HasTypeStratifiedS.spineWF_of_foldl {Γ : List SExpr} :
+    ∀ {es : List SExpr} {hd V : SExpr} {n : Nat},
+      HasTypeStratifiedS Γ (es.foldl (fun f a => f.app a) hd) V true n →
+      ∃ HdTy m, HasTypeStratifiedS Γ hd HdTy true m ∧
+        SExpr.SpineWF Γ HdTy es V := by
+  intro es hd V n H
+  obtain ⟨HdTy, m, _, hhd, hspine⟩ := H.spineWF_of_foldl_bound
+  exact ⟨HdTy, m, hhd, hspine⟩
+
+/-- **The generation-side step.**  Two typings of one registered constant are
+path-equal, and the proof consumes no uniqueness, no inversion and no
+adequacy.
+
+The environment assigns `c` exactly one declaration, so the two core
+derivations expose *literally the same* type `SExpr.mkInst ls ci.type`; the
+two conversion paths retained by `to_core_path` then compose.  This is the
+sense in which the residual has left the depth-indexed fixpoint: its subject
+is a registered declaration, and a registered declaration has one type. -/
+theorem LRS.constTypeUniqPath [Params.Semantic] {Γ : List SExpr} {c : Name}
+    {ls : List SLevel} {T₁ T₂ : SExpr} {n : Nat} (hΓ : Ctx.WF Γ)
+    (h₁ : IsDefEq Γ (.const c ls) (.const c ls) T₁)
+    (h₂ : HasTypeStratifiedS Γ (.const c ls) T₂ true n) :
+    ∃ u, TypeDefEqPath Γ T₁ T₂ u := by
+  obtain ⟨_, C₁, u₁, hcore₁, hpath₁⟩ := h₁.core_aligned_path hΓ
+  obtain ⟨C₂, u₂, hcore₂, hpath₂⟩ := h₂.to_core_path
+  cases hcore₁ with
+  | const hreg₁ _ _ =>
+    cases hcore₂ with
+    | const hreg₂ _ _ =>
+      cases hreg₁.symm.trans hreg₂
+      obtain ⟨v, hpath₁'⟩ := hpath₁.symm
+      exact ⟨v, hpath₁'.trans hpath₂⟩
+
+/-- Pi injectivity for heterogeneous type paths, uniformly over well-formed
+target contexts.  This is the *single* residual of the chain wall after the
+repair.
+
+Three things are deliberately absent from the statement.  There is no
+stratification depth: unlike `JointStratifiedPathInversion.forallEInv`
+(ADQ:234) it demands no endpoint certificates, so no consumer has to name a
+depth.  There is no universe alignment: `sortPathInv` is never needed by any
+consumer below.  And there is no collapse: the conclusion is again path-valued,
+so `TypeDefEqPath.collapse` — which is the whole of raw type uniqueness — is
+never charged.  `LRS.PiPathInv.of_adequacy` in `ShapeLogRelAdequacy.lean` is
+the producer, and `LRS.PiPathInv.of_jointStratifiedPathInversion` there
+certifies that this is a weakening of the package it replaces. -/
+def LRS.PiPathInv : Prop :=
+  ∀ {Γ : List SExpr} {A B A' B' : SExpr} {s : SLevel},
+    Ctx.WF Γ → TypeDefEqPath Γ (.forallE A B) (.forallE A' B') s →
+    ∃ u v, TypeDefEqPath Γ A A' u ∧ TypeDefEqPath (A :: Γ) B B' v
+
+/-- Two spines over the *same* argument list, started from path-equal head
+types, reach path-equal result types.
+
+This is the only step with content, and its content is `LRS.PiPathInv`, spent
+once per argument.  Each layer inverts the Pi exposed by `SpineWF.cons_path`
+and substitutes the shared argument into the resulting codomain path; the
+`conv`/`ret` edges of either spine are absorbed into the running path without
+any identification. -/
+theorem SpineWF.result_path {Γ : List SExpr} {A₁ B₁ : SExpr} {es : List SExpr}
+    (piInv : LRS.PiPathInv) (hΓ : Ctx.WF Γ)
+    (H₁ : SExpr.SpineWF Γ A₁ es B₁) :
+    ∀ {A₂ B₂ : SExpr} {u : SLevel}, SExpr.SpineWF Γ A₂ es B₂ →
+      TypeDefEqPath Γ A₁ A₂ u → ∃ v, TypeDefEqPath Γ B₁ B₂ v := by
+  induction H₁ with
+  | nil => exact fun H₂ P => H₂.nil_path rfl P
+  | @cons e A₁' A₂' es₀ B₀ he _ ih =>
+    intro A₂ B₂ u H₂ P
+    obtain ⟨D₁, D₂, w, Q, _, H₂'⟩ := H₂.cons_path rfl P
+    obtain ⟨_, _, _, hcod⟩ := piInv hΓ Q
+    have hsub := hcod.subst (Ctx.Subst.one IsDefEq.weakCore IsDefEq.bvar he)
+    exact ih H₂' (by simpa only [SExpr.inst] using hsub)
+  | conv hty _ ih =>
+    intro A₂ B₂ u H₂ P
+    exact ih H₂ ((TypeDefEqPath.single hty.symm).trans P)
+  | ret _ hret ih =>
+    intro A₂ B₂ u H₂ P
+    obtain ⟨v, Q⟩ := ih H₂ P
+    exact ⟨_, (TypeDefEqPath.single hret.symm).trans Q⟩
+
+/-- **The environment-level statement, in full generality.**  Any two typings
+of one fully-applied *registered-constant* spine are path-equal.
+
+Note what the proof does not use: no classification of `c` is required at all.
+The result-type discipline the chain fold needs is not special to
+constructors — it is the discipline of registered declarations, and the
+constructor classification only selects which spines the fold meets. -/
+theorem LRS.constSpineTypeUniqPath [Params.Semantic] {Γ : List SExpr}
+    {c : Name} {ls : List SLevel} {args : List SExpr} {T₁ T₂ : SExpr}
+    (piInv : LRS.PiPathInv) (hΓ : Ctx.WF Γ)
+    (h₁ : IsDefEq Γ (args.foldr (fun a f => f.app a) (.const c ls))
+      (args.foldr (fun a f => f.app a) (.const c ls)) T₁)
+    (h₂ : IsDefEq Γ (args.foldr (fun a f => f.app a) (.const c ls))
+      (args.foldr (fun a f => f.app a) (.const c ls)) T₂) :
+    ∃ u, TypeDefEqPath Γ T₁ T₂ u := by
+  obtain ⟨n₁, hs₁, _⟩ := (h₁.strong hΓ).stratify
+  obtain ⟨n₂, hs₂, _⟩ := (h₂.strong hΓ).stratify
+  rw [← List.foldl_reverse] at hs₁ hs₂
+  obtain ⟨Hd₁, m₁, hhd₁, hsp₁⟩ := hs₁.spineWF_of_foldl
+  obtain ⟨Hd₂, m₂, hhd₂, hsp₂⟩ := hs₂.spineWF_of_foldl
+  obtain ⟨_, hlink⟩ := LRS.constTypeUniqPath hΓ hhd₁.hasType hhd₂
+  exact hsp₁.result_path piInv hΓ hsp₂ hlink
+
+/-- Path-valued Pi injectivity discharges the constructor result-type
+discipline outright.  This is the intended producer of
+`LRS.CtorSpineTypeUniqPath`, and the counterpart of `.of_rawTypeUniq` above:
+the same conclusion from a strictly weaker input. -/
+theorem LRS.CtorSpineTypeUniqPath.of_piPathInv [Params.Semantic]
+    {Γ : List SExpr} (piInv : LRS.PiPathInv) (hΓ : Ctx.WF Γ) :
+    LRS.CtorSpineTypeUniqPath Γ := by
+  intro c ls args CHead A D _ hhead hspine hXD
+  have hXA : IsDefEq Γ (args.foldr (fun a f => f.app a) (.const c ls))
+      (args.foldr (fun a f => f.app a) (.const c ls)) A := by
+    simpa only [List.foldl_reverse] using hspine.hasType hhead
+  exact LRS.constSpineTypeUniqPath piInv hΓ hXA hXD
+
+/-! #### Weak-head subject reduction from the same residual
+
+`WHRed.defeq_of_stratified_inversion` (ADQ:796) opens every case with
+`core_aligned_of_stratified_inversion`, i.e. with raw type uniqueness at the
+reducing term.  With the alignment retained instead of repurchased, the
+application and major cases become free, `beta` spends only `LRS.PiPathInv`,
+and the registered-contraction case spends only the spine discipline above —
+`Pattern.MatchesS.head_spine` (SExpr:899) says a matched redex *is* a
+constant-headed spine, so its two type observations are reconciled by exactly
+the environment-level fact the constructor leaves use.
+
+The multi-step form then needs no re-certification at all.  The 2026-08-15
+audit's obstruction was that `WHRedS.defeq_of_stratified_inversion` (ADQ:841)
+takes each next step's typing from `ih.hasType.2`, whose stratified depth is
+existential, so a redex certificate bounds only the first step.  That
+obstruction is dissolved rather than answered: the per-step lemma below names
+no depth, so there is nothing left for the induction to lose. -/
+
+/-- One weak-head step preserves a supplied type, from path-valued Pi
+injectivity alone. -/
+theorem WHRed.defeq_of_piPathInv [Params.Semantic] {Γ : List SExpr}
+    {e1 e2 A : SExpr}
+    (piInv : LRS.PiPathInv) (hΓ : Ctx.WF Γ)
+    (H : WHRed Γ e1 e2) (he : IsDefEq Γ e1 e1 A) :
+    IsDefEq Γ e1 e2 A := by
+  induction H generalizing A with
+  | app hred ih =>
+    obtain ⟨_, _, _, hcore, hty⟩ := he.core_aligned_path hΓ
+    cases hcore with
+    | app hD hC hf ha hR =>
+      exact hty.defeqDF (.appDF (ih hf.hasType) ha.hasType)
+  | major hmajor hred ih =>
+    obtain ⟨_, _, _, hcore, hty⟩ := he.core_aligned_path hΓ
+    cases hcore with
+    | app hD hC hf ha hR =>
+      exact hty.defeqDF (.appDF hf.hasType (ih ha.hasType))
+  | beta =>
+    obtain ⟨_, _, _, hcore, hty⟩ := he.core_aligned_path hΓ
+    cases hcore with
+    | app hD hC hlam ha hR =>
+      obtain ⟨_, _, _, hlamCore, hlamTy⟩ := hlam.hasType.core_aligned_path hΓ
+      cases hlamCore with
+      | lam hDom hCod hBody hPi =>
+        obtain ⟨_, _, hDomEq, hCodEq⟩ := piInv hΓ hlamTy
+        obtain ⟨_, hDomEq'⟩ := hDomEq.symm
+        have haDom := hDomEq'.defeqDF ha.hasType
+        have hβ := IsDefEq.beta hBody.hasType haDom
+        have hCodInst := hCodEq.subst
+          (Ctx.Subst.one IsDefEq.weakCore IsDefEq.bvar haDom)
+        exact hty.defeqDF (hCodInst.defeqDF hβ)
+  | extra action =>
+    obtain ⟨_, _, _, hcore, hty⟩ := he.core_aligned_path hΓ
+    obtain ⟨c, ls', args, heq, _⟩ := action.matched.head_spine
+    subst heq
+    obtain ⟨_, hActionTy⟩ :=
+      LRS.constSpineTypeUniqPath piInv hΓ hcore.hasType action.sound.hasType.1
+    obtain ⟨_, hActionTy'⟩ := hActionTy.symm
+    exact hty.defeqDF (hActionTy'.defeqDF action.sound)
+
+/-- Multi-step weak-head subject reduction, from the same residual.  Nothing
+is re-certified along the sequence because nothing in the per-step lemma is
+indexed by a depth. -/
+theorem WHRedS.defeq_of_piPathInv [Params.Semantic] {Γ : List SExpr}
+    {e1 e2 A : SExpr}
+    (piInv : LRS.PiPathInv) (hΓ : Ctx.WF Γ)
+    (H : WHRedS Γ e1 e2) (he : IsDefEq Γ e1 e1 A) :
+    IsDefEq Γ e1 e2 A := by
+  induction H with
+  | rfl => exact he
+  | tail hred hstep ih =>
+    exact ih.trans (hstep.defeq_of_piPathInv piInv hΓ ih.hasType.2)
+
 /-- The constructor result-type discipline retypes every native exact link.
 Both directions are served by the same environment-level fact: for the right
 endpoint it is applied twice at that endpoint's own spine certificate, once
@@ -13423,14 +13892,22 @@ capture representative at each path occurrence.  Its `Captures` argument is
 indexed by the exact `argCap`/`tyDom` pair stored in every telescope layer,
 and the returned `headElemTy ≤ headTy` proof follows the very same recursive
 choices.  Consequently a registered-type witness may be lowered to the
-returned head type without losing the capture chain that will consume it. -/
-theorem LE_Interp.RHS.ShapeSpine.TypedTelescope.fixedHeadShapeChain
+returned head type without losing the capture chain that will consume it.
+
+Stated for the monotone packed telescope.  The base is the only place the
+terminal index is read at all, and it is read twice: once for the caller's own
+`out.HasType outTy` (which `WithCapturesLE.nil` now records at the caller's
+observation) and once for the returned bound `headElemTy.T ≤ headTy` (which
+now goes through the base comparison instead of an index equality).  The cons
+layer is untouched, which is why the exact form below is a one-line
+corollary. -/
+theorem LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE.fixedHeadShapeChain
     {p : Pattern} {mcap : p.Path → TShape}
     {mx my captureType : p.Path → SExpr}
     {paths : List p.Path} {head headTy : TShape}
     {outLevel : Nat} {out outTy : WShape outLevel}
     {outShape outTyShape : TShape}
-    (H : LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCaptures
+    (H : LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE
       (m2 := mcap)
       (fun {n} path (elemShape typeShape : WShape n) =>
         LRS.CaptureDefEqAligned.AtShapes (LR Γ)
@@ -13449,7 +13926,7 @@ theorem LE_Interp.RHS.ShapeSpine.TypedTelescope.fixedHeadShapeChain
   revert outLevel
   let Motive := fun (head : TShape) (paths : List p.Path)
       (outShape headTy outTyShape : TShape)
-      (_ : LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCaptures
+      (_ : LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE
         (m2 := mcap)
         (fun {n} path (elemShape typeShape : WShape n) =>
           LRS.CaptureDefEqAligned.AtShapes (LR Γ)
@@ -13465,16 +13942,16 @@ theorem LE_Interp.RHS.ShapeSpine.TypedTelescope.fixedHeadShapeChain
             LR.FixedHeadShapeChain Γ mcap mx my captureType
               paths headElem headElemTy out outTy
   change Motive head paths outShape headTy outTyShape H
-  refine LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCaptures.rec
+  refine LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCapturesLE.rec
     (motive := Motive) ?_ ?_ H
-  · intro head headTy htyped
+  · intro head headTy terminalTy htyped hle
     intro outLevel out outTy houtShapeEq houtTyShapeEq houtNonbot
     have houtLe : out.T ≤ head := by
       rw [houtShapeEq]
       exact TShape.LE.rfl
     have houtTyLe : outTy.T ≤ headTy := by
       rw [houtTyShapeEq]
-      exact TShape.LE.rfl
+      exact hle
     have houtTyped : out.HasType outTy := by
       apply WShape.HasType.T_iff.1
       rw [houtShapeEq, houtTyShapeEq]
@@ -13627,6 +14104,31 @@ theorem LE_Interp.RHS.ShapeSpine.TypedTelescope.fixedHeadShapeChain
             elemFun, WShapeFun.single_app, WShape.LE.rfl, ↓reduceIte]
             using happBot,
         chain⟩
+
+/-- The exact packed telescope folds through the monotone one.  Statement
+unchanged; every existing consumer applies verbatim. -/
+theorem LE_Interp.RHS.ShapeSpine.TypedTelescope.fixedHeadShapeChain
+    {p : Pattern} {mcap : p.Path → TShape}
+    {mx my captureType : p.Path → SExpr}
+    {paths : List p.Path} {head headTy : TShape}
+    {outLevel : Nat} {out outTy : WShape outLevel}
+    {outShape outTyShape : TShape}
+    (H : LE_Interp.RHS.ShapeSpine.TypedTelescope.WithCaptures
+      (m2 := mcap)
+      (fun {n} path (elemShape typeShape : WShape n) =>
+        LRS.CaptureDefEqAligned.AtShapes (LR Γ)
+          (mcap path) (mx path) (my path) (captureType path)
+          elemShape typeShape)
+      head paths outShape headTy outTyShape)
+    (houtShapeEq : out.T = outShape)
+    (houtTyShapeEq : outTy.T = outTyShape)
+    (houtNonbot : ¬out.T ≤ TShape.bot) :
+    ∃ (headLevel : Nat) (headElem headElemTy : WShape headLevel),
+      headElem.T ≤ head ∧ headElem.HasType headElemTy ∧
+        headElemTy.T ≤ headTy ∧ ¬headElem.T ≤ TShape.bot ∧
+        LR.FixedHeadShapeChain Γ mcap mx my captureType
+          paths headElem headElemTy out outTy :=
+  H.toLE.fixedHeadShapeChain houtShapeEq houtTyShapeEq houtNonbot
 
 /-- A canonical logical application chain over one ordered capture list.
 
