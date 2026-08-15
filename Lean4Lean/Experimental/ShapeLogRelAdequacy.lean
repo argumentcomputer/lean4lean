@@ -7518,6 +7518,93 @@ def LR.ConstDefnDeepInstStep (Γ₀ : List SExpr) : Prop :=
         LR.Adequate Γ₀ Γ ρ (SExpr.mkInst ls value) (SExpr.mkInst ls value)
           (SExpr.mkInst ls ci.type) mx bx
 
+/-! #### The δ-rank producer
+
+The environment supplies only the ranked certificate for a registered
+definition.  Recursion remains an explicit premise: it is outermost in the
+δ-rank and independent of the existing depth/witness recursion.  This
+separation prevents a cyclic `VEnv.WF` block from silently becoming a
+termination proof.
+-/
+
+/-- `SelfAdequateAt` restricted to typing derivations below one δ-rank. -/
+def LR.SelfAdequateAtR [Params.DeltaRank] (Γ₀ : List SExpr)
+    {rho : Valuation} {root : TShape} {X : SExpr}
+    (_hX : LE_Interp.Witness rho root X) (depth rankBound : Nat) : Prop :=
+  ∀ {n : Nat} {mx bx : WShape n} {Delta : List SExpr}
+      {core : Bool} {B : SExpr},
+    mx.T ≤ root →
+    HasTypeStratifiedR Params.DeltaRank.rank Delta X B core depth rankBound →
+    mx.HasType bx →
+    LE_Interp.Witness rho bx.T B →
+    LR.Adequate Γ₀ Delta rho X X B mx bx
+
+/-- Adequacy at every rank recovers the unranked statement. -/
+theorem LR.selfAdequateAt_of_allRanks [Params.DeltaRank]
+    {hX : LE_Interp.Witness rho root X} {depth : Nat}
+    (H : ∀ rankBound, LR.SelfAdequateAtR Γ₀ hX depth rankBound) :
+    LR.SelfAdequateAt Γ₀ hX depth := by
+  intro n mx bx Delta core B hroot hstrat hmem hB
+  obtain ⟨rankBound, hranked⟩ :=
+    HasTypeStratifiedR.exists_rank Params.DeltaRank.rank hstrat
+  exact H rankBound hroot hranked hmem hB
+
+/-- Unranked self-adequacy can always serve a fixed rank. -/
+theorem LR.SelfAdequateAt.toRank [Params.DeltaRank]
+    {hX : LE_Interp.Witness rho root X} {depth rankBound : Nat}
+    (H : LR.SelfAdequateAt Γ₀ hX depth) :
+    LR.SelfAdequateAtR Γ₀ hX depth rankBound :=
+  fun hroot hstrat hmem hB => H hroot hstrat.toS hmem hB
+
+/-- The induction hypotheses supplied by an outer strong recursion on the
+δ-rank. -/
+def LR.DeltaRankRestart [Params.DeltaRank] (Γ₀ : List SExpr)
+    (rankBound : Nat) : Prop :=
+  ∀ rank' : Nat, rank' < rankBound →
+    ∀ {rho : Valuation} {root : TShape} {X : SExpr}
+      (hX : LE_Interp.Witness rho root X) (depth : Nat),
+      LR.SelfAdequateAtR Γ₀ hX depth rank'
+
+theorem LR.DeltaRankRestart.of_le [Params.DeltaRank]
+    {rankBound rankBound' : Nat} (hle : rankBound' ≤ rankBound)
+    (H : LR.DeltaRankRestart Γ₀ rankBound) :
+    LR.DeltaRankRestart Γ₀ rankBound' :=
+  fun rank' hlt => H rank' (Nat.lt_of_lt_of_le hlt hle)
+
+/-- The sole staged δ obligation: every rank receives its strict
+predecessors. -/
+def LR.DeltaRankStage [Params.DeltaRank] (Γ₀ : List SExpr) : Prop :=
+  ∀ rankBound, LR.DeltaRankRestart Γ₀ rankBound
+
+/-- The narrowed definitional-unfold obligation follows directly from the
+environment certificate and the restart at the unfolded constant's rank. -/
+theorem LR.ConstDefnDeepInstStep.of_deltaRank [Params.DeltaRank]
+    (restart : ∀ c : Name,
+      LR.DeltaRankRestart Γ₀ (Params.DeltaRank.rank c)) :
+    LR.ConstDefnDeepInstStep Γ₀ := by
+  intro c ci value closed hpat hreg ls hlen depth rho root hV hlocal children
+    lower hGamma Gamma n mx bx nV hroot hstrat htyped hB
+  obtain ⟨nV', rankV, hlt, hcert⟩ :=
+    Params.DeltaRank.defnCert (Γ := Gamma) hpat hreg hlen
+  exact restart c rankV hlt hV nV' hroot hcert htyped hB
+
+/-- The stronger retentive interface is exactly what a complete outer rank
+stage supplies; it adds no further semantic premise. -/
+theorem LR.ConstDefnDeepStepR.of_deltaRankStage [Params.DeltaRank]
+    (stage : LR.DeltaRankStage Γ₀) : LR.ConstDefnDeepStepR Γ₀ := by
+  intro c ci value closed hpat hreg ls hlen depth rho root hV hlocal children
+    lower hGamma depth' hlt
+  refine LR.selfAdequateAt_of_allRanks (hX := hV) fun rankBound => ?_
+  exact stage (rankBound + 1) rankBound (Nat.lt_succ_self rankBound) hV depth'
+
+/-- info: 'Lean4Lean.SExpr.LR.ConstDefnDeepInstStep.of_deltaRank' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms LR.ConstDefnDeepInstStep.of_deltaRank
+
+/-- info: 'Lean4Lean.SExpr.LR.ConstDefnDeepStepR.of_deltaRankStage' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms LR.ConstDefnDeepStepR.of_deltaRankStage
+
 /-- Faithfulness: the narrowed form is implied by the retentive form, hence
 (through `LR.ConstDefnDeepStepR.of_constDefnDeepStep`) by the current
 `LR.ConstDefnDeepStep`. -/
@@ -7791,6 +7878,16 @@ theorem LR.SelfAdequateConstStep.of_steps
         have hv := (adV.1 W).1
         simpa only [closed.mkInstS.subst_eq .zero,
           (Params.henv.closedC hreg).mkInstS.subst_eq .zero] using hv
+
+/-- The complete constant self-adequacy producer, modulo the independently
+staged rank recursion and coherent iota leaf. -/
+theorem LR.SelfAdequateConstStep.of_deltaRank [Params.DeltaRank]
+    (hGamma : Ctx.WF Γ₀) (leafStep : LR.CoherentIotaLeafStep Γ₀)
+    (restart : ∀ c : Name,
+      LR.DeltaRankRestart Γ₀ (Params.DeltaRank.rank c)) :
+    LR.SelfAdequateConstStep Γ₀ :=
+  LR.SelfAdequateConstStep.of_steps hGamma leafStep
+    (LR.ConstDefnDeepInstStep.of_deltaRank restart)
 
 /-- Assemble the self-adequacy half of the coherent Nat algebra from its
 two remaining leaf-shaped obligations and the conversion callback. -/

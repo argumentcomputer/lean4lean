@@ -914,7 +914,25 @@ so they go clean with it.
   interface the moment the Prop lands — or (B) fund the semantic
   normalization content (a new logical-relation development for
   subject reduction at classified spines) as its own research
-  milestone. There is no option (C). Decision pending.
+  milestone. There is no option (C).
+
+  **Decision (2026-08-15): take (A).** L4L-16C′ is re-cut as a
+  conditional closure whose semantic boundary is the already named
+  `LRS.PiPathInv`; the independent subject-reduction/normalization research
+  moves out of milestone 16/17. This is not yet permission to wrap the
+  existing leaf in that one premise: the buildP pre-mortem identified two
+  mechanical obligations still visible after the constructor-chain roots
+  consume `PiPathInv` — transport of the synchronized `RectFrame` from the
+  native constructor observation to the recursor-application result, and
+  the terminal fixed-head dominance comparison. Those remain 16C′ work and
+  stay named separately until they have real producers. The δ side of the
+  cut is now implemented: `HasTypeStratifiedR` and `Params.DeltaRank` expose
+  a strictly decreasing definition certificate; the clean
+  `ConstDefnDeepInstStep.of_deltaRank`/
+  `ConstDefnDeepStepR.of_deltaRankStage` restart bridge is axiom-pinned; and
+  D0, D1, and D2 instantiate literal ranks for every registered definition.
+  No `VEnv.WF` cycle or opaque normalization premise is hidden in that
+  interface.
 - *L4L-16D — live-environment instance.* The only route segment never
   executed end to end — therefore staged, thin vertical slice first:
   **D0 complete (2026-08-14, active working tree):** the generated Nat
@@ -923,7 +941,7 @@ so they go clean with it.
   with `d0SortInvS` instantiated.  The D0 module is admission-free,
   its 122-job Lake target is green, and its exact endpoint axiom closure
   is pinned in-source; the remaining `sorryAx` is inherited from 16C′.
-  **D1 delivered 2026-08-15 (working tree) except the quot semantic
+  **D1 delivered 2026-08-15 except the quot semantic
   instance:** `SExprParamsD1.lean` is admission-free — first live
   `VDecl.WF.mutualDef`, D0→D1 transport, full `Params.Semantic`,
   pinned `d1SortInvS`; the quot environment layer is in and pinned
@@ -948,7 +966,10 @@ so they go clean with it.
   `checked` component is the L4L-18A′-gated stuck-inductive-application
   injectivity (its other three components are per-rule capture/collapse
   volume the engine takes as input, exactly as Theory's generic
-  block-rule theorem does). Reduction sites do not transport downward,
+  block-rule theorem does). The D2 environment now also carries the same
+  checked δ-rank certificate as D0/D1; block heads are irreducible at rank
+  zero and the inherited definition dependency chain is ranked literally.
+  Reduction sites do not transport downward,
   so `D2BlockStep` also re-covers the two inherited Nat rules, where
   `checked` is trivially true;
   **D3** nested rules as registered equations only (nested pattern

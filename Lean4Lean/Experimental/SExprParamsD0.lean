@@ -6899,6 +6899,72 @@ noncomputable def d0Semantic (univs : Nat) :
     intro df ls Gamma hreg hlen hLhs hRhs
     exact d0Registered univs hreg hlen hLhs hRhs }
 
+/-! ## Concrete δ-rank certificates
+
+The adequacy fixpoint unfolds definitions under an outer induction on this
+rank.  The generated Nat inventory has no constant-headed definition rules;
+the D0 extension has exactly `d0def ≡ Nat.zero`, so its body lives at rank
+zero below the definition head at rank one. -/
+
+/-- Literal δ-rank for D0.  Non-definition heads sit at rank zero. -/
+def d0DeltaRankFn : Name → Nat :=
+  fun n => if n = ``d0def then 1 else 0
+
+theorem d0DeltaRankFn_nat : d0DeltaRankFn ``Nat ≤ 0 := by decide
+
+theorem d0DeltaRankFn_natZero : d0DeltaRankFn ``Nat.zero ≤ 0 := by
+  decide
+
+theorem d0NatTypeLookup :
+    d0Env.constants ``Nat = some InductiveFixtures.natType.toVConstant :=
+  natFinalEnv_le_d0Env.constants InductiveReplayFixtures.nat_type_env_lookup
+
+/-- `Nat : Type` at rank zero, at every positive stratification depth. -/
+theorem d0NatCertR (univs : Nat) :
+    letI : Params := d0Params univs
+    ∀ (Gamma : List SExpr) (n : Nat),
+      HasTypeStratifiedR d0DeltaRankFn Gamma
+        (.const ``Nat []) (.sort (.instV [] (.succ .zero))) true (n + 1) 0 := by
+  letI : Params := d0Params univs
+  intro Gamma n
+  exact .base (.const d0NatTypeLookup rfl d0DeltaRankFn_nat
+    (.base .sort'))
+
+/-- `Nat.zero : Nat` at rank zero, the certificate consumed by `d0def`. -/
+theorem d0ZeroCertR (univs : Nat) :
+    letI : Params := d0Params univs
+    ∀ (Gamma : List SExpr),
+      HasTypeStratifiedR d0DeltaRankFn Gamma
+        (.const ``Nat.zero []) (.const ``Nat []) true 2 0 := by
+  letI : Params := d0Params univs
+  intro Gamma
+  exact .base (.const d0NatZeroEnvLookup rfl d0DeltaRankFn_natZero
+    (d0NatCertR univs Gamma 0))
+
+/-- The iota-only Nat fixture has no definitional-unfold obligations. -/
+def natDeltaRank (univs : Nat) :
+    letI : Params := natParams univs
+    Params.DeltaRank := by
+  letI : Params := natParams univs
+  refine ⟨d0DeltaRankFn, ?_⟩
+  intro c ci value closed ls Gamma hpat hreg hlen
+  exact (natPat_no_const univs hpat).elim
+
+/-- The D0 fixture's checked δ-rank certificate. -/
+def d0DeltaRank (univs : Nat) :
+    letI : Params := d0Params univs
+    Params.DeltaRank := by
+  letI : Params := d0Params univs
+  refine ⟨d0DeltaRankFn, ?_⟩
+  intro c ci value closed ls Gamma hpat hreg hlen
+  change D0Pat _ _ at hpat
+  cases hpat with
+  | iota h => exact (natPat_no_const univs h).elim
+  | defn =>
+    obtain rfl := Option.some.inj (d0Env_d0Def_lookup.symm.trans hreg)
+    obtain rfl := List.length_eq_zero_iff.mp hlen
+    exact ⟨2, 0, by decide, d0ZeroCertR univs Gamma⟩
+
 /-- End-to-end D0a smoke theorem: the generated Nat fixture supplies every
 semantic certificate required by the experimental sort-injectivity bridge. -/
 theorem natSortInvS (univs : Nat) {Gamma : List VExpr} {u v : VLevel}

@@ -2422,6 +2422,164 @@ theorem HasTypeStratifiedS.mono (le : m ≤ n)
     replace le := Nat.le_of_succ_le_succ le
     exact .defeq h (ihA le) (ihB le) (ihe le)
 
+/-! ### A δ-rank refinement of stratified typing
+
+`VEnv.WF` permits mutually recursive definition cycles, so termination of
+the semantic constant evaluator cannot be recovered from declaration order.
+The rank below is therefore explicit instance data.  The judgment refines
+`HasTypeStratifiedS` without changing its depth index: only the `const` rule
+records that the referenced declaration is available at the current rank.
+-/
+
+/-- Stratified typing with an additional upper bound on the δ-rank of every
+constant used by the derivation. -/
+inductive HasTypeStratifiedR (rank : Name → Nat) :
+    List SExpr → SExpr → SExpr → Bool → Nat → Nat → Prop where
+  | bvar {n r : Nat} :
+    Lookup Γ i A →
+    HasTypeStratifiedR rank Γ A (.sort u) true n r →
+    HasTypeStratifiedR rank Γ (.bvar i) A false (n + 1) r
+  | sort' {n r : Nat} :
+    HasTypeStratifiedR rank Γ (.sort l) (.sort (.succ l)) false n r
+  | const {n r : Nat} :
+    env.constants c = some ci →
+    ls.length = ci.uvars →
+    rank c ≤ r →
+    HasTypeStratifiedR rank Γ (SExpr.mkInst ls ci.type) (.sort u) true n r →
+    HasTypeStratifiedR rank Γ (.const c ls)
+      (SExpr.mkInst ls ci.type) false (n + 1) r
+  | app {n r : Nat} :
+    HasTypeStratifiedR rank Γ A (.sort u) true n r →
+    HasTypeStratifiedR rank (A :: Γ) B (.sort v) true n r →
+    HasTypeStratifiedR rank Γ f (.forallE A B) true n r →
+    HasTypeStratifiedR rank Γ a A true n r →
+    HasTypeStratifiedR rank Γ (B.inst a) (.sort v) true n r →
+    HasTypeStratifiedR rank Γ (.app f a) (B.inst a) false (n + 1) r
+  | lam {n r : Nat} :
+    HasTypeStratifiedR rank Γ A (.sort u) true n r →
+    HasTypeStratifiedR rank (A :: Γ) B (.sort v) true n r →
+    HasTypeStratifiedR rank (A :: Γ) body B true n r →
+    HasTypeStratifiedR rank Γ (.forallE A B) (.sort (.imax u v)) true n r →
+    HasTypeStratifiedR rank Γ (.lam A body) (.forallE A B) false (n + 1) r
+  | forallE {n r : Nat} :
+    HasTypeStratifiedR rank Γ A (.sort u) true n r →
+    HasTypeStratifiedR rank (A :: Γ) body (.sort v) true n r →
+    HasTypeStratifiedR rank Γ (.forallE A body)
+      (.sort (.imax u v)) false (n + 1) r
+  | base :
+    HasTypeStratifiedR rank Γ e A false n r →
+    HasTypeStratifiedR rank Γ e A true n r
+  | defeq :
+    IsDefEqStrong Γ A B (.sort u) →
+    HasTypeStratifiedR rank Γ A (.sort u) true n r →
+    HasTypeStratifiedR rank Γ B (.sort u) true n r →
+    HasTypeStratifiedR rank Γ e A true n r →
+    HasTypeStratifiedR rank Γ e B true (n + 1) r
+
+/-- Forgetting the δ-rank recovers the ordinary stratified judgment. -/
+theorem HasTypeStratifiedR.toS
+    (H : HasTypeStratifiedR rank Γ e A b n r) :
+    HasTypeStratifiedS Γ e A b n := by
+  induction H with
+  | bvar h _ ih => exact .bvar h ih
+  | sort' => exact .sort'
+  | const hreg hlen _ _ ih => exact .const hreg hlen ih
+  | app _ _ _ _ _ ihA ihB ihf iha ihR => exact .app ihA ihB ihf iha ihR
+  | lam _ _ _ _ ihA ihB ihbody ihPi => exact .lam ihA ihB ihbody ihPi
+  | forallE _ _ ihA ihbody => exact .forallE ihA ihbody
+  | base _ ih => exact .base ih
+  | defeq h _ _ _ ihA ihB ihe => exact .defeq h ihA ihB ihe
+
+/-- The rank index is monotone. -/
+theorem HasTypeStratifiedR.mono_rank
+    (H : HasTypeStratifiedR rank Γ e A b n r) :
+    ∀ {r' : Nat}, r ≤ r' → HasTypeStratifiedR rank Γ e A b n r' := by
+  induction H with
+  | bvar h _ ih => exact fun hle => .bvar h (ih hle)
+  | sort' => exact fun _ => .sort'
+  | const hreg hlen hrank _ ih =>
+    exact fun hle => .const hreg hlen (Nat.le_trans hrank hle) (ih hle)
+  | app _ _ _ _ _ ihA ihB ihf iha ihR =>
+    exact fun hle => .app (ihA hle) (ihB hle) (ihf hle) (iha hle) (ihR hle)
+  | lam _ _ _ _ ihA ihB ihbody ihPi =>
+    exact fun hle => .lam (ihA hle) (ihB hle) (ihbody hle) (ihPi hle)
+  | forallE _ _ ihA ihbody => exact fun hle => .forallE (ihA hle) (ihbody hle)
+  | base _ ih => exact fun hle => .base (ih hle)
+  | defeq h _ _ _ ihA ihB ihe =>
+    exact fun hle => .defeq h (ihA hle) (ihB hle) (ihe hle)
+
+/-- Every ordinary stratified derivation admits some rank bound.  Thus the
+extra index is a recursion certificate, not a restriction on typing. -/
+theorem HasTypeStratifiedR.exists_rank (rank : Name → Nat)
+    (H : HasTypeStratifiedS Γ e A b n) :
+    ∃ r, HasTypeStratifiedR rank Γ e A b n r := by
+  induction H with
+  | bvar h _ ih => obtain ⟨r, hr⟩ := ih; exact ⟨r, .bvar h hr⟩
+  | sort' => exact ⟨0, .sort'⟩
+  | @const c ci Γ ls u n hreg hlen _ ih =>
+    obtain ⟨r, hr⟩ := ih
+    exact ⟨max (rank c) r,
+      .const hreg hlen (Nat.le_max_left ..)
+        (hr.mono_rank (Nat.le_max_right ..))⟩
+  | app _ _ _ _ _ ihA ihB ihf iha ihR =>
+    obtain ⟨r1, h1⟩ := ihA; obtain ⟨r2, h2⟩ := ihB
+    obtain ⟨r3, h3⟩ := ihf; obtain ⟨r4, h4⟩ := iha
+    obtain ⟨r5, h5⟩ := ihR
+    exact ⟨max (max (max r1 r2) (max r3 r4)) r5,
+      .app (h1.mono_rank (by omega)) (h2.mono_rank (by omega))
+        (h3.mono_rank (by omega)) (h4.mono_rank (by omega))
+        (h5.mono_rank (by omega))⟩
+  | lam _ _ _ _ ihA ihB ihbody ihPi =>
+    obtain ⟨r1, h1⟩ := ihA; obtain ⟨r2, h2⟩ := ihB
+    obtain ⟨r3, h3⟩ := ihbody; obtain ⟨r4, h4⟩ := ihPi
+    exact ⟨max (max r1 r2) (max r3 r4),
+      .lam (h1.mono_rank (by omega)) (h2.mono_rank (by omega))
+        (h3.mono_rank (by omega)) (h4.mono_rank (by omega))⟩
+  | forallE _ _ ihA ihbody =>
+    obtain ⟨r1, h1⟩ := ihA; obtain ⟨r2, h2⟩ := ihbody
+    exact ⟨max r1 r2, .forallE (h1.mono_rank (by omega))
+      (h2.mono_rank (by omega))⟩
+  | base _ ih => obtain ⟨r, hr⟩ := ih; exact ⟨r, .base hr⟩
+  | defeq h _ _ _ ihA ihB ihe =>
+    obtain ⟨r1, h1⟩ := ihA; obtain ⟨r2, h2⟩ := ihB
+    obtain ⟨r3, h3⟩ := ihe
+    exact ⟨max (max r1 r2) r3,
+      .defeq h (h1.mono_rank (by omega)) (h2.mono_rank (by omega))
+        (h3.mono_rank (by omega))⟩
+
+/-- Per-environment δ-termination data.  A registered definition supplies a
+typing certificate for its value strictly below the rank of the constant
+whose reduction exposes that value. -/
+class Params.DeltaRank [Params] : Type where
+  rank : Name → Nat
+  defnCert :
+    ∀ {c : Name} {ci : VConstant} {value : VExpr} {closed : value.Closed}
+      {ls : List SLevel} {Γ : List SExpr},
+      Params.Pat (.const c) (.fixed value closed, .true) →
+      env.constants c = some ci →
+      ls.length = ci.uvars →
+      ∃ (nV rV : Nat), rV < rank c ∧
+        HasTypeStratifiedR rank Γ (SExpr.mkInst ls value)
+          (SExpr.mkInst ls ci.type) true nV rV
+
+/-- A definitional constant necessarily has positive δ-rank. -/
+theorem Params.DeltaRank.defn_pos [Params.DeltaRank]
+    {c : Name} {ci : VConstant} {value : VExpr} {closed : value.Closed}
+    (hpat : Params.Pat (.const c) (.fixed value closed, .true))
+    (hreg : env.constants c = some ci) : 0 < Params.DeltaRank.rank c := by
+  obtain ⟨nV, rV, hlt, -⟩ := Params.DeltaRank.defnCert (Γ := [])
+    (ls := List.replicate ci.uvars SLevel.zero) hpat hreg
+    (List.length_replicate ..)
+  exact Nat.lt_of_le_of_lt (Nat.zero_le rV) hlt
+
+/-- info: 'Lean4Lean.SExpr.HasTypeStratifiedR.exists_rank' depends on axioms: [propext, Quot.sound] -/
+#guard_msgs in
+#print axioms HasTypeStratifiedR.exists_rank
+
+/-- info: 'Lean4Lean.SExpr.Params.DeltaRank.defn_pos' depends on axioms: [propext, Quot.sound] -/
+#guard_msgs in
+#print axioms Params.DeltaRank.defn_pos
+
 /-- Every evidence-rich equality has stratified typings for both endpoints
 at one common depth.  The application and lambda cases are the reason the
 strong judgment retains codomain validity in both binder contexts: the

@@ -2090,6 +2090,151 @@ theorem d2Registered_old (univs : Nat)
   simpa only [transport_context_roundtrip, transportExpr_mkInst,
     transport_level_list_roundtrip] using H
 
+/-! ## Concrete δ-rank certificate
+
+The inductive block adds iota rules but no new constant-headed definition
+rules.  Consequently D2 inherits D1's dependency order unchanged:
+`d1mutA > d1mutB > d0def`; every block head remains at rank zero. -/
+
+def d2DeltaRankFn : Name → Nat := fun n =>
+  if n = ``ParamsD1.d1mutA then 3
+  else if n = ``ParamsD1.d1mutB then 2
+  else if n = ``ParamsD0.d0def then 1
+  else 0
+
+theorem d2NatTypeLookup :
+    d2Env.constants ``Nat = some InductiveFixtures.natType.toVConstant :=
+  d1Env_le_d2Env.constants d1NatTypeLookup
+
+theorem d2D0DefLookup :
+    d2Env.constants ``ParamsD0.d0def = some d0DefVal.toVConstant :=
+  d1Env_le_d2Env.constants d1D0DefLookup
+
+theorem d2DeltaRankFn_nat : d2DeltaRankFn ``Nat ≤ 0 := by decide
+
+theorem d2DeltaRankFn_natZero : d2DeltaRankFn ``Nat.zero ≤ 0 := by
+  decide
+
+theorem d2DeltaRankFn_natSucc : d2DeltaRankFn ``Nat.succ ≤ 0 := by
+  decide
+
+theorem d2DeltaRankFn_d0def :
+    d2DeltaRankFn ``ParamsD0.d0def ≤ 1 := by
+  decide
+
+theorem d2DeltaRankFn_d1mutB :
+    d2DeltaRankFn ``ParamsD1.d1mutB ≤ 2 := by
+  decide
+
+theorem d2NatCertR (univs : Nat) :
+    letI : Params := d2Params univs
+    ∀ (Gamma : List SExpr) (n : Nat),
+      HasTypeStratifiedR d2DeltaRankFn Gamma
+        (.const ``Nat []) (.sort (.instV [] (.succ .zero))) true (n + 1) 0 := by
+  letI : Params := d2Params univs
+  intro Gamma n
+  exact .base (.const d2NatTypeLookup rfl d2DeltaRankFn_nat
+    (.base .sort'))
+
+theorem d2NatPiCertR (univs : Nat) :
+    letI : Params := d2Params univs
+    ∀ (Gamma : List SExpr) (n : Nat),
+      HasTypeStratifiedR d2DeltaRankFn Gamma
+        (.forallE (.const ``Nat []) (.const ``Nat []))
+        (.sort (.imax (.instV [] (.succ .zero))
+          (.instV [] (.succ .zero)))) true (n + 2) 0 := by
+  letI : Params := d2Params univs
+  intro Gamma n
+  exact .base (.forallE (d2NatCertR univs Gamma n)
+    (d2NatCertR univs (_ :: Gamma) n))
+
+theorem d2SuccCertR (univs : Nat) :
+    letI : Params := d2Params univs
+    ∀ (Gamma : List SExpr) (n : Nat),
+      HasTypeStratifiedR d2DeltaRankFn Gamma
+        (.const ``Nat.succ [])
+        (.forallE (.const ``Nat []) (.const ``Nat [])) true (n + 3) 0 := by
+  letI : Params := d2Params univs
+  intro Gamma n
+  exact .base (.const (d1Env_le_d2Env.constants d1NatSuccEnvLookup) rfl
+    d2DeltaRankFn_natSucc (d2NatPiCertR univs Gamma n))
+
+theorem d2ZeroCertR (univs : Nat) :
+    letI : Params := d2Params univs
+    ∀ (Gamma : List SExpr),
+      HasTypeStratifiedR d2DeltaRankFn Gamma
+        (.const ``Nat.zero []) (.const ``Nat []) true 2 0 := by
+  letI : Params := d2Params univs
+  intro Gamma
+  exact .base (.const (d1Env_le_d2Env.constants d1NatZeroEnvLookup) rfl
+    d2DeltaRankFn_natZero (d2NatCertR univs Gamma 0))
+
+theorem d2D0DefConstCertR (univs : Nat) :
+    letI : Params := d2Params univs
+    ∀ (Gamma : List SExpr) (n : Nat),
+      HasTypeStratifiedR d2DeltaRankFn Gamma
+        (.const ``ParamsD0.d0def []) (.const ``Nat []) true (n + 2) 1 := by
+  letI : Params := d2Params univs
+  intro Gamma n
+  exact .base (.const d2D0DefLookup rfl d2DeltaRankFn_d0def
+    ((d2NatCertR univs Gamma n).mono_rank (Nat.zero_le 1)))
+
+theorem d2MutBValueCertR (univs : Nat) :
+    letI : Params := d2Params univs
+    ∀ (Gamma : List SExpr),
+      HasTypeStratifiedR d2DeltaRankFn Gamma
+        (.app (.const ``Nat.succ []) (.const ``ParamsD0.d0def []))
+        (.const ``Nat []) true 4 1 := by
+  letI : Params := d2Params univs
+  intro Gamma
+  refine .base (.app (u := .instV [] (.succ .zero))
+    (v := .instV [] (.succ .zero))
+    ((d2NatCertR univs Gamma 2).mono_rank (Nat.zero_le 1))
+    ((d2NatCertR univs (_ :: Gamma) 2).mono_rank (Nat.zero_le 1))
+    ((d2SuccCertR univs Gamma 0).mono_rank (Nat.zero_le 1))
+    (d2D0DefConstCertR univs Gamma 1)
+    ((d2NatCertR univs Gamma 2).mono_rank (Nat.zero_le 1)))
+
+theorem d2MutBConstCertR (univs : Nat) :
+    letI : Params := d2Params univs
+    ∀ (Gamma : List SExpr),
+      HasTypeStratifiedR d2DeltaRankFn Gamma
+        (.const ``ParamsD1.d1mutB []) (.const ``Nat []) true 2 2 := by
+  letI : Params := d2Params univs
+  intro Gamma
+  exact .base (.const (d1Env_le_d2Env.constants d1Env_d1MutB_lookup) rfl
+    d2DeltaRankFn_d1mutB
+    ((d2NatCertR univs Gamma 0).mono_rank (Nat.zero_le 2)))
+
+/-- The D2 fixture's checked δ-rank certificate.  The generated block rules
+are eliminated structurally because none has a constant pattern. -/
+def d2DeltaRank (univs : Nat) :
+    letI : Params := d2Params univs
+    Params.DeltaRank := by
+  letI : Params := d2Params univs
+  refine ⟨d2DeltaRankFn, ?_⟩
+  intro c ci value closed ls Gamma hpat hreg hlen
+  change D2Pat _ _ at hpat
+  have h1 := d2Pat_at_const hpat
+  cases h1 with
+  | old h0 =>
+    cases h0 with
+    | iota h => exact (natPat_no_const univs h).elim
+    | defn =>
+      obtain rfl := Option.some.inj (d2D0DefLookup.symm.trans hreg)
+      obtain rfl := List.length_eq_zero_iff.mp hlen
+      exact ⟨2, 0, by decide, d2ZeroCertR univs Gamma⟩
+  | defnA =>
+    obtain rfl := Option.some.inj
+      ((d1Env_le_d2Env.constants d1Env_d1MutA_lookup).symm.trans hreg)
+    obtain rfl := List.length_eq_zero_iff.mp hlen
+    exact ⟨2, 2, by decide, d2MutBConstCertR univs Gamma⟩
+  | defnB =>
+    obtain rfl := Option.some.inj
+      ((d1Env_le_d2Env.constants d1Env_d1MutB_lookup).symm.trans hreg)
+    obtain rfl := List.length_eq_zero_iff.mp hlen
+    exact ⟨4, 1, by decide, d2MutBValueCertR univs Gamma⟩
+
 /-! ## The parked block obligations
 
 Four obligations of the *block* half of `Params.Semantic` are not delivered
