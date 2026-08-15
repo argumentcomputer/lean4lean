@@ -3592,6 +3592,260 @@ theorem IsDefEq.defeqDF_l (h1 : Γ ⊢ A ≡ A' : .sort u)
 theorem HasType.defeq_l (h1 : Γ ⊢ A ≡ A' : .sort u)
     (h2 : A::Γ ⊢ e : B) : A'::Γ ⊢ e : B := h1.defeqDF_l h2
 
+/-! ### Heterogeneous type-equality paths
+
+Relocated here from `Lean4Lean/Experimental/ShapeLogRel.lean` on 2026-08-15.
+The whole API depends only on `IsDefEq.defeqDF`, `IsDefEq.defeqDF_l` (:3588),
+`IsDefEq.subst` (:3255) and `Ctx.Subst` (:3025) — every one of them an SExpr
+notion — so it belongs beside them rather than inside the logical-relation
+development.  Moving it up is what lets the evidence-rich inversion suite
+below state its conclusion: each inverter returns the *path* from the
+subject's own type to the declared type.
+
+`TypeDefEqPath.collapse` deliberately stays in `ShapeLogRel.lean`, beside
+`LogRel.RawTypeUniq`, which is its one extra input and is the whole of raw
+type uniqueness. -/
+
+/-- A nonempty path of ordinary type equalities.  Adjacent edges may type
+their shared endpoint in different universes; retaining the path avoids the
+unsound heterogeneous transitivity rule while still supporting every
+conversion operation one edge at a time. -/
+inductive TypeDefEqPath (Γ : List SExpr) : SExpr → SExpr → SLevel → Prop where
+  | single : IsDefEq Γ A B (.sort u) → TypeDefEqPath Γ A B u
+  | trans : TypeDefEqPath Γ A B u → TypeDefEqPath Γ B C v →
+      TypeDefEqPath Γ A C u
+
+theorem TypeDefEqPath.leftType
+    (H : TypeDefEqPath Γ A B u) : IsDefEq Γ A A (.sort u) := by
+  induction H with
+  | single h => exact h.hasType.1
+  | trans _ _ ih _ => exact ih
+
+theorem TypeDefEqPath.rightType
+    (H : TypeDefEqPath Γ A B u) : ∃ v, IsDefEq Γ B B (.sort v) := by
+  induction H with
+  | single h => exact ⟨_, h.hasType.2⟩
+  | trans _ _ _ ih => exact ih
+
+theorem TypeDefEqPath.left
+    (H : TypeDefEqPath Γ A B u) : TypeDefEqPath Γ A A u :=
+  .single H.leftType
+
+theorem TypeDefEqPath.right
+    (H : TypeDefEqPath Γ A B u) : ∃ v, TypeDefEqPath Γ B B v := by
+  obtain ⟨v, hB⟩ := H.rightType
+  exact ⟨v, .single hB⟩
+
+theorem TypeDefEqPath.symm
+    (H : TypeDefEqPath Γ A B u) : ∃ v, TypeDefEqPath Γ B A v := by
+  induction H with
+  | single h => exact ⟨_, .single h.symm⟩
+  | trans _ _ ih₁ ih₂ =>
+    obtain ⟨v₂, h₂⟩ := ih₂
+    obtain ⟨_, h₁⟩ := ih₁
+    exact ⟨v₂, .trans h₂ h₁⟩
+
+/-- Transport a term equality through a path of type conversions. -/
+theorem TypeDefEqPath.defeqDF
+    (H : TypeDefEqPath Γ A B u)
+    (h : IsDefEq Γ e₁ e₂ A) : IsDefEq Γ e₁ e₂ B := by
+  induction H with
+  | single hAB => exact hAB.defeqDF h
+  | trans _ _ ih₁ ih₂ => exact ih₂ (ih₁ h)
+
+/-- Replace the newest context entry along a path, one ordinary conversion
+at a time. -/
+theorem TypeDefEqPath.defeqDF_l
+    (H : TypeDefEqPath Γ A B u)
+    (h : IsDefEq (A :: Γ) e₁ e₂ C) : IsDefEq (B :: Γ) e₁ e₂ C := by
+  induction H with
+  | single hAB => exact hAB.defeqDF_l h
+  | trans _ _ ih₁ ih₂ => exact ih₂ (ih₁ h)
+
+/-- Transport every edge of a type-equality path into a converted binder
+context. -/
+theorem TypeDefEqPath.defeqDF_l_path
+    (H : TypeDefEqPath Γ A B u)
+    (P : TypeDefEqPath (A :: Γ) C D v) :
+    TypeDefEqPath (B :: Γ) C D v := by
+  induction P with
+  | single h => exact .single (H.defeqDF_l h)
+  | trans _ _ ih₁ ih₂ => exact .trans ih₁ ih₂
+
+/-- Substitute every ordinary edge of a heterogeneous type path. -/
+theorem TypeDefEqPath.subst
+    (H : TypeDefEqPath Γ A B u)
+    (W : Ctx.Subst (fun Γ e A => Γ ⊢ e : A) Γ₀ σ Γ) :
+    TypeDefEqPath Γ₀ (A.subst σ) (B.subst σ) u := by
+  induction H with
+  | single h => exact .single (h.subst W)
+  | trans _ _ ih₁ ih₂ => exact .trans ih₁ ih₂
+
+/-! ### Evidence-rich inversion, with the declared-type path
+
+The three theorems below extend `IsDefEqStrong.forallE_inv'` (:2284) to the
+application and lambda shapes, and strengthen the Pi case, in one respect:
+each also returns the `TypeDefEqPath` from the subject's **own** type to the
+declared type `V`.  That is their whole novelty over Theory's
+`VEnv.HasType.app_inv` / `.lam_inv`, and it is what removes the
+`IsDefEq.trans_l` / `IsDefEqU.uniqU` fixups the Theory proofs have to spend:
+a consumer that receives the path never has to re-derive the relation between
+the two types, and in particular never charges type uniqueness to do so.
+
+All three are structural in exactly the style of `forallE_inv'` — every
+extension leaf of `IsDefEqStrong` carries its endpoint typings — so none of
+them appeals to weak type uniqueness, to Church–Rosser, or to
+`IsDefEq.strong`.  Measured `[propext, Quot.sound]` in
+`plans/probes/probeR13-loop.lean`. -/
+
+/-- Application inversion, evidence-rich.  Unlike Theory's
+`VEnv.HasType.app_inv` this also returns the *path* from the application's own
+result type `B.inst a` to the declared type `V`, which is what makes the
+ordinary `trans_l` / type-uniqueness fixup unnecessary downstream. -/
+theorem IsDefEqStrong.app_inv'
+    (H : IsDefEqStrong Γ e₁ e₂ V)
+    (eq : e₁ = .app f a ∨ e₂ = .app f a) :
+    ∃ A B w, IsDefEqStrong Γ f f (.forallE A B) ∧ IsDefEqStrong Γ a a A ∧
+      TypeDefEqPath Γ (B.inst a) V w := by
+  induction H generalizing f a with
+  | bvar => nomatch eq
+  | symm _ ih => exact ih eq.symm
+  | trans _ _ ih₁ ih₂ =>
+    obtain eq | eq := eq
+    · exact ih₁ (.inl eq)
+    · exact ih₂ (.inr eq)
+  | sort => nomatch eq
+  | const => nomatch eq
+  | @appDF _ A u B v _ _ _ _ _ _ hf ha hResult _ _ _ _ _ =>
+    obtain ⟨⟨⟩⟩ | ⟨⟨⟩⟩ := eq
+    · exact ⟨A, B, v, hf.hasType.1, ha.hasType.1, .single hResult.hasType.1.defeq⟩
+    · exact ⟨A, B, v, hf.hasType.2, ha.hasType.2, .single hResult.symm.defeq⟩
+  | lamDF => nomatch eq
+  | forallEDF => nomatch eq
+  | defeqDF hType _ _ ih =>
+    obtain ⟨A, B, w, h1, h2, P⟩ := ih eq
+    exact ⟨A, B, w, h1, h2, P.trans (.single hType.defeq)⟩
+  | beta _ _ _ _ _ _ ihApp ihInst =>
+    obtain eq | eq := eq
+    · exact ihApp (.inl eq)
+    · exact ihInst (.inl eq)
+  | eta _ _ ihTerm _ =>
+    obtain eq | eq := eq
+    · nomatch eq
+    · exact ihTerm (.inl eq)
+  | proofIrrel _ _ _ _ ihLeft ihRight =>
+    obtain eq | eq := eq
+    · exact ihLeft (.inl eq)
+    · exact ihRight (.inr eq)
+  | defn _ _ _ _ _ _ _ _ _ ihRhs =>
+    obtain eq | eq := eq
+    · nomatch eq
+    · exact ihRhs (.inl eq)
+  | extra _ _ _ ihLeft ihRight =>
+    obtain eq | eq := eq
+    · exact ihLeft (.inl eq)
+    · exact ihRight (.inr eq)
+
+/-- Lambda inversion, evidence-rich.  Unlike Theory's `VEnv.HasType.lam_inv`
+this returns the abstraction's *own* Pi type `.forallE A B` together with the
+path from it to the declared type `V`, so no consumer has to reconcile the two
+by type uniqueness. -/
+theorem IsDefEqStrong.lam_inv'
+    (H : IsDefEqStrong Γ e₁ e₂ V)
+    (eq : e₁ = .lam A body ∨ e₂ = .lam A body) :
+    ∃ B u v w, IsDefEqStrong Γ A A (.sort u) ∧
+      IsDefEqStrong (A :: Γ) B B (.sort v) ∧
+      IsDefEqStrong (A :: Γ) body body B ∧
+      TypeDefEqPath Γ (.forallE A B) V w := by
+  induction H generalizing A body with
+  | bvar => nomatch eq
+  | symm _ ih => exact ih eq.symm
+  | trans _ _ ih₁ ih₂ =>
+    obtain eq | eq := eq
+    · exact ih₁ (.inl eq)
+    · exact ih₂ (.inr eq)
+  | sort => nomatch eq
+  | const => nomatch eq
+  | appDF => nomatch eq
+  | @lamDF _ A₀ A₀' u B v _ _ hA hB hB' hbody hbody' _ _ _ _ _ =>
+    obtain ⟨⟨⟩⟩ | ⟨⟨⟩⟩ := eq
+    · exact ⟨B, u, v, _, hA.hasType.1, hB, hbody.hasType.1,
+        .single (IsDefEqStrong.forallEDF hA.hasType.1 hB hB).defeq⟩
+    · exact ⟨B, u, v, _, hA.hasType.2, hB', hbody'.hasType.2,
+        .single (IsDefEqStrong.forallEDF hA.symm hB' hB).defeq⟩
+  | forallEDF => nomatch eq
+  | defeqDF hType _ _ ih =>
+    obtain ⟨B, u, v, w, h1, h2, h3, P⟩ := ih eq
+    exact ⟨B, u, v, w, h1, h2, h3, P.trans (.single hType.defeq)⟩
+  | beta _ _ _ _ _ _ _ ihInst =>
+    obtain eq | eq := eq
+    · nomatch eq
+    · exact ihInst (.inl eq)
+  | eta _ _ ihTerm ihLam =>
+    obtain eq | eq := eq
+    · exact ihLam (.inl eq)
+    · exact ihTerm (.inl eq)
+  | proofIrrel _ _ _ _ ihLeft ihRight =>
+    obtain eq | eq := eq
+    · exact ihLeft (.inl eq)
+    · exact ihRight (.inr eq)
+  | defn _ _ _ _ _ _ _ _ _ ihRhs =>
+    obtain eq | eq := eq
+    · nomatch eq
+    · exact ihRhs (.inl eq)
+  | extra _ _ _ ihLeft ihRight =>
+    obtain eq | eq := eq
+    · exact ihLeft (.inl eq)
+    · exact ihRight (.inr eq)
+
+/-- `IsDefEqStrong.forallE_inv'` (:2284) with the declared-type path added, in
+the same structural style: the Pi's own type `.sort (.imax u v)` is returned
+together with the path from it to `V`. -/
+theorem IsDefEqStrong.forallE_inv_path
+    (H : IsDefEqStrong Γ e₁ e₂ V)
+    (eq : e₁ = .forallE A B ∨ e₂ = .forallE A B) :
+    ∃ u v w, IsDefEqStrong Γ A A (.sort u) ∧
+      IsDefEqStrong (A :: Γ) B B (.sort v) ∧
+      TypeDefEqPath Γ (.sort (.imax u v)) V w := by
+  induction H generalizing A B with
+  | bvar => nomatch eq
+  | symm _ ih => exact ih eq.symm
+  | trans _ _ ih₁ ih₂ =>
+    obtain eq | eq := eq
+    · exact ih₁ (.inl eq)
+    · exact ih₂ (.inr eq)
+  | sort => nomatch eq
+  | const => nomatch eq
+  | appDF => nomatch eq
+  | lamDF => nomatch eq
+  | forallEDF hA hBody hBody' _ _ _ =>
+    obtain ⟨⟨⟩⟩ | ⟨⟨⟩⟩ := eq
+    · exact ⟨_, _, _, hA.hasType.1, hBody.hasType.1, .single .sort⟩
+    · exact ⟨_, _, _, hA.hasType.2, hBody'.hasType.2, .single .sort⟩
+  | defeqDF hType _ _ ih =>
+    obtain ⟨u, v, w, h1, h2, P⟩ := ih eq
+    exact ⟨u, v, w, h1, h2, P.trans (.single hType.defeq)⟩
+  | beta _ _ _ _ _ _ _ ihInst =>
+    obtain eq | eq := eq
+    · nomatch eq
+    · exact ihInst (.inl eq)
+  | eta _ _ ihTerm _ =>
+    obtain eq | eq := eq
+    · nomatch eq
+    · exact ihTerm (.inl eq)
+  | proofIrrel _ _ _ _ ihLeft ihRight =>
+    obtain eq | eq := eq
+    · exact ihLeft (.inl eq)
+    · exact ihRight (.inr eq)
+  | defn _ _ _ _ _ _ _ _ _ ihRhs =>
+    obtain eq | eq := eq
+    · nomatch eq
+    · exact ihRhs (.inl eq)
+  | extra _ _ _ ihLeft ihRight =>
+    obtain eq | eq := eq
+    · exact ihLeft (.inl eq)
+    · exact ihRight (.inr eq)
+
 variable (DefEq : List SExpr → SExpr → SExpr → SExpr → Prop) in
 structure WithLift (Γ : List SExpr) (e1 e2 A : SExpr) : Prop where
   defeq' {{Δ ρ e1' e2' A'}} : Ctx.Lift' ρ Δ Γ →

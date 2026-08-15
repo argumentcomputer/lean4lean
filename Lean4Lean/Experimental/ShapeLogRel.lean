@@ -10241,80 +10241,14 @@ def LR0 : LogRel Γ 0 where
 
 /-! #### Concrete definitions at level n+1 -/
 
-/-- A nonempty path of ordinary type equalities.  Adjacent edges may type
-their shared endpoint in different universes; retaining the path avoids the
-unsound heterogeneous transitivity rule while still supporting every
-conversion operation one edge at a time. -/
-inductive TypeDefEqPath (Γ : List SExpr) : SExpr → SExpr → SLevel → Prop where
-  | single : IsDefEq Γ A B (.sort u) → TypeDefEqPath Γ A B u
-  | trans : TypeDefEqPath Γ A B u → TypeDefEqPath Γ B C v →
-      TypeDefEqPath Γ A C u
-
-theorem TypeDefEqPath.leftType
-    (H : TypeDefEqPath Γ A B u) : IsDefEq Γ A A (.sort u) := by
-  induction H with
-  | single h => exact h.hasType.1
-  | trans _ _ ih _ => exact ih
-
-theorem TypeDefEqPath.rightType
-    (H : TypeDefEqPath Γ A B u) : ∃ v, IsDefEq Γ B B (.sort v) := by
-  induction H with
-  | single h => exact ⟨_, h.hasType.2⟩
-  | trans _ _ _ ih => exact ih
-
-theorem TypeDefEqPath.left
-    (H : TypeDefEqPath Γ A B u) : TypeDefEqPath Γ A A u :=
-  .single H.leftType
-
-theorem TypeDefEqPath.right
-    (H : TypeDefEqPath Γ A B u) : ∃ v, TypeDefEqPath Γ B B v := by
-  obtain ⟨v, hB⟩ := H.rightType
-  exact ⟨v, .single hB⟩
-
-theorem TypeDefEqPath.symm
-    (H : TypeDefEqPath Γ A B u) : ∃ v, TypeDefEqPath Γ B A v := by
-  induction H with
-  | single h => exact ⟨_, .single h.symm⟩
-  | trans _ _ ih₁ ih₂ =>
-    obtain ⟨v₂, h₂⟩ := ih₂
-    obtain ⟨_, h₁⟩ := ih₁
-    exact ⟨v₂, .trans h₂ h₁⟩
-
-/-- Transport a term equality through a path of type conversions. -/
-theorem TypeDefEqPath.defeqDF
-    (H : TypeDefEqPath Γ A B u)
-    (h : IsDefEq Γ e₁ e₂ A) : IsDefEq Γ e₁ e₂ B := by
-  induction H with
-  | single hAB => exact hAB.defeqDF h
-  | trans _ _ ih₁ ih₂ => exact ih₂ (ih₁ h)
-
-/-- Replace the newest context entry along a path, one ordinary conversion
-at a time. -/
-theorem TypeDefEqPath.defeqDF_l
-    (H : TypeDefEqPath Γ A B u)
-    (h : IsDefEq (A :: Γ) e₁ e₂ C) : IsDefEq (B :: Γ) e₁ e₂ C := by
-  induction H with
-  | single hAB => exact hAB.defeqDF_l h
-  | trans _ _ ih₁ ih₂ => exact ih₂ (ih₁ h)
-
-/-- Transport every edge of a type-equality path into a converted binder
-context. -/
-theorem TypeDefEqPath.defeqDF_l_path
-    (H : TypeDefEqPath Γ A B u)
-    (P : TypeDefEqPath (A :: Γ) C D v) :
-    TypeDefEqPath (B :: Γ) C D v := by
-  induction P with
-  | single h => exact .single (H.defeqDF_l h)
-  | trans _ _ ih₁ ih₂ => exact .trans ih₁ ih₂
-
-/-- Substitute every ordinary edge of a heterogeneous type path. -/
-theorem TypeDefEqPath.subst
-    (H : TypeDefEqPath Γ A B u)
-    (W : Ctx.Subst (fun Γ e A => Γ ⊢ e : A) Γ₀ σ Γ) :
-    TypeDefEqPath Γ₀ (A.subst σ) (B.subst σ) u := by
-  induction H with
-  | single h => exact .single (h.subst W)
-  | trans _ _ ih₁ ih₂ => exact .trans ih₁ ih₂
+/-! `TypeDefEqPath` and its conversion API (`single`, `trans`, `leftType`,
+`rightType`, `left`, `right`, `symm`, `defeqDF`, `defeqDF_l`,
+`defeqDF_l_path`, `subst`) moved to `Lean4Lean/Experimental/SExpr.lean` on
+2026-08-15, beside `IsDefEq.defeqDF_l` and `IsDefEq.subst`, which are its only
+inputs.  Nothing about it was logical-relation-flavoured, and the relocation
+is what lets `IsDefEqStrong.app_inv'` / `.lam_inv'` / `.forallE_inv_path`
+state their conclusions there.  `TypeDefEqPath.collapse` (below) stays here:
+its extra input `LogRel.RawTypeUniq` is declared here. -/
 
 /-- The four synchronized facts retained after applying a Pi codomain to
 related arguments.  The raw equalities are the evidence needed by dependent
@@ -16080,3 +16014,360 @@ inductive type — which is the honest statement of the residual's scope. -/
 theorem LRS.indTyHead_nonvacuous {Γ : List SExpr} {c : Name} {ls : List SLevel}
     (h : Params.classify c = some (.indTy 0)) : LRS.IndTyHead Γ (.const c ls) :=
   ⟨c, ls, [], h, .rfl⟩
+
+/-! ### The Church–Rosser ladder, banked as a *consumer* of the 16C′ leaf
+
+Source: `plans/probes/probeR13-loop.lean` (green; all 22 `#print axioms`
+`sorryAx`-free).  R13 proved that the ladder rung `LRS.ParRedSDefeq` and the
+L4L-16C′ leaf `LRS.PiPathInv` are **interderivable**
+(`LRS.piPathInv_iff_parRedSDefeq` below).  That definitively closes the ladder
+as a way to *discharge* the leaf — any proof of the rung is a proof of the
+leaf, so it is not a cheaper input.  The same fact makes the ladder a valuable
+downstream **consumer**, and the consumer direction is what is banked here.
+
+**The payoff.**  Everything below fires the moment 16C′ lands, and no
+derivation in this block uses Church–Rosser, standardization or adequacy:
+
+* `LRS.parRedSDefeq_of_piPathInv` — the rung `LRS.ParRedSDefeq` outright, from
+  the leaf and nothing else;
+* `WHRedS.defeq_of_piPathInv` (:11549) — the rung `LRS.SubjectRedS`, already
+  landed and definitionally that statement;
+* `LRS.PiEdgeInv.of_piPathInv` — the single-edge rung, and with it
+  `LRS.PiEdgeInvObs.of_parts` (:15308) and `LRS.PiEdgeObs.of_parts` (:15301)
+  as soon as `LRS.PiHeadNorm` is in hand.
+
+So the leaf pays for the ladder, not the other way round.  It also retires the
+`sorryAx` that Theory's `VEnv.ParRed.defeq` (`Theory/Typing/ChurchRosser.lean`)
+and `VEnv.StRed.triangle` (`Theory/Typing/HeadReduction.lean`) currently carry:
+probeR12 measured their roots as `IsDefEqU.sort_inv` /
+`IsDefEqU.forallE_inv_stratified`, i.e. the 16C′ deliverables themselves.
+Anchor on those *names* — both files move.
+
+Structurally the derivation is Theory's `VEnv.ParRed.defeq` with every
+`IsDefEq.trans_l` / `uniqU` fixup replaced by the declared-type path returned
+by the SExpr inversion suite (`IsDefEqStrong.app_inv'` SExpr:3705,
+`.lam_inv'` :3753, `.forallE_inv_path` :3804).  The leaf is charged **exactly
+once**, in the `beta` case, and its bare output is consumed only by
+`TypeDefEqPath.defeqDF` / `.subst` on unindexed judgments, after both
+inductive hypotheses have already fired at inversion-supplied types. -/
+
+/-- **The pattern-contraction rung — the second, independent uniqueness
+site.**  A registered contraction carries its local equality only at the type
+`A` that the `Pattern.Action` chose; using it at the type `V` at which the
+redex is actually typed is Theory's `IsDefEqU.defeqU_l`, i.e. **type
+uniqueness**.  It is isolated here because it is *not* Π-injectivity:
+`LRS.PatStep.of_typeUniq` proves it from raw type uniqueness and from nothing
+whatever about Pi shapes.
+
+It is nevertheless not an extra residual on top of the leaf.  Every redex a
+`Pattern.Action` can match is a constant-headed spine, and spine type
+uniqueness is already reduced to the leaf here (`LRS.constSpineTypeUniqPath`,
+:11458), so `LRS.PatStep.of_piPathInv` discharges it from `LRS.PiPathInv` too
+— exactly as the `extra` case of `WHRed.defeq_of_piPathInv` (:11507) already
+does for weak-head steps. -/
+def LRS.PatStep : Prop :=
+  ∀ {Γ : List SExpr} {p : Pattern} {r : p.RHS × p.Check} {e V A : SExpr}
+    {m1 : List SLevel} {m2 : p.Path → SExpr},
+    Ctx.WF Γ → Pattern.Action Γ r e m1 m2 A → IsDefEq Γ e e V →
+    IsDefEq Γ e (r.1.applyS m1 m2) V
+
+/-- The pattern rung follows from raw type uniqueness, and from nothing about
+Pi shapes.  This pins its content: it is a retyping step, not an inversion. -/
+theorem LRS.PatStep.of_typeUniq (uniq : LogRel.ContextualRawTypeUniq) :
+    LRS.PatStep := by
+  intro Γ p r e V A m1 m2 hΓ action he
+  obtain ⟨u, h⟩ := uniq hΓ action.sound.hasType.1 he
+  exact h.defeqDF action.sound
+
+/-- …and it also follows from the leaf alone, because the redex of a
+`Pattern.Action` is a constant-headed spine and spine type uniqueness is
+already `LRS.PiPathInv` (:11458).  Hence `LRS.PatStep` is not an additional
+residual: the ladder's consumer direction below costs the leaf and nothing
+more (`LRS.parRedSDefeq_of_piPathInv`). -/
+theorem LRS.PatStep.of_piPathInv [Params.Semantic] (piInv : LRS.PiPathInv) :
+    LRS.PatStep := by
+  intro Γ p r e V A m1 m2 hΓ action he
+  obtain ⟨c, ls', args, heq, _⟩ := action.matched.head_spine
+  subst heq
+  obtain ⟨_, hty⟩ :=
+    LRS.constSpineTypeUniqPath piInv hΓ action.sound.hasType.1 he
+  exact hty.defeqDF action.sound
+
+/-- Congruence of an RHS template under equalities of its captures.  Proved
+structurally from `IsDefEqStrong.app_inv'`: no injectivity, no uniqueness, and
+in particular no `piInv` — the application case transports along the path the
+inverter returns. -/
+theorem applyS_congr [Params.Semantic] {p : Pattern} {Γ : List SExpr}
+    {m1 : List SLevel} {m2 m2' : p.Path → SExpr}
+    (hΓ : Ctx.WF Γ)
+    (hm : ∀ (path : p.Path) (W : SExpr),
+      IsDefEq Γ (m2 path) (m2 path) W → IsDefEq Γ (m2 path) (m2' path) W) :
+    ∀ (r : p.RHS) (V : SExpr), IsDefEq Γ (r.applyS m1 m2) (r.applyS m1 m2) V →
+      IsDefEq Γ (r.applyS m1 m2) (r.applyS m1 m2') V := by
+  intro r
+  induction r with
+  | fixed c hc => exact fun _ hr => hr
+  | var path => exact fun V hr => hm path V hr
+  | app f a ihf iha =>
+    intro V hr
+    simp only [Pattern.RHS.applyS] at hr ⊢
+    obtain ⟨A₀, B₀, w, hfT, haT, P⟩ := (hr.strong hΓ).app_inv' (.inl rfl)
+    exact P.defeqDF (.appDF (ihf _ hfT.defeq) (iha _ haT.defeq))
+
+/-- **Native `ParRed` subject reduction from the leaf.**  Structurally Theory's
+`VEnv.ParRed.defeq` (ChurchRosser, β case), except that every
+`IsDefEq.trans_l` / `uniqU` fixup is replaced by the declared-type path
+returned by the inversion suite.  The only residual inputs are
+`LRS.PiPathInv` — charged exactly once, in the `beta` case — and
+`LRS.PatStep`, itself dischargeable from either (`.of_typeUniq`,
+`.of_piPathInv`).
+
+No Church–Rosser, no standardization, no adequacy: `ShapeLogRel.lean` does not
+import `Theory/Typing/ChurchRosser.lean`, so independence from the Theory CR
+development is module-level rather than merely unreached. -/
+theorem ParRed.defeq_of_piPathInv [Params.Semantic]
+    (piInv : LRS.PiPathInv) (pat : LRS.PatStep) :
+    ∀ {Γ : List SExpr} {e e' : SExpr}, ParRed Γ e e' →
+      ∀ (A : SExpr), Ctx.WF Γ → IsDefEq Γ e e A → IsDefEq Γ e e' A := by
+  intro Γ e e' H
+  induction H with
+  | bvar => exact fun _ _ he => he
+  | sort => exact fun _ _ he => he
+  | const => exact fun _ _ he => he
+  | app _ _ ih1 ih2 =>
+    intro V hΓ he
+    obtain ⟨A₀, B₀, w, hf, ha, P⟩ := (he.strong hΓ).app_inv' (.inl rfl)
+    exact P.defeqDF (.appDF (ih1 _ hΓ hf.defeq) (ih2 _ hΓ ha.defeq))
+  | lam _ _ ih1 ih2 =>
+    intro V hΓ he
+    obtain ⟨B₀, u, v, w, hA, hB, hbody, P⟩ := (he.strong hΓ).lam_inv' (.inl rfl)
+    exact P.defeqDF (.lamDF (ih1 _ hΓ hA.defeq) (ih2 _ ⟨hΓ, u, hA.defeq⟩ hbody.defeq))
+  | forallE _ _ ih1 ih2 =>
+    intro V hΓ he
+    obtain ⟨u, v, w, hA, hB, P⟩ := (he.strong hΓ).forallE_inv_path (.inl rfl)
+    exact P.defeqDF (.forallEDF (ih1 _ hΓ hA.defeq) (ih2 _ ⟨hΓ, u, hA.defeq⟩ hB.defeq))
+  | @beta Adom Γ₂ e₁ e₁' e₂ e₂' _ _ ih1 ih2 =>
+    intro V hΓ he
+    obtain ⟨A₀, B₀, w, hf, ha, P⟩ := (he.strong hΓ).app_inv' (.inl rfl)
+    obtain ⟨B₁, u, v, w', hA, hB₁, hb, Q⟩ := hf.lam_inv' (.inl rfl)
+    -- ↓↓↓ the one and only use of the leaf ↓↓↓
+    obtain ⟨ud, vd, Pdom, Pcod⟩ := piInv hΓ Q
+    obtain ⟨_, Pdom'⟩ := Pdom.symm
+    -- the leaf's *output* is consumed only by `defeqDF` / `subst` on unindexed
+    -- equalities, and only **after** the inductive hypotheses have fired.
+    have hb' := ih1 _ ⟨hΓ, u, hA.defeq⟩ hb.defeq
+    have ha'' := Pdom'.defeqDF (ih2 _ hΓ ha.defeq)
+    have ha' := ha''.hasType.1
+    have main := IsDefEq.trans
+      (.symm (.appDF (.symm (.lamDF hA.defeq hb')) (.symm ha'')))
+      (.beta hb'.hasType.2 ha''.hasType.2)
+    have W : Ctx.SubstEq Γ₂ (.one e₂') (.one e₂) (Adom :: Γ₂) := by
+      refine .cons .nil hA.defeq ?_
+      show IsDefEq Γ₂ e₂' e₂ (SExpr.subst Adom SExpr.Subst.id)
+      rw [SExpr.subst_id]; exact ha''.symm
+    have hconv : IsDefEq Γ₂ (B₁.inst e₂') (B₁.inst e₂) (.sort v) := (hB₁.substCongr W).1
+    have Pcod' : TypeDefEqPath Γ₂ (B₁.inst e₂) (B₀.inst e₂) vd := by
+      simpa only [SExpr.inst] using
+        Pcod.subst (Ctx.Subst.one IsDefEq.weakCore IsDefEq.bvar ha')
+    exact (((TypeDefEqPath.single hconv).trans Pcod').trans P).defeqDF main
+  | extra action _ ih =>
+    intro V hΓ he
+    have h1 := pat hΓ action he
+    exact h1.trans (applyS_congr hΓ (fun path W hW => ih path W hΓ hW) _ _ h1.hasType.2)
+
+/-- The `≫*` closure, i.e. the rung `LRS.ParRedSDefeq` itself.  Nothing is
+re-certified along the sequence: the per-step lemma is indexed by no depth. -/
+theorem ParRedS.defeq_of_piPathInv [Params.Semantic]
+    (piInv : LRS.PiPathInv) (pat : LRS.PatStep) : LRS.ParRedSDefeq := by
+  intro Γ e e' A hΓ H he
+  induction H with
+  | rfl => exact he
+  | tail _ h2 ih =>
+    exact ih.trans (ParRed.defeq_of_piPathInv piInv pat h2 _ hΓ ih.hasType.2)
+
+/-- **The consumer statement, with no side conditions.**  The 16C′ leaf pays
+for the CR-ladder rung `LRS.ParRedSDefeq` outright — `LRS.PatStep` is
+discharged from the same input by `LRS.PatStep.of_piPathInv`.  Composed with
+`LRS.SubjectRedS.of_parRedSDefeq` (:15241) this also delivers
+`LRS.SubjectRedS` (which `WHRedS.defeq_of_piPathInv` already gives directly),
+and with `LRS.PiEdgeInv.of_piPathInv` the single-edge rung. -/
+theorem LRS.parRedSDefeq_of_piPathInv [Params.Semantic] (piInv : LRS.PiPathInv) :
+    LRS.ParRedSDefeq :=
+  ParRedS.defeq_of_piPathInv piInv (LRS.PatStep.of_piPathInv piInv)
+
+/-- **HEADLINE (probeR13).**  The CR-ladder rung `LRS.ParRedSDefeq` and the
+L4L-16C′ leaf `LRS.PiPathInv` are *interderivable* modulo the other two rungs.
+Forward is `ParRedS.defeq_of_piPathInv` (native: no Church–Rosser, no
+standardization, no adequacy); backward is `LRS.PiPathInv.of_crLadder_R11`
+(:15543).
+
+Read this in the consumer direction.  As a *producer* route it is closed: the
+rung is not a cheaper input than the leaf, since any proof of it is a proof of
+the leaf.  As a *consumer* it says the ladder comes free with 16C′.  The `pat`
+premise is not an extra cost either — `LRS.PatStep.of_piPathInv` discharges it
+from the leaf, which is why `LRS.parRedSDefeq_of_piPathInv` above needs no
+side conditions. -/
+theorem LRS.piPathInv_iff_parRedSDefeq [Params.Semantic]
+    (pat : LRS.PatStep) (cr : LRS.CRComplete) (std : LRS.PiStandard) :
+    LRS.PiPathInv ↔ LRS.ParRedSDefeq :=
+  ⟨fun piInv => ParRedS.defeq_of_piPathInv piInv pat,
+   fun srp => LRS.PiPathInv.of_crLadder_R11 srp cr std⟩
+
+/-- The single-edge rung from the path-valued leaf: an edge is a one-edge
+path.  The one-liner the R11 notes (:15361, :15579) refer to, now checked. -/
+theorem LRS.PiEdgeInv.of_piPathInv (piInv : LRS.PiPathInv) : LRS.PiEdgeInv :=
+  fun hΓ h => piInv hΓ (.single h)
+
+/-- **The price of the `PiEdgeInv` framing.**  `IsDefEqStrong.lam_inv'` returns
+a *path* — one edge per `defeqDF` in the abstraction's own derivation, and
+adjacent edges may live at different universes — so collapsing it to the
+single edge `LRS.PiEdgeInv` consumes is exactly `TypeDefEqPath.collapse`
+(:10521), i.e. raw type uniqueness.
+
+That is the trade this direction makes, stated plainly: the `PiEdgeInv`
+framing **trades the 16C′ leaf for the L4L-17 co-deliverable**
+(`LogRel.ContextualRawTypeUniq`, :10514) rather than avoiding it.  With
+`LRS.PiEdgeInv.of_piPathInv` above, the two framings are interderivable modulo
+exactly that uniqueness input. -/
+theorem LRS.PiPathInv.of_piEdgeInv_collapse
+    (uniq : LogRel.ContextualRawTypeUniq) (inv : LRS.PiEdgeInv) :
+    LRS.PiPathInv := fun hΓ H => inv hΓ (H.collapse (uniq hΓ))
+
+/-- Vacuity discipline for `LRS.PatStep`.  Its hypothesis set is inhabited
+wherever `Pattern.Action` is — environment-conditional, like
+`LRS.indTyHead_nonvacuous` — and at the action's own type the conclusion is
+`action.sound` itself, so no derivation of `False` is available that does not
+also refute `Pattern.Action.sound`.  The content is entirely the *retyping*
+from `A` to `V`, which is what `.of_typeUniq` and `.of_piPathInv` supply. -/
+theorem LRS.patStep_nonvacuous (pat : LRS.PatStep) {Γ : List SExpr}
+    {p : Pattern} {r : p.RHS × p.Check} {e A : SExpr} {m1 : List SLevel}
+    {m2 : p.Path → SExpr} (hΓ : Ctx.WF Γ)
+    (action : Pattern.Action Γ r e m1 m2 A) :
+    IsDefEq Γ e (r.1.applyS m1 m2) A :=
+  pat hΓ action action.sound.hasType.1
+
+/-! ### Closure records — where the leaf is charged, and three dead routes
+
+Banked from probeR13 Parts 5–7 so that the dead routes are not re-attempted.
+Each entry is a machine-checked statement of a negative result. -/
+
+/-- **The β *congruence* is Π-injectivity-free.**  With the inversion suite in
+hand, `.app (.lam A e₁) e₂ ≡ .app (.lam A e₁') e₂'` is derivable at the
+declared type `V` with **no** `piInv` call at all: the abstraction's own Pi is
+transported to the application's along `Q` by `defeqDF`, which needs no
+inversion.  So the leaf is not charged by the congruence — do not look for it
+there. -/
+theorem beta_congr_no_piInv {Γ : List SExpr} {A A₀ B₀ B₁ e₁ e₁' e₂ e₂' V : SExpr}
+    {u w₁ w₂ : SLevel}
+    (hA : IsDefEq Γ A A (.sort u))
+    (P : TypeDefEqPath Γ (B₀.inst e₂) V w₁)
+    (Q : TypeDefEqPath Γ (.forallE A B₁) (.forallE A₀ B₀) w₂)
+    (rec₁ : IsDefEq (A :: Γ) e₁ e₁' B₁)
+    (rec₂ : IsDefEq Γ e₂ e₂' A₀) :
+    IsDefEq Γ (.app (.lam A e₁) e₂) (.app (.lam A e₁') e₂') V :=
+  P.defeqDF (.appDF (Q.defeqDF (.lamDF hA rec₁)) rec₂)
+
+/-- **…and the *contraction* is where it is charged.**  `IsDefEq.beta` and
+`IsDefEqStrong.beta` both demand the argument at the **abstraction's own**
+domain `A`; the inversion suite supplies it only at the application's domain
+`A₀`.  Reconciling the two is inverting `Q`, and `Q` is a path between two
+syntactic Pis — i.e. `LRS.PiPathInv` verbatim.  This is the whole of the
+residual, isolated. -/
+def LRS.BetaFire : Prop :=
+  ∀ {Γ : List SExpr} {A A₀ B₀ B₁ e e' : SExpr} {w : SLevel},
+    Ctx.WF Γ → TypeDefEqPath Γ (.forallE A B₁) (.forallE A₀ B₀) w →
+    IsDefEq (A :: Γ) e e B₁ → IsDefEq Γ e' e' A₀ →
+    IsDefEq Γ (.app (.lam A e) e') (e.inst e') (B₀.inst e')
+
+theorem LRS.BetaFire.of_piPathInv (piInv : LRS.PiPathInv) : LRS.BetaFire := by
+  intro Γ A A₀ B₀ B₁ e e' w hΓ Q hb ha
+  obtain ⟨ud, vd, Pdom, Pcod⟩ := piInv hΓ Q
+  obtain ⟨_, Pdom'⟩ := Pdom.symm
+  have ha' := Pdom'.defeqDF ha
+  have Pcod' : TypeDefEqPath Γ (B₁.inst e') (B₀.inst e') vd := by
+    simpa only [SExpr.inst] using
+      Pcod.subst (Ctx.Subst.one IsDefEq.weakCore IsDefEq.bvar ha')
+  exact Pcod'.defeqDF (.beta hb ha')
+
+/-- **The sort restriction does not dodge β.**  A sort-typed β-redex whose
+application domain is *not* the abstraction's own: `A₀` is the redex
+`(fun _ : Sort (l+2) => #0) (Sort (l+1))`, which is `IsDefEq`-equal to
+`Sort (l+1)` but syntactically an `.app`, so no syntactic reconciliation is
+available.  Everything is in the empty context with no environment
+assumptions.
+
+Consequently, restricting a rung to sort-typed subjects removes nothing from
+the β case: sort-typedness constrains the *result* type, never the domain.
+The narrowing is not an escape. -/
+theorem betaSort_domain_unconstrained {l : SLevel} :
+    ∃ A₀ : SExpr, A₀ ≠ .sort l.succ ∧
+      IsDefEq [] (.lam (.sort l.succ) (.bvar 0)) (.lam (.sort l.succ) (.bvar 0))
+        (.forallE A₀ (.sort l.succ)) ∧
+      IsDefEq [] (.sort l) (.sort l) A₀ ∧
+      IsDefEq [] (.app (.lam (.sort l.succ) (.bvar 0)) (.sort l))
+        (.app (.lam (.sort l.succ) (.bvar 0)) (.sort l)) (.sort l.succ) ∧
+      ParRed [] (.app (.lam (.sort l.succ) (.bvar 0)) (.sort l)) (.sort l) := by
+  have hβ : IsDefEq ([] : List SExpr)
+      (.app (.lam (.sort l.succ.succ) (.bvar 0)) (.sort l.succ)) (.sort l.succ)
+      (.sort l.succ.succ) := .beta (.bvar .zero) .sort
+  have hlam : IsDefEq ([] : List SExpr) (.lam (.sort l.succ) (.bvar 0))
+      (.lam (.sort l.succ) (.bvar 0))
+      (.forallE (.sort l.succ) (.sort l.succ)) := .lamDF .sort (.bvar .zero)
+  have hPi := IsDefEq.forallEDF hβ.symm (IsDefEq.sort (l := l.succ))
+  refine ⟨.app (.lam (.sort l.succ.succ) (.bvar 0)) (.sort l.succ), nofun,
+    hPi.defeqDF hlam, hβ.symm.defeqDF .sort,
+    .appDF (hPi.defeqDF hlam) (hβ.symm.defeqDF .sort), .beta .rfl .rfl⟩
+
+/-- Vacuity discipline for `LRS.BetaFire`, at a **non-degenerate** instance:
+the witness of `betaSort_domain_unconstrained`, whose application domain is
+syntactically different from the abstraction's own.  So the Prop is inhabited
+off the diagonal, where all its content is. -/
+theorem LRS.betaFire_nonvacuous (fire : LRS.BetaFire) {l : SLevel} :
+    IsDefEq [] (.app (.lam (.sort l.succ) (.bvar 0)) (.sort l)) (.sort l)
+      (.sort l.succ) := by
+  have hβ : IsDefEq ([] : List SExpr)
+      (.app (.lam (.sort l.succ.succ) (.bvar 0)) (.sort l.succ)) (.sort l.succ)
+      (.sort l.succ.succ) := .beta (.bvar .zero) .sort
+  have hPi := IsDefEq.forallEDF hβ.symm (IsDefEq.sort (l := l.succ))
+  exact fire (Γ := []) (A := .sort l.succ) (B₁ := .sort l.succ)
+    (B₀ := .sort l.succ) (e := .bvar 0) (e' := .sort l)
+    trivial (.single hPi) (.bvar .zero) (hβ.symm.defeqDF .sort)
+
+/-- **The stratification escape, on the consumer side.**  A depth-indexed rung
+would have to be spent once per `≫` link of a `ParRedS` chain, and at link
+`i+1` the walk anchors the call at the *accumulated* `TypeDefEqPath`'s right
+endpoint — a path that carries no stratification data and whose length is
+bounded by nothing in scope.  This is the datum the walk must then manufacture
+at every link. -/
+def LRS.ChainAnchorAt (d : Nat) : Prop :=
+  ∀ {Γ : List SExpr} {A B : SExpr} {u : SLevel},
+    Ctx.WF Γ → TypeDefEqPath Γ A B u → ∃ V c, HasTypeStratifiedS Γ B V c d
+
+/-- **The obstruction.**  The anchor demand *is* a uniform stratification
+bound: every well-typed type in every well-formed context stratified at one
+fixed `d`.  That is exactly probeS's `LRS.PathRestratifyAt.uniformDepthBound`
+— the same fatal proposition, whose truth makes the bootstrap's strong
+induction vacuous. -/
+theorem LRS.ChainAnchorAt.uniformDepthBound {d : Nat} (anc : LRS.ChainAnchorAt d)
+    {Γ : List SExpr} {A : SExpr} {u : SLevel} (hΓ : Ctx.WF Γ)
+    (h : IsDefEq Γ A A (.sort u)) : ∃ V c, HasTypeStratifiedS Γ A V c d :=
+  anc hΓ (.single h)
+
+/-- …and conversely, so there is nothing weaker to aim at: the anchor demand
+and the uniform bound are the same proposition.  Net: the stratification
+escape does not close. -/
+theorem LRS.ChainAnchorAt.of_uniformDepthBound {d : Nat}
+    (bound : ∀ {Γ : List SExpr} {A : SExpr} {u : SLevel}, Ctx.WF Γ →
+      IsDefEq Γ A A (.sort u) → ∃ V c, HasTypeStratifiedS Γ A V c d) :
+    LRS.ChainAnchorAt d := by
+  intro Γ A B u hΓ P
+  obtain ⟨_, h⟩ := P.rightType
+  exact bound hΓ h
+
+/-- Vacuity discipline for `LRS.ChainAnchorAt`: its hypothesis is inhabited in
+the empty context with no environment assumptions, so the Prop is not empty —
+which is what makes the equivalence above a real obstruction rather than a
+vacuous one. -/
+theorem LRS.chainAnchorAt_nonvacuous (anc : LRS.ChainAnchorAt 0) {l : SLevel} :
+    ∃ V c, HasTypeStratifiedS [] (.sort l) V c 0 :=
+  anc trivial (.single (IsDefEq.sort (l := l)))
