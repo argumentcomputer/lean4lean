@@ -887,11 +887,34 @@ so they go clean with it.
   consumer-shaped design probe (`probeD-deltarank2.lean`:
   `DeltaRankFields` + D0/D1 inhabitation with literal ranks;
   `ConstDefnDeepInstStep` produced outright; wiring plan = a new
-  `Params.DeltaRank` class). Open probe: the typed constructor view
-  (retain `IsDefEq` in `LRS.CtorView`; the `whr`/`unwhr` iff cases are
-  the test) — its outcome decides whether the leaf's residual becomes
-  exactly `PiPathInvReg` or the map closes at
-  rootRed = general subject reduction.
+  `Params.DeltaRank` class). **The typed-constructor-view probe then
+  returned verdict (ii): the map is COMPLETE**
+  (`plans/l4l-16-typedview-design.md` + `probeV-typedview.lean`, green
+  first compile, no sorryAx). Retention dissolves the root callbacks
+  as a theorem (`CtorChainT.foldRaw_of_anchorDiscipline` — `rootRed`
+  becomes projection; the residual prices at `CtorSpineTypeUniqPath` =
+  `PiPathInvReg`), but PRODUCTION of the typed view is impossible at
+  the closure laws, each failure machine-checked independently:
+  forward `whr` transport is equivalent to edge-splitting subject
+  reduction whose β instance is verbatim the leaf's `piInv` charge
+  site; backward `unwhr` transport is refuted outright
+  (`ctorViewT_unwhrClosure_false`, K-redex + `PiNotFunTyped`); and a
+  conv-closed typed view collapses all registered inductive head
+  types into one path class. The anchored variant survives every law
+  and dissolves nothing. The crown sub-question is independently
+  closed: single-EDGE inversion at a registered endpoint inherits U8
+  one level down (`regEdge_trans_middle_escapes` — a `trans` middle
+  between two registered Pis is provably unregistered and non-Pi).
+  **Consequently, with probeT (stratification), probeU (registration:
+  interior only), and probeV (retention) all machine-refuted, no
+  structural axis to the leaf remains.** The milestone choice is
+  binary: (A) re-cut 16C′ to close conditionally, parameterized on the
+  named Prop `LRS.PiPathInv` — the option `l4l-18a-prime-scope.md:448`
+  already recommends, with `CtorChainT` recorded as the consumption
+  interface the moment the Prop lands — or (B) fund the semantic
+  normalization content (a new logical-relation development for
+  subject reduction at classified spines) as its own research
+  milestone. There is no option (C). Decision pending.
 - *L4L-16D — live-environment instance.* The only route segment never
   executed end to end — therefore staged, thin vertical slice first:
   **D0 complete (2026-08-14, active working tree):** the generated Nat

@@ -2314,6 +2314,62 @@ theorem d2SortInvS (univs : Nat) (h : D2BlockStep univs)
   letI : Params.Semantic := d2Semantic univs h
   exact VEnv.IsDefEqU.sort_invS hGamma hde
 
+/-! ## The complete rule registry, disambiguated by right towers
+
+Every site-level case analysis below must recover *which* registered rule a
+matched descriptor names.  D1 did this with per-pair `rhs`-inequality
+probes; the D2 inventory has ten registered rules, so the pairwise style
+would need dozens of probes.  Instead the registry is pinned once: the ten
+rules' right towers are pairwise distinct, so a registered defeq is
+recovered from its `rhs` alone. -/
+
+/-- The complete defeq inventory of `d2Env`, in registration order: the
+block's five generated rules, the three definition rules, and the two
+inherited `Nat` rules. -/
+def d2AllRules : List VDefEq :=
+  TreeGen.generatedRules ++
+    [d1MutBVal.toDefEq, d1MutAVal.toDefEq, d0DefVal.toDefEq] ++
+    NatGeneration.generatedRules
+
+theorem d2Env_defeqs_mem {df : VDefEq} :
+    d2Env.defeqs df ↔ df ∈ d2AllRules := by
+  rw [d2Env_defeqs_iff, d1Env_defeqs_iff, d0Env_defeqs_iff,
+    natFinalEnv_defeqs_iff]
+  simp only [d2AllRules, List.mem_append, List.mem_cons, List.not_mem_nil,
+    or_false, or_assoc]
+
+/-- The ten registered right towers are pairwise distinct. -/
+theorem d2AllRules_rhs_nodup : (d2AllRules.map (·.rhs)).Nodup := by
+  native_decide
+
+private theorem map_nodup_inj {α β : Type _} {f : α → β} :
+    ∀ {l : List α}, (l.map f).Nodup → ∀ {a b : α}, a ∈ l → b ∈ l →
+      f a = f b → a = b
+  | [], _, _, _, ha, _, _ => (List.not_mem_nil ha).elim
+  | x :: l, hnodup, a, b, ha, hb, hf => by
+    rw [List.map_cons, List.nodup_cons] at hnodup
+    cases List.mem_cons.mp ha with
+    | inl haeq =>
+      cases List.mem_cons.mp hb with
+      | inl hbeq => rw [haeq, hbeq]
+      | inr hbmem =>
+        have hmem : f b ∈ l.map f := List.mem_map_of_mem hbmem
+        rw [← hf, haeq] at hmem
+        exact absurd hmem hnodup.1
+    | inr hamem =>
+      cases List.mem_cons.mp hb with
+      | inl hbeq =>
+        have hmem : f a ∈ l.map f := List.mem_map_of_mem hamem
+        rw [hf, hbeq] at hmem
+        exact absurd hmem hnodup.1
+      | inr hbmem => exact map_nodup_inj hnodup.2 hamem hbmem hf
+
+/-- A registered defeq of `d2Env` is recovered from its right tower. -/
+theorem d2Registered_eq_of_rhs {df target : VDefEq}
+    (hreg : d2Env.defeqs df) (htarget : target ∈ d2AllRules)
+    (hrhs : df.rhs = target.rhs) : df = target :=
+  map_nodup_inj d2AllRules_rhs_nodup (d2Env_defeqs_mem.mp hreg) htarget hrhs
+
 /-! ## Endpoints and pins -/
 
 /-- The block-extended environment is well formed, ordered, and registers

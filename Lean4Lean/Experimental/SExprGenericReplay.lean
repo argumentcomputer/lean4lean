@@ -330,6 +330,65 @@ noncomputable def iotaSiteOf
   checked := hchecked
 
 
+/-! ## §5 Level extraction and the reified-spine bridge (R3)
+
+Two further generic pieces consumed by block instances whose constructors
+carry universe parameters (the first being D2's `Tree`/`TreeList`).
+
+* `sortInj` — the quotiented-level form of sort injectivity: two
+  definitionally equal sorts have *equal* `SLevel`s.  It rides on
+  `VEnv.IsDefEqU.sort_inv`, one of the sorried 16C′-cluster leaves in
+  `Theory/Typing/Injectivity.lean` that `typeUniq` (via
+  `VEnv.IsDefEq.uniq`) already consumes, so it adds no admission beyond the
+  engine's existing closure.
+* `spineOfVSpineReify` — the working-context instance of
+  `VEnv.SpineWF.mkS`: a Theory-side spine at the reified context transfers
+  to a quotiented-syntax spine at the working context itself.  A rule's
+  glue builds the Theory-side spine once (the form `ruleCollapse` consumes)
+  and obtains its `iotaSiteOf` capture spine from this bridge instead of
+  rebuilding it by hand. -/
+
+/-- `SLevel.succ` is injective: the quotient is by pointwise evaluation and
+successor is pointwise `+1`. -/
+theorem _root_.Lean4Lean.SLevel.succ_inj {u v : SLevel}
+    (h : SLevel.succ u = SLevel.succ v) : u = v := by
+  apply Subtype.ext
+  funext ns
+  have h' := congrArg (·.1 ns) h
+  change u.1 ns + 1 = v.1 ns + 1 at h'
+  omega
+
+include R in
+/-- Sort injectivity at the quotiented level: definitionally equal sorts
+have equal `SLevel`s.  Inherits the 16C′ `sort_inv` leaf already inside the
+engine's closure. -/
+theorem sortInj {Γ : List SExpr} {u v : SLevel}
+    (hΓ : CtxValid Γ) (h : TypesDefEq Γ (.sort u) (.sort v)) : u = v := by
+  obtain ⟨w, h⟩ := h
+  have hV := h.reify hΓ
+  have hU : Params.env.IsDefEqU Params.univs (Γ.map SExpr.reify)
+      (.sort u.reify) (.sort v.reify) := ⟨_, hV⟩
+  have hequiv := hU.sort_inv R.wf hΓ
+  calc u = SLevel.mk u.reify := (SLevel.mk_reify u).symm
+    _ = SLevel.mk v.reify :=
+        SLevel.mk_eq (SLevel.reify_wf u) (SLevel.reify_wf v) hequiv
+    _ = v := SLevel.mk_reify v
+
+/-- Transfer a Theory-side spine over the reified working context back into
+the quotiented syntax at the working context itself. -/
+theorem spineOfVSpineReify (hstruct : Params.StructureEtaSound)
+    {Γ : List SExpr} {T Res : VExpr} {args : List SExpr}
+    (hΓ : CtxValid Γ)
+    (H : Params.env.SpineWF Params.univs (Γ.map SExpr.reify) T
+      (args.map SExpr.reify) Res) :
+    SpineWF Γ (SExpr.mk T) args (SExpr.mk Res) := by
+  have hlevels : OnCtx (Γ.map SExpr.reify)
+      (fun _ A => A.LevelWF Params.univs) :=
+    (VEnv.CtxStrong.strong Params.henv hΓ).levelWF
+  have hS := VEnv.SpineWF.mkS hstruct H hlevels
+  rw [ctx_mk_reify, map_mk_map_reify] at hS
+  exact hS
+
 /-! ## Axiom closures
 
 `ruleCollapse` — the entire reify/`instL_lamN`/`lamN_wf`/`retarget`/
@@ -357,6 +416,14 @@ here consumes `VInductDecl.BlockGenerationChecked.pat_wf`, whose own
 /-- info: 'Lean4Lean.SExpr.iotaSiteOf' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms iotaSiteOf
+
+/-- info: 'Lean4Lean.SExpr.sortInj' depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms sortInj
+
+/-- info: 'Lean4Lean.SExpr.spineOfVSpineReify' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms spineOfVSpineReify
 
 end SExpr
 end Lean4Lean
