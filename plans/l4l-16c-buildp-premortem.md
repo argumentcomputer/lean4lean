@@ -3613,3 +3613,466 @@ changed this session for the first time in four sessions, so anything downstream
 of it — not only the Adequacy module — must be rebuilt.
 
 — session-C subagent 10
+
+### probeW lands: three §4.4 facts cost no rung, the fourth costs rung 0, and the `FixedHeadConvertStep` docstrings were wrong (2026-08-15, session-C subagent 11)
+
+`ShapeLogRel.lean`: **zero errors, zero sorries**, warning set **identical** to
+baseline (23 → 23, `diff` empty).  `ShapeLogRelAdequacy.lean`: **zero errors**,
+the same sole `sorry` at `LR.iotaWitnessStep` (ADQ:8631, token ADQ:8661 — it
+moved from 8348/8378 only because ~283 lines landed above it), warning set
+**identical** to baseline (100 → 100, `diff` empty; the eight new
+`unusedSectionVars` the additions would have raised are suppressed with
+`omit [Params.Semantic] in`, the linter's own prescribed fix, applied to the
+eight declarations that genuinely do not use the instance).  `SExpr.lean`
+untouched, and **no change to it is needed** — every lemma the port wanted was
+already available there or in `ShapeLogRel.lean`.
+
+**No new `sorryAx`.**  All 48 landed results check with
+`[propext, Classical.choice, Quot.sound]`, several with only
+`[propext, Quot.sound]`.  Negative control run in the same file:
+`LR.iotaWitnessStep`, `LR.adequacy` and `LR.adequacyAt` all report
+`[propext, sorryAx, Classical.choice, Quot.sound]`, so the check discriminates
+and nothing landed here consumes unconditional adequacy.
+
+#### LEAD WITH THIS: the suspected 16C′ ⇄ 18A′ cycle does not exist
+
+`LRS.PiPathInv` — the single residual of the chain wall — now has a producer
+that takes **no adequacy input whatsoever**:
+
+```
+LRS.PiPathInv.of_crLadder_noAdequacy (SLR:15381)
+  (srp : LRS.ParRedSDefeq) (cr : LRS.CRComplete)
+  (std : LRS.PiStandard)   (inv : LRS.PiEdgeInv) : LRS.PiPathInv
+```
+
+Every hypothesis is an L4L-18A′ transport of a Church–Rosser /
+standardization / subject-reduction fact.  The two semantic side conditions
+probeCR had left open — `LRS.PiNotFunTyped` and `LRS.PiNotProof` — are
+discharged here **from soundness alone**, with no rung.  So 18A′ can be
+scheduled independently of the ADQ fixpoint, and item 1
+(`LRS.CtorSpineTypeUniqPath`, which goes through `.of_piPathInv`) inherits the
+same clean dependency.
+
+#### Why the four §4.4 facts split the way they do
+
+*Disjointness* is a statement about **head shapes**, and `LE_Interp` already
+records one: `WShape.sort r` and `WShape.forallE b f` are incomparable, and
+`LE_Interp.sound` transports a shape across a strong equality, so a sort
+equated to a Pi would carry both shapes at once.  No fixpoint rung is involved
+— hence `LRS.SortForallEDisj.of_soundness` (SLR:15113),
+`LRS.PiNotFunTyped.of_soundness` (SLR:15124),
+`LRS.PiNotProof.of_soundness` (SLR:15135) take no adequacy hypothesis.
+
+*Injectivity* is a statement about the **level**, and `WShape.sort` records
+only `decide (u ≠ .zero)`.  The sharp boundary is machine-checked as
+`LRS.sortInv_bit_only` (SLR:15469): soundness recovers that bit and **nothing
+more**.  This is also the strongest available non-vacuity evidence for the
+whole pass — if `[Params] [Params.Semantic]` were inconsistent, or if the
+soundness machinery proved too much, `LRS.SortInv` would fall out of the same
+two lines.  It does not.
+
+`LRS.SortInv` therefore needs a rung, and the rung is **0**:
+`HasTypeStratifiedS.sort'` is a *nullary* constructor whose depth index is a
+free variable (`HasTypeStratifiedS.sort_zero`, SLR:15160), so the observation's
+subject never consumes depth.  Neither probeS wall is reachable: bounded output
+does not apply (the conclusion is `False` or a bare level equation, so nothing
+is re-decorated), and the leaf supplies no anchor (the only certificate demanded
+is for a syntactic sort).
+
+#### The two wrong docstrings, corrected
+
+**`LR.FixedHeadConvertRightValid` (now ADQ:2515).**  The old text said the
+residual is `PiHeadNorm` = `TypeWHNFEx` + `PiHeadStable`.  That is wrong in
+**both** directions, and `LRS.TypeWHNFEx` never arises at all — the Prop
+carries `TyDefEq A A a` as a *hypothesis*, so the left endpoint's weak-head
+normal form is **given**, not manufactured.  What the observations really are:
+
+* `a = .sort r`: *exactly* a transport, namely `LRS.SortHeadNorm` (SLR:15405,
+  the SExpr transport of `VEnv.IsDefEq.reduce_sort`, HeadReduction:493, which
+  Theory proves).  Machine-checked **both ways**:
+  `LR.fixedHeadConvertRightValid_sort_of_transport` (ADQ:2555) and
+  `LRS.SortHeadNorm.of_fixedHeadConvertRightValid` (ADQ:2570).  Nothing weaker
+  suffices, nothing stronger is demanded.
+* `a = .forallE b f`: `LR.tyDefEq_forallE_unfold` (SLR:15425) is `.rfl`, and
+  the first two conjuncts of the unfolded `LRS.ValTyPi2` *are* the two
+  weak-head reductions — that half is `LRS.PiHeadNorm`, CR-covered.  The
+  remaining four (`TypeDefEqPath` ×2, `TyDefEq B₁ B₂ b`, `LRS.PiDefEq`) are
+  semantic **component** data the CR ladder does not produce, isolated as
+  `LR.PiComponentTransport` (SLR:15436); see
+  `LR.fixedHeadConvertRightValid_forallE_of_parts` (ADQ:2582).
+
+**`LR.FixedHeadConvertStep` (now ADQ:2470).**  Its conclusion is
+`TyDefEq A B a`, not `TyDefEq B B a`, so the sort case additionally demands
+that `A` and `B` reach the **same** sort.  Discharged from three inputs, none
+of them `TypeWHNFEx`: `LRS.SortHeadNorm`, `LRS.SubjectRedS` (a CR-ladder item)
+and `LRS.SortInv` (the rung-0 item) — `LR.fixedHeadConvertStep_sort_of_parts`
+(ADQ:2602).
+
+**`LR.FixedHeadConvertStep.of_rightValid` (now ADQ:2536).**  The old "one line
+away" framing understates the price.  The *line* is one line; the *input* is
+the full uncollapsed `JointStratifiedInversion`: unbounded-depth `sortInv`, and
+an `IsDefEq`-valued — i.e. already collapsed — `forallEInv` with endpoint
+stratification bookkeeping at `n - 1`, strictly stronger than the path-valued
+`LRS.PiPathInv` the rest of the development charges.  Corrected in place.
+
+#### G4: the rung-0 consumption is real, and is mitigated, not papered over
+
+`LR.FixedHeadConvertStep` is depth-free, so it has to hold at rung `0` — and
+there its sort observation would consume a `LRS.SortInv` produced *at rung 0*
+by `LRS.SortInv.of_adequacyAtDepth_zero`.  That is same-rung consumption at
+exactly that rung.  The probe's `of_parts` route is sufficient but not
+necessary, so the mitigation taken is the one `LR.SelfAdequateDefeqStepAt`
+(ADQ:6974, with `.of_lowerAdequacy` at ADQ:7006) already uses:
+
+```
+LR.FixedHeadConvertStepAt Γ₀ outerDepth (ADQ:2635)
+  -- adds: depth < outerDepth → HasTypeStratifiedS Γ₀ A (.sort u) core depth →
+```
+
+* `LR.FixedHeadConvertStep.at` (ADQ:2647) — the indexed form is a **weakening**
+  of the depth-free one, so demanding it never demands more.
+* `LR.FixedHeadConvertStepAt.zero` (ADQ:2655) — **the mitigation.**  At rung 0
+  the indexed step is unconditional, so the rung that *produces* `LRS.SortInv`
+  consumes nothing from itself.  The same-rung consumption exists only for the
+  depth-free Prop.
+* `LR.fixedHeadConvertStepAt_sort_of_lowerAdequacy` (ADQ:2664) — at every
+  positive rung the sort observation takes its `LRS.SortInv` from the strictly
+  lower family.  The index has exactly one job and the arithmetic is explicit:
+  `depth < outerDepth` forces `0 < outerDepth`, which is what puts rung `0`
+  inside `lower`.
+
+**Landed BESIDE the depth-free Prop, not replacing it, and here is the
+migration.**  `convert` is spent inside
+`LR.FixedHeadShapeChain.pathSemantics` (SLR:14506) while zipping a
+`SExpr.PathSpineWF`, whose `conv`/`ret` edges carry a bare `IsDefEq` and no
+shape, witness or endpoint validity — so there is no certificate at the
+consumption site to index on.  Supplying one there is the G5 gap, a different
+obligation; migrating `LR.CoherentFixedHeadStep.of_convertStep` (ADQ:6140) and
+`LR.FixedHeadTelescope(LE).toApplicationWith` (ADQ:2756, 2801) to the indexed
+form is blocked behind it and is not a one-step change.  Nothing was weakened
+to hide the consumption.
+
+#### Vacuity discipline
+
+Standing policy after the two false Props earlier today.  Every new `Prop` this
+session is checked:
+
+* The three proved disjointness facts are *refutations*, so the risk is that
+  the judgment they refute is empty.  It is not: `LRS.nonvacuous_sort`
+  (SLR:15457) and `LRS.nonvacuous_pi` (SLR:15483) inhabit `IsDefEq` at both
+  shapes involved.
+* `LRS.sortInv_bit_only` (SLR:15469) is the **negative control** described
+  above — the sharp boundary showing the machinery does not prove too much.
+* `LRS.SortHeadNorm` — inhabited on the diagonal
+  (`LRS.sortHeadNorm_diagonal`, SLR:15488); it is the transport of a theorem
+  Theory proves.  No derivation of `False` found.
+* `LR.PiComponentTransport` — inhabited on the diagonal
+  (`LR.piComponentTransport_diagonal_witness`, SLR:15491).  No `False` found.
+* `LR.FixedHeadConvertStepAt` — vacuous at rung 0 by construction, so the check
+  is done at a *positive* rung: `LR.fixedHeadConvertStepAt_nonvacuous`
+  (ADQ:2697) exhibits a syntactic sort meeting all four hypotheses at
+  `outerDepth = 1` **and** the conclusion simultaneously.  Not empty-hypothesis
+  vacuous, not refutable at the one instance computable outright, and implied
+  by the depth-free Prop.  No `False` found.
+* `LRS.SortForallEDisjAt` / `LRS.SortInvAt` are faithful at `d = 0`
+  (`LRS.SortForallEDisj.of_at_zero` SLR:15179, `LRS.SortInv.of_at_zero`
+  SLR:15184), because the certificate they demand holds unconditionally.
+  `LRS.PiNotFunTyped` and `LRS.PiNotProof` are deliberately **not** indexed:
+  their subject is an arbitrary Pi, so recovering a bare form from a depth-`d`
+  form would need `LRS.PathRestratifyAt`-strength uniform depth bound (probeS
+  Part 7), which collapses the depth hierarchy.  Preserved from the probe.
+
+#### Placement rule used
+
+Dependencies decided the file, with one deliberate exception.  Everything whose
+*statement* mentions only `LE_Interp` / `LR` / `LogRel` / `SExpr` went to
+`ShapeLogRel.lean` (the shape layer, the three disjointness facts, the whole CR
+ladder, `LRS.SortHeadNorm`, the `tyDefEq_*` unfoldings,
+`LR.PiComponentTransport`, the vacuity witnesses).  Everything whose statement
+mentions an ADQ Prop (`LR.ContextualAdequacyAtDepth`,
+`LR.FixedHeadConvertRightValid`, `LR.FixedHeadConvertStep`) went to
+`ShapeLogRelAdequacy.lean`.  **The exception:** the four per-observation
+`fixedHeadConvert*` theorems have SLR-only dependencies but were placed in ADQ
+anyway, immediately beside the docstrings they correct — a corrected docstring
+whose evidence sits 6 000 lines away in another file is a docstring that will
+go wrong again.
+
+#### Remaining tower (updated — items 1, 5 and 7 restated)
+
+1. `LRS.CtorSpineTypeUniqPath` — unchanged as an obligation, but its route
+   through `LRS.PiPathInv` is now **adequacy-free**: `.of_piPathInv` composed
+   with `LRS.PiPathInv.of_crLadder_noAdequacy` reduces it to L4L-18A′ alone.
+2. `LR.CoherentIotaLeafStep Γ₀` — unchanged.
+3. δ-definition residual (`LR.ConstDefnDeepStepR` / `LR.ConstDefnDeepInstStep`)
+   — unchanged; the δ-rank component (probeK).  *Independently attackable.*
+4. `LR.CoherentFixedHeadStep Γ₀` — **DONE**, still conditional on
+   `LR.FixedHeadConvertStep Γ₀` alone; its proof did not change a character.
+5. `LR.FixedHeadConvertStep Γ₀` — **re-diagnosed.**  It is *not* "residual
+   `PiHeadNorm`".  At the sort observation it is
+   `LRS.SortHeadNorm` + `LRS.SubjectRedS` + `LRS.SortInv`, all three of which
+   are now producible (the first two from 18A′, the third at rung 0).  At the
+   Pi observation it is `LRS.PiHeadNorm` (18A′-covered) **plus**
+   `LR.PiComponentTransport`, which the CR ladder does **not** cover — that is
+   the honest residual.  Shapes other than `sort` and `forallE` are outside
+   this analysis.  Carries the G4 tripwire; indexed variant landed beside it.
+6. `LR.FixedHeadTerminalDominance` — unchanged.  *Independently attackable*:
+   adequacy-free and `PiPathInv`-free.
+7. `∀ depth, LR.SelfAdequateDefeqStepAt Γ₀ depth` — unchanged as an obligation,
+   but its "blocked on `PiPathInv`" premise is now milder: `PiPathInv` no
+   longer waits on the ADQ fixpoint, only on 18A′.
+8. Assembly: `LR.CoherentRetainedNatStep.of_steps` needs only
+   `CoherentSelfStep.of_leafStepsDeep` plus item 4.
+
+#### The exact remaining inputs to the 16C′ leaf
+
+* **From L4L-18A′ (Theory transports, no adequacy):** `LRS.ParRedSDefeq`,
+  `LRS.CRComplete`, `LRS.PiStandard`, `LRS.PiEdgeInv`.  These four give
+  `LRS.PiPathInv`, hence `LRS.PiHeadNorm` and `LRS.SubjectRedS` as well.
+  `LRS.SortHeadNorm` is a fifth, of the same kind
+  (`VEnv.IsDefEq.reduce_sort`, HeadReduction:493).
+* **From the ADQ fixpoint, at rung 0 only:** `LRS.SortInv`, via
+  `LR.ContextualAdequacyAtDepth 0`.
+* **Not covered by either:** `LR.PiComponentTransport Γ₀` — the component half
+  of the Pi observation of `LR.FixedHeadConvert{Step,RightValid}`.  This is the
+  one genuinely new named residual this session produced.
+
+**Build note for the fixture slice:** only `ShapeLogRel.lean` and
+`ShapeLogRelAdequacy.lean` changed, and only
+`Lean4Lean.Experimental.ShapeLogRel` then
+`Lean4Lean.Experimental.ShapeLogRelAdequacy` were built (both exit 0).  The
+`ShapeLogRel.lean` change is **purely additive** — one appended block, every
+pre-existing byte unchanged.  The `ShapeLogRelAdequacy.lean` change is additive
+apart from three docstrings rewritten in place (no statement, proof or name
+touched).  The D0/D1/D2 fixture oleans (`SExprParamsD0/D1/D2`) remain stale by
+design and still need the central rebuild; no fixture source edit is expected
+from this session.  `ShapeLogRel.lean` changed again, so everything downstream
+of it must be rebuilt.
+
+— session-C subagent 11
+
+### R11 ports, `PiComponentTransport` dissolves into a shape-level induction, and the "last input" docstring is retracted (2026-08-15, session-C subagent 12)
+
+Three landings, one retraction, one probe-only finding.  The headline is the
+second item: the residual the previous session recorded as *"the one genuinely
+new named residual"* is not a residual at all.
+
+#### 1. Rung R11 ported (`ShapeLogRel.lean`)
+
+`plans/probes/probeR11-piedgeinv.lean` ported verbatim, plus its supporting
+lemmas: `LRS.PiTypeInv` (:15267, the one new `Prop`) and
+`LRS.PiTypeInv.of_strong` (:15466, proved outright from `IsDefEq.strong` +
+`IsDefEqStrong.forallE_inv'` — no CR, no adequacy), `LRS.parRedS_forallE_path`
+(:15493), `LRS.normalEqPiInv` (:15529), `LRS.PiEdgeInv.of_crLadder` (:15572),
+`LRS.PiEdgeInv.of_crLadder_noAdequacy` (:15594), the composites
+`LRS.PiPathInv.of_crLadder_R11` (:15609) and
+`LRS.crComplete_is_the_last_input` (:15660), and non-vacuity witnesses
+`LRS.piTypeInv_nonvacuous` / `LRS.piEdgeInv_nonvacuous` (:16018/:16027).
+
+Two facts worth keeping, both about R11's price:
+
+* **R11 sits strictly BELOW the `PiHeadNorm` rung, not beside it.**  Not one
+  step performs a weak-head reduction: no `LRS.PiStandard`, no
+  `LRS.PiHeadNorm`, no `LRS.ReduceForallE`, no `LRS.TypeWHNFEx`.  The `≫*`
+  chains from `LRS.CRComplete` are consumed *as chains*.
+* **R11 costs `LRS.PiNotProof` but not `LRS.PiNotFunTyped`** — one of the two
+  sort facts, not both.  Knowing *both* `NormalEq` endpoints are Pis makes
+  `etaL`/`etaR` structural (a `.lam` is not a `.forallE`), so they die by
+  `cases`.  `LRS.NormalEqPiInvL`, which knows only the right endpoint's shape,
+  must refute `etaL` semantically and therefore does need the second fact.
+  Six of eight `NormalEq` constructors are structural in `normalEqPiInv`.
+
+Why the conclusion stays path-valued, recorded in the `parRedS_forallE_path`
+docstring: `ParRed.forallE_inv` cannot be iterated along a chain because the
+codomain components live in the *shifting* contexts `A₀::Γ`, `A₁::Γ`, … and
+SExpr's `ParRed` has no context-conversion lemma (it is ported only at `rfl`
+and `weak'`).  The fix is to convert each step to a typed equality immediately
+via `LRS.ParRedSDefeq` and walk the codomain one edge at a time with
+`TypeDefEqPath.defeqDF_l`.  Collapsing the accumulated path would charge
+`TypeDefEqPath.collapse`, i.e. raw type uniqueness.
+
+#### 2. RETRACTION — `LRS.CRComplete` is **not** the last input; the CR ladder is circular
+
+Received mid-session from the coordinator (probe
+`plans/probes/probeR12-parredS-clean.lean`, green, no `sorryAx`), and it
+invalidates the gloss the previous session landed on
+`LRS.crComplete_is_the_last_input`.  `VEnv.ParRedS.defeq` / `.standard` do NOT
+depend on `weakN_iff`; their `sorry` roots are `IsDefEqU.sort_inv` and
+`IsDefEqU.forallE_inv_stratified` — the 16C′ deliverables themselves:
+
+    LRS.PiPathInv = SExpr.forallE_inv ⇒ forallE_inv_stratified
+      ⇒ IsDefEqU.forallE_inv ⇒ ParRed.defeq ⇒ ParRedS.defeq
+      ⇒ LRS.ParRedSDefeq ⇒ (R11) LRS.PiPathInv
+
+The β case is where the dependency is essential, for a reason worth stating
+rather than citing: firing β requires reconciling an application's domain with
+its abstraction's own domain, which *is* Pi injectivity.  The two essential
+uses are `ParRed.defeq` (ChurchRosser, β case) and `StRed.triangle`
+(HeadReduction, β case) — anchor on the **names**, both files are moving.
+
+Docstrings corrected in place (no statement, proof or name touched):
+
+* `LRS.crComplete_is_the_last_input` (:15660) — full circularity note; the
+  theorem is retained verbatim because it is a *true implication*, and keeping
+  the mis-named target visible is how the ledger records that the arrow does
+  not point where it was thought to.
+* `LRS.PiPathInv.of_crLadder_noAdequacy` (:15403) — the claim "the
+  suspected 16C′ ⇄ 18A′ cycle does not exist" is narrowed to what is actually
+  proved: no cycle with the **ADQ fixpoint**.
+* the R11 subsection header, `LRS.PiEdgeInv.of_crLadder`,
+  `LRS.PiPathInv.of_crLadder_R11`, `LRS.CtorSpineTypeUniqPath.of_crLadder`,
+  and ADQ's `LR.MajorChainAnchorStep.of_crLadder` /
+  `LR.FixedHeadConvertStep.of_crLadder`.
+
+**R11 is an interderivability result, not a reduction.**
+`LRS.PiEdgeInv.of_piPathInv` runs the other way in one line.  What R11 buys is
+real but narrower than advertised: single-edge Pi injectivity suffices, so the
+path-valued form is not independently needed.
+
+Not ported for budget: the coordinator's sort-typed narrowing
+(`LRS.ParRedSDefeqSort` / `CRCompleteSort` / `PiStandardSort` and
+`LRS.PiPathInv.of_crLadder_R12`).  It is the natural next port and is
+orthogonal to everything below.
+
+#### 3. HEADLINE — `LR.PiComponentTransport` is the inductive step of an induction on the SHAPE LEVEL
+
+Probe `plans/probes/probeR13-…` aside, the work is
+`plans/probes/probeR12-picomponent.lean`, landed at `ShapeLogRel.lean`
+:15733-:15963.  The previous session's account —
+"`LRS.ValTyPi2`'s first two conjuncts are `LRS.PiHeadNorm`; the remaining four
+are semantic component data the CR ladder does not produce" — reads one
+unfolding correctly and the obligation wrongly.
+
+**The component data at the Pi observation is the same statement one shape
+level down.**  Unfolding `TyDefEq A B (.forallE b f)` at level `n+1` exposes
+`TyDefEq B₁ B₂ b` and, inside `LRS.PiDefEq`,
+`TyDefEq (F.inst a) (F.inst b') (f.app p)` — all at level `n`.  So the convert
+step at `n+1` consumes the convert step at `n`, and `PiComponentTransport` is
+not new data: it is the inductive step.
+
+Also: **the two-reduct form is illusory.**  Both weak-head reductions in
+`LR.PiComponentTransport` reduce the *same* `B`, so `WHRedS.determ` collapses
+them (`LR.PiComponentTransport.of_diag` :15785, converse `.diag` :15791).
+There was never anything to reconcile.
+
+Landed: `LR.PiComponentTransportDiag` (:15776), `LR.ConvertStepAt` (:15797),
+`LR.ConvertStepAt.path` (:15806) and `.path_right` (:15818),
+`LRS.IndTyHeadNorm` (:15835), `LR.convertStep_forallE` (:15851),
+`LR.convertStep_sort` (:15899), `LR.convertStepAt_all` (:15920),
+`LR.PiComponentTransport.of_crLadder` (:15944).  In ADQ:
+`LR.FixedHeadConvertStep.of_crLadder` (:2672),
+`LR.FixedHeadConvertRightValid.of_crLadder` (:2679),
+`LR.FixedHeadConvertStep.of_crLadder_R11` (:2691).
+
+Cost per shape constructor of `WShape (n+1)`, which is the whole content:
+
+| shape          | obligation |
+| -------------- | ---------- |
+| `bot`          | `True` |
+| `lam`, `ctor`  | `True` |
+| `sort r`       | `LRS.SortHeadNorm` + `LRS.SubjectRedS` + `LRS.SortInv` (level-uniform; a `LogRel` *field*, no recursion) |
+| `forallE b f`  | `LRS.PiHeadNorm` + `LRS.SubjectRedS` + `LRS.PiEdgeInv` + the step at level `n` |
+| `indTy`        | `LRS.IndTyHeadNorm` — **the one new obligation** |
+
+Three of six are `True`.  Two implementation notes worth keeping:
+
+* The Pi rung concludes the **heterogeneous** `TyDefEq A B`, not the
+  right-endpoint form.  That is strictly more convenient: `LRS.PiEdgeInv`
+  hands back paths `A₁ ⇝ B₁` and `G₁ ⇝ F₁` that slot directly into
+  `LRS.ValTyPi2`'s two `TypeDefEqPath` fields, so no path is reversed,
+  composed, or collapsed.
+* `LR.ConvertStepAt.path` is what lets a *single-edge* convert step consume
+  `LRS.PiEdgeInv`'s *path*-valued output — induction on the path, `trans_ty` at
+  each join.  Path collapse is never charged anywhere in the layer.
+* `LRS.PiInstDefEq`'s raw fields (`leftDefEq`/`rightDefEq`) come from
+  `IsDefEqStrong.subst` at the equality substitution `a ≡ b' : A₁`
+  (`Ctx.SubstEq.cons`), charging no semantics at all.
+
+**`LRS.IndTyHeadNorm` has no upstream analogue.**  Theory's `reduce_*` family
+stops at `IsDefEq.reduce_sort` (HeadReduction:493) and `.reduce_forallE`
+(:512); there is no `reduce_const`.  It is CR-ladder *shaped* (a head-form
+transport, no semantic component data), not adequacy-shaped, and it is the only
+such residual the induction exposes.
+
+**G4 is unaffected.**  The induction is on the *shape level*, orthogonal to the
+adequacy rung.  `LRS.SortInv` is consumed exactly where it was — at the sort
+observation, at every level — so `LR.FixedHeadConvertStepAt` remains the right
+mitigation and nothing about the rung-0 same-rung consumption changes.
+
+Read honestly against the retraction in §2: this does **not** make the convert
+step free, because `LRS.PiEdgeInv`/`LRS.PiHeadNorm` are inside the loop.  What
+it does say is sharper and still worth the session: **`LR.FixedHeadConvertStep`
+demands nothing beyond the 16C′ leaf itself**, plus `LRS.SortInv` at rung 0 and
+`LRS.IndTyHeadNorm`.  It was recorded as a separate obligation; it is not one.
+
+#### 4. `LRS.CtorSpineTypeUniqPath` closes end-to-end
+
+`LRS.CtorSpineTypeUniqPath.of_crLadder` (SLR :15676) and
+`LR.MajorChainAnchorStep.of_crLadder` (ADQ :1180).  `of_piPathInv` already
+existed; R11 supplies its input.  Same honest reading as §3: the residual costs
+exactly `LRS.PiPathInv` and adds nothing on top of it — in particular no
+adequacy rung and no raw type uniqueness.
+
+#### 5. Probe-only — the `CoherentIotaLeafStep` frame layer is mechanical once the type shape rides along
+
+`plans/probes/probeR13-rectframe.lean` (green, no `sorryAx`; **not landed**).
+The previous session established that the frame layer is *not* mechanical
+because `LogRel.DefEqRect` is indexed by an element shape **and** a type shape
+`(m, a)` while `LRS.CtorFrame` is indexed by the element shape alone.  The
+probe localizes that failure exactly: **it is entirely in the frame's index,
+not in the transport.**
+
+`LRS.RectFrame` is `LRS.CtorFrame` with the type shape threaded alongside the
+element shape and `HasType` coherence recorded wherever the element shape
+moves — same four constructors, same level arithmetic.  With it,
+`LRS.RectFrame.rect` is four one-liners: `LogRel.DefEqRect.mono_l` for `mono`,
+`LogRel.LiftEquiv.rect` in each direction for `lift`/`unlift`.  The frame also
+composes (`LRS.RectFrame.trans`).
+
+The blocking case is `mono` and the reason is precise: `DefEqRect.mono_l` needs
+`m.HasType a` **and** `m'.HasType a` for one common `a`, and a frame recording
+only `m ≤ m'` can supply neither.  Choosing `a` inside the transport is exactly
+the independent re-selection of the type observation that the N2 decision
+exists to prevent.  So the honest statement of the residual is not "prove a
+transport lemma" but **"produce `RectFrame`, not `CtorFrame`"** — the shape must
+be threaded positionally from the leaf that owns it, in the frame's
+*producers*.  `LRS.CtorFrame.TyWitness` names that demand and
+`LRS.CtorFrame.rect_of_tyWitness` shows there is nothing left to prove once it
+is met.  Left as a probe because upgrading the index touches the frame
+producers, which is not an additive change.
+
+#### Vacuity discipline
+
+Six new `Prop`s this session, all checked.  `LRS.PiTypeInv` and
+`LRS.RectFrame` are **proved/inhabited outright**, so they cannot be false.
+The other four carry explicit non-degenerate witnesses:
+
+* `LRS.piTypeInv_nonvacuous` / `LRS.piEdgeInv_nonvacuous` — the hypothesis is
+  satisfiable with *no* environment assumptions, in the empty context: a Pi
+  over two sorts (`LRS.nonvacuous_pi .sort .sort`).
+* `LR.piComponentTransportDiag_nonvacuous` (:16054) — sharper than the
+  pre-existing diagonal witness: the *reduct* is chosen by the caller and
+  determinism forces agreement.  So the diagonal form can only fail off the
+  diagonal, which is precisely where the level induction supplies it.
+* `LR.convertStepAt_nonvacuous` (:16070) — at the **sort** observation, a
+  non-degenerate shape at every level and every relevance bit, with a
+  content-carrying conclusion (it forces `B` to reach the *same* sort).
+* `LRS.indTyHead_nonvacuous` (:16080) — honestly environment-*conditional*:
+  inhabited as soon as any nullary inductive type is declared.  There is no
+  `Params`-free inductive type, and recording that is the correct statement of
+  the residual's scope.
+
+No new `Prop` was left unwitnessed and no derivation of `False` succeeded.
+
+#### Build note
+
+Only `ShapeLogRel.lean` and `ShapeLogRelAdequacy.lean` changed, plus two new
+probes (`probeR12-picomponent.lean`, `probeR13-rectframe.lean`).  Both targets
+built in order, both exit 0.  `ShapeLogRel.lean`: **zero warning delta**,
+verified by sorted diff against a pre-change baseline; **zero sorries**.
+`ShapeLogRelAdequacy.lean`: **exactly one** sorry, `LR.iotaWitnessStep`
+(declaration :8716, token :8746); no warning falls in any inserted range and no
+warning names any inserted declaration.  Both files' changes are additive apart
+from the docstring corrections listed in §2, none of which touched a statement,
+proof, or name.  Everything downstream of `ShapeLogRel.lean` needs rebuilding.
+
+— session-C subagent 12

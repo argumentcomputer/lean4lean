@@ -755,10 +755,60 @@ so they go clean with it.
   machine-checked; implement by transport via `reify`, not by porting,
   saving ~1600 lines; `Experimental/NormalEq.lean` and
   `ParallelReduction.lean` are dead stubs recommended for deletion).
-  Open question under investigation: whether adequacy can produce the
-  disjointness facts at a rung strictly below the one consuming them —
-  `sortInv` has a depth-indexed producer (ADQ:471/493/522) where
-  `PiPathInv` does not, so the asymmetry may be favourable. Root cause is not `SpineWF` but
+  **That question is now answered, favourably, and the leaf has a
+  mapped non-circular closure path.** Three of the four disjointness
+  facts need NO adequacy rung: they follow from `LE_Interp.sound`,
+  which lives outside the depth fixpoint (disjointness is about head
+  shapes, which the interpretation already records; injectivity is
+  about the level, which the shape records only as a nonzero bit —
+  that is the asymmetry). The fourth, `sortInv`, is produced at rung 0,
+  because its subject is a syntactic sort and `HasTypeStratifiedS.sort'`
+  is nullary with a free depth index. All of this is landed in
+  ShapeLogRel (:14996-:15501) and the depth-0 producers in ADQ, 48
+  results, none carrying `sorryAx`, with a negative control
+  (`sortInv_bit_only`) proving soundness recovers the bit and NOT the
+  level — a sharp boundary, not a leaky one. Consequently the suspected
+  16C′ ⇄ 18A′ cycle does not exist: `PiPathInv.of_crLadder_noAdequacy`
+  closes the residual from the CR ladder alone, and rung R11
+  (`PiEdgeInv`) is proved, removing itself as an input.
+
+  **The leaf's remaining inputs, exactly:** from 18A′ —
+  `LRS.CRComplete` (Church–Rosser modulo its two `.extra` holes and the
+  live `Params.Extension` join), `ParRedSDefeq`, `PiStandard`, plus
+  `SortHeadNorm` (transport of Theory's proved `reduce_sort`); from the
+  fixpoint — `SortInv` at rung 0 only; genuinely new —
+  `LR.PiComponentTransport`, the component half of the Pi observation.
+  **CORRECTION (measured with a dependency-closure walker, superseding
+  an earlier `weakN_iff` claim recorded here): the CR-ladder route is
+  CIRCULAR and cannot close 16C′.** `ParRedS.defeq`/`.standard` do not
+  touch `weakN_iff` at all; their sorry roots are `IsDefEqU.sort_inv`
+  and `IsDefEqU.forallE_inv_stratified` — the 16C′ deliverables
+  themselves. The identification is literal, not moral:
+  `PiPathInv.of_adequacy` is definitionally `SExpr.forallE_inv`, which
+  is what `forallE_inv_stratified` promotes. So the loop closes:
+  `PiPathInv` = `SExpr.forallE_inv` ⇒ `forallE_inv_stratified` ⇒
+  `IsDefEqU.forallE_inv` ⇒ `ParRed.defeq` ⇒ `ParRedS.defeq` ⇒
+  (transport) `ParRedSDefeq` ⇒ (R11) `PiPathInv`. `PiEdgeInv.of_piPathInv`
+  is one line, making the loop sharp: R11 is a re-presentation of the
+  leaf, not a reduction to anything cheaper. The essential uses are the
+  β cases of `ParRed.defeq` (ChurchRosser:1149) and `StRed.triangle`
+  (HeadReduction:438), each reconciling an application's domain with
+  its abstraction's own domain before β can fire — textbook "subject
+  reduction for β needs Π-injectivity". The native SExpr route is NOT
+  blocked by weakening (that machinery measures clean) but hits the
+  same β case. Genuine narrowing banked: all three CR-ladder inputs are
+  used only at SORT-typed subjects (`ParRedSDefeqSort`/`CRCompleteSort`/
+  `PiStandardSort`, with `PiPathInv.of_crLadder_R12`), and the
+  narrowing provably does not dodge the hard case (an explicit
+  sort-typed β-redex witness). Note `weakN_iff` remains a real but
+  DIFFERENT obligation: it gates `church_rosser`, not these two Props.
+  Only mapped escape: stratifying the ladder (depth-`d`
+  `ParRedSDefeqSort` from depth-`(d-1)` `PiEdgeInv`) — uncertain, and
+  the two machine-checked obstructions to depth-indexing recorded above
+  apply directly. Cheapest decision-changing step: machine-check the
+  loop by building `IsDefEqStrong.app_inv'`/`lam_inv'` and deriving
+  native `PiEdgeInv → ParRedSDefeq`, turning "circular" from argued
+  into proved. Root cause is not `SpineWF` but
   `LRS.ValTyPi2`/`LogRel` being `WShape`-indexed with no stratification
   index. Closure records: `plans/probes/probeP-pipathinv.lean`,
   `probeS-spinedepth.lean`. N2 is decided (capture-domain link on the
@@ -860,6 +910,31 @@ Also: `SExpr.WHRedS.defeq` (:4033) is not separate work — it follows
 from `ParRedS.defeq`; and `HeadReduction.lean` is sorry-free but
 tainted three ways, one of them (via `sort_inv`/`sort_forallE_inv`)
 previously unrecorded.
+
+**2026-08-15: one hole closed, the other is FALSE as stated.** The
+`constDF` × `.extra` case is discharged (additively, `:939-1041`),
+which needed only two of the four predicted lemmas — level congruence
+for `RHS.apply` and `Check.OK` transport. The key was
+`EqUpToLevels.instL_equiv`, a purely SYNTACTIC congruence: the existing
+`EqUpToLevels.instL` demands an `IsDefEqStrong` derivation, which a
+closed `Pattern.RHS.fixed` template does not have. `EqUpToLevels` was
+also missing symmetry. The `appDF` × `.extra` case is refuted under
+`[Params]` alone by an explicit counterexample: with a `Prop`-typed
+argument position, `.app rec (.bvar 0)` is reduction-normal while
+`.app rec ctor` contracts, and NO `NormalEq` constructor relates the
+results (`structural` is uninhabited without structure-eta,
+`proofIrrel` would need the result type in `Prop`). This is not
+adversarial — Lean's own large-eliminating `Prop` inductives realize
+it (`Acc.rec`/`Eq.rec` at a `Type`-valued motive; for `Eq` the kernel
+recovers by K-style reduction, which the pattern language cannot
+express). Weakest known fix: a new semantic side condition — if a
+registered contraction's argument position is `Prop`-typed, its result
+is `Prop`-typed — i.e. a NEW `Params` field, machine-checked in
+`plans/probes/probeCR2-extra.lean` to close the whole sub-case. That
+fires §7.1 of the scope doc ("if R3 needs a new field, the estimate is
+the wrong shape"). Note the predicted blocker was wrong: proof
+irrelevance at a pattern-spine HEAD is already handled; the problem is
+at a pattern ARGUMENT.
 
 The holes in `NormalEq.parRed`
 are the constant/application cases where a parallel step meets a
