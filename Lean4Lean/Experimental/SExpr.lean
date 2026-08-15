@@ -2350,23 +2350,6 @@ theorem IsDefEqStrong.isType
   | defn _ _ hTy => exact ⟨_, hTy⟩
   | extra _ _ _ ihLeft _ => exact ihLeft
 
-theorem _root_.Lean4Lean.Params.ctor_ty [Params.Semantic]
-    (hcl1 : Params.classify c = some cl) (hcl2 : cl matches .ctor .. | .etaCtor ..)
-    (hci : env.constants c = some ci) (h_len : ls.length = ci.uvars) :
-    ∃ (I : Name) (Ts args : List SExpr) (u : SLevel),
-      Ts.length = cl.arity ∧ Params.classify I = some (.indTy args.length) ∧ u ≠ .zero ∧
-      Γ ⊢ SExpr.mkInst ls ci.type ≡
-        Ts.foldr .forallE (args.foldr (fun A acc => acc.app A) (.const I ls)) : .sort u := by
-  let hctor : CtorBundle.IsCtor c := by
-    refine ⟨cl, hcl1, ?_⟩
-    cases cl <;> simp_all
-  have hcl : hctor.cl.1 = cl := by
-    have hc := hctor.cl.2.1
-    exact (Option.some.inj (hcl1.symm.trans hc)).symm
-  let ⟨F, hF⟩ := Params.Semantic.ctor (ls := ls) (Γ := Γ) hci h_len hctor
-  refine ⟨F.I, F.Ts, F.args, F.u, ?_, F.hclI, F.hu0, hF.defeq⟩
-  simpa only [hcl] using F.hlen
-
 theorem IsDefEq.hasType (H : Γ ⊢ e1 ≡ e2 : A) :
     Γ ⊢ e1 ≡ e1 : A ∧ Γ ⊢ e2 ≡ e2 : A := ⟨H.trans H.symm, H.symm.trans H⟩
 
@@ -4042,12 +4025,13 @@ theorem WHRed.weak' (W : Ctx.Lift' ρ Γ Γ') :
     exact .extra (action.weak' W)
 
 /-- Inverse weakening for one weak-head step. The `.extra` case is
-deferred (off the L4L-16 gate path; consumed only by the staged
-`WHRedS.weakU_inv`/`InferTypeS.weakU_inv` mirrors): it needs to lower the
-two `IsDefEq` fields of the matched `Pattern.Action`, which requires
-either a context-WF-conditioned `IsDefEq` inverse weakening or restating
-`Action.checked`/`sound` at `:↑`. See plans/l4l-16-completion-plan.md
-§16B′. -/
+deferred (off the L4L-16 gate path; consumed only through the
+`WHRedS.weakU_inv` mirror, whose live consumers are `InferType.weakU_inv`
+below and `LRIsType.weak'` in `Experimental/LogRel.lean`): it needs to
+lower the two `IsDefEq` fields of the matched `Pattern.Action`, which
+requires either a context-WF-conditioned `IsDefEq` inverse weakening or
+restating `Action.checked`/`sound` at `:↑`. See
+plans/l4l-16-completion-plan.md §16B′. -/
 theorem WHRed.weakU_inv (W : Ctx.Lift' ρ Γ Γ') (H : Γ' ⊢ e1.lift' ρ ⤳ e2') :
     ∃ e2, e2' = e2.lift' ρ ∧ Γ ⊢ e1 ⤳ e2 := by
   generalize he : e1.lift' ρ = e1' at H
@@ -4382,13 +4366,6 @@ inductive InferType : List SExpr → SExpr → SExpr → Prop where
   | forallE : Γ ⊢ A ▷ U → Γ ⊢ U ⤳* .sort u →
     A::Γ ⊢ B ▷ V → A::Γ ⊢ V ⤳* .sort v → Γ ⊢ .forallE A B ▷ .sort (.imax u v)
 
-/-- Soundness of syntactic type inference. Deferred (off the L4L-16 gate
-path; the adequacy development consumes neither `▷` nor `▷*`): the `app`
-and `forallE` cases need the `⤳* → ≡` conversion whose narrowed,
-certificate-carrying form is the L4L-16C obligation, plus an `isType`
-extraction; port Theory's `HeadReduction.lean` proof once those land. -/
-theorem InferType.hasType (H : Γ ⊢ e ▷ A) : Γ ⊢ e : A := sorry
-
 theorem InferType.determ (H1 : Γ ⊢ e ▷ A) (H2 : Γ ⊢ e ▷ A') : A = A' := by
   induction H1 generalizing A' with
   | bvar h1 => cases H2 with | bvar h2 => exact h1.determ h2
@@ -4451,10 +4428,6 @@ which no current development needs. -/
 def InferTypeS (Γ : List SExpr) (e A : SExpr) := ∃ A', Γ ⊢ e ▷ A' ∧ Γ ⊢ A' ⤳* A
 scoped notation:65 Γ " ⊢ " e1 " ▷* " e2:36 => InferTypeS Γ e1 e2
 
-/-- Deferred with `InferType.hasType` (a three-line corollary of it plus
-the `⤳* → ≡` conversion); no current consumer. -/
-theorem InferTypeS.hasType : Γ ⊢ e ▷* A → Γ ⊢ e : A := sorry
-
 theorem WHRedS.inferType
     (H1 : Γ ⊢ e ⤳* e₁) (W1 : WHNF Γ e₁)
     (H2 : Γ ⊢ e ⤳* e₂) (W2 : WHNF Γ e₂) : e₁ = e₂ := by
@@ -4516,13 +4489,6 @@ theorem InferTypeS.determ
 
 theorem InferTypeS.weak' (W : Ctx.Lift' ρ Γ Δ) : Γ ⊢ e ▷* A → Δ ⊢ e.lift' ρ ▷* A.lift' ρ
   | ⟨_, h1, h2⟩ => ⟨_, h1.weak' W, h2.weak' W⟩
-
-theorem InferTypeS.weakU_inv (W : Ctx.Lift' ρ Γ Δ) (H : Δ ⊢ e.lift' ρ ▷* A') :
-    ∃ A, A' = A.lift' ρ ∧ Γ ⊢ e ▷* A := by
-  let ⟨_, h1, h2⟩ := H
-  obtain ⟨_, rfl, a1⟩ := h1.weakU_inv W
-  obtain ⟨_, rfl, a2⟩ := h2.weakU_inv W
-  exact ⟨_, rfl, _, a1, a2⟩
 
 scoped notation:65 Γ " ⊢ " e1 " ≡ₚ " e2 " : " A:36 => NormalEq Γ e1 e2 A
 inductive NormalEq : List SExpr → SExpr → SExpr → SExpr → Prop where

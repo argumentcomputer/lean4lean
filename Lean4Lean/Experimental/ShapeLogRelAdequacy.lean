@@ -3996,92 +3996,16 @@ theorem LR.iotaActions_of_exactEqAt
     rule, siteX, siteY, actionX, actionY, hcapAligned,
     .tail hredX (.extra actionX), .tail hredY (.extra actionY)⟩
 
-/-- Consume one exact constructor observation once the registered RHS has a
-logical-relation congruence proof.  This is the exact leaf used by the
-transport-aware `CtorDefEq` fold: materialization and the two local iota
-contractions are entirely internal, while semantic recursion supplies only
-the evidence-only RHS continuation. -/
-theorem LRS.iotaDefEq_of_exactAt
-    {n : Nat} {IH : LogRel Γ₀ n} {rec ctor : Name} {major arity : Nat}
-    {R : TShape → SExpr → Prop}
-    {recShapes : List (WShape (n + 1))}
-    {ctorShapes : List (WShape n)}
-    {mrec : (Pattern.varN (.const rec) major).Path → TShape}
-    {mctor : (Pattern.varN (.const ctor) arity).Path → TShape}
-    {recXs recYs ctorXs ctorYs : List SExpr}
-    {recLs ctorLs ctorLs' : List SLevel}
-    {majorX majorY A : SExpr}
-    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
-      (RecursorIotaPattern rec major ctor arity).Check}
-    {out outTy : WShape (n + 1)}
-    (hΓ : Ctx.WF Γ₀)
-    (hpat : Params.Pat (RecursorIotaPattern rec major ctor arity) r)
-    (hmf : LE_Interp.Matches (n := n + 1)
-      (Pattern.varN (.const rec) major) rec recShapes mrec)
-    (hma : LE_Interp.Matches (n := n)
-      (Pattern.varN (.const ctor) arity) ctor ctorShapes mctor)
-    (hrhs : LE_Interp.RHS recLs (Sum.elim mrec mctor)
-      R out.T r.1)
-    (hrecargs : LRS.CtorArgsDefEq (LRS IH) recXs recYs recShapes)
-    (hctorargs : LRS.CtorArgsDefEq IH ctorXs ctorYs ctorShapes)
-    (hMajorX : Γ₀ ⊢ majorX ⤳*
-      ctorXs.foldr (fun (a f : SExpr) => f.app a) (.const ctor ctorLs))
-    (hMajorY : Γ₀ ⊢ majorY ⤳*
-      ctorYs.foldr (fun (a f : SExpr) => f.app a) (.const ctor ctorLs'))
-    (htermX : Γ₀ ⊢
-      (recXs.foldr (fun (a f : SExpr) => f.app a) (.const rec recLs)).app majorX ≡
-      (recXs.foldr (fun (a f : SExpr) => f.app a) (.const rec recLs)).app majorX : A)
-    (htermY : Γ₀ ⊢
-      (recYs.foldr (fun (a f : SExpr) => f.app a) (.const rec recLs)).app majorY ≡
-      (recYs.foldr (fun (a f : SExpr) => f.app a) (.const rec recLs)).app majorY : A)
-    (hAType : ∃ u, Γ₀ ⊢ A : .sort u)
-    {recHeadType ctorHeadTypeX ctorHeadTypeY ctorResultX ctorResultY
-      majorType : SExpr}
-    (hrecHead : Γ₀ ⊢ .const rec recLs : recHeadType)
-    (hrecSpineX : SExpr.SpineWF Γ₀ recHeadType
-      (recXs.reverse ++ [majorX]) A)
-    (hrecSpineY : SExpr.SpineWF Γ₀ recHeadType
-      (recYs.reverse ++ [majorY]) A)
-    (hctorHeadX : Γ₀ ⊢ .const ctor ctorLs : ctorHeadTypeX)
-    (hctorHeadY : Γ₀ ⊢ .const ctor ctorLs' : ctorHeadTypeY)
-    (hctorSpineX : SExpr.SpineWF Γ₀ ctorHeadTypeX
-      ctorXs.reverse ctorResultX)
-    (hctorSpineY : SExpr.SpineWF Γ₀ ctorHeadTypeY
-      ctorYs.reverse ctorResultY)
-    (hMajorTypeX : Γ₀ ⊢ majorX : majorType)
-    (hMajorTypeY : Γ₀ ⊢ majorY : majorType)
-    (hout : out.HasType outTy)
-    (hA : (LRS IH).TyDefEq A A outTy)
-    (rhsDefEq : ∀ rule : Pattern.IotaRule r,
-      LRS.IotaRHSDefEq IH R recLs mrec mctor r rule out) :
-    (LRS IH).DefEq
-      ((recXs.foldr (fun (a f : SExpr) => f.app a) (.const rec recLs)).app majorX)
-      ((recYs.foldr (fun (a f : SExpr) => f.app a) (.const rec recLs)).app majorY)
-      A out outTy := by
-  obtain ⟨mx, my, captureType, captureTypingX, captureTypingY,
-      rule, siteX, siteY, actionX, actionY, hcap, hredX, hredY⟩ :=
-    LR.iotaActions_of_exactEqAt (IH := IH) hΓ hpat hmf hma
-      hrecargs hctorargs hMajorX hMajorY
-      (fun hred => (hred.defeq htermX).hasType.2)
-      (fun hred => (hred.defeq htermY).hasType.2)
-      hAType hrecHead
-      hrecSpineX hrecSpineY hctorHeadX hctorHeadY hctorSpineX hctorSpineY
-      (hMajorX.defeq hMajorTypeX) (hMajorY.defeq hMajorTypeY)
-  have hrhsDefEq : (LRS IH).DefEq
-      (r.1.applyS recLs mx) (r.1.applyS recLs my) A out outTy :=
-    rhsDefEq rule hrhs siteX.captureSpine siteY.captureSpine hcap hout hA
-  exact ((LRS IH).whr hredX hredY).2 hrhsDefEq
-
 /-- Consume a native exact constructor leaf without appealing to generic
 weak-head subject reduction.
 
 At this boundary both majors already *are* their classified constructor
 spines.  `CtorExact` supplies the constructor head/spine certificates and
 related fields, while `PatternLeafSpine` supplies the recursor spine, its
-last Pi, and the majors' common domain typing.  Consequently the two
-reduction premises passed to `iotaDefEq_of_exactAt` are reflexive and every
-remaining typing is projected from those two certificates.  This is the
-exact handler used after a `CtorFrame` has reached its native leaf. -/
+last Pi, and the majors' common domain typing.  Both majors' weak-head
+observations are reflexive here and every remaining typing is projected
+from those two certificates.  This is the exact handler used after a
+`CtorFrame` has reached its native leaf. -/
 theorem LRS.iotaDefEq_of_ctorExactAt
     {n : Nat} {IH : LogRel Γ₀ n}
     {R : TShape → SExpr → Prop}
@@ -4365,93 +4289,6 @@ theorem LRS.iotaDefEq_of_ctorExactAt_closedFixedHead
   intro headTy htel hTyReg
   exact fixedHead (hhead.closedAt hclosed) LR.SubstWF.id rfl .rfl
     hstrong hshape htel hTyReg hspineX hspineY hcap hout' hA'
-
-/-- Canonical wrapper for `iotaActions_of_exactEqAt`.  It forgets whether a
-capture came from the predecessor or successor relation by existentially
-packaging its shape depth. -/
-theorem LR.iotaActions_of_exact
-    {n : Nat} {rec ctor : Name} {major arity : Nat}
-    {recShapes : List (WShape (n + 1))}
-    {ctorShapes : List (WShape n)}
-    {mrec : (Pattern.varN (.const rec) major).Path → TShape}
-    {mctor : (Pattern.varN (.const ctor) arity).Path → TShape}
-    {recXs recYs ctorXs ctorYs : List SExpr}
-    {recLs ctorLs ctorLs' : List SLevel}
-    {majorX majorY A : SExpr}
-    {r : (RecursorIotaPattern rec major ctor arity).RHS ×
-      (RecursorIotaPattern rec major ctor arity).Check}
-    (hΓ : Ctx.WF Γ₀)
-    (hpat : Params.Pat (RecursorIotaPattern rec major ctor arity) r)
-    (hmf : LE_Interp.Matches (n := n + 1)
-      (Pattern.varN (.const rec) major) rec recShapes mrec)
-    (hma : LE_Interp.Matches (n := n)
-      (Pattern.varN (.const ctor) arity) ctor ctorShapes mctor)
-    (hrecargs : LRS.CtorArgsDefEq (LR Γ₀) recXs recYs recShapes)
-    (hctorargs : LRS.CtorArgsDefEq (LR Γ₀) ctorXs ctorYs ctorShapes)
-    (hMajorX : Γ₀ ⊢ majorX ⤳*
-      ctorXs.foldr (fun (a f : SExpr) => f.app a) (.const ctor ctorLs))
-    (hMajorY : Γ₀ ⊢ majorY ⤳*
-      ctorYs.foldr (fun (a f : SExpr) => f.app a) (.const ctor ctorLs'))
-    (hterm : Γ₀ ⊢
-      (recXs.foldr (fun (a f : SExpr) => f.app a) (.const rec recLs)).app majorX ≡
-      (recYs.foldr (fun (a f : SExpr) => f.app a) (.const rec recLs)).app majorY : A)
-    (hAType : ∃ u, Γ₀ ⊢ A : .sort u)
-    {recHeadType ctorHeadTypeX ctorHeadTypeY ctorResultX ctorResultY
-      majorType : SExpr}
-    (hrecHead : Γ₀ ⊢ .const rec recLs : recHeadType)
-    (hrecSpineX : SExpr.SpineWF Γ₀ recHeadType
-      (recXs.reverse ++ [majorX]) A)
-    (hrecSpineY : SExpr.SpineWF Γ₀ recHeadType
-      (recYs.reverse ++ [majorY]) A)
-    (hctorHeadX : Γ₀ ⊢ .const ctor ctorLs : ctorHeadTypeX)
-    (hctorHeadY : Γ₀ ⊢ .const ctor ctorLs' : ctorHeadTypeY)
-    (hctorSpineX : SExpr.SpineWF Γ₀ ctorHeadTypeX
-      ctorXs.reverse ctorResultX)
-    (hctorSpineY : SExpr.SpineWF Γ₀ ctorHeadTypeY
-      ctorYs.reverse ctorResultY)
-    (hMajorTypeX : Γ₀ ⊢ majorX : majorType)
-    (hMajorTypeY : Γ₀ ⊢ majorY : majorType) :
-    ∃ mx my,
-      ∃ actionX : Pattern.Action Γ₀ r
-        ((recXs.foldr (fun (a f : SExpr) => f.app a) (.const rec recLs)).app
-          (ctorXs.foldr (fun (a f : SExpr) => f.app a) (.const ctor ctorLs)))
-        recLs mx A,
-      ∃ actionY : Pattern.Action Γ₀ r
-        ((recYs.foldr (fun (a f : SExpr) => f.app a) (.const rec recLs)).app
-          (ctorYs.foldr (fun (a f : SExpr) => f.app a) (.const ctor ctorLs')))
-        recLs my A,
-      (∀ path, LRS.CaptureDefEq Γ₀ (Sum.elim mrec mctor path)
-        (mx path) (my path)) ∧
-      Γ₀ ⊢
-        (recXs.foldr (fun (a f : SExpr) => f.app a) (.const rec recLs)).app majorX ⤳*
-          r.1.applyS recLs mx ∧
-      Γ₀ ⊢
-        (recYs.foldr (fun (a f : SExpr) => f.app a) (.const rec recLs)).app majorY ⤳*
-          r.1.applyS recLs my := by
-  obtain ⟨mx, my, _, _, _, _, _, _, actionX, actionY,
-      hcap, hredX, hredY⟩ :=
-    LR.iotaActions_of_exactEqAt (IH := LR Γ₀) hΓ hpat hmf hma
-      hrecargs hctorargs hMajorX hMajorY
-      (fun hred => (hred.defeq hterm.hasType.1).hasType.2)
-      (fun hred => (hred.defeq hterm.hasType.2).hasType.2)
-      hAType hrecHead
-      hrecSpineX hrecSpineY hctorHeadX hctorHeadY hctorSpineX hctorSpineY
-      (hMajorX.defeq hMajorTypeX) (hMajorY.defeq hMajorTypeY)
-  refine ⟨mx, my, actionX, actionY, ?_, hredX, hredY⟩
-  intro path
-  cases path with
-  | inl path =>
-    obtain ⟨elemShape, typeShape,
-      hshape, htype, hty, hxy, hrel⟩ :=
-      hcap (Sum.inl path)
-    exact ⟨n + 1, elemShape, typeShape, _,
-      hshape, htype, hty, hxy, hrel⟩
-  | inr path =>
-    obtain ⟨elemShape, typeShape,
-      hshape, htype, hty, hxy, hrel⟩ :=
-      hcap (Sum.inr path)
-    exact ⟨n, elemShape, typeShape, _,
-      hshape, htype, hty, hxy, hrel⟩
 
 /-- A proof of the iota-only leaf contract discharges every nonempty simple
 pattern leaf. -/
