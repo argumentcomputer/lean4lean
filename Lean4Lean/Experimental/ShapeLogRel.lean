@@ -16416,3 +16416,238 @@ vacuous one. -/
 theorem LRS.chainAnchorAt_nonvacuous (anc : LRS.ChainAnchorAt 0) {l : SLevel} :
     ∃ V c, HasTypeStratifiedS [] (.sort l) V c 0 :=
   anc trivial (.single (IsDefEq.sort (l := l)))
+
+/-! ## Banking probe R13 — the `RectFrame` bridge at the `indTy` observation
+
+`plans/probes/probeR13-rectframe.lean` established that the frame layer of
+the coherent iota leaf is mechanical *given* a frame that carries the type
+shape alongside the element shape (`LRS.RectFrame` below), and recorded its
+production as a non-additive residual: `LogRel.DefEqRect.mono_l` needs
+`m.HasType a` and `m'.HasType a` for one common `a`, a frame recording only
+`m ≤ m'` can supply neither, and choosing `a` inside the transport is the
+independent re-selection of the type observation the N2 decision forbids —
+so the shape seemed to require threading through every frame *producer*.
+
+The residual dissolves: at a constructor observation the type shape is not
+an independent choice at all.  It is always `WShape.indTy` (`LRS.IndDefEq`
+pairs a `CtorDefEq` with exactly that observation), the shapes an unpaired
+`LRS.CtorFrame` passes through are only `.bot` and `.ctor` forms
+(`WShape.le_ctor` below closes the missing right-hand inversion; the
+existing `WShape.ctor_le` has `ctor` on the left, and
+`WShape.HasType.mono_l` demands antisymmetry), both of those rows of the
+`Shape.hasType` table at `.indTy` are true, and `indTy` is lift-stable
+(`WShape.lift_indTy`) — matching the frame's `lift`/`unlift` moves.  So the
+paired frame is *recoverable* from the unpaired one
+(`LRS.CtorFrame.toRectFrame`), additively, with no producer touched. -/
+
+/-- Right-hand constructor inversion for the shape order: anything below a
+`ctor` shape is `.bot` or a `ctor` form with the same head.  The existing
+`WShape.ctor_le` inverts from the left only; this is the mirror of
+`WShape.le_indTy` one constructor over. -/
+theorem WShape.le_ctor {s : WShape (n+1)} {c : Name} {l : List (WShape n)} {h} :
+    s ≤ .ctor c l h ↔
+      s = .bot ∨ ∃ l' h', s = .ctor c l' h' ∧ List.Forall₂ (· ≤ ·) l' l := by
+  constructor
+  · cases s using WShape.casesOn' with
+    | bot => exact fun _ => .inl rfl
+    | ctor c' l' h' =>
+      intro hle
+      obtain ⟨l'', h'', heq, hf⟩ := WShape.ctor_le.1 hle
+      obtain ⟨rfl, rfl⟩ := WShape.ctor.inj.1 heq
+      exact .inr ⟨l', h', rfl, hf⟩
+    | indTy => apply Not.elim; simp [indTy, ctor, LE.def, Shape.LE.def]
+    | _ => simp only [sort, forallE, lam, ctor, LE.def, Shape.LE.def, false_implies]
+  · rintro (rfl | ⟨l', h', rfl, hf⟩)
+    · exact bot_le
+    · exact WShape.ctor_le.2 ⟨l, h, rfl, hf⟩
+
+/-- info: 'Lean4Lean.SExpr.WShape.le_ctor' depends on axioms: [propext, Quot.sound] -/
+#guard_msgs in
+#print axioms WShape.le_ctor
+
+/-- `HasType · .indTy` is downward closed along the shape order: below a
+shape typed at `indTy` there are only `.bot` and `.ctor` forms
+(`WShape.le_ctor`), and both rows of the `Shape.hasType` table at `.indTy`
+are true. -/
+theorem WShape.hasType_indTy_of_le {m m' : WShape (n+1)}
+    (hle : m ≤ m') (hm' : m'.HasType .indTy) : m.HasType .indTy := by
+  cases m' using WShape.casesOn' with
+  | bot =>
+    cases WShape.le_bot.1 hle
+    exact WShape.HasType.bot' WShape.HasType.indTy
+  | ctor c l h =>
+    obtain rfl | ⟨l', h', rfl, -⟩ := WShape.le_ctor.1 hle
+    · exact WShape.HasType.bot' WShape.HasType.indTy
+    · exact WShape.HasType.ctor
+  | _ => cases hm'
+
+/-- info: 'Lean4Lean.SExpr.WShape.hasType_indTy_of_le' depends on axioms: [propext, Quot.sound] -/
+#guard_msgs in
+#print axioms WShape.hasType_indTy_of_le
+
+/-- `HasType · .indTy` is lift-stable, because `indTy` itself is
+(`WShape.lift_indTy`). -/
+theorem WShape.hasType_indTy_lift {n n' : Nat} (le : n ≤ n') {m : WShape (n+1)} :
+    (m.lift (n'+1)).HasType .indTy ↔ m.HasType .indTy := by
+  have h := WShape.HasType.lift (m := m) (a := .indTy) (Nat.succ_le_succ le)
+  rwa [WShape.lift_indTy] at h
+
+/--
+info: 'Lean4Lean.SExpr.WShape.hasType_indTy_lift' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms WShape.hasType_indTy_lift
+
+/-- `LRS.CtorFrame` with the **type** shape threaded alongside the element
+shape, and the `HasType` coherence recorded at each step where the element
+shape moves.  Structurally identical to `LRS.CtorFrame` (same four
+constructors, same level arithmetic); the only difference is that `a` rides
+along instead of being re-chosen. -/
+inductive LRS.RectFrame (Γ : List SExpr) :
+    {n k : Nat} → LogRel Γ n → WShape n → WShape n →
+      LogRel Γ k → WShape k → WShape k → Prop where
+  | refl : RectFrame Γ IH m a IH m a
+  | mono : m ≤ m' → m.HasType a → m'.HasType a →
+      RectFrame Γ IH m' a J p q → RectFrame Γ IH m a J p q
+  | lift {IH : LogRel Γ n} {IH' : LogRel Γ n'} (le : n ≤ n')
+      (E : LogRel.LiftEquiv IH IH' le) (hma : m.HasType a) :
+      RectFrame Γ IH m a J p q →
+      RectFrame Γ IH' (m.lift n') (a.lift n') J p q
+  | unlift {IH : LogRel Γ n} {IH' : LogRel Γ n'} (le : n ≤ n')
+      (E : LogRel.LiftEquiv IH IH' le) (hma : m.HasType a) :
+      RectFrame Γ IH' (m.lift n') (a.lift n') J p q →
+      RectFrame Γ IH m a J p q
+
+/-- **The frame layer is mechanical.**  Every case is a one-liner against
+machinery that already exists: `LogRel.DefEqRect.mono_l` for `mono` and
+`LogRel.LiftEquiv.rect` (both directions) for `lift`/`unlift`. -/
+theorem LRS.RectFrame.rect {Γ : List SExpr} {n k : Nat}
+    {IH : LogRel Γ n} {m a : WShape n} {J : LogRel Γ k} {p q : WShape k}
+    {M₁ M₂ N₁ N₂ A : SExpr}
+    (F : LRS.RectFrame Γ IH m a J p q)
+    (H : LogRel.DefEqRect J M₁ M₂ N₁ N₂ A p q) :
+    LogRel.DefEqRect IH M₁ M₂ N₁ N₂ A m a := by
+  induction F with
+  | refl => exact H
+  | mono hle hm hm' _ ih => exact (ih H).mono_l hle hm hm'
+  | lift le E hma _ ih => exact (E.rect hma).2 (ih H)
+  | unlift le E hma _ ih => exact (E.rect hma).1 (ih H)
+
+/--
+info: 'Lean4Lean.SExpr.LRS.RectFrame.rect' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms LRS.RectFrame.rect
+
+/-- The transported rectangle with both rows flipped, from the same frame. -/
+theorem LRS.RectFrame.symm_rect {Γ : List SExpr} {n k : Nat}
+    {IH : LogRel Γ n} {m a : WShape n} {J : LogRel Γ k} {p q : WShape k}
+    {M₁ M₂ N₁ N₂ A : SExpr}
+    (F : LRS.RectFrame Γ IH m a J p q)
+    (H : LogRel.DefEqRect J M₁ M₂ N₁ N₂ A p q) :
+    LogRel.DefEqRect IH M₂ M₁ N₂ N₁ A m a :=
+  let R := F.rect H
+  ⟨IH.symm R.left, IH.symm R.right,
+    IH.trans (IH.symm R.left) (IH.trans R.cross (IH.symm R.right))⟩
+
+/--
+info: 'Lean4Lean.SExpr.LRS.RectFrame.symm_rect' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms LRS.RectFrame.symm_rect
+
+/-- The paired frame composes, so it is a usable index. -/
+theorem LRS.RectFrame.trans {Γ : List SExpr} {n k l : Nat}
+    {IH : LogRel Γ n} {m a : WShape n} {J : LogRel Γ k} {p q : WShape k}
+    {K : LogRel Γ l} {x y : WShape l}
+    (F : LRS.RectFrame Γ IH m a J p q) (G : LRS.RectFrame Γ J p q K x y) :
+    LRS.RectFrame Γ IH m a K x y := by
+  induction F with
+  | refl => exact G
+  | mono hle hm hm' _ ih => exact .mono hle hm hm' (ih G)
+  | lift le E hma _ ih => exact .lift le E hma (ih G)
+  | unlift le E hma _ ih => exact .unlift le E hma (ih G)
+
+/--
+info: 'Lean4Lean.SExpr.LRS.RectFrame.trans' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms LRS.RectFrame.trans
+
+/-- Vacuity discipline: `LRS.RectFrame` is inhabited by `refl` at every
+`(IH, m, a)`, which is the frame every native leaf starts from. -/
+theorem LRS.rectFrame_nonvacuous {Γ : List SExpr} {n : Nat}
+    {IH : LogRel Γ n} {m a : WShape n} : LRS.RectFrame Γ IH m a IH m a := .refl
+
+/--
+info: 'Lean4Lean.SExpr.LRS.rectFrame_nonvacuous' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms LRS.rectFrame_nonvacuous
+
+/-- The `indTy` observation rides along an unpaired constructor frame: every
+element shape the frame passes through is typed at `indTy` as soon as the
+leaf shape is. -/
+theorem LRS.CtorFrame.hasType_indTy
+    (F : LRS.CtorFrame Γ IH m J p) :
+    p.HasType .indTy → m.HasType .indTy := by
+  induction F with
+  | refl => exact id
+  | mono hle _ ih => exact fun hp => WShape.hasType_indTy_of_le hle (ih hp)
+  | lift le E _ ih => exact fun hp => (WShape.hasType_indTy_lift le).2 (ih hp)
+  | unlift le E _ ih => exact fun hp => (WShape.hasType_indTy_lift le).1 (ih hp)
+
+/--
+info: 'Lean4Lean.SExpr.LRS.CtorFrame.hasType_indTy' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms LRS.CtorFrame.hasType_indTy
+
+/-- **The index upgrade is recoverable.**  At a constructor observation the
+type shape is not an independent choice: it is always `indTy`, and an
+unpaired `LRS.CtorFrame` upgrades to the paired `LRS.RectFrame` at
+`a := q := .indTy` with no producer touched.  `mono` recovers both `HasType`
+witnesses from `WShape.hasType_indTy_of_le`; `lift`/`unlift` ride
+`WShape.lift_indTy` through one `LRS` layer via `LogRel.LiftEquiv.succ`. -/
+theorem LRS.CtorFrame.toRectFrame
+    (F : LRS.CtorFrame Γ IH m J p) :
+    p.HasType .indTy →
+      LRS.RectFrame Γ (LRS IH) m .indTy (LRS J) p .indTy := by
+  induction F with
+  | refl => exact fun _ => .refl
+  | mono hle F' ih =>
+    intro hp
+    have hm' := F'.hasType_indTy hp
+    exact .mono hle (WShape.hasType_indTy_of_le hle hm') hm' (ih hp)
+  | lift le E F' ih =>
+    intro hp
+    have h := LRS.RectFrame.lift (Nat.succ_le_succ le) E.succ
+      (F'.hasType_indTy hp) (ih hp)
+    rwa [WShape.lift_indTy] at h
+  | unlift le E F' ih =>
+    intro hp
+    refine LRS.RectFrame.unlift (Nat.succ_le_succ le) E.succ
+      ((WShape.hasType_indTy_lift le).1 (F'.hasType_indTy hp)) ?_
+    rw [WShape.lift_indTy]
+    exact ih hp
+
+/--
+info: 'Lean4Lean.SExpr.LRS.CtorFrame.toRectFrame' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms LRS.CtorFrame.toRectFrame
+
+/-- The residual, discharged end-to-end: an unpaired constructor frame
+transports a synchronized rectangle at the `indTy` observation. -/
+theorem LRS.CtorFrame.rect
+    (F : LRS.CtorFrame Γ IH m J p) (hp : p.HasType .indTy)
+    {M₁ M₂ N₁ N₂ A : SExpr}
+    (H : LogRel.DefEqRect (LRS J) M₁ M₂ N₁ N₂ A p .indTy) :
+    LogRel.DefEqRect (LRS IH) M₁ M₂ N₁ N₂ A m .indTy :=
+  (F.toRectFrame hp).rect H
+
+/--
+info: 'Lean4Lean.SExpr.LRS.CtorFrame.rect' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms LRS.CtorFrame.rect
