@@ -14964,3 +14964,1119 @@ theorem LR.SubstWF.symm (W : LR.SubstWF Γ₀ σ σ' Γ ρ) : LR.SubstWF Γ₀ �
     · exact let ⟨⟨u, h1⟩, h2⟩ := (h0.2 a ha).1 ht; ⟨⟨u, h1.symm⟩, (LR _).symm_ty h2⟩
     · let ⟨_, h2⟩ := (h0.2 a ha).1 hmem.isType
       exact (LR _).conv h2 ((LR _).symm ((h0.2 a ha).2 hM hmem))
+
+/-! ## Shape disjointness, and the CR ladder that reaches `LRS.PiPathInv`
+
+Ported from `plans/probes/probeW-disjointness.lean`.  The §4.4 shape facts
+split into two groups, and the split is exactly where the shape lattice puts
+it.
+
+* *Disjointness* is a statement about **head shapes**, and a head shape is
+  already recorded by `LE_Interp`: `WShape.sort r` and `WShape.forallE b f`
+  are incomparable (`WShape.le_sort`, `WShape.sort_le`), and `LE_Interp.sound`
+  transports a shape across a strong equality.  A sort equated to a Pi would
+  have to carry both shapes at once.  **No fixpoint rung is involved**, which
+  is why the three theorems below take no adequacy hypothesis at all.
+* *Injectivity* is a statement about the **level** `u`, and `WShape.sort`
+  records only `decide (u ≠ .zero)` — see the negative control
+  `LRS.sortInv_bit_only` at the end of this section.  Recovering `u` needs the
+  logical relation's `sort_iff`, hence a genuine adequacy rung; the producers
+  live in `ShapeLogRelAdequacy.lean`, and the rung they need is `0`.
+
+The consequence recorded at the end of the section is that
+`LRS.PiPathInv` — the single residual of the chain wall — follows from the
+Church–Rosser / standardization / subject-reduction rungs **alone**
+(`LRS.PiPathInv.of_crLadder_noAdequacy`), so no cycle runs between it and the
+adequacy fixpoint. -/
+
+/-! ### The four §4.4 facts, restated on `SExpr` -/
+
+/-- `IsDefEqU.sort_forallE_inv` (`Theory/Typing/Injectivity.lean:34`, `sorry`)
+and `Params.structEta_sort_disjoint` (`ChurchRosser.lean:54`), transported. -/
+def LRS.SortForallEDisj : Prop :=
+  ∀ {Γ : List SExpr} {A B : SExpr} {u s : SLevel},
+    Ctx.WF Γ → ¬ IsDefEq Γ (.sort u) (.forallE A B) (.sort s)
+
+/-- "A Pi is not typed at a Pi."  Kills `NormalEq.etaL`; it is what
+`Params.structEta_forallE_disjoint` (`ChurchRosser.lean:61`) is used for at
+`HeadReduction.lean:524`. -/
+def LRS.PiNotFunTyped : Prop :=
+  ∀ {Γ : List SExpr} {A B A₀ B₀ : SExpr},
+    Ctx.WF Γ → ¬ IsDefEq Γ (.forallE A B) (.forallE A B) (.forallE A₀ B₀)
+
+/-- "A Pi is not a proof of a proposition."  Kills `NormalEq.proofIrrel`;
+Theory spends `IsDefEqU.sort_inv` on it at `HeadReduction.lean:527`. -/
+def LRS.PiNotProof : Prop :=
+  ∀ {Γ : List SExpr} {A B p : SExpr},
+    Ctx.WF Γ → IsDefEq Γ p p (.sort .zero) →
+    ¬ IsDefEq Γ (.forallE A B) (.forallE A B) p
+
+/-- `IsDefEqU.sort_inv` (`Theory/Typing/Injectivity.lean:11`, `sorry`), the
+declared L4L-16 gate theorem, transported.  This is the *fourth* §4.4 fact and
+the only one that needs an adequacy rung; the producer is
+`LRS.SortInv.of_adequacyAtDepth_zero` (ADQ), and the rung is `0`. -/
+def LRS.SortInv : Prop :=
+  ∀ {Γ : List SExpr} {u v : SLevel} {V : SExpr},
+    Ctx.WF Γ → IsDefEq Γ (.sort u) (.sort v) V → u = v
+
+/-! ### The shape lattice separates sorts from Pis
+
+Three tiny lemmas plus one transport.  They are the entire semantic content
+of disjointness. -/
+
+/-- A Pi shape never interprets a syntactic sort.  `LE_Interp.le_sort'` says a
+syntactic sort only carries shapes `≤ .sort r`, and `WShape.le_sort` says
+those are `.bot` and `.sort r` only. -/
+theorem LE_Interp.forallE_not_sort {ρ : Valuation} {n : Nat} {b : WShape n}
+    {f : WShapeFun n} {l : SLevel} :
+    ¬ LE_Interp ρ (WShape.T (WShape.forallE b f)) (.sort l) := by
+  intro H
+  have h := LE_Interp.le_sort' H
+  simp only [WShape.T] at h
+  rcases WShape.le_sort.1 h with h | h <;>
+    · have h := congrArg Subtype.val h
+      simp only [WShape.forallE, WShape.bot, WShape.sort, Shape.bot, Shape.sort] at h
+      cases h
+
+/-- Shape inversion at a syntactic Pi: the observed shape is either the bottom
+shape, or below a Pi shape.  Only the `bot` and `forallE` constructors of
+`LE_Interp` can produce a `.forallE` subject. -/
+theorem LE_Interp.forallE_shape_inv {ρ : Valuation} {m : TShape} {B F : SExpr}
+    (H : LE_Interp ρ m (.forallE B F)) :
+    (∃ n', m = WShape.T (n := n') WShape.bot) ∨
+      ∃ (n' : Nat) (b : WShape n') (f : WShapeFun n'),
+        m ≤ WShape.T (WShape.forallE b f) := by
+  cases H with
+  | bot => exact .inl ⟨_, rfl⟩
+  | forallE _ _ _ _ hle => exact .inr ⟨_, _, _, hle⟩
+
+/-- A sort shape never interprets a syntactic Pi. -/
+theorem LE_Interp.sort_not_forallE {ρ : Valuation} {n : Nat} {r : Bool}
+    {B F : SExpr} :
+    ¬ LE_Interp ρ (WShape.T (WShape.sort (n := n) r)) (.forallE B F) := by
+  intro H
+  rcases H.forallE_shape_inv with ⟨n', h⟩ | ⟨n', b, f, hle⟩
+  · obtain ⟨rfl, h⟩ := Sigma.mk.inj h
+    have h := congrArg Subtype.val (eq_of_heq h)
+    simp only [WShape.bot, WShape.sort] at h
+    cases n <;> simp only [Shape.bot, Shape.sort] at h <;> cases h
+  · exact TShape.sort_not_le_forallE hle
+
+/-- A Pi shape is not the bottom shape. -/
+theorem TShape.forallE_not_le_bot {n : Nat} {b : WShape n} {f : WShapeFun n} :
+    ¬ (WShape.forallE b f).T ≤ TShape.bot := by
+  rw [TShape.LE.def (Nat.le_refl (n+1)) (Nat.zero_le (n+1))]
+  simp only [WShape.T, WShape.lift_self, TShape.bot, WShape.lift_bot]
+  intro h
+  have h := congrArg Subtype.val (WShape.le_bot.1 h)
+  simp only [WShape.forallE, WShape.bot, Shape.bot] at h
+  cases h
+
+/-- The minimal Pi observation of a syntactic Pi, available with no hypotheses
+at all.  The same shape `forallE_whRed_l_of_adequacy` (ADQ) builds inline. -/
+theorem LE_Interp.piBot {ρ : Valuation} {n : Nat} {B F : SExpr} :
+    LE_Interp ρ (WShape.T (n := n+1) (.forallE (.bot : WShape n) WShapeFun.bot))
+      (.forallE B F) := by
+  refine .forallE' .bot .bot (.bot <| .bot' .sort) fun _ h => ?_
+  cases h.bot_r
+  exact WShapeFun.bot_app.symm ▸ .bot
+
+/-- **The workhorse.**  A subject observed at the minimal Pi shape really has
+a Pi shape, and therefore a *sort* shape for its type.  This is exactly
+`WShape.HasType.forallE_l` ("the type shape of a Pi shape is a sort shape")
+transported through `InterpTyped.out`'s level alignment. -/
+theorem InterpTyped.piBot_out {Γ : List SExpr} {M N A : SExpr}
+    (d : IsDefEqStrong Γ M N A)
+    (hM : LE_Interp .nil (WShape.T (n := 1) (.forallE (.bot : WShape 0) WShapeFun.bot)) M) :
+    ∃ (k : Nat) (a' : WShape k) (f' : WShapeFun k) (r : Bool),
+      (WShape.forallE a' f').HasType (WShape.sort r) ∧
+      LE_Interp .nil (WShape.T (WShape.sort (n := k + 1) r)) A := by
+  obtain ⟨n', m', a, hn, hle, _, hA, hty⟩ := ((LE_Interp.sound d .nil).2 hM).out
+  have hn1 : 1 ≤ n' := hn
+  obtain ⟨k, rfl⟩ : ∃ k, n' = k + 1 := ⟨n' - 1, by omega⟩
+  rw [TShape.LE.def hn (Nat.le_refl _)] at hle
+  simp only [WShape.T, WShape.lift_self, WShape.lift_forallE (Nat.zero_le k),
+    WShape.lift_bot, WShapeFun.lift_bot] at hle
+  obtain ⟨a', f', _, _, rfl⟩ := WShape.forallE_le.1 hle
+  obtain ⟨r, _, rfl⟩ := WShape.HasType.forallE_l.1 hty
+  exact ⟨k, a', f', r, hty, hA⟩
+
+/-! ### Three of the four facts, from soundness alone
+
+None of the three theorems below takes an adequacy hypothesis, and none of
+them can consume `LR.adequacy` without exposing `sorryAx` in its axiom
+closure (ADQ's single `sorry` sits in `LR.iotaWitnessStep`). -/
+
+/-- **§4.4 fact 2** (`IsDefEqU.sort_forallE_inv`) and **fact 3**
+(`Params.structEta_sort_disjoint`).  Soundness transports the Pi shape of the
+right endpoint onto the left endpoint, where it meets a syntactic sort. -/
+theorem LRS.SortForallEDisj.of_soundness [Params.Semantic] :
+    LRS.SortForallEDisj := by
+  intro Γ A B u s hΓ h
+  have hPi : LE_Interp .nil
+      (WShape.T (n := 1) (.forallE (.bot : WShape 0) WShapeFun.bot)) (.forallE A B) :=
+    LE_Interp.piBot
+  exact LE_Interp.forallE_not_sort ((LE_Interp.sound (h.strong hΓ) .nil).1.2 hPi)
+
+/-- **§4.4 fact 4** (`Params.structEta_forallE_disjoint`, as spent at
+`HeadReduction.lean:524`).  The type shape of a Pi shape is a sort shape, and
+a sort shape cannot interpret a syntactic Pi. -/
+theorem LRS.PiNotFunTyped.of_soundness [Params.Semantic] :
+    LRS.PiNotFunTyped := by
+  intro Γ A B A₀ B₀ hΓ h
+  obtain ⟨k, a', f', r, _, hA⟩ :=
+    InterpTyped.piBot_out (h.strong hΓ) LE_Interp.piBot
+  exact LE_Interp.sort_not_forallE hA
+
+/-- The `proofIrrel` half.  Theory spends `IsDefEqU.sort_inv` here
+(`HeadReduction.lean:527`); the shape system already knows it, as
+`TShape.HasType.proofIrrel`: everything inhabiting a `Prop`-shaped type is the
+bottom shape, and a Pi shape is not bottom. -/
+theorem LRS.PiNotProof.of_soundness [Params.Semantic] : LRS.PiNotProof := by
+  intro Γ A B p hΓ hp h
+  obtain ⟨k, a', f', r, hPiTy, hA⟩ :=
+    InterpTyped.piBot_out (h.strong hΓ) LE_Interp.piBot
+  -- `p` carries a sort shape; read off that that shape is `Prop`-typed.
+  obtain ⟨a₂, b₂, hle₂, _, hb₂, hty₂⟩ := (LE_Interp.sound (hp.strong hΓ) .nil).2 hA
+  have hb₂' : b₂ ≤ TShape.sort false := by
+    have h0 := LE_Interp.le_sort hb₂
+    simpa using h0
+  have hprop : a₂.HasType (TShape.sort false) :=
+    TShape.HasType.mono_r hb₂' TShape.HasType.sort hty₂
+  -- the Pi's own shape inhabits a `Prop`-shaped type, so it is bottom.
+  exact TShape.forallE_not_le_bot
+    (TShape.HasType.proofIrrel hprop
+      (TShape.HasType.mono_r hle₂ hprop (WShape.HasType.T hPiTy)))
+
+/-! ### The depth ledger for `LRS.SortInv`
+
+`sort_inv` is the one §4.4 fact soundness cannot supply.  The rung it needs is
+**depth 0**, and the reason is one line of `HasTypeStratifiedS`. -/
+
+/-- A syntactic sort is stratified at depth `0`.  `HasTypeStratifiedS.sort'`
+(SExpr:2384) is a *nullary* constructor whose depth index is a free variable,
+so the sort case never consumes depth.  This is exactly the asymmetry with
+`LRS.PiPathInv`, whose subject is an arbitrary type. -/
+theorem HasTypeStratifiedS.sort_zero {Γ : List SExpr} {u : SLevel} :
+    HasTypeStratifiedS Γ (.sort u) (.sort u.succ) true 0 := .base .sort'
+
+/-- Depth-indexed sort/Pi disjointness, in the shape of
+`JointStratifiedPathInversionAt.sortInv` (ADQ). -/
+def LRS.SortForallEDisjAt (depth : Nat) : Prop :=
+  ∀ {Γ : List SExpr} {A B V : SExpr} {u s : SLevel} {core : Bool} {d : Nat},
+    d ≤ depth → Ctx.WF Γ → HasTypeStratifiedS Γ (.sort u) V core d →
+    ¬ IsDefEq Γ (.sort u) (.forallE A B) (.sort s)
+
+/-- Depth-indexed sort injectivity, matching `JointStratifiedInversionAt`. -/
+def LRS.SortInvAt (depth : Nat) : Prop :=
+  ∀ {Γ : List SExpr} {u v : SLevel} {V B : SExpr} {core : Bool} {d : Nat},
+    d ≤ depth → Ctx.WF Γ → IsDefEq Γ (.sort u) (.sort v) V →
+    HasTypeStratifiedS Γ (.sort u) B core d → u = v
+
+/-- **Faithfulness, at depth 0.**  The depth-indexed form at `d = 0` already
+implies the bare form the consumers use, because the certificate it demands is
+`HasTypeStratifiedS.sort_zero`, which holds unconditionally. -/
+theorem LRS.SortForallEDisj.of_at_zero (h : LRS.SortForallEDisjAt 0) :
+    LRS.SortForallEDisj :=
+  fun hΓ => h (Nat.le_refl 0) hΓ HasTypeStratifiedS.sort_zero
+
+/-- **Faithfulness, at depth 0**, for sort injectivity. -/
+theorem LRS.SortInv.of_at_zero (h : LRS.SortInvAt 0) : LRS.SortInv :=
+  fun hΓ hEq => h (Nat.le_refl 0) hΓ hEq HasTypeStratifiedS.sort_zero
+
+theorem LRS.SortForallEDisjAt.of_soundness [Params.Semantic] (depth : Nat) :
+    LRS.SortForallEDisjAt depth :=
+  fun _ hΓ _ => LRS.SortForallEDisj.of_soundness hΓ
+
+/-- All four §4.4 facts as one package.  The pass records here that three of
+its four fields need no input at all; only `sortInv` has a producer, and that
+producer sits at rung `0` (`LRS.ShapeDisj.of_lowerAdequacy`, ADQ).
+
+Deliberately *not* depth-indexed: `PiNotFunTyped` and `PiNotProof` have an
+arbitrary Pi as subject, so recovering a bare form from a depth-`d` form would
+need a stratification certificate for an arbitrary type at a fixed depth, i.e.
+`LRS.PathRestratifyAt`-strength uniform depth bound, which collapses the depth
+hierarchy.  They are proved outright instead. -/
+structure LRS.ShapeDisj : Prop where
+  sortInv : LRS.SortInv
+  sortForallEDisj : LRS.SortForallEDisj
+  piNotFunTyped : LRS.PiNotFunTyped
+  piNotProof : LRS.PiNotProof
+
+/-! ### The CR ladder
+
+Everything from `LRS.SubjectRedS` to `LRS.PiPathInv.of_crLadder` transports a
+Church–Rosser / standardization fact from `Theory/Typing/ChurchRosser.lean`
+and `Theory/Typing/HeadReduction.lean`.  Not one of them is an adequacy
+rung. -/
+
+/-- Weak-head subject reduction (`SExpr.WHRedS.defeq`, plus `Ctx.WF`). -/
+def LRS.SubjectRedS : Prop :=
+  ∀ {Γ : List SExpr} {e₁ e₂ A : SExpr},
+    Ctx.WF Γ → WHRedS Γ e₁ e₂ → IsDefEq Γ e₁ e₁ A → IsDefEq Γ e₁ e₂ A
+
+/-- Pi injectivity for a single ordinary equality between two syntactic Pis. -/
+def LRS.PiEdgeInv : Prop :=
+  ∀ {Γ : List SExpr} {A B A' B' : SExpr} {s : SLevel},
+    Ctx.WF Γ → IsDefEq Γ (.forallE A B) (.forallE A' B') (.sort s) →
+    ∃ u v, TypeDefEqPath Γ A A' u ∧ TypeDefEqPath (A :: Γ) B B' v
+
+/-- Pi-headedness is stable under ordinary type equality. -/
+def LRS.PiHeadNorm : Prop :=
+  ∀ {Γ : List SExpr} {X Y A B : SExpr} {s : SLevel},
+    Ctx.WF Γ → IsDefEq Γ X Y (.sort s) → WHRedS Γ X (.forallE A B) →
+    ∃ A' B', WHRedS Γ Y (.forallE A' B')
+
+/-- `VEnv.IsDefEq.church_rosser` (ChurchRosser:1952), transported. -/
+def LRS.CRComplete : Prop :=
+  ∀ {Γ : List SExpr} {e₁ e₂ A : SExpr},
+    Ctx.WF Γ → IsDefEq Γ e₁ e₂ A → CRDefEq Γ e₁ e₂ A
+
+/-- `NormalEq` inversion when the right endpoint is a Pi. -/
+def LRS.NormalEqPiInvL : Prop :=
+  ∀ {Γ : List SExpr} {e A B X : SExpr},
+    Ctx.WF Γ → NormalEq Γ e (.forallE A B) X → ∃ A' B', e = .forallE A' B'
+
+/-- The Pi-shaped consequence of standardization (`VEnv.ParRedS.standard`,
+HeadReduction:489, ∘ `VEnv.StRed.forallE_l`). -/
+def LRS.PiStandard : Prop :=
+  ∀ {Γ : List SExpr} {e A B V : SExpr},
+    Ctx.WF Γ → IsDefEq Γ e e V → ParRedS Γ e (.forallE A B) →
+    ∃ A' B', WHRedS Γ e (.forallE A' B')
+
+/-- `VEnv.ParRedS.defeq` (ChurchRosser:1431), transported. -/
+def LRS.ParRedSDefeq : Prop :=
+  ∀ {Γ : List SExpr} {e e' A : SExpr},
+    Ctx.WF Γ → ParRedS Γ e e' → IsDefEq Γ e e A → IsDefEq Γ e e' A
+
+/-- `VEnv.IsDefEq.reduce_forallE` (HeadReduction:512), transported. -/
+def LRS.ReduceForallE : Prop :=
+  ∀ {Γ : List SExpr} {e A B V : SExpr},
+    Ctx.WF Γ → IsDefEq Γ e (.forallE A B) V →
+    ∃ A' B', WHRedS Γ e (.forallE A' B')
+
+/-- Pi *typing* inversion: the domain and codomain of a well-typed syntactic Pi
+are themselves types.  Theory's `VEnv.HasType.forallE_inv`, spent at
+`HeadReduction.lean:516`, transported.
+
+Listed among the ladder `Prop`s for uniformity only — unlike its neighbours it
+is **not** an open rung: `LRS.PiTypeInv.of_strong` proves it outright from
+SExpr's own strong relation, with no Church–Rosser, no standardization and no
+adequacy.  It is the single premise of rung R11 that is not already a named
+rung. -/
+def LRS.PiTypeInv : Prop :=
+  ∀ {Γ : List SExpr} {A B V : SExpr},
+    Ctx.WF Γ → IsDefEq Γ (.forallE A B) (.forallE A B) V →
+    (∃ u, IsDefEq Γ A A (.sort u)) ∧ ∃ v, IsDefEq (A :: Γ) B B (.sort v)
+
+theorem ParRed.forallE_inv {Γ : List SExpr} {A B e : SExpr}
+    (H : ParRed Γ (.forallE A B) e) :
+    ∃ A' B', e = .forallE A' B' ∧ ParRed Γ A A' ∧ ParRed (A :: Γ) B B' := by
+  cases H with
+  | forallE h1 h2 => exact ⟨_, _, rfl, h1, h2⟩
+  | extra action _ =>
+    obtain ⟨c, ls, args, heq, _⟩ := action.matched.head_spine
+    cases args <;> cases heq
+
+theorem ParRedS.forallE_inv {Γ : List SExpr} {A B e : SExpr}
+    (H : ParRedS Γ (.forallE A B) e) : ∃ A' B', e = .forallE A' B' := by
+  induction H with
+  | rfl => exact ⟨_, _, rfl⟩
+  | tail _ h2 ih =>
+    obtain ⟨_, _, rfl⟩ := ih
+    obtain ⟨_, _, rfl, _, _⟩ := h2.forallE_inv
+    exact ⟨_, _, rfl⟩
+
+theorem LRS.ReduceForallE.of_ladder (cr : LRS.CRComplete)
+    (neInv : LRS.NormalEqPiInvL) (std : LRS.PiStandard) : LRS.ReduceForallE := by
+  intro Γ e A B V hΓ H
+  obtain ⟨_, e₁', e₂', h1, h2, h3⟩ := cr hΓ H
+  obtain ⟨_, _, rfl⟩ := ParRedS.forallE_inv h2
+  obtain ⟨_, _, rfl⟩ := neInv hΓ h3
+  exact std hΓ H.hasType.1 h1
+
+theorem LRS.PiHeadNorm.of_reduceForallE (sr : LRS.SubjectRedS)
+    (rf : LRS.ReduceForallE) : LRS.PiHeadNorm := by
+  intro Γ X Y A B s hΓ h hred
+  exact rf hΓ (h.symm.trans (sr hΓ hred h.hasType.1))
+
+theorem LRS.PiHeadNorm.of_crLadder (sr : LRS.SubjectRedS) (cr : LRS.CRComplete)
+    (neInv : LRS.NormalEqPiInvL) (std : LRS.PiStandard) : LRS.PiHeadNorm :=
+  LRS.PiHeadNorm.of_reduceForallE sr (LRS.ReduceForallE.of_ladder cr neInv std)
+
+theorem LRS.SubjectRedS.of_parRedSDefeq (h : LRS.ParRedSDefeq) :
+    LRS.SubjectRedS :=
+  fun hΓ hred he => h hΓ hred.parRedS he
+
+/-- **`NormalEq` inversion is a shape fact.**  The only two `NormalEq`
+constructors that could put a non-Pi on the left of a Pi are `etaL` and
+`proofIrrel`, and both are refuted by Part 2's soundness-derived
+disjointness. -/
+theorem LRS.NormalEqPiInvL.of_parts (h1 : LRS.PiNotFunTyped)
+    (h2 : LRS.PiNotProof) : LRS.NormalEqPiInvL := by
+  have go : ∀ {Γ : List SExpr} {e₁ e₂ Y : SExpr}, NormalEq Γ e₁ e₂ Y →
+      Ctx.WF Γ → ∀ (A' B' : SExpr), e₂ = .forallE A' B' →
+      ∃ A'' B'', e₁ = .forallE A'' B'' := by
+    intro Γ e₁ e₂ Y H
+    induction H with
+    | refl _ => intro _ A' B' h; exact ⟨A', B', h⟩
+    | appDF _ _ _ _ _ => intro _ _ _ h; cases h
+    | lamDF _ _ _ _ _ => intro _ _ _ h; cases h
+    | forallEDF _ _ _ _ _ _ => intro _ _ _ _; exact ⟨_, _, rfl⟩
+    | etaL _ _ he' _ _ => intro hΓ _ _ h; subst h; exact absurd he' (h1 hΓ)
+    | etaR _ _ _ _ _ => intro _ _ _ h; cases h
+    | proofIrrel hp _ hh' => intro hΓ _ _ h; subst h; exact absurd hh' (h2 hΓ hp)
+    | defeqDF _ _ ih => exact ih
+  intro Γ e A B X hΓ H
+  exact go H hΓ _ _ rfl
+
+/-- The single-edge Pi observation. -/
+def LRS.PiEdgeObs : Prop :=
+  ∀ {Γ : List SExpr} {X Y A B : SExpr} {s : SLevel},
+    Ctx.WF Γ → IsDefEq Γ X Y (.sort s) → WHRedS Γ X (.forallE A B) →
+    ∃ A' B' u v, WHRedS Γ Y (.forallE A' B') ∧
+      TypeDefEqPath Γ A A' u ∧ TypeDefEqPath (A :: Γ) B B' v
+
+/-- Component half of the single-edge Pi observation. -/
+def LRS.PiEdgeInvObs : Prop :=
+  ∀ {Γ : List SExpr} {X Y A B A' B' : SExpr} {s : SLevel},
+    Ctx.WF Γ → IsDefEq Γ X Y (.sort s) →
+    WHRedS Γ X (.forallE A B) → WHRedS Γ Y (.forallE A' B') →
+    ∃ u v, TypeDefEqPath Γ A A' u ∧ TypeDefEqPath (A :: Γ) B B' v
+
+theorem LRS.PiPathInv.of_piEdgeObs (obs : LRS.PiEdgeObs) : LRS.PiPathInv := by
+  intro Γ A B A' B' s hΓ H
+  have go : ∀ {X Y t A₀ B₀ : _}, TypeDefEqPath Γ X Y t →
+      WHRedS Γ X (.forallE A₀ B₀) →
+      ∃ AY BY u v, WHRedS Γ Y (.forallE AY BY) ∧
+        TypeDefEqPath Γ A₀ AY u ∧ TypeDefEqPath (A₀ :: Γ) B₀ BY v := by
+    intro X Y t A₀ B₀ P
+    induction P generalizing A₀ B₀ with
+    | single h => intro hred; exact obs hΓ h hred
+    | trans _ _ ih₁ ih₂ =>
+      intro hred
+      obtain ⟨AY, BY, u₁, v₁, hredY, hdom₁, hcod₁⟩ := ih₁ hred
+      obtain ⟨AZ, BZ, _, _, hredZ, hdom₂, hcod₂⟩ := ih₂ hredY
+      obtain ⟨_, hdom₁'⟩ := hdom₁.symm
+      exact ⟨AZ, BZ, u₁, v₁, hredZ, .trans hdom₁ hdom₂,
+        .trans hcod₁ (hdom₁'.defeqDF_l_path hcod₂)⟩
+  obtain ⟨_, _, u, v, hfinal, hdom, hcod⟩ := go H .rfl
+  cases WHNF.forallE.whRedS hfinal
+  exact ⟨u, v, hdom, hcod⟩
+
+theorem LRS.PiEdgeObs.of_parts (inv : LRS.PiEdgeInvObs)
+    (norm : LRS.PiHeadNorm) : LRS.PiEdgeObs := by
+  intro Γ X Y A B s hΓ h hred
+  obtain ⟨A', B', hredY⟩ := norm hΓ h hred
+  obtain ⟨u, v, hdom, hcod⟩ := inv hΓ h hred hredY
+  exact ⟨A', B', u, v, hredY, hdom, hcod⟩
+
+theorem LRS.PiEdgeInvObs.of_parts (sr : LRS.SubjectRedS)
+    (inv : LRS.PiEdgeInv) : LRS.PiEdgeInvObs := by
+  intro Γ X Y A B A' B' s hΓ h hredX hredY
+  exact inv hΓ ((sr hΓ hredX h.hasType.1).symm.trans (h.trans (sr hΓ hredY h.hasType.2)))
+
+theorem LRS.PiPathInv.of_crLadder (srp : LRS.ParRedSDefeq) (cr : LRS.CRComplete)
+    (std : LRS.PiStandard) (nf : LRS.PiNotFunTyped) (np : LRS.PiNotProof)
+    (inv : LRS.PiEdgeInv) : LRS.PiPathInv :=
+  have sr : LRS.SubjectRedS := LRS.SubjectRedS.of_parRedSDefeq srp
+  LRS.PiPathInv.of_piEdgeObs
+    (LRS.PiEdgeObs.of_parts (LRS.PiEdgeInvObs.of_parts sr inv)
+      (LRS.PiHeadNorm.of_crLadder sr cr (LRS.NormalEqPiInvL.of_parts nf np) std))
+
+/-- **HEADLINE.**  The 16C′ leaf follows from the L4L-18A′ rungs **alone**.
+Every hypothesis is a Church–Rosser / standardization / subject-reduction fact
+about `Theory/Typing/ChurchRosser.lean` and `Theory/Typing/HeadReduction.lean`;
+not one of them is an adequacy rung, and the two semantic side conditions
+(`LRS.PiNotFunTyped`, `LRS.PiNotProof`) are discharged here from soundness.
+
+Consequently the suspected 16C′ ⇄ **ADQ-fixpoint** cycle does not exist: the
+18A′ rungs need no adequacy input, so they can be scheduled independently of
+the ADQ fixpoint.
+
+**Superseded gloss, corrected 2026-08-15.**  This used to be read as "16C′ ⇄
+18A′ has no cycle", i.e. as making the leaf schedulable.  It does not.  The
+18A′ rungs are independent of the *adequacy fixpoint* but not of the *leaf*:
+`LRS.ParRedSDefeq` and `LRS.CRComplete` are downstream of `LRS.PiPathInv`
+itself.  The loop is written out on `LRS.crComplete_is_the_last_input`
+below. -/
+theorem LRS.PiPathInv.of_crLadder_noAdequacy [Params.Semantic]
+    (srp : LRS.ParRedSDefeq) (cr : LRS.CRComplete) (std : LRS.PiStandard)
+    (inv : LRS.PiEdgeInv) : LRS.PiPathInv :=
+  LRS.PiPathInv.of_crLadder srp cr std
+    LRS.PiNotFunTyped.of_soundness LRS.PiNotProof.of_soundness inv
+
+/-- The same for `LRS.PiHeadNorm`, the irreducible factor. -/
+theorem LRS.PiHeadNorm.of_crLadder_noAdequacy [Params.Semantic]
+    (sr : LRS.SubjectRedS) (cr : LRS.CRComplete) (std : LRS.PiStandard) :
+    LRS.PiHeadNorm :=
+  LRS.PiHeadNorm.of_crLadder sr cr
+    (LRS.NormalEqPiInvL.of_parts LRS.PiNotFunTyped.of_soundness
+      LRS.PiNotProof.of_soundness) std
+
+/-! ### Rung R11 — single-edge Pi injectivity, from Church–Rosser
+
+`LRS.PiEdgeInv` is the last hypothesis of `LRS.PiPathInv.of_crLadder` above
+with no producer; L4L-18A′ §5 records it as rung R11 with a sketch only.  This
+subsection proves it from the ladder rungs.  Ported from
+`plans/probes/probeR11-piedgeinv.lean`, which imports `ShapeLogRel` and nothing
+else — so independence from the *adequacy fixpoint* is structural there and is
+confirmed here by the absence of `sorryAx` in the axiom closures.
+
+**What R11 is, and is not (2026-08-15).**  It is an *interderivability*
+result, not a reduction.  `LRS.PiEdgeInv.of_piPathInv` runs the other
+direction in one line, and the ladder rungs R11 consumes are themselves
+downstream of `LRS.PiPathInv` — the loop is written out on
+`LRS.crComplete_is_the_last_input` at the end of this subsection.  So R11
+narrows the leaf's *presentation* (single-edge Pi injectivity suffices; the
+path-valued form is not independently needed) without making the leaf cheaper.
+Everything below is true and `sorryAx`-free; only the scheduling gloss that
+originally accompanied the sketch was wrong.
+
+Two facts about R11's *price* are worth stating up front, because both narrow
+the recorded ladder.
+
+**R11 sits strictly below the `PiHeadNorm` rung, not beside it.**  Not one
+step of the proof performs a weak-head reduction: `LRS.PiStandard`,
+`LRS.PiHeadNorm`, `LRS.ReduceForallE` and `LRS.TypeWHNFEx` are all absent.  The
+`≫*` chains supplied by `LRS.CRComplete` are consumed *as chains*, by
+`LRS.parRedS_forallE_path`; nothing ever needs them standardized into a
+weak-head sequence.
+
+**R11 costs `LRS.PiNotProof` but not `LRS.PiNotFunTyped`** — one of the two
+sort facts that `LRS.NormalEqPiInvL.of_parts` spends, not both.  The reason is
+that R11 already knows *both* `NormalEq` endpoints are Pis (Part 2 put them
+there), which makes the two eta cases structural: `etaL`/`etaR` each place a
+`.lam` node on one side, and a `.lam` is not a `.forallE`, so `cases` closes
+them.  `LRS.NormalEqPiInvL`, which knows only the right endpoint's shape, has
+to refute `etaL` semantically and therefore does need `LRS.PiNotFunTyped`.
+Six of the eight `NormalEq` constructors are structural here; `refl` costs
+`LRS.PiTypeInv` (proved outright) and `proofIrrel` costs `LRS.PiNotProof`
+(proved from soundness above). -/
+
+/-- **R11, Part 1.**  `LRS.PiTypeInv` is not an open obligation: it follows
+from SExpr's own strong-relation machinery — `IsDefEq.strong` (SExpr:3013)
+crossing the weak/strong bridge, then `IsDefEqStrong.forallE_inv'`
+(SExpr:2284), whose docstring notes that it "does not appeal to weak type
+uniqueness or Church–Rosser".  No Church–Rosser, no normalization, no
+adequacy.
+
+Since the `Prop` is inhabited, its vacuity question is settled affirmatively:
+it cannot be false. -/
+theorem LRS.PiTypeInv.of_strong [Params.Semantic] : LRS.PiTypeInv := by
+  intro Γ A B V hΓ H
+  obtain ⟨⟨u, hA⟩, v, hB⟩ := (H.strong hΓ).forallE_inv' (.inl rfl)
+  exact ⟨⟨u, hA.defeq⟩, v, hB.defeq⟩
+
+/-- **R11, Part 2.**  A `≫*` chain out of a well-typed Pi lands on a Pi, and
+its two components are joined to the originals by ordinary type paths in the
+*fixed* contexts `Γ` and `A :: Γ`.
+
+Charges `LRS.ParRedSDefeq` once per component per step and nothing else; in
+particular it charges neither Church–Rosser nor standardization.
+
+Iterating `ParRed.forallE_inv` along the chain and *then* converting is not an
+option, and this is the reason the statement is path-valued rather than
+equality-valued:
+
+* the codomain components of successive steps live in the successive contexts
+  `A₀ :: Γ`, `A₁ :: Γ`, …, whereas the conclusion wants the single context
+  `A :: Γ`, and SExpr's `ParRed` has no context-conversion lemma to move them
+  (it is ported only at `rfl` and `weak'`).  The fix is to convert *as we go*:
+  each step becomes an ordinary type equality via `LRS.ParRedSDefeq`
+  immediately, and `TypeDefEqPath.defeqDF_l` walks the codomain from `Aₖ :: Γ`
+  to `A :: Γ` one edge at a time.
+* adjacent edges may type their shared endpoint in different universes, so
+  collapsing the accumulated path into a single equality would charge
+  `TypeDefEqPath.collapse`, i.e. raw type uniqueness — precisely the currency
+  the path representation exists to avoid spending. -/
+theorem LRS.parRedS_forallE_path (srp : LRS.ParRedSDefeq)
+    {Γ : List SExpr} {A B e : SExpr} {u v : SLevel}
+    (hΓ : Ctx.WF Γ) (hA : IsDefEq Γ A A (.sort u))
+    (hB : IsDefEq (A :: Γ) B B (.sort v))
+    (H : ParRedS Γ (.forallE A B) e) :
+    ∃ A₁ B₁, e = .forallE A₁ B₁ ∧
+      TypeDefEqPath Γ A A₁ u ∧ TypeDefEqPath (A :: Γ) B B₁ v := by
+  induction H with
+  | rfl => exact ⟨A, B, rfl, .single hA, .single hB⟩
+  | tail _ h2 ih =>
+    obtain ⟨A₁, B₁, rfl, PA, PB⟩ := ih
+    obtain ⟨A₂, B₂, rfl, r1, r2⟩ := h2.forallE_inv
+    obtain ⟨w, hA₁⟩ := PA.rightType
+    have s1 : ParRedS Γ A₁ A₂ := .tail .rfl r1
+    have hdom : IsDefEq Γ A₁ A₂ (.sort w) := srp hΓ s1 hA₁
+    obtain ⟨w', hB₁⟩ := PB.rightType
+    have hΓ₁ : Ctx.WF (A₁ :: Γ) := ⟨hΓ, w, hA₁⟩
+    have s2 : ParRedS (A₁ :: Γ) B₁ B₂ := .tail .rfl r2
+    have hcod : IsDefEq (A₁ :: Γ) B₁ B₂ (.sort w') := srp hΓ₁ s2 (PA.defeqDF_l hB₁)
+    obtain ⟨_, PAsym⟩ := PA.symm
+    exact ⟨A₂, B₂, rfl, PA.trans (.single hdom),
+      PB.trans (.single (PAsym.defeqDF_l hcod))⟩
+
+/-- **R11, Part 3.**  A `NormalEq` between two syntactic Pis yields ordinary
+equalities of the domains and of the codomains, the latter in the *left*
+domain's context.
+
+This is the component-level strengthening of `LRS.NormalEqPiInvL`, which reads
+off only the *shape* of the left endpoint — and it is strictly cheaper, since
+knowing both endpoints are Pis makes `etaL`/`etaR` structural and so drops the
+`LRS.PiNotFunTyped` premise (see the section header).
+
+The `forallEDF` case is the reason the codomain context has to be adjusted:
+that constructor relates `E₁` and `E₂` in the context of a third type that both
+domains convert to, so its component equality is transported to `D₁ :: Γ` along
+the edge it carries. -/
+theorem LRS.normalEqPiInv (pti : LRS.PiTypeInv) (np : LRS.PiNotProof)
+    {Γ : List SExpr} {D₁ E₁ D₂ E₂ X : SExpr} (hΓ : Ctx.WF Γ)
+    (H : NormalEq Γ (.forallE D₁ E₁) (.forallE D₂ E₂) X) :
+    (∃ w, IsDefEq Γ D₁ D₂ (.sort w)) ∧
+      ∃ w', IsDefEq (D₁ :: Γ) E₁ E₂ (.sort w') := by
+  have go : ∀ {Γ : List SExpr} {e₁ e₂ X : SExpr}, NormalEq Γ e₁ e₂ X →
+      Ctx.WF Γ → ∀ (D₁ E₁ D₂ E₂ : SExpr),
+        e₁ = .forallE D₁ E₁ → e₂ = .forallE D₂ E₂ →
+        (∃ w, IsDefEq Γ D₁ D₂ (.sort w)) ∧
+          ∃ w', IsDefEq (D₁ :: Γ) E₁ E₂ (.sort w') := by
+    intro Γ e₁ e₂ X H
+    induction H with
+    | refl h =>
+      intro hΓ _ _ _ _ h1 h2
+      subst h1; injection h2 with p q; subst p; subst q
+      exact pti hΓ h
+    | appDF _ _ _ _ _ => intro _ _ _ _ _ h1 _; cases h1
+    | lamDF _ _ _ _ _ => intro _ _ _ _ _ h1 _; cases h1
+    | forallEDF hA₁ _ hA hB _ _ =>
+      intro _ _ _ _ _ h1 h2
+      injection h1 with p q; subst p; subst q
+      injection h2 with p q; subst p; subst q
+      exact ⟨⟨_, hA.defeq⟩, _, hA₁.symm.defeqDF_l hB.defeq⟩
+    | etaL _ _ _ _ _ => intro _ _ _ _ _ h1 _; cases h1
+    | etaR _ _ _ _ _ => intro _ _ _ _ _ _ h2; cases h2
+    | proofIrrel hp hh _ => intro hΓ _ _ _ _ h1 _; subst h1; exact absurd hh (np hΓ hp)
+    | defeqDF _ _ ih => exact ih
+  exact go H hΓ _ _ _ _ rfl rfl
+
+/-- **HEADLINE — L4L-18A′ rung R11.**  Single-edge Pi injectivity from
+Church–Rosser, supplying the one hypothesis of `LRS.PiPathInv.of_crLadder`
+that had no producer.  (Not a reduction of the leaf — see the subsection
+header and `LRS.crComplete_is_the_last_input`.)
+
+`LRS.CRComplete` splits the edge into two `≫*` chains meeting at a `NormalEq`;
+Part 2 turns each chain into a pair of type paths with fixed contexts; Part 3
+extracts the two component equalities at the meeting point; the three pieces
+are then concatenated, with the right-hand codomain path transported from
+`A' :: Γ` to `A :: Γ` along the assembled domain path.
+
+No `WHRedS`, no `LRS.PiStandard`, no `LRS.PiHeadNorm`, no `LRS.TypeWHNFEx`, no
+`LRS.PiNotFunTyped`.  The three premises beyond `LRS.PiTypeInv` (proved) are
+all rungs the leaf already required. -/
+theorem LRS.PiEdgeInv.of_crLadder (srp : LRS.ParRedSDefeq) (cr : LRS.CRComplete)
+    (pti : LRS.PiTypeInv) (np : LRS.PiNotProof) : LRS.PiEdgeInv := by
+  intro Γ A B A' B' s hΓ H
+  obtain ⟨⟨u, hA⟩, v, hB⟩ := pti hΓ H.hasType.1
+  obtain ⟨⟨u', hA'⟩, v', hB'⟩ := pti hΓ H.hasType.2
+  obtain ⟨_, e₁', e₂', h1, h2, h3⟩ := cr hΓ H
+  obtain ⟨A₁, B₁, rfl, PA, PB⟩ := LRS.parRedS_forallE_path srp hΓ hA hB h1
+  obtain ⟨A₂, B₂, rfl, PA', PB'⟩ := LRS.parRedS_forallE_path srp hΓ hA' hB' h2
+  obtain ⟨⟨w, hdom⟩, w', hcod⟩ := LRS.normalEqPiInv pti np hΓ h3
+  obtain ⟨_, PA'sym⟩ := PA'.symm
+  have PAA' : TypeDefEqPath Γ A A' u := PA.trans ((TypeDefEqPath.single hdom).trans PA'sym)
+  refine ⟨u, v, PAA', ?_⟩
+  obtain ⟨_, PAsym⟩ := PA.symm
+  obtain ⟨_, PB'sym⟩ := PB'.symm
+  obtain ⟨_, PA'A⟩ := PAA'.symm
+  exact PB.trans ((TypeDefEqPath.single (PAsym.defeqDF_l hcod)).trans
+    (PA'A.defeqDF_l_path PB'sym))
+
+/-- The same, packaged against the two `Prop`s that are discharged outright
+(`LRS.PiTypeInv` from the strong relation, `LRS.PiNotProof` from soundness), so
+that only the ladder rungs remain visible.  R11 therefore consumes **nothing
+the leaf did not already require**. -/
+theorem LRS.PiEdgeInv.of_crLadder_noAdequacy [Params.Semantic]
+    (srp : LRS.ParRedSDefeq) (cr : LRS.CRComplete) : LRS.PiEdgeInv :=
+  LRS.PiEdgeInv.of_crLadder srp cr LRS.PiTypeInv.of_strong
+    LRS.PiNotProof.of_soundness
+
+/-- **HEADLINE — the 16C′ leaf from the ladder rungs, with R11 spent.**
+`LRS.PiPathInv.of_crLadder_noAdequacy` closes the leaf from four inputs; R11
+removes the fourth without adding anything, since
+`LRS.PiEdgeInv.of_crLadder_noAdequacy` consumes only the first two of the
+remaining three.  The leaf therefore rests on exactly three ladder rungs.
+
+**Read this as an interderivability result, not a reduction.**  See the
+circularity note on `LRS.crComplete_is_the_last_input` below: the three rungs
+are not independent of the leaf, so this theorem narrows the leaf's
+presentation without making it cheaper. -/
+theorem LRS.PiPathInv.of_crLadder_R11 [Params.Semantic]
+    (srp : LRS.ParRedSDefeq) (cr : LRS.CRComplete) (std : LRS.PiStandard) :
+    LRS.PiPathInv :=
+  LRS.PiPathInv.of_crLadder_noAdequacy srp cr std
+    (LRS.PiEdgeInv.of_crLadder_noAdequacy srp cr)
+
+/-- **CORRECTED 2026-08-15 — the name is wrong and the claim it recorded is
+false.  `LRS.CRComplete` is NOT the last input to the L4L-16C′ leaf: the CR
+ladder is CIRCULAR with respect to it.**
+
+The measurement is `plans/probes/probeR12-parredS-clean.lean` (green, no
+`sorryAx`), and it overturns the earlier reading of the axiom closures.
+`VEnv.ParRedS.defeq` and `VEnv.ParRedS.standard` do *not* depend on
+`VEnv.IsDefEq.weakN_iff`, as the superseded note here claimed.  Their `sorry`
+roots are `IsDefEqU.sort_inv` and `IsDefEqU.forallE_inv_stratified` — the
+L4L-16C′ deliverables themselves.  The loop, and every arrow in it is a
+definitional identity or a proved implication:
+
+    LRS.PiPathInv  =  SExpr.forallE_inv          (`LRS.PiPathInv.of_adequacy`,
+                                                   ADQ, is definitionally
+                                                   `TypeDefEqPath.forallE_inv_of_adequacy`)
+      ⇒ IsDefEqU.forallE_inv_stratified
+      ⇒ IsDefEqU.forallE_inv
+      ⇒ VEnv.ParRed.defeq
+      ⇒ VEnv.ParRedS.defeq
+      ⇒ (transport) LRS.ParRedSDefeq
+      ⇒ (rung R11, above) LRS.PiPathInv
+
+The β case is where the dependency is essential, and it is essential for a
+reason worth stating rather than citing: firing β requires reconciling an
+application's *domain* with its abstraction's own domain, which is Pi
+injectivity. The two essential uses are `ParRed.defeq`
+(`Theory/Typing/ChurchRosser.lean`, β case) and `StRed.triangle`
+(`Theory/Typing/HeadReduction.lean`, β case).  Anchor on those *names*: both
+files are being edited concurrently and their line numbers shift.
+
+**Consequence for R11.**  `LRS.PiEdgeInv.of_piPathInv` is a one-liner in the
+other direction, so R11 is a *re-presentation* of the leaf — single-edge Pi
+injectivity and path-valued Pi injectivity are interderivable given the ladder
+— and not a reduction of it to something cheaper.  R11's theorems are all true
+and `sorryAx`-free, and the narrowing they record is real; what is not real is
+the earlier claim that they discharge the leaf.
+
+**Closing ChurchRosser's remaining `sorry` will not help.**  `church_rosser`
+retains the roots `weakN_iff`, `sort_inv` and `forallE_inv_stratified`
+independently of it.
+
+The statement below is retained verbatim because it is *true* — it is a
+correct implication — and because keeping the false gloss's target visible is
+how the ledger records that the arrow does not point where it was thought to.
+It is the name and the old docstring that were wrong. -/
+theorem LRS.crComplete_is_the_last_input [Params.Semantic]
+    (srp : LRS.ParRedSDefeq) (std : LRS.PiStandard) :
+    LRS.CRComplete → LRS.PiPathInv :=
+  fun cr => LRS.PiPathInv.of_crLadder_R11 srp cr std
+
+/-- **The constructor-spine residual, reduced to the leaf and no further.**
+`LRS.CtorSpineTypeUniqPath.of_piPathInv` (:11544) already discharged this from
+`LRS.PiPathInv`; with R11 the chain runs back to the ladder rungs, so the
+constructor-observation route charges **no adequacy rung** and no raw type
+uniqueness.  Its ADQ consumer is `LR.MajorChainAnchorStep`.
+
+What this does *not* say (2026-08-15): that the residual is cheaper than the
+leaf.  The ladder rungs are inside the loop recorded on
+`LRS.crComplete_is_the_last_input`, so the honest reading is
+"`LRS.CtorSpineTypeUniqPath` costs exactly `LRS.PiPathInv`, and in particular
+adds nothing on top of it". -/
+theorem LRS.CtorSpineTypeUniqPath.of_crLadder [Params.Semantic] {Γ : List SExpr}
+    (srp : LRS.ParRedSDefeq) (cr : LRS.CRComplete) (std : LRS.PiStandard)
+    (hΓ : Ctx.WF Γ) : LRS.CtorSpineTypeUniqPath Γ :=
+  LRS.CtorSpineTypeUniqPath.of_piPathInv
+    (LRS.PiPathInv.of_crLadder_R11 srp cr std) hΓ
+
+/-! ### Observation-level unfoldings of the logical relation
+
+The residuals of `LR.FixedHeadConvertStep` / `LR.FixedHeadConvertRightValid`
+(ADQ) at each observation.  Kept here because their statements mention only
+`LR`, `LogRel` and `SExpr`; the theorems that name the ADQ obligations sit
+beside those obligations in `ShapeLogRelAdequacy.lean`. -/
+
+/-- The sort analogue of `LRS.PiHeadNorm`; the sort observation's residual.
+It is the SExpr transport of `VEnv.IsDefEq.reduce_sort`
+(`HeadReduction.lean:493`), which Theory *proves*. -/
+def LRS.SortHeadNorm : Prop :=
+  ∀ {Γ : List SExpr} {X Y : SExpr} {w s : SLevel},
+    Ctx.WF Γ → IsDefEq Γ X Y (.sort s) → WHRedS Γ X (.sort w) →
+    ∃ w', WHRedS Γ Y (.sort w')
+
+theorem LR.tyDefEq_sort_self_iff {Γ₀ : List SExpr} {n : Nat} {B : SExpr}
+    {r : Bool} :
+    (LR Γ₀ : LogRel Γ₀ n).TyDefEq B B (.sort r) ↔ ∃ w, Γ₀ ⊢ B ⤳* .sort w :=
+  ⟨fun h => have ⟨w, h, _⟩ := (LR Γ₀).sort_iff_ty.1 h; ⟨w, h⟩,
+   fun ⟨w, h⟩ => (LR Γ₀).sort_iff_ty.2 ⟨w, h, h⟩⟩
+
+theorem LR.tyDefEq_sort_iff {Γ₀ : List SExpr} {n : Nat} {A B : SExpr}
+    {r : Bool} :
+    (LR Γ₀ : LogRel Γ₀ n).TyDefEq A B (.sort r) ↔
+      ∃ w, Γ₀ ⊢ A ⤳* .sort w ∧ Γ₀ ⊢ B ⤳* .sort w := (LR Γ₀).sort_iff_ty
+
+/-- The Pi observation, unfolded.  `LRS.ValTyPi2`'s first two conjuncts are the
+two weak-head reductions: given the left endpoint's, the right endpoint's is
+exactly `LRS.PiHeadNorm`.  The remaining four conjuncts are *semantic
+component* data that the CR ladder does not produce. -/
+theorem LR.tyDefEq_forallE_unfold {Γ₀ : List SExpr} {n : Nat} {M N : SExpr}
+    {b : WShape n} {f : WShapeFun n} :
+    (LR Γ₀ : LogRel Γ₀ (n+1)).TyDefEq M N (.forallE b f) ↔
+      ∃ B₁ F₁ B₂ F₂ u v,
+        Γ₀ ⊢ M ⤳* .forallE B₁ F₁ ∧ Γ₀ ⊢ N ⤳* .forallE B₂ F₂ ∧
+        TypeDefEqPath Γ₀ B₁ B₂ u ∧ TypeDefEqPath (B₁ :: Γ₀) F₁ F₂ v ∧
+        (LR Γ₀ : LogRel Γ₀ n).TyDefEq B₁ B₂ b ∧
+        LRS.PiDefEq (LR Γ₀ : LogRel Γ₀ n) B₁ F₁ F₂ b f := .rfl
+
+/-- The precise residual at the Pi observation, beside `LRS.PiHeadNorm`: a
+named *component* transport.  The CR ladder covers the head-shape half only. -/
+def LR.PiComponentTransport (Γ₀ : List SExpr) : Prop :=
+  ∀ {n : Nat} {A B B₁ F₁ B₂ F₂ : SExpr} {u : SLevel} {b : WShape n}
+      {f : WShapeFun n},
+    IsDefEq Γ₀ A B (.sort u) →
+    (LR Γ₀ : LogRel Γ₀ (n+1)).TyDefEq A A (.forallE b f) →
+    Γ₀ ⊢ B ⤳* .forallE B₁ F₁ → Γ₀ ⊢ B ⤳* .forallE B₂ F₂ →
+    ∃ u' v', TypeDefEqPath Γ₀ B₁ B₂ u' ∧ TypeDefEqPath (B₁ :: Γ₀) F₁ F₂ v' ∧
+      (LR Γ₀ : LogRel Γ₀ n).TyDefEq B₁ B₂ b ∧
+      LRS.PiDefEq (LR Γ₀ : LogRel Γ₀ n) B₁ F₁ F₂ b f
+
+/-! ### The convert step is an induction on the shape level
+
+Ported from `plans/probes/probeR12-picomponent.lean`.  The recorded status of
+`LR.PiComponentTransport` was "the one genuinely new residual on the leaf path
+that neither the CR ladder nor the adequacy fixpoint covers".  That is wrong,
+and the correction is structural rather than a new trick.
+
+**The component data at the Pi observation is the *same statement* one shape
+level down.**  Unfolding `TyDefEq A B (.forallE b f)` at level `n+1` exposes
+component obligations at level `n` — `TyDefEq B₁ B₂ b` and, inside
+`LRS.PiDefEq`, `TyDefEq (F.inst a) (F.inst b') (f.app p)`.  So the convert step
+at level `n+1` consumes the convert step at level `n`, and the residual is not
+new: it is the inductive step of an induction on the shape level.  The previous
+account missed it because it unfolded the Pi observation only once and read the
+component conjuncts as *data* rather than as recursive occurrences.
+
+**The two-reduct form is illusory.**  `LR.PiComponentTransport`'s two
+weak-head reductions are both reductions of the *same* `B`, so
+`WHRedS.determ` collapses them (`LR.PiComponentTransport.of_diag`, and the
+converse `.diag`).  There is nothing to reconcile.
+
+**What the induction costs, per shape constructor of `WShape (n+1)`:**
+
+| shape        | obligation                                      |
+| ------------ | ----------------------------------------------- |
+| `bot`        | `True`                                          |
+| `lam`,`ctor` | `True`                                          |
+| `sort r`     | `LRS.SortHeadNorm` + `LRS.SubjectRedS` + `LRS.SortInv` |
+| `forallE b f`| `LRS.PiHeadNorm` + `LRS.SubjectRedS` + `LRS.PiEdgeInv` + level `n` |
+| `indTy`      | `LRS.IndTyHeadNorm` (new, see below)            |
+
+Three of six are `True`; the sort rung is exactly what
+`LR.fixedHeadConvertStep_sort_of_parts` (ADQ) already charged; the Pi rung
+needs `LRS.PiEdgeInv`, which rung R11 above now *proves*.
+
+**G4 is unaffected.**  The induction is on the *shape level*, which is
+orthogonal to the adequacy rung.  `LRS.SortInv` is consumed exactly where it
+was before — at the sort observation, at every level — so the same-rung
+consumption recorded on `LR.FixedHeadConvertStep` neither improves nor worsens.
+-/
+
+/-- Diagonal form of `LR.PiComponentTransport`: one weak-head reduction of `B`,
+not two.  Equivalent to the two-reduct form by `WHRedS.determ`. -/
+def LR.PiComponentTransportDiag (Γ₀ : List SExpr) : Prop :=
+  ∀ {n : Nat} {A B B₁ F₁ : SExpr} {u : SLevel} {b : WShape n} {f : WShapeFun n},
+    IsDefEq Γ₀ A B (.sort u) →
+    (LR Γ₀ : LogRel Γ₀ (n+1)).TyDefEq A A (.forallE b f) →
+    Γ₀ ⊢ B ⤳* .forallE B₁ F₁ →
+    ∃ u' v', TypeDefEqPath Γ₀ B₁ B₁ u' ∧ TypeDefEqPath (B₁ :: Γ₀) F₁ F₁ v' ∧
+      (LR Γ₀ : LogRel Γ₀ n).TyDefEq B₁ B₁ b ∧
+      LRS.PiDefEq (LR Γ₀ : LogRel Γ₀ n) B₁ F₁ F₁ b f
+
+theorem LR.PiComponentTransport.of_diag {Γ₀ : List SExpr}
+    (h : LR.PiComponentTransportDiag Γ₀) : LR.PiComponentTransport Γ₀ := by
+  intro n A B B₁ F₁ B₂ F₂ u b f hEq hAA hred₁ hred₂
+  cases hred₁.determ WHNF.forallE hred₂ WHNF.forallE
+  exact h hEq hAA hred₁
+
+theorem LR.PiComponentTransport.diag {Γ₀ : List SExpr}
+    (h : LR.PiComponentTransport Γ₀) : LR.PiComponentTransportDiag Γ₀ :=
+  fun hEq hAA hred => h hEq hAA hred hred
+
+/-- `LR.FixedHeadConvertStep` (ADQ), indexed by the shape level so it can be
+proved by induction.  `∀ n, LR.ConvertStepAt Γ₀ n` *is* that obligation. -/
+def LR.ConvertStepAt (Γ₀ : List SExpr) (n : Nat) : Prop :=
+  ∀ {A B : SExpr} {u : SLevel} {a : WShape n},
+    IsDefEq Γ₀ A B (.sort u) →
+    (LR Γ₀ : LogRel Γ₀ n).TyDefEq A A a →
+    (LR Γ₀ : LogRel Γ₀ n).TyDefEq A B a
+
+/-- The convert step lifts from a single ordinary type equality to a whole
+`TypeDefEqPath`, one edge at a time.  This is what lets the Pi rung consume
+`LRS.PiEdgeInv`'s *path*-valued output without ever charging path collapse. -/
+theorem LR.ConvertStepAt.path {Γ₀ : List SExpr} {n : Nat}
+    (conv : LR.ConvertStepAt Γ₀ n) {A B : SExpr} {u : SLevel} {a : WShape n}
+    (P : TypeDefEqPath Γ₀ A B u)
+    (hAA : (LR Γ₀ : LogRel Γ₀ n).TyDefEq A A a) :
+    (LR Γ₀ : LogRel Γ₀ n).TyDefEq A B a := by
+  induction P generalizing a with
+  | single h => exact conv h hAA
+  | trans _ _ ih₁ ih₂ =>
+    have h₁ := ih₁ hAA
+    have h₂ := ih₂ ((LR Γ₀).left_ty ((LR Γ₀).symm_ty h₁))
+    exact (LR Γ₀).trans_ty h₁ h₂
+
+theorem LR.ConvertStepAt.path_right {Γ₀ : List SExpr} {n : Nat}
+    (conv : LR.ConvertStepAt Γ₀ n) {A B : SExpr} {u : SLevel} {a : WShape n}
+    (P : TypeDefEqPath Γ₀ A B u)
+    (hAA : (LR Γ₀ : LogRel Γ₀ n).TyDefEq A A a) :
+    (LR Γ₀ : LogRel Γ₀ n).TyDefEq B B a :=
+  (LR Γ₀).left_ty ((LR Γ₀).symm_ty (LR.ConvertStepAt.path conv P hAA))
+
+/-- The inductive-type analogue of `LRS.SortHeadNorm` and `LRS.PiHeadNorm`:
+an inductive-type head is stable under ordinary type equality.
+
+**This one has no upstream analogue.**  Theory's `reduce_*` family stops at
+`VEnv.IsDefEq.reduce_sort` (`HeadReduction.lean:493`) and
+`VEnv.IsDefEq.reduce_forallE` (`:512`); there is no `reduce_const`.  So unlike
+its two siblings this is a genuinely new named obligation — but it is
+CR-ladder *shaped* (a head-form transport, no semantic component data), not
+adequacy-shaped, and it is the only such residual the level induction
+exposes. -/
+def LRS.IndTyHeadNorm : Prop :=
+  ∀ {Γ : List SExpr} {X Y : SExpr} {s : SLevel},
+    Ctx.WF Γ → IsDefEq Γ X Y (.sort s) → LRS.IndTyHead Γ X → LRS.IndTyHead Γ Y
+
+/-- **The Pi rung of the induction.**  Note the conclusion is the
+*heterogeneous* `TyDefEq A B`, which is strictly more convenient than the
+right-endpoint form: `LRS.PiEdgeInv` hands back paths `A₁ ⇝ B₁` and
+`G₁ ⇝ F₁` that slot directly into `LRS.ValTyPi2`'s two `TypeDefEqPath`
+fields, so no path is ever reversed, composed, or collapsed.
+
+The `LRS.PiDefEq` field is where the recursion lives: its `rightTy` component
+is `TyDefEq (F₁.inst a) (F₁.inst b') (f.app p)`, obtained from the `G₁`
+version by converting each endpoint along the substituted codomain path — two
+uses of `LR.ConvertStepAt.path` at level `n`.  Its `rightDefEq` component is
+raw and comes from `IsDefEqStrong.subst` at the equality substitution
+`a ≡ b' : A₁`, charging no semantics at all. -/
+theorem LR.convertStep_forallE [Params.Semantic] {Γ₀ : List SExpr} {n : Nat}
+    (hΓ₀ : Ctx.WF Γ₀) (sr : LRS.SubjectRedS) (norm : LRS.PiHeadNorm)
+    (inv : LRS.PiEdgeInv) (lower : LR.ConvertStepAt Γ₀ n)
+    {A B : SExpr} {u : SLevel} {b : WShape n} {f : WShapeFun n}
+    (hEq : IsDefEq Γ₀ A B (.sort u))
+    (hAA : (LR Γ₀ : LogRel Γ₀ (n+1)).TyDefEq A A (.forallE b f)) :
+    (LR Γ₀ : LogRel Γ₀ (n+1)).TyDefEq A B (.forallE b f) := by
+  obtain ⟨A₁, G₁, A₂, G₂, u₀, v₀, hredA, hredA', hdomA, hcodA, htyA, hpiA⟩ :=
+    LR.tyDefEq_forallE_unfold.1 hAA
+  cases hredA.determ WHNF.forallE hredA' WHNF.forallE
+  obtain ⟨B₁, F₁, hredB⟩ := norm hΓ₀ hEq hredA
+  have hA' : IsDefEq Γ₀ A (.forallE A₁ G₁) (.sort u) := sr hΓ₀ hredA hEq.hasType.1
+  have hB' : IsDefEq Γ₀ B (.forallE B₁ F₁) (.sort u) := sr hΓ₀ hredB hEq.hasType.2
+  obtain ⟨ud, vd, Pdom, Pcod⟩ := inv hΓ₀ (hA'.symm.trans (hEq.trans hB'))
+  obtain ⟨wF, hF₁⟩ := Pcod.rightType
+  have hΓA : Ctx.WF (A₁ :: Γ₀) := ⟨hΓ₀, ud, Pdom.leftType⟩
+  refine LR.tyDefEq_forallE_unfold.2
+    ⟨A₁, G₁, B₁, F₁, ud, vd, hredA, hredB, Pdom, Pcod,
+      LR.ConvertStepAt.path lower Pdom htyA, ?_, ?_⟩
+  · intro a b' p hp hab hsem
+    have hinst := hpiA.1 hp hab hsem
+    have Pa : TypeDefEqPath Γ₀ (G₁.inst a) (F₁.inst a) vd := by
+      simpa only [SExpr.inst] using
+        Pcod.subst (Ctx.Subst.one IsDefEq.weakCore IsDefEq.bvar hab.hasType.1)
+    have Pb : TypeDefEqPath Γ₀ (G₁.inst b') (F₁.inst b') vd := by
+      simpa only [SExpr.inst] using
+        Pcod.subst (Ctx.Subst.one IsDefEq.weakCore IsDefEq.bvar hab.hasType.2)
+    have cL := LR.ConvertStepAt.path lower Pa ((LR Γ₀).left_ty hinst.leftTy)
+    have cR := LR.ConvertStepAt.path lower Pb ((LR Γ₀).left_ty ((LR Γ₀).symm_ty hinst.leftTy))
+    have W : Ctx.SubstEq Γ₀ (.one a) (.one b') (A₁ :: Γ₀) := by
+      refine .cons .nil Pdom.leftType ?_
+      show Γ₀ ⊢ a ≡ b' : A₁.subst SExpr.Subst.id
+      rw [SExpr.subst_id]; exact hab
+    exact ⟨hinst.leftTy,
+      (LR Γ₀).trans_ty ((LR Γ₀).symm_ty cL) ((LR Γ₀).trans_ty hinst.leftTy cR),
+      hinst.leftDefEq, ⟨wF, (hF₁.strong hΓA).subst W⟩⟩
+  · intro a p hp ha hsem
+    have hinst := hpiA.2 hp ha hsem
+    have Pa : TypeDefEqPath Γ₀ (G₁.inst a) (F₁.inst a) vd := by
+      simpa only [SExpr.inst] using
+        Pcod.subst (Ctx.Subst.one IsDefEq.weakCore IsDefEq.bvar ha)
+    exact LR.ConvertStepAt.path lower Pa hinst
+
+/-- **The sort rung of the induction.**  Uniform in the level — the sort
+observation is a `LogRel` *field* (`sort_iff_ty`), not a shape recursion — so
+it never appeals to the inductive hypothesis.  Identical in content to
+`LR.fixedHeadConvertStep_sort_of_parts` (ADQ); restated here because the
+induction needs it at the same level as the other rungs. -/
+theorem LR.convertStep_sort {Γ₀ : List SExpr} {n : Nat}
+    (hΓ₀ : Ctx.WF Γ₀) (sr : LRS.SubjectRedS) (snorm : LRS.SortHeadNorm)
+    (sinv : LRS.SortInv) {A B : SExpr} {u : SLevel} {r : Bool}
+    (hEq : IsDefEq Γ₀ A B (.sort u))
+    (hAA : (LR Γ₀ : LogRel Γ₀ n).TyDefEq A A (.sort r)) :
+    (LR Γ₀ : LogRel Γ₀ n).TyDefEq A B (.sort r) := by
+  obtain ⟨w, hredA⟩ := LR.tyDefEq_sort_self_iff.1 hAA
+  obtain ⟨w', hredB⟩ := snorm hΓ₀ hEq hredA
+  have hA' : IsDefEq Γ₀ A (.sort w) (.sort u) := sr hΓ₀ hredA hEq.hasType.1
+  have hB' : IsDefEq Γ₀ B (.sort w') (.sort u) := sr hΓ₀ hredB hEq.hasType.2
+  cases sinv hΓ₀ (hA'.symm.trans (hEq.trans hB'))
+  exact LR.tyDefEq_sort_iff.2 ⟨w, hredA, hredB⟩
+
+/-- **HEADLINE — the convert step, at every shape level.**  Induction on the
+level, case split by `WShape.casesOn'`.  Three of the six shape constructors
+are `True` for `LRS.TyDefEq`; the sort rung is level-uniform; only the Pi rung
+recurses; and `indTy` is the single new named residual.
+
+Its consumer `LR.FixedHeadConvertStep` (ADQ) was recorded as "THE ONE MISSING
+INPUT"; this discharges it from CR-ladder rungs, `LRS.SortInv` (adequacy rung
+`0`, unchanged) and `LRS.IndTyHeadNorm`. -/
+theorem LR.convertStepAt_all [Params.Semantic] {Γ₀ : List SExpr}
+    (hΓ₀ : Ctx.WF Γ₀) (sr : LRS.SubjectRedS) (snorm : LRS.SortHeadNorm)
+    (sinv : LRS.SortInv) (norm : LRS.PiHeadNorm) (inv : LRS.PiEdgeInv)
+    (ind : LRS.IndTyHeadNorm) : ∀ n, LR.ConvertStepAt Γ₀ n := by
+  intro n
+  induction n with
+  | zero =>
+    intro A B u a hEq hAA
+    obtain ⟨s, wf⟩ := a
+    match s with
+    | .bot => trivial
+    | .sort r => exact LR.convertStep_sort hΓ₀ sr snorm sinv hEq hAA
+  | succ n ih =>
+    intro A B u a hEq hAA
+    cases a using WShape.casesOn' with
+    | bot => trivial
+    | sort r => exact LR.convertStep_sort hΓ₀ sr snorm sinv hEq hAA
+    | forallE b f => exact LR.convertStep_forallE hΓ₀ sr norm inv ih hEq hAA
+    | lam f h => trivial
+    | ctor c l h => trivial
+    | indTy => exact ⟨hAA.1, ind hΓ₀ hEq hAA.1⟩
+
+/-- **The recorded residual, discharged.**  `LR.PiComponentTransport` is not a
+new obligation: the level induction supplies it. -/
+theorem LR.PiComponentTransport.of_crLadder [Params.Semantic] {Γ₀ : List SExpr}
+    (hΓ₀ : Ctx.WF Γ₀) (sr : LRS.SubjectRedS) (snorm : LRS.SortHeadNorm)
+    (sinv : LRS.SortInv) (norm : LRS.PiHeadNorm) (inv : LRS.PiEdgeInv)
+    (ind : LRS.IndTyHeadNorm) : LR.PiComponentTransport Γ₀ := by
+  refine LR.PiComponentTransport.of_diag ?_
+  intro n A B B₁ F₁ u b f hEq hAA hredB
+  have step := LR.convertStepAt_all hΓ₀ sr snorm sinv norm inv ind
+  obtain ⟨A₁, G₁, B₁', F₁', ud, vd, hredA, hredB', Pdom, Pcod, hty, hpi⟩ :=
+    LR.tyDefEq_forallE_unfold.1
+      (LR.convertStep_forallE hΓ₀ sr norm inv (step n) hEq hAA)
+  cases hredB.determ WHNF.forallE hredB' WHNF.forallE
+  obtain ⟨wB, hB₁⟩ := Pdom.rightType
+  obtain ⟨wF, hF₁⟩ := Pcod.rightType
+  obtain ⟨_, Pdomsym⟩ := Pdom.symm
+  refine ⟨wB, wF, .single hB₁, .single (Pdom.defeqDF_l hF₁),
+    (LR Γ₀).left_ty ((LR Γ₀).symm_ty hty), ?_, ?_⟩
+  · intro a b' p hp hab hsem
+    have hab' : Γ₀ ⊢ a ≡ b' : A₁ := Pdomsym.defeqDF hab
+    have hsem' : (LR Γ₀ : LogRel Γ₀ n).DefEq a b' A₁ p b :=
+      (LR Γ₀).conv ((LR Γ₀).symm_ty hty) hsem
+    have hinst := hpi.1 hp hab' hsem'
+    exact ⟨hinst.rightTy, hinst.rightTy, hinst.rightDefEq, hinst.rightDefEq⟩
+  · intro a p hp ha hsem
+    have ha' : Γ₀ ⊢ a : A₁ := Pdomsym.defeqDF ha
+    have hsem' : (LR Γ₀ : LogRel Γ₀ n).DefEq a a A₁ p b :=
+      (LR Γ₀).conv ((LR Γ₀).symm_ty hty) hsem
+    have hinst := hpi.1 hp ha' hsem'
+    exact hinst.rightTy
+
+/-! ### Vacuity discipline
+
+Standing policy since 2026-08-15: every new `Prop` either exhibits an
+inhabitant or an attempted derivation of `False`.  The three proved
+disjointness facts are *refutations*, so the risk they carry is that the
+judgment they refute is empty; `LRS.nonvacuous_sort` and `LRS.nonvacuous_pi`
+show it is not.  `LRS.sortInv_bit_only` is the sharp negative control: the
+soundness machinery recovers the `decide (u ≠ .zero)` bit and *nothing more*,
+which is exactly why `LRS.SortInv` still needs a rung.  `LRS.SortHeadNorm` and
+`LR.PiComponentTransport` are inhabited on the diagonal. -/
+
+theorem LRS.nonvacuous_sort {Γ : List SExpr} {u : SLevel} :
+    IsDefEq Γ (.sort u) (.sort u) (.sort u.succ) := .sort
+
+/-- **Negative control — the sharp boundary.**  Soundness alone recovers the
+`decide (u ≠ .zero)` bit shared by two equated sorts, and *nothing more*: the
+level itself is not determined, which is precisely why `LRS.SortInv` still
+needs an adequacy rung while the three disjointness facts do not.
+
+This is also the strongest available evidence that the pass is not vacuous.
+If `[Params] [Params.Semantic]` were inconsistent, or if the soundness
+machinery proved too much, `LRS.SortInv` would fall out of the same two lines
+— it does not. -/
+theorem LRS.sortInv_bit_only [Params.Semantic] {Γ : List SExpr} {V : SExpr}
+    {a b : SLevel} (hΓ : Ctx.WF Γ)
+    (h : IsDefEq Γ (.sort a) (.sort b) V) :
+    decide (a ≠ .zero) = decide (b ≠ .zero) := by
+  have hstart : LE_Interp .nil (TShape.sort (decide (a ≠ .zero))) (.sort a) :=
+    LE_Interp.sort'
+  have hend := (LE_Interp.sound (h.strong hΓ) .nil).1.1 hstart
+  have hle := LE_Interp.le_sort hend
+  rw [TShape.LE.def (Nat.le_refl 0) (Nat.le_refl 0)] at hle
+  simp only [TShape.sort, WShape.T, WShape.lift_self] at hle
+  have hval := congrArg Subtype.val (WShape.sort_le.1 hle)
+  simp only [WShape.sort, Shape.sort] at hval
+  injection hval
+
+theorem LRS.nonvacuous_pi {Γ : List SExpr} {A B : SExpr} {u v : SLevel}
+    (hA : IsDefEq Γ A A (.sort u)) (hB : IsDefEq (A :: Γ) B B (.sort v)) :
+    IsDefEq Γ (.forallE A B) (.forallE A B) (.sort (.imax u v)) :=
+  .forallEDF hA hB
+
+/-- Non-vacuity of `LRS.PiTypeInv`'s hypothesis, in the *empty* context and
+with no environment assumptions at all: a Pi over two sorts is well-typed, so
+the `Prop` proved by `LRS.PiTypeInv.of_strong` has content. -/
+theorem LRS.piTypeInv_nonvacuous (pti : LRS.PiTypeInv) {l l' : SLevel} :
+    (∃ u, IsDefEq [] (.sort l) (.sort l) (.sort u)) ∧
+      ∃ v, IsDefEq [.sort l] (.sort l') (.sort l') (.sort v) :=
+  pti trivial (LRS.nonvacuous_pi .sort .sort)
+
+/-- Non-vacuity of rung R11, at the same witness.  Together with
+`LRS.PiEdgeInv.of_crLadder`, this pins the vacuity question exactly:
+`LRS.PiEdgeInv` is refutable only if `LRS.CRComplete` or `LRS.ParRedSDefeq` is,
+since the other two premises are proved outright. -/
+theorem LRS.piEdgeInv_nonvacuous (inv : LRS.PiEdgeInv) {l l' : SLevel} :
+    ∃ u v, TypeDefEqPath [] (.sort l) (.sort l) u ∧
+      TypeDefEqPath [.sort l] (.sort l') (.sort l') v :=
+  inv trivial (LRS.nonvacuous_pi .sort .sort)
+
+theorem LRS.sortHeadNorm_diagonal {Γ : List SExpr} {X : SExpr} {w : SLevel}
+    (hred : WHRedS Γ X (.sort w)) : ∃ w', WHRedS Γ X (.sort w') := ⟨w, hred⟩
+
+theorem LR.piComponentTransport_diagonal_witness {Γ₀ : List SExpr} {n : Nat}
+    {A : SExpr} {b : WShape n} {f : WShapeFun n}
+    (hAA : (LR Γ₀ : LogRel Γ₀ (n+1)).TyDefEq A A (.forallE b f)) :
+    ∃ B₁ F₁ u' v', Γ₀ ⊢ A ⤳* .forallE B₁ F₁ ∧
+      TypeDefEqPath Γ₀ B₁ B₁ u' ∧ TypeDefEqPath (B₁ :: Γ₀) F₁ F₁ v' ∧
+      (LR Γ₀ : LogRel Γ₀ n).TyDefEq B₁ B₁ b ∧
+      LRS.PiDefEq (LR Γ₀ : LogRel Γ₀ n) B₁ F₁ F₁ b f := by
+  obtain ⟨B₁, F₁, B₂, F₂, u, v, hred, hred₂, hdom, hcod, hty, hpi⟩ :=
+    LR.tyDefEq_forallE_unfold.1 hAA
+  cases hred.determ WHNF.forallE hred₂ WHNF.forallE
+  exact ⟨B₁, F₁, u, v, hred, hdom, hcod, hty, hpi⟩
+
+/-- Non-vacuity of `LR.PiComponentTransportDiag`, at an arbitrary valid Pi
+observation.  Sharper than the diagonal witness above: the *reduct* is chosen
+by the caller rather than read off the observation, and determinism forces the
+two to agree.  So the conclusion of the diagonal form is inhabited at every
+instance whose hypotheses are, with no ladder input at all — which is exactly
+why `LR.PiComponentTransportDiag` can only fail off the diagonal, where the
+level induction supplies it. -/
+theorem LR.piComponentTransportDiag_nonvacuous {Γ₀ : List SExpr} {n : Nat}
+    {A B₁ F₁ : SExpr} {b : WShape n} {f : WShapeFun n}
+    (hAA : (LR Γ₀ : LogRel Γ₀ (n+1)).TyDefEq A A (.forallE b f))
+    (hred : Γ₀ ⊢ A ⤳* .forallE B₁ F₁) :
+    ∃ u' v', TypeDefEqPath Γ₀ B₁ B₁ u' ∧ TypeDefEqPath (B₁ :: Γ₀) F₁ F₁ v' ∧
+      (LR Γ₀ : LogRel Γ₀ n).TyDefEq B₁ B₁ b ∧
+      LRS.PiDefEq (LR Γ₀ : LogRel Γ₀ n) B₁ F₁ F₁ b f := by
+  obtain ⟨B₁', F₁', u', v', hredA, hdom, hcod, hty, hpi⟩ :=
+    LR.piComponentTransport_diagonal_witness hAA
+  cases hred.determ WHNF.forallE hredA WHNF.forallE
+  exact ⟨u', v', hdom, hcod, hty, hpi⟩
+
+/-- Non-vacuity of `LR.ConvertStepAt` at a **non-degenerate** shape: a
+syntactic sort is a valid type at the sort observation, at every level and
+every relevance bit, so the Prop's hypothesis is inhabited and its conclusion
+carries content (it forces `B` to reach the *same* sort). -/
+theorem LR.convertStepAt_nonvacuous {Γ₀ : List SExpr} {n : Nat}
+    (conv : LR.ConvertStepAt Γ₀ n) {B : SExpr} {w u : SLevel} {r : Bool}
+    (hEq : IsDefEq Γ₀ (.sort w) B (.sort u)) :
+    ∃ w', Γ₀ ⊢ SExpr.sort w ⤳* .sort w' ∧ Γ₀ ⊢ B ⤳* .sort w' :=
+  LR.tyDefEq_sort_iff.1 (conv (a := .sort r) hEq (LR.tyDefEq_sort_iff.2 ⟨w, .rfl, .rfl⟩))
+
+/-- Non-vacuity of `LRS.IndTyHeadNorm`: its hypothesis is inhabited as soon as
+the environment declares any nullary inductive type.  Unlike the sort and Pi
+witnesses this one is environment-conditional — there is no `Params`-free
+inductive type — which is the honest statement of the residual's scope. -/
+theorem LRS.indTyHead_nonvacuous {Γ : List SExpr} {c : Name} {ls : List SLevel}
+    (h : Params.classify c = some (.indTy 0)) : LRS.IndTyHead Γ (.const c ls) :=
+  ⟨c, ls, [], h, .rfl⟩

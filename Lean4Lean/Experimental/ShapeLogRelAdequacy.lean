@@ -549,6 +549,71 @@ theorem IsDefEqStrong.sort_inv_of_adequacyAtDepth
   cases WHNF.sort.whRedS hv
   rfl
 
+/-! #### The §4.4 shape facts, and the rung each one costs
+
+Ported from `plans/probes/probeW-disjointness.lean`.  The definitions and the
+three soundness-derived facts live in `ShapeLogRel.lean` — they are statements
+about `LE_Interp`, not about adequacy.  What is *here* is the depth ledger:
+which rung, if any, each fact charges.
+
+The answer is that **three of the four charge nothing** and the fourth charges
+**depth 0**.  `LRS.SortInv` is the only one that needs a rung, because
+`WShape.sort` records only `decide (u ≠ .zero)` (`LRS.sortInv_bit_only`, SLR,
+is the negative control) and the level itself has to come out of
+`LogRel.sort_iff`.  It charges depth `0` and nothing more, because the
+*subject* of the observation is a syntactic sort, whose certificate is the
+nullary `HasTypeStratifiedS.sort'` at depth `0`
+(`HasTypeStratifiedS.sort_zero`, SLR).  A leaf therefore supplies no anchor
+here at all, which is exactly the asymmetry with `LRS.PiPathInv`, whose
+subject is an arbitrary type. -/
+
+/-- **The depth-0 producer.**  Bounded adequacy at depth `0` already delivers
+full sort injectivity, in every context and at every level pair — no
+restriction to shallow subjects survives, because the observation's subject is
+a sort. -/
+theorem LRS.SortInv.of_adequacyAtDepth_zero
+    (adequacy : LR.ContextualAdequacyAtDepth 0) : LRS.SortInv :=
+  fun hΓ h =>
+    IsDefEqStrong.sort_inv_of_adequacyAtDepth (adequacy hΓ) (h.strong hΓ)
+      HasTypeStratifiedS.sort_zero
+
+/-- The same producer in `…At` form, matching `JointStratifiedInversionAt`. -/
+theorem LRS.SortInvAt.of_adequacyAtDepth_zero
+    (adequacy : LR.ContextualAdequacyAtDepth 0) : LRS.SortInvAt 0 := by
+  intro Γ u v V B core d hd hΓ hEq hstrat
+  cases Nat.le_zero.1 hd
+  exact IsDefEqStrong.sort_inv_of_adequacyAtDepth (adequacy hΓ) (hEq.strong hΓ)
+    hstrat
+
+/-- **The depth arithmetic.**  Restated in the exact shape the depth bootstrap
+hands to a leaf (compare `JointStratifiedPathInversionAt.of_predecessorAdequacy`
+and `LR.FixedHeadTypeValidStep.of_lowerAdequacy`): at any rung `depth ≥ 1`, the
+*strictly smaller* adequacy family already supplies the whole of
+`LRS.SortInv`.  Consumed at rung `depth`, produced at rung `0`; `0 < depth`, so
+this is strictly below, not same-rung. -/
+theorem LRS.SortInv.of_lowerAdequacy {depth : Nat} (hdepth : 0 < depth)
+    (lower : ∀ d, d < depth → LR.ContextualAdequacyAtDepth d) : LRS.SortInv :=
+  LRS.SortInv.of_adequacyAtDepth_zero (lower 0 hdepth)
+
+/-- The three disjointness facts are available at rung `0` as well, where the
+strictly-lower family is **empty**.  This is the sharpest possible form of
+"strictly below the consumer": below every rung, including the base. -/
+theorem LRS.shapeDisj_at_rung_zero
+    (_lower : ∀ d, d < 0 → LR.ContextualAdequacyAtDepth d) :
+    LRS.SortForallEDisj ∧ LRS.PiNotFunTyped ∧ LRS.PiNotProof :=
+  ⟨LRS.SortForallEDisj.of_soundness, LRS.PiNotFunTyped.of_soundness,
+    LRS.PiNotProof.of_soundness⟩
+
+/-- All four §4.4 facts as one package, from a strictly-lower adequacy family
+at any positive rung.  Three of its four fields need no input at all. -/
+theorem LRS.ShapeDisj.of_lowerAdequacy {depth : Nat} (hdepth : 0 < depth)
+    (lower : ∀ d, d < depth → LR.ContextualAdequacyAtDepth d) :
+    LRS.ShapeDisj where
+  sortInv := LRS.SortInv.of_lowerAdequacy hdepth lower
+  sortForallEDisj := LRS.SortForallEDisj.of_soundness
+  piNotFunTyped := LRS.PiNotFunTyped.of_soundness
+  piNotProof := LRS.PiNotProof.of_soundness
+
 /-- Depth-bounded adequacy exposes the Pi domains and codomains selected by
 one strong equality.  The result deliberately remains path-valued: collapsing
 those heterogeneous paths is the recursive part of the depth bootstrap. -/
@@ -1097,6 +1162,26 @@ theorem LR.MajorChainAnchorStep.of_piPathInv
     (fun V he => by
       cases V with
       | intro _ hred => exact hred.defeq_of_piPathInv piInv hΓ₀ he)
+
+/-- **The same, back to the ladder rungs** (2026-08-15).  With rung R11 landed
+(`LRS.PiEdgeInv.of_crLadder`, SLR) the sole input of `of_piPathInv` above is
+itself produced by `LRS.PiPathInv.of_crLadder_R11`, so the whole
+constructor-observation anchor rests on three Church–Rosser / standardization
+rungs and **no adequacy rung at all**.
+
+Recorded because it settles the *ADQ-fixpoint* scheduling question for this
+residual the same way `LRS.PiPathInv.of_crLadder_noAdequacy` settles it for the
+chain wall: the anchor step needs nothing from the adequacy fixpoint.
+
+It does **not** make the anchor cheaper than the leaf.  The three ladder rungs
+are downstream of `LRS.PiPathInv` itself — see the circularity note on
+`LRS.crComplete_is_the_last_input` (SLR) — so the honest reading is "the anchor
+costs exactly the leaf, and nothing beyond it". -/
+theorem LR.MajorChainAnchorStep.of_crLadder
+    (srp : LRS.ParRedSDefeq) (cr : LRS.CRComplete) (std : LRS.PiStandard)
+    (hΓ₀ : Ctx.WF Γ₀) : LR.MajorChainAnchorStep Γ₀ :=
+  LR.MajorChainAnchorStep.of_piPathInv
+    (LRS.PiPathInv.of_crLadder_R11 srp cr std) hΓ₀
 
 /-- The free constructor-observation closure folds from the repaired residual
 alone.  Same statement as `LRS.CtorDefEq.foldRaw_of_majorChainFoldStep`, with
@@ -2379,7 +2464,29 @@ It is *not* an instance of `LR.TyDefEq.of_defeq_of_stratifiedInversion`: that
 lemma also demands the right endpoint's own validity `(LR Γ₀).TyDefEq B B a`,
 which the chain zip has no producer for.  Recorded as a separate obligation
 because `LR.FixedHeadTelescope.toApplicationWith` has always required it and
-`LR.FixedHeadShapeChain.pathSemantics` fixes its shape. -/
+`LR.FixedHeadShapeChain.pathSemantics` fixes its shape.
+
+**What it unfolds to** (corrected 2026-08-15 from
+`plans/probes/probeW-disjointness.lean`; the previous account, on
+`LR.FixedHeadConvertRightValid` below, was wrong in both directions).  The
+conclusion is `TyDefEq A B a`, not `TyDefEq B B a`, so at `a = .sort r` the
+step additionally demands that `A` and `B` reach the **same** sort.  Unfolded,
+that is discharged from exactly three inputs — none of them `LRS.TypeWHNFEx`:
+transport (`LRS.SortHeadNorm`, SLR), subject reduction (`LRS.SubjectRedS`, a
+CR-ladder item), and sort injectivity (`LRS.SortInv`).  See
+`LR.fixedHeadConvertStep_sort_of_parts` below.
+
+**G4 (rung-0 consumption).**  This Prop is depth-free, so it has to hold at
+rung `0` too — and there its sort observation would consume a `LRS.SortInv`
+that is itself produced at rung `0`
+(`LRS.SortInv.of_adequacyAtDepth_zero`).  That is a same-rung consumption at
+exactly that rung, and it is not papered over: `LR.FixedHeadConvertStepAt`
+below is the depth-indexed variant, modelled on `LR.SelfAdequateDefeqStepAt`,
+which is vacuous at rung `0` (`LR.FixedHeadConvertStepAt.zero`) and at every
+positive rung takes its `LRS.SortInv` from the *strictly lower* family
+(`LR.fixedHeadConvertStepAt_sort_of_lowerAdequacy`).  The consumers still
+demand the depth-free form; migrating them is a separate step, because the
+`conv`/`ret` edges of `SExpr.PathSpineWF` carry no certificate to index on. -/
 def LR.FixedHeadConvertStep (Γ₀ : List SExpr) : Prop :=
   ∀ {n : Nat} {A B : SExpr} {u : SLevel} {a : WShape n},
     IsDefEq Γ₀ A B (.sort u) →
@@ -2396,15 +2503,35 @@ Prop, so the convert step is one line away from it (`of_rightValid` below)
 rather than out of reach.
 
 It is not leaf-local, and the reason is visible by unfolding the goal at each
-observation.  At `a = .sort r`, `LogRel.sort_iff_ty` reads
-`TyDefEq B B (.sort r) ↔ ∃ u, Γ₀ ⊢ B ⤳* .sort u ∧ …`, so the residual is
-literally "`B` has a weak-head normal form and it is a sort"; at
-`a = .forallE b f` it is the same claim with "Pi" in place of "sort".  That is
-`PiHeadNorm` = `TypeWHNFEx` + `PiHeadStable`, the single irreducible factor of
-`PiPathInv` isolated by `plans/probes/probeP-pipathinv.lean`.  Nothing weaker
-is available at the consumer: `SExpr.PathSpineWF`'s `conv`/`ret` edges
-(SExpr:1650-1658) carry a bare `IsDefEq` and no shape, witness, or endpoint
-validity at all — the G5 gap in its exact position. -/
+observation.
+
+**Corrected 2026-08-15** (`plans/probes/probeW-disjointness.lean`, Part 5).
+The previous account here claimed the residual is `PiHeadNorm` =
+`TypeWHNFEx` + `PiHeadStable`.  That is wrong in *both* directions, and
+`LRS.TypeWHNFEx` never arises at all: this Prop carries `TyDefEq A A a` as a
+**hypothesis**, so the left endpoint's weak-head normal form is *given*, not
+manufactured.  What the two observations really are:
+
+* At `a = .sort r`, `LogRel.sort_iff_ty` makes the obligation *exactly* the
+  sort analogue of `LRS.PiHeadNorm`, namely `LRS.SortHeadNorm` (SLR) — a pure
+  transport, nothing existential.  Machine-checked in **both** directions:
+  `LR.fixedHeadConvertRightValid_sort_of_transport` (transport ⟹ obligation)
+  and `LRS.SortHeadNorm.of_fixedHeadConvertRightValid` (obligation ⟹
+  transport).  So nothing weaker suffices and nothing stronger is demanded.
+* At `a = .forallE b f`, `LRS.TyDefEq.forallE_iff` unfolds the goal to
+  `LRS.ValTyPi2` (`LR.tyDefEq_forallE_unfold`, SLR), whose first two conjuncts
+  are the two weak-head reductions — that half *is* `LRS.PiHeadNorm`, and the
+  CR ladder covers it — but whose remaining four conjuncts
+  (`TypeDefEqPath` ×2, `TyDefEq B₁ B₂ b`, `LRS.PiDefEq`) are *semantic
+  component* data the CR ladder does not produce.  That half is isolated as
+  `LR.PiComponentTransport` (SLR); see
+  `LR.fixedHeadConvertRightValid_forallE_of_parts`.
+
+So the CR route covers the head-shape half at both observations and does not
+cover the component half at the Pi observation.  Nothing weaker is available at
+the consumer either: `SExpr.PathSpineWF`'s `conv`/`ret` edges carry a bare
+`IsDefEq` and no shape, witness, or endpoint validity at all — the G5 gap in
+its exact position. -/
 def LR.FixedHeadConvertRightValid (Γ₀ : List SExpr) : Prop :=
   ∀ {n : Nat} {A B : SExpr} {u : SLevel} {a : WShape n},
     IsDefEq Γ₀ A B (.sort u) →
@@ -2413,7 +2540,19 @@ def LR.FixedHeadConvertRightValid (Γ₀ : List SExpr) : Prop :=
 
 /-- The convert step from the right-endpoint residual.  Recorded so the
 inventory names the honest obligation: `FixedHeadConvertStep` is not an extra
-gap beside the inversion package, it is that package plus validity transport. -/
+gap beside the inversion package, it is that package plus validity transport.
+
+**Read the price honestly** (corrected 2026-08-15).  The docstring on
+`LR.FixedHeadConvertRightValid` above used to say the convert step is "one
+line away" from `LR.TyDefEq.of_defeq_of_stratifiedInversion`.  The *line* is
+one line; the *input* is not.  `inv` here is the full, uncollapsed
+`JointStratifiedInversion`: its `sortInv` field is unbounded-depth sort
+injectivity, and its `forallEInv` field is `IsDefEq`-valued — i.e. already
+collapsed — Pi inversion with endpoint stratification bookkeeping at `n - 1`,
+which is strictly stronger than the path-valued `LRS.PiPathInv` the rest of
+the development charges.  So this route buys the convert step at the price of
+the whole inversion package, path collapse included.  The per-observation
+theorems below buy the same observations at CR-ladder prices instead. -/
 theorem LR.FixedHeadConvertStep.of_rightValid
     (inv : JointStratifiedInversion) (hΓ₀ : Ctx.WF Γ₀)
     (right : LR.FixedHeadConvertRightValid Γ₀) :
@@ -2421,6 +2560,235 @@ theorem LR.FixedHeadConvertStep.of_rightValid
   intro n A B u a hEq hAA
   exact LR.TyDefEq.of_defeq_of_stratifiedInversion inv hΓ₀ hEq hAA
     (right hEq hAA)
+
+/-! #### The two observations, at CR-ladder prices
+
+Ported from `plans/probes/probeW-disjointness.lean` Part 5.  The generic
+unfoldings (`LR.tyDefEq_sort_self_iff`, `LR.tyDefEq_sort_iff`,
+`LR.tyDefEq_forallE_unfold`) and the two named residuals (`LRS.SortHeadNorm`,
+`LR.PiComponentTransport`) live in `ShapeLogRel.lean`; what is here is what
+names the ADQ obligations. -/
+
+omit [Params.Semantic] in
+/-- **The caveat, half one.**  The sort observation of
+`LR.FixedHeadConvertRightValid` follows from a pure *transport*. -/
+theorem LR.fixedHeadConvertRightValid_sort_of_transport {Γ₀ : List SExpr}
+    (hΓ₀ : Ctx.WF Γ₀) (norm : LRS.SortHeadNorm) {n : Nat} {A B : SExpr}
+    {u : SLevel} {r : Bool}
+    (hEq : IsDefEq Γ₀ A B (.sort u))
+    (hAA : (LR Γ₀ : LogRel Γ₀ n).TyDefEq A A (.sort r)) :
+    (LR Γ₀ : LogRel Γ₀ n).TyDefEq B B (.sort r) := by
+  obtain ⟨w, hred⟩ := LR.tyDefEq_sort_self_iff.1 hAA
+  obtain ⟨w', hred'⟩ := norm hΓ₀ hEq hred
+  exact LR.tyDefEq_sort_self_iff.2 ⟨w', hred'⟩
+
+omit [Params.Semantic] in
+/-- **The caveat, half two.**  Conversely, the sort observation of
+`LR.FixedHeadConvertRightValid` *is* that transport: nothing weaker suffices,
+and nothing stronger is demanded.  In particular `LRS.TypeWHNFEx` is neither
+needed nor implied. -/
+theorem LRS.SortHeadNorm.of_fixedHeadConvertRightValid
+    (right : ∀ Γ₀ : List SExpr, LR.FixedHeadConvertRightValid Γ₀) :
+    LRS.SortHeadNorm := by
+  intro Γ X Y w s _ hEq hred
+  have hXX : (LR Γ : LogRel Γ 0).TyDefEq X X (WShape.sort true) :=
+    LR.tyDefEq_sort_self_iff.2 ⟨w, hred⟩
+  exact LR.tyDefEq_sort_self_iff.1 (right Γ hEq hXX)
+
+omit [Params.Semantic] in
+/-- **The Pi observation, split.**  `LRS.PiHeadNorm` supplies the head-shape
+half, which the CR ladder covers; `LR.PiComponentTransport` supplies the rest,
+which it does not. -/
+theorem LR.fixedHeadConvertRightValid_forallE_of_parts {Γ₀ : List SExpr}
+    (hΓ₀ : Ctx.WF Γ₀) (norm : LRS.PiHeadNorm) (comp : LR.PiComponentTransport Γ₀)
+    {n : Nat} {A B : SExpr} {u : SLevel} {b : WShape n} {f : WShapeFun n}
+    (hEq : IsDefEq Γ₀ A B (.sort u))
+    (hAA : (LR Γ₀ : LogRel Γ₀ (n+1)).TyDefEq A A (.forallE b f)) :
+    (LR Γ₀ : LogRel Γ₀ (n+1)).TyDefEq B B (.forallE b f) := by
+  obtain ⟨B₁, F₁, _, _, _, _, hred, _, _, _, _, _⟩ :=
+    LR.tyDefEq_forallE_unfold.1 hAA
+  obtain ⟨B₂, F₂, hredB⟩ := norm hΓ₀ hEq hred
+  obtain ⟨u', v', hdom, hcod, hty, hpi⟩ := comp hEq hAA hredB hredB
+  exact LR.tyDefEq_forallE_unfold.2
+    ⟨B₂, F₂, B₂, F₂, u', v', hredB, hredB, hdom, hcod, hty, hpi⟩
+
+omit [Params.Semantic] in
+/-- **The step itself, not just its right-endpoint residual.**
+`LR.FixedHeadConvertStep` concludes `TyDefEq A B a`, so its sort case
+additionally demands that `A` and `B` reach the *same* sort.  Discharged from
+three inputs, none of which is `LRS.TypeWHNFEx`: transport
+(`LRS.SortHeadNorm`), subject reduction (`LRS.SubjectRedS`, a CR-ladder item),
+and sort injectivity (`LRS.SortInv`, the depth-0 item). -/
+theorem LR.fixedHeadConvertStep_sort_of_parts {Γ₀ : List SExpr}
+    (hΓ₀ : Ctx.WF Γ₀) (sr : LRS.SubjectRedS) (norm : LRS.SortHeadNorm)
+    (sinv : LRS.SortInv) {n : Nat} {A B : SExpr} {u : SLevel} {r : Bool}
+    (hEq : IsDefEq Γ₀ A B (.sort u))
+    (hAA : (LR Γ₀ : LogRel Γ₀ n).TyDefEq A A (.sort r)) :
+    (LR Γ₀ : LogRel Γ₀ n).TyDefEq A B (.sort r) := by
+  obtain ⟨w, hredA⟩ := LR.tyDefEq_sort_self_iff.1 hAA
+  obtain ⟨w', hredB⟩ := norm hΓ₀ hEq hredA
+  have hA' : IsDefEq Γ₀ A (.sort w) (.sort u) := sr hΓ₀ hredA hEq.hasType.1
+  have hB' : IsDefEq Γ₀ B (.sort w') (.sort u) := sr hΓ₀ hredB hEq.hasType.2
+  cases sinv hΓ₀ (hA'.symm.trans (hEq.trans hB'))
+  exact LR.tyDefEq_sort_iff.2 ⟨w, hredA, hredB⟩
+
+/-! #### The convert step, discharged (2026-08-15)
+
+The account above stops at "the CR route covers the head-shape half at both
+observations and does not cover the component half at the Pi observation".
+That is a correct reading of *one* unfolding, and a wrong reading of the
+obligation.  `plans/probes/probeR12-picomponent.lean` and `LR.convertStepAt_all`
+(SLR) show why: **the component half at the Pi observation is the same
+statement one shape level down**, so `LR.FixedHeadConvertStep` is not a
+fixed set of residuals but an induction on the shape level, and
+`LR.PiComponentTransport` is its inductive step rather than a new input.
+
+The two theorems below are the consequence, stated against the ADQ `Prop`s.
+The induction is on the *shape level*, which is orthogonal to the adequacy
+rung, so the G4 note in the next subsection is untouched: `LRS.SortInv` is
+still consumed at the sort observation at every level, exactly as before, and
+`LR.FixedHeadConvertStepAt` remains the right mitigation. -/
+
+/-- **HEADLINE.**  `LR.FixedHeadConvertStep` — recorded above as "THE ONE
+MISSING INPUT" — from the CR ladder, `LRS.SortInv` (adequacy rung `0`) and one
+new head-form transport.
+
+Of the six inputs, four are CR-ladder rungs (`LRS.SubjectRedS`,
+`LRS.SortHeadNorm`, `LRS.PiHeadNorm`, `LRS.PiEdgeInv`), one is the depth-0
+adequacy item `LRS.SortInv` that the sort observation already charged, and one
+is new: `LRS.IndTyHeadNorm`, the `indTy` analogue of the other two head-form
+transports.  Nothing here is `LRS.TypeWHNFEx`, path collapse, or
+`JointStratifiedInversion`; in particular this route does *not* pay the price
+that `LR.FixedHeadConvertStep.of_rightValid` pays.
+
+**What the ladder rungs cost** (2026-08-15).  `LRS.PiEdgeInv` and
+`LRS.PiHeadNorm` are inside the loop recorded on
+`LRS.crComplete_is_the_last_input` (SLR) — they are interderivable with
+`LRS.PiPathInv`, the 16C′ leaf.  So the correct reading of this theorem is not
+"the convert step is now free" but the sharper and still valuable one: **the
+convert step demands nothing beyond the leaf itself**, plus `LRS.SortInv` at
+rung `0` and one genuinely new head-form transport.  It was recorded as a
+separate, unrelated obligation; it is not one. -/
+theorem LR.FixedHeadConvertStep.of_crLadder {Γ₀ : List SExpr}
+    (hΓ₀ : Ctx.WF Γ₀) (sr : LRS.SubjectRedS) (snorm : LRS.SortHeadNorm)
+    (sinv : LRS.SortInv) (norm : LRS.PiHeadNorm) (inv : LRS.PiEdgeInv)
+    (ind : LRS.IndTyHeadNorm) : LR.FixedHeadConvertStep Γ₀ :=
+  fun {n} => LR.convertStepAt_all hΓ₀ sr snorm sinv norm inv ind n
+
+/-- And hence the right-endpoint residual, by `symm_ty ∘ left_ty`. -/
+theorem LR.FixedHeadConvertRightValid.of_crLadder {Γ₀ : List SExpr}
+    (hΓ₀ : Ctx.WF Γ₀) (sr : LRS.SubjectRedS) (snorm : LRS.SortHeadNorm)
+    (sinv : LRS.SortInv) (norm : LRS.PiHeadNorm) (inv : LRS.PiEdgeInv)
+    (ind : LRS.IndTyHeadNorm) : LR.FixedHeadConvertRightValid Γ₀ :=
+  fun hEq hAA => (LR Γ₀).left_ty ((LR Γ₀).symm_ty
+    (LR.FixedHeadConvertStep.of_crLadder hΓ₀ sr snorm sinv norm inv ind hEq hAA))
+
+/-- The same with `LRS.PiEdgeInv` discharged by rung R11
+(`LRS.PiEdgeInv.of_crLadder_noAdequacy`, SLR) and `LRS.PiHeadNorm` by
+`LRS.PiHeadNorm.of_crLadder_noAdequacy`, so that only rungs with no producer
+remain visible.  Four inputs: three CR-ladder rungs, `LRS.SortInv` at adequacy
+rung `0`, and the one new head-form transport. -/
+theorem LR.FixedHeadConvertStep.of_crLadder_R11 {Γ₀ : List SExpr}
+    (hΓ₀ : Ctx.WF Γ₀) (srp : LRS.ParRedSDefeq) (cr : LRS.CRComplete)
+    (std : LRS.PiStandard) (snorm : LRS.SortHeadNorm) (sinv : LRS.SortInv)
+    (ind : LRS.IndTyHeadNorm) : LR.FixedHeadConvertStep Γ₀ :=
+  have sr : LRS.SubjectRedS := LRS.SubjectRedS.of_parRedSDefeq srp
+  LR.FixedHeadConvertStep.of_crLadder hΓ₀ sr snorm sinv
+    (LRS.PiHeadNorm.of_crLadder_noAdequacy sr cr std)
+    (LRS.PiEdgeInv.of_crLadder_noAdequacy srp cr) ind
+
+/-! #### G4: the depth-indexed convert step
+
+`LR.FixedHeadConvertStep` is depth-free, so it must hold at rung `0`, and its
+sort observation there would consume a `LRS.SortInv` produced at rung `0` —
+same-rung, at exactly that rung.  The mitigation is the one
+`LR.SelfAdequateDefeqStepAt` already uses: index the Prop by the rung, and gate
+it on a stratification certificate for the left endpoint at a *strictly*
+smaller depth.  The index has one job, and the arithmetic makes it explicit:
+`depth < outerDepth` forces `0 < outerDepth`, which is exactly what puts rung
+`0` inside the strictly-lower family.
+
+Landed **beside** the depth-free Prop rather than replacing it.  Migrating the
+consumers is not a one-step change: `convert` is spent inside
+`LR.FixedHeadShapeChain.pathSemantics` while zipping a `SExpr.PathSpineWF`,
+whose `conv`/`ret` edges carry a bare `IsDefEq` and no stratification
+certificate to index on.  Supplying one there is the G5 gap, not this one. -/
+
+/-- Depth-indexed `LR.FixedHeadConvertStep`, shaped like
+`LR.SelfAdequateDefeqStepAt`: the left endpoint arrives with a stratification
+certificate strictly below the rung. -/
+def LR.FixedHeadConvertStepAt (Γ₀ : List SExpr) (outerDepth : Nat) : Prop :=
+  ∀ {n : Nat} {A B : SExpr} {u : SLevel} {a : WShape n}
+      {core : Bool} {depth : Nat},
+    depth < outerDepth →
+    HasTypeStratifiedS Γ₀ A (.sort u) core depth →
+    IsDefEq Γ₀ A B (.sort u) →
+    (LR Γ₀).TyDefEq A A a →
+    (LR Γ₀).TyDefEq A B a
+
+omit [Params.Semantic] in
+/-- The indexed form is a weakening of the depth-free one, so demanding it can
+never demand more than the current interface does. -/
+theorem LR.FixedHeadConvertStep.at (h : LR.FixedHeadConvertStep Γ₀)
+    (outerDepth : Nat) : LR.FixedHeadConvertStepAt Γ₀ outerDepth :=
+  fun _ _ hEq hAA => h hEq hAA
+
+omit [Params.Semantic] in
+/-- **The G4 mitigation, stated.**  At rung `0` the indexed step is
+unconditional, so the rung that *produces* `LRS.SortInv` consumes nothing from
+itself.  The same-rung consumption exists only for the depth-free Prop. -/
+theorem LR.FixedHeadConvertStepAt.zero :
+    LR.FixedHeadConvertStepAt Γ₀ 0 :=
+  fun hdepth _ _ _ => absurd hdepth (Nat.not_lt_zero _)
+
+/-- **The G4 mitigation, discharged at every positive rung.**  The sort
+observation of the indexed step takes its `LRS.SortInv` from the strictly
+lower adequacy family, because the certificate's `depth < outerDepth` already
+forces `0 < outerDepth` and `LRS.SortInv` is produced at rung `0`.  Nothing is
+consumed at the rung being built. -/
+theorem LR.fixedHeadConvertStepAt_sort_of_lowerAdequacy {Γ₀ : List SExpr}
+    (hΓ₀ : Ctx.WF Γ₀) (sr : LRS.SubjectRedS) (norm : LRS.SortHeadNorm)
+    {outerDepth : Nat}
+    (lower : ∀ d, d < outerDepth → LR.ContextualAdequacyAtDepth d)
+    {n : Nat} {A B : SExpr} {u : SLevel} {r : Bool}
+    {core : Bool} {depth : Nat}
+    (hdepth : depth < outerDepth)
+    (_hstrat : HasTypeStratifiedS Γ₀ A (.sort u) core depth)
+    (hEq : IsDefEq Γ₀ A B (.sort u))
+    (hAA : (LR Γ₀ : LogRel Γ₀ n).TyDefEq A A (.sort r)) :
+    (LR Γ₀ : LogRel Γ₀ n).TyDefEq A B (.sort r) :=
+  LR.fixedHeadConvertStep_sort_of_parts hΓ₀ sr norm
+    (LRS.SortInv.of_lowerAdequacy
+      (Nat.lt_of_le_of_lt (Nat.zero_le depth) hdepth) lower) hEq hAA
+
+/-! ##### Vacuity check for `LR.FixedHeadConvertStepAt`
+
+Standing policy: every new `Prop` exhibits an inhabitant or an attempted
+derivation of `False`.  `LR.FixedHeadConvertStepAt Γ₀ 0` is inhabited
+vacuously (`.zero`), and that alone would be a weak certificate, so the lemma
+below checks a *positive* rung: at `outerDepth = 1` every hypothesis of the
+Prop is simultaneously satisfiable **and** the conclusion holds there.  So the
+Prop is neither empty-hypothesis vacuous nor refutable at the one instance
+that can be computed outright.  No derivation of `False` was found; the Prop is
+also implied by the depth-free one (`LR.FixedHeadConvertStep.at`), which
+`LR.FixedHeadConvertStep.of_rightValid` already produces from
+`JointStratifiedInversion`. -/
+
+omit [Params.Semantic] in
+/-- Non-vacuity at a positive rung: the five components below are, in order,
+the depth gate, the stratification certificate, the type equality, the left
+validity — i.e. all four hypotheses of `LR.FixedHeadConvertStepAt Γ₀ 1` — and
+then its conclusion, all met at once by a syntactic sort. -/
+theorem LR.fixedHeadConvertStepAt_nonvacuous {Γ₀ : List SExpr} {w : SLevel}
+    {r : Bool} :
+    (0 : Nat) < 1 ∧
+      HasTypeStratifiedS Γ₀ (.sort w) (.sort w.succ) true 0 ∧
+      IsDefEq Γ₀ (.sort w) (.sort w) (.sort w.succ) ∧
+      (LR Γ₀ : LogRel Γ₀ 0).TyDefEq (.sort w) (.sort w) (WShape.sort r) ∧
+      (LR Γ₀ : LogRel Γ₀ 0).TyDefEq (.sort w) (.sort w) (WShape.sort r) :=
+  ⟨Nat.one_pos, HasTypeStratifiedS.sort_zero, .sort,
+    LR.tyDefEq_sort_self_iff.2 ⟨w, .rfl⟩,
+    LR.tyDefEq_sort_self_iff.2 ⟨w, .rfl⟩⟩
 
 /-- Finish a fixed-head application package from one packed telescope and
 the semantic type equalities justified at the caller's derivation-aware
