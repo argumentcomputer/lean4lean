@@ -850,6 +850,23 @@ plan had not assigned; they are 16E work items now:
   construction must NOT consume Theory's `BlockGenerationChecked.pat_wf`
   — it carries `sorryAx` through `IsDefEqU.trans` → `uniq` → the
   sorried `sort_inv`.
+  **New hard constraint on the entry point (proved 2026-08-15,
+  `plans/probes/probeK-deltarank.lean`): `VEnv.WF` admits δ-cycles.**
+  `VDecl.WF.mutualDef` (`Theory/Typing/Env.lean:28-32`) adds every block
+  constant BEFORE checking any block value, so
+  `mutual def a : Prop := b; def b : Prop := a end` is a well-formed
+  history — the probe constructs it, proves both `VEnv.Ordered` and
+  `VEnv.WF` for it, then proves no δ-rank function can exist for it.
+  Consequences: (i) the δ-rank the 16C′ leaf needs cannot be derived
+  from `Params.henv` and must be `Params` fields; (ii) a generic
+  `VEnv.WF → Params` construction therefore CANNOT discharge those
+  fields in general — 16F must either exclude cyclic definitions from
+  `Pat` (handling them through `Semantic.registered` as opaque
+  constants) or carry δ-acyclicity as an explicit environment
+  hypothesis. Decide that at 16F's design, not at implementation.
+  Independently worth noting: a δ-cyclic definition makes δ-reduction
+  non-terminating, so this is a point where the VEnv model is more
+  permissive than the kernel it models.
 - **`CtorBundle.hu0` — recommendation: delete the field outright**
   (supersedes both candidate repairs recorded in the D1 quot record).
   Banked evidence: `hu0_impossible_at_prop` (under type uniqueness no

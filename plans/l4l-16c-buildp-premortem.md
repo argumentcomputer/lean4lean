@@ -2536,3 +2536,1080 @@ trusted again.  The change is purely additive, so no fixture source edit is
 expected.
 
 — session-C subagent 5
+
+### The chain-wall residual collapses to Pi injectivity; both fields of `MajorChainAnchorStep` land (2026-08-15, session-C subagent 6)
+
+Baseline at resumption, reconfirmed by a full elaboration before any edit
+(log `baseline-adq`, exit 0): zero errors, exactly one `declaration uses
+sorry` at the `LR.iotaWitnessStep` leaf (ADQ:7062:8), plus `SExpr.lean`'s four
+off-path sorries.  Final state: zero errors in both edited files;
+`ShapeLogRel.lean` with **zero** sorries; `ShapeLogRelAdequacy.lean` with the
+same sole sorry at the same leaf, moved only by insertion to ADQ:7115:8 (token
+ADQ:7145).  Both warning profiles are **identical to baseline, not merely
+comparable**: `diff` of the two sorted, line-number-stripped warning sets is
+empty on both files (23 → 23 in `ShapeLogRel.lean`, 83 → 83 in
+`ShapeLogRelAdequacy.lean`).  Every landed declaration depends on nothing but
+`propext` / `Classical.choice` / `Quot.sound` — checked by `#print axioms` in
+`plans/probes/probeA6-spine.lean` — so no `sorryAx` is reachable and none of
+`SExpr.lean`'s off-path sorries is touched.
+
+Both remaining items of the previous session's tower are discharged.  They
+turned out to be the *same* obligation, and the obligation is smaller than
+either half was thought to be.
+
+#### The move: stop erasing the conversions a stratified typing already carries
+
+The predecessor's route comparison was right about where the payment sits and
+wrong about how much of it there is.  The decisive observation is an erasure
+repair one level below anything the previous four sessions inspected.
+
+`HasTypeStratifiedS.to_core` (SExpr:2580) strips the outer conversions of a
+stratified typing and returns only `∃ A', Γ ⊢ e :! A' !! n`.  It *throws the
+conversions away*.  That single discard is the entire reason
+`HasTypeStratifiedS.core_aligned_of_typeUniq` (ADQ:794) has to buy the
+alignment back with `LogRel.RawTypeUniq`, and therefore the reason every case
+of `WHRed.defeq_of_stratified_inversion` (ADQ:821) opens by spending the full
+`JointStratifiedInversion` package.  But the discarded conversions are
+`IsDefEqStrong … (.sort u)` edges — they already *are* a `TypeDefEqPath`.
+Retaining them costs nothing: `HasTypeStratifiedS.to_core_path` (SLR:11194) is
+the same induction as `to_core` with the path threaded, and its base case
+closes from `HasTypeStratifiedS.isType` (SExpr:2716), which every
+syntax-directed core derivation already carries.
+
+This is the north star applied to a lemma nobody had looked at: the producer
+knew the conversions, the consumer needed them, and the interface in between
+truncated them to an existential.  Everything below is what falls out.
+
+#### Target 1 — `LRS.CtorSpineTypeUniqPath` (SLR:11135): the generation-side argument
+
+With the path retained, the discipline reduces in three steps, of which the
+first two are *free* — no adequacy, no uniqueness, no inversion, nothing.
+
+1. **Any typing of an application spine already is a `SpineWF`.**
+   `HasTypeStratifiedS.spineWF_of_foldl` (SLR:11278): from
+   `Γ ⊢ es.foldl (·.app ·) hd : V !! n` one recovers a typing of `hd` together
+   with `SExpr.SpineWF Γ HdTy es V`.  The recursion is on the *argument list*,
+   not on a depth; each `app` node is exposed by `to_core_path`; and the
+   conversions that node discards are absorbed by `SpineWF.conv_path`
+   (SLR:11223), because `SpineWF` is already closed under conversion at both
+   ends (`conv`/`ret`, SExpr:1398-1405).  Nothing is identified anywhere.
+   Contrast `HasTypeStratifiedS.foldl_app_head` (SExpr:2629), which walks the
+   same spine and retains only the head — erasure of exactly the layer
+   structure this needs.
+2. **The head is a registered constant, and a registered constant has one
+   type.**  `LRS.constTypeUniqPath` (SLR:11304): two typings of `.const c ls`
+   are path-equal.  Both core derivations must be the stratified `const` rule,
+   whose displayed type is literally `SExpr.mkInst ls ci.type`; the
+   environment is a function, so `env.constants c = some ci₁` and
+   `= some ci₂` give `ci₁ = ci₂` and the two types are *syntactically
+   identical*.  The retained paths then compose.  **This step consumes
+   nothing at all.**  It is the generation-side content of the whole repair,
+   and it is why the residual has no depth index: its subject is a registered
+   declaration, and the fact used about it is settled at declaration time, not
+   at derivation time.
+3. **The two spine runs are compared layer by layer.**
+   `SExpr.SpineWF.result_path` (SLR:11345): two `SpineWF`s over the *same*
+   argument list from path-equal head types reach path-equal results.  Each
+   layer inverts the Pi that `SpineWF.cons_path` (SLR:11250) exposes as the
+   running path's right endpoint, then substitutes the shared argument into
+   the codomain path (`TypeDefEqPath.subst`, SLR:10184).
+
+Only step 3 has content, and its content is exactly **Pi injectivity for type
+paths**.  That is the single named residual, `LRS.PiPathInv` (SLR:11332):
+
+    ∀ {Γ A B A' B' s}, Ctx.WF Γ →
+      TypeDefEqPath Γ (.forallE A B) (.forallE A' B') s →
+      ∃ u v, TypeDefEqPath Γ A A' u ∧ TypeDefEqPath (A :: Γ) B B' v
+
+Three absences in that statement are load-bearing and were each a separate
+failure mode in earlier sessions.  *No stratification index* — unlike
+`JointStratifiedPathInversion.forallEInv` (ADQ:234) it demands no endpoint
+certificates, so no consumer must name a depth, and the G4 tripwire has
+nothing to fire on.  *No universe alignment* — `sortPathInv` is never used by
+any consumer below.  *No collapse* — the conclusion is again path-valued, so
+`TypeDefEqPath.collapse` (SLR:10460), which is the whole of raw type
+uniqueness, is never charged.  `LRS.PiPathInv.of_adequacy` (ADQ:267) is the
+producer, and it is `TypeDefEqPath.forallE_inv_of_adequacy` (ADQ:177)
+repackaged with nothing added — that theorem already requests no certificate.
+
+The general statement is `LRS.constSpineTypeUniqPath` (SLR:11373): *any* two
+typings of one fully-applied registered-constant spine are path-equal.
+`LRS.CtorSpineTypeUniqPath.of_piPathInv` (SLR:11393) is the instance.  Worth
+recording explicitly: **the proof never uses `Params.classify c = some (.ctor
+_)`.**  The result-type discipline is not special to constructors — it is the
+discipline of registered declarations, and the constructor classification only
+selects which spines the fold happens to meet.  That is the honest scope of
+route (ii) of the 2026-08-15 audit, and it is wider than the audit guessed.
+
+#### Target 2 — `rootRed` (ADQ:1040): the re-certifying lemma is not needed
+
+The brief for this session was to build a *re-certifying* multi-step subject
+reduction: one that carries the stratification certificate along the whole
+`WHRedS` rather than losing it after the first step, since
+`WHRedS.defeq_of_stratified_inversion` (ADQ:866) takes each next step's typing
+from `ih.hasType.2`, whose depth is existential.
+
+That design is correct as a diagnosis and unnecessary as a construction.  The
+obstruction is dissolved rather than answered: once the per-step lemma names
+no depth, the induction has nothing left to lose.  Re-proving the single step
+against the retained path, `WHRed.defeq_of_piPathInv` (SLR:11422):
+
+* `app` and `major` become **free** — their only cost was
+  `core_aligned_of_stratified_inversion`, and `IsDefEq.core_aligned_path`
+  (SLR:11212) supplies the same alignment with no premise;
+* `beta` spends **only `LRS.PiPathInv`**, in place of the collapsed
+  `inv.forallEInv`;
+* `extra` (a registered contraction) spends **only the spine discipline of
+  Target 1**.  `Pattern.MatchesS.head_spine` (SExpr:899) says a matched redex
+  *is* a constant-headed application spine, so its core type and the type
+  carried by `Pattern.Action.sound` are two typings of one registered spine —
+  reconciled by exactly the environment-level fact the constructor leaves use.
+
+`WHRedS.defeq_of_piPathInv` (SLR:11464) is then the three-line induction, with
+no certificate threaded and none needed.  The predecessor's correction about
+which side of the redex the rule certificates bound is therefore moot for this
+route: no side of the redex needs a certificate.  Note also that the general
+form is proved — the restriction of `rootRed` to reductions landing on a
+*classified* spine is never used, so that narrowing can be dropped from any
+future interface without cost.
+
+#### What this does and does not buy
+
+`LR.MajorChainAnchorStep.of_piPathInv` (ADQ:1092) discharges **both** fields
+from `LRS.PiPathInv` plus `Ctx.WF Γ₀`.  Measured against what
+`MajorChainAnchorStep.of_majorChainFoldStep` (ADQ:1065) needs — the collapsed
+`JointStratifiedInversion`, i.e. `IsDefEq.uniq_of_stratified_inversion`
+(ADQ:671, a well-founded induction on `max n₁ n₂`) *plus*
+`TypeDefEqPath.collapse_of_stratified_inversion` (ADQ:422) *plus* the sort
+inversion — this is a strict and large weakening.  `LRS.PiPathInv` is *implied
+by* the package it replaces: `LRS.PiPathInv.of_jointStratifiedPathInversion`
+(ADQ:276) is the faithfulness certificate, recovering the endpoint
+certificates `forallEInv` demands from the path's own two self-typings.
+
+What it does **not** buy, stated plainly so the next session does not
+rediscover it.  `LRS.PiPathInv` is still produced only from
+`LR.ContextualAdequacyAt 1`, so at a leaf inside the depth bootstrap it is not
+yet available.  The depth-*bounded* rung that does exist —
+`IsDefEqStrong.forallE_invPath_of_adequacyAtDepth` (ADQ:555), reachable from a
+strict predecessor family via `JointStratifiedPathInversionAt.of_predecessorAdequacy`
+(ADQ:609) — does **not** discharge `PiPathInv`, for a reason that is now
+precise rather than atmospheric: the Pis inverted by `SpineWF.result_path` are
+the types occurring along the spine of a *native chain leaf*, and those leaves
+are the chain's interior vertices, whose stratified depth the 2026-08-15 audit
+already showed is not a function of the endpoints'.  A bounded rung needs the
+Pi's own depth `≤ depth`; nothing names that depth.  So the residual is
+genuinely one proposition now, but it is still a proposition about the whole
+theory rather than about a predecessor rung.
+
+Two further consequences worth carrying, both free:
+
+* `IsDefEq.core_aligned_path` (SLR:11212) is a drop-in strengthening of
+  `IsDefEq.core_aligned_of_stratified_inversion` (ADQ:805) for every consumer
+  that only transports a term equality.  Any remaining call site of the latter
+  that does not then collapse is spending the full package for nothing.
+* `HasTypeStratifiedS.spineWF_of_foldl` (SLR:11278) turns any spine typing
+  into the retained layer certificate the generated-iota machinery already
+  speaks in.  It is the premise-free converse of `SpineWF.hasType`
+  (SExpr:1524) and should be reached for before any new spine inversion is
+  written.
+
+#### Item 3 (`LR.CoherentIotaLeafStep`, ADQ:6014): assessed, deliberately not started
+
+Per the brief this was to be attempted opportunistically if both targets
+landed.  It was assessed and not started, and the reason is a concrete
+specification rather than a budget excuse.
+
+The audit's second blocker — run the iota natively at the framed leaf's own
+level `k` and transport the finished rectangle back through
+`LogRel.LiftEquiv.rect` (SLR:10783) — is *not* mechanical, because of a shape
+mismatch that is easy to miss.  `LogRel.DefEqRect R M₁ M₂ N₁ N₂ A m a`
+(SLR:9946) is indexed by an **element** shape and a **type** shape, both
+`WShape n`.  `LRS.CtorFrame Γ IH m J p` (SLR:10862) is indexed by the two
+**constructor-observation** shapes, `WShape (n+1)` and `WShape (k+1)`, and
+carries no element or type shape at all.  So a standalone
+`CtorFrame`-indexed rectangle transport would have to *quantify* the element
+and type shapes and their `HasType`/`≤` side conditions (`DefEqRect.mono_l`
+SLR:9976, `.mono_r_1/2` SLR:9985/9995, and `LiftEquiv.rect`'s own `hma`).
+That is a second, independently chosen shape pair for one position — erasure
+#7, exactly the failure the N2 decision refused in the 2026-08-15 entry.
+
+The right construction therefore threads the element shape **positionally**
+from the leaf that already owns it, which makes it a producer-side step inside
+item 3's own leaf assembly, not a reusable lemma that can be landed first.
+Recorded so the next session builds it in the right place rather than
+manufacturing a plausible-looking transport lemma its consumer cannot align
+with.
+
+#### Remaining tower (updated, renumbered)
+
+1. `LRS.PiPathInv` (SLR:11332, NEW): path-valued Pi injectivity.  **The sole
+   residual of the chain wall**, replacing former items 1 and 2 in their
+   entirety.  Depth-free, universe-free, collapse-free; produced by
+   `LRS.PiPathInv.of_adequacy` (ADQ:267) from `LR.ContextualAdequacyAt 1`, and
+   implied by the existing path package (ADQ:276).  Not reachable from a
+   depth-bounded rung; see above for why.
+2. `LR.CoherentIotaLeafStep Γ₀` (ADQ:6014, unproved): item 1 plus the
+   multi-level frame layer, whose shape-threading specification is recorded
+   above.
+3. `LR.ConstDefnDeepStep Γ₀` (ADQ:6071, unproved): unchanged — route (a) only,
+   as a producer-side retention of the value's certificate at seed creation.
+4. `LR.CoherentFixedHeadStep Γ₀` (ADQ:4767, unchanged): N2 decided; land the
+   `FixedHeadResultAt` premise change first, then the ordered producer over
+   `peelLayer`.
+5. Assembly: `CoherentRetainedNatStep.of_steps` (ADQ:4743) from
+   `CoherentSelfStep.of_leafStepsDeep` (ADQ:6371) + item 4, then the bare leaf
+   per rung and the depth bootstrap.
+
+`LR.MajorChainFoldStep` (ADQ:985) and `LR.MajorChainAnchorStep` (ADQ:1040) are
+both kept with all their producers, the former unused, as the reference
+statements of what two successive repairs removed.
+
+**Build note for the fixture slice:** this session changed `ShapeLogRel.lean`
+and `ShapeLogRelAdequacy.lean` and rebuilt only
+`Lean4Lean.Experimental.ShapeLogRel` and
+`Lean4Lean.Experimental.ShapeLogRelAdequacy`.  The D0/D1/D2 fixture oleans
+(`SExprParamsD0/D1/D2`) are stale by design and need the central rebuild
+before they are trusted again.  The change is purely additive — no existing
+structure gained a field, no existing theorem gained a premise, no existing
+statement changed — so no fixture source edit is expected.
+
+— session-C subagent 6
+
+### Two probe-verified ports land; the N2 premise change is in the file (2026-08-15, session-C subagent 7)
+
+Mechanical application of `plans/l4l-16c-port-queue.md` items 4 and 5(i)–(iii),
+from the green probes `plans/probes/probeH-constdefn.lean` and
+`plans/probes/probeF-telescope.lean`.  Three separate green builds of
+`Lean4Lean.Experimental.ShapeLogRelAdequacy`, one per port, in the queue doc's
+prescribed landing order.  Nothing outside `ShapeLogRelAdequacy.lean` was
+touched: `ShapeLogRel.lean` and `SExpr.lean` are byte-identical.
+
+#### Port 1 — retention + demand narrowing for the δ-definition budget (item 4)
+
+`LR.ConstDefnLocalStep` (ADQ:6232), `LR.ConstDefnDeepStep` (ADQ:6261) and
+`LR.ConstDefnLocalStep.of_deepStep` (ADQ:6277) are KEPT verbatim as reference
+statements, the same treatment `MajorChainFoldStep` received.  Landed beside
+them, verbatim from probeH modulo the `probeH.` → `LR.` rename:
+
+- `LR.ConstDefnLocalStepR` (ADQ:6311) and `LR.ConstDefnDeepStepR` (ADQ:6329) —
+  the retentive forms.  They keep the strictly smaller restart family `lower`
+  and `Ctx.WF Γ₀`, both of which were in scope at the sole call site and were
+  being erased on the way in.
+- `LR.ConstDefnDeepStepR.toLocal` (ADQ:6349) — the depth-arithmetic reduction,
+  threaded through the retained family.
+- `LR.ConstDefnDeepStepR.of_constDefnDeepStep` (ADQ:6359) and
+  `LR.ConstDefnLocalStepR.of_constDefnLocalStep` (ADQ:6366) — faithfulness:
+  the new Props are weakenings, so whatever discharges the old ones discharges
+  these.
+- `LR.ConstDefnDeepInstStep` (ADQ:6378) — the demand narrowing.  The call site
+  consumes exactly one instance of `LR.SelfAdequateAt`, pinned by
+  `Params.Semantic.defn_whRed` to `B := SExpr.mkInst ls ci.type`,
+  `core := true`; the certificate depth `nV` is now bound where the
+  certificate is supplied rather than universally ahead of it.
+- `LR.ConstDefnDeepInstStep.of_deepStepR` (ADQ:6405) — faithfulness for the
+  narrowed form, hence (composing) from the current `ConstDefnDeepStep`.
+
+Three consumers moved: `LR.SelfAdequateConstStep.of_steps` (ADQ:6426) now takes
+`LR.ConstDefnDeepInstStep Γ₀`, and its defn-local branch (ADQ:6661) is
+probeH's `callSiteInst` body — the `have hself : SelfAdequateAt … ` is replaced
+by a directly ascribed `have adV : LR.Adequate …`, so no index-polymorphic
+intermediate is manufactured; `LR.CoherentSelfStep.of_leafSteps` (ADQ:6678)
+takes the same; `LR.CoherentSelfStep.of_leafStepsDeep` (ADQ:6690) now takes
+`LR.ConstDefnDeepStepR Γ₀` and goes through
+`LR.ConstDefnDeepInstStep.of_deepStepR`.
+
+No discrepancy against the probe.  `CoherentSeedAt`, `RDeepChildren` and every
+seed transport law are untouched, as probeH's §3 demanded.  **This narrows the
+residual; it does not discharge it.**  What remains still needs the δ-rank
+third well-founded component.
+
+#### Port 2 — the N2 premise change and the four supplying call sites (item 5(i)+(ii))
+
+**Naming, for the record:** the premise replaced is NOT `hcap` (the per-path
+aligned-capture family, unchanged) but the third one — the context-free
+typed-lower-head existential intro'd as `htyped`.  The premortem's own N2
+section names it correctly as the `typedLowerHead` fallback; the tower summary
+above does not.
+
+(i) `LR.FixedHeadResult` (ADQ:2226) and `LR.FixedHeadResultAt` (ADQ:2274):
+binder block `{head : TShape}` → `{head headTy : TShape}`, and
+
+```
+    LE_Interp.RHS.ShapeSpine … head rule.capturePaths out.T →
+    (∃ headElem headTy : TShape, headElem ≤ head ∧ headElem.HasType headTy) →
+```
+became
+```
+    ∀ hshape : LE_Interp.RHS.ShapeSpine … head rule.capturePaths out.T,
+    LR.FixedHeadTelescope (headTy := headTy) (outTy := outTy.T)
+      Γ₀ mx my captureType hshape →
+    LE_Interp.Witness ρ headTy (SExpr.mkInst recLs rule.df.type) →
+```
+
+`headTy` is universally quantified (an existential would need `Nonempty` over
+a `Type`-valued `Witness` — exactly what N2 rejected); the spine premise is
+NAMED so the telescope can be indexed by it, which costs nothing at consumers
+because `FixedHeadTelescope` ignores its `spine` argument definitionally; the
+terminal index is the caller's own `outTy.T`.
+
+The eight Group-B adapters took the predicted two-token edit — insert `headTy`
+after `head` in the `intro`, replace `htyped` by `htel hTyReg`:
+`LR.FixedHeadResult.at` (ADQ:2317), `.of_forall_at` (ADQ:2328),
+`LR.FixedHeadResultAt.mono` (ADQ:2338), `LR.FixedHeadResult.mono` (ADQ:2349),
+`.bot` (ADQ:2360), `.bvar` (ADQ:2377), `.sort` (ADQ:2393),
+`LR.FixedHeadResultAt.of_le` (ADQ:4759).  `.sort` was the one the probe had
+NOT re-proved (verified by inspection only); it elaborated unchanged, so the
+inspection was right.
+
+A single-file `lake env lean` check after (i) alone produced EXACTLY four
+errors, all "argument `htyped` has type `∃ headElem headTy, …` but is expected
+to have type `LR.FixedHeadTelescope …`", at the four Group-C sites and nowhere
+else.  That is the machine confirmation of the queue doc's "10 declarations,
+zero new obligations" claim, and of the claim that the
+`IotaRHSDefEq.of_nonbot` / `of_nonbotWitness` / `of_nonbotWitnessResult`
+family (ADQ:2638 / 2701 / 2754) needs no edit at all: those keep the old
+existential in their own callback contract, and the new evidence enters from
+the enclosing theorem.  That is what bounds the ripple.
+
+(ii) The producer interface landed as `LR.FixedHeadProducer` (ADQ:2574),
+verbatim from probeF — continuation-passing, delivering the telescope and the
+registered-type witness at ONE index at `outTy.T`.  The four Group-C sites each
+gained a `producer` hypothesis and thread it through:
+
+- `LRS.iotaDefEq_of_ctorExactAt_fixedHead` (ADQ:3221), producer at `ρ`;
+- `LRS.iotaDefEq_of_ctorExactAt_closedFixedHead` (ADQ:3297), producer at
+  `Valuation.nil`;
+- `LRS.iotaDefEq_of_ctorExactAt_natStep` (ADQ:4997), inherits the nil-valuation
+  producer and passes it straight down;
+- `LRS.iotaDefEq_of_ctorExactAt_coherent` (ADQ:5056), producer at `ρ`.
+
+Body shape at each: `refine producer rule mx my captureType hshape
+(outTyP := outTy) ?_; intro headTy htel hTyReg; <old application with
+htyped ↦ htel hTyReg>`.  At `_coherent` the single `refine` is placed before
+`cases hseed`, so both the all-depth and the local branch share one
+elimination.  The now-unused callback binder is renamed `_htyped` at all four
+sites; no linter warning was added or removed anywhere in the file.
+
+**Two deviations from the probe, both forced and both small.**
+
+1. probeF states `FixedHeadProducer` at ONE instantiation (`leaf_call`).  A
+   call site needs it quantified, so the landed hypothesis is
+   `∀ (rule : Pattern.IotaRule r) {head} (mx my captureType) {outTyP}
+   (hshape …), LR.FixedHeadProducer Γ₀ ρ rule mx my captureType hshape
+   (recLs := recLs) (outTy := outTyP)`.  `recLs` and `outTy` MUST be passed by
+   name: neither is determined by `hshape` — `recLs` occurs only under
+   `SExpr.mkInst recLs rule.df.type` in the body, and `outTy` only in the
+   telescope's terminal index.  `mx my captureType` are explicit for the same
+   reason (they are explicit in `FixedHeadProducer` itself).
+2. The predicted `_closedFixedHead` side condition arrived exactly as
+   diagnosed: the consumer is pinned to `Valuation.nil`, `Witness.closedAt`
+   needs `(mkInst recLs rule.df.type).ClosedN`, and `Pattern.IotaRule` carries
+   `rhsClosed` but no `typeClosed`.  Resolved the cheap way — that site's
+   producer is stated at `Valuation.nil` directly.  **No field was added to
+   `Pattern.IotaRule`**; `SExpr.lean` is untouched and no fixture source needs
+   an edit.  The cost is recorded, not paid: whoever discharges the
+   nil-valuation producer will have to obtain the registered type's closedness
+   from somewhere, and `rhsClosed` will not give it to them.
+
+#### Port 3 — the ordered producer (item 5(iii))
+
+Ported verbatim from probeF §2 under the queue doc's suggested names:
+
+- `LR.FixedHeadOrderedLink` (ADQ:2467) — the per-layer input, in
+  continuation-passing form so `argCap` and the argument witness stay
+  proof-relevant.  The equation `headTy = (WShape.forallE tyDom tyFun).T` IS
+  the capture-domain link.  `B = .forallE Bdom Bbody` is a layer datum, not
+  derived (O3: `PathSpineWF` reaches the syntactic Pi form only through
+  `conv`/`ret` edges carrying bare `IsDefEq`).
+- `LR.FixedHeadTerminalLink` (ADQ:2492) — the terminal input, carrying O1 in
+  its docstring.
+- `LR.FixedHeadTelescope.consPeel` (ADQ:2503, probeF's `consPeel`) — the layer
+  step, returning the telescope layer AND the peeled witness from one
+  declaration so a caller cannot pair a layer with a witness peeled at another
+  domain.  This is the file's first `noncomputable def`.
+- `LR.FixedHeadTelescope.ofOrderedLink` (ADQ:2538, probeF's
+  `telescope_ofOrderedLink`) — the ordered recursion, 12 lines.  The producer
+  is the coincidence that `FixedHeadTelescope.cons` demands its tail at
+  `(tyFun.app argCap).T` and `LE_Interp.Witness.forallE_inst` delivers the next
+  registered-type witness at exactly that observation.
+
+No bridge from `ofOrderedLink` to `FixedHeadProducer` was attempted, and none
+should be: by O1, `WithCaptures.nil` forces `headTy = outTy` as an index
+equality, so the telescope's terminal index is the codomain observation the
+peel actually reaches, while the premise pins it to the caller's `outTy.T`.
+A leaf-local `TerminalLink` is therefore stronger than any leaf can discharge;
+the repair is producer-side, at the `constDefEq`/`Matches` materialization
+boundary, where `hout`/`hA` must be produced BY the ordered peel rather than
+supplied beside it.  O2 (no level-reconciliation constructor on
+`WithCaptures`; the caller-side `ShapeSpine` head-lift is the clean repair, and
+is a non-empty-spine lemma only) is likewise untouched.
+
+#### State of the tower after this session
+
+`LR.iotaWitnessStep` (ADQ:7434, `sorry` at ADQ:7464) remains the file's ONLY
+`sorry`; the warning profile is byte-identical modulo line shifts.  Remaining
+named obligations, in the order the assembly needs them:
+
+1. `LRS.CtorSpineTypeUniqPath` — unchanged, environment-level, not reachable
+   from a depth-bounded rung.
+2. `LR.CoherentIotaLeafStep Γ₀` — unchanged.
+3. The δ-definition residual — now `LR.ConstDefnDeepStepR` /
+   `LR.ConstDefnDeepInstStep` rather than `LR.ConstDefnDeepStep`.  Both
+   erasures are repaired; what is left is genuinely the δ-rank component.
+4. `LR.CoherentFixedHeadStep Γ₀` (ADQ:4939) — step (iv), NOT attempted, per the
+   queue doc's landing order.  It is now materially closer: its conclusion is
+   `LR.FixedHeadResultAt Γ₀ hX depth`, whose changed premise hands it the
+   telescope and the registered-type witness at one index, and it already
+   receives `LR.SelfAdequateAt Γ₀ hX depth` at the same witness and depth — so
+   the head-validity half is a direct application of
+   `LR.SelfAdequateAt.of_fixedHeadTelescope` (ADQ:4165) with no global
+   `AdequacyAtDepth`.  The application-fold half still routes through
+   `LR.FixedHeadTelescope.toApplicationWithAdequacyAtDepth` (ADQ:2188), which
+   takes `LR.AdequacyAtDepth Γ₀ depth` plus the `convert` callback and the two
+   closedness facts.  That input, not the premise, is now the wall.
+5. Assembly: `LR.CoherentRetainedNatStep.of_steps` (ADQ:4952) from
+   `CoherentSelfStep.of_leafStepsDeep` (ADQ:6690) + item 4.
+
+The four Group-C `producer` hypotheses are the new explicit obligations
+introduced by this session.  They are leaf-local statements of a producer-side
+fact (O1), so the next design pass on them should start at the
+materialization boundary, not at the leaf.
+
+**Build note for the fixture slice:** this session changed only
+`ShapeLogRelAdequacy.lean` and rebuilt only
+`Lean4Lean.Experimental.ShapeLogRelAdequacy`.  The D0/D1/D2 fixture oleans
+(`SExprParamsD0/D1/D2`) are stale by design and need the central rebuild before
+they are trusted again.  Unlike the previous session's change this one is NOT
+purely additive — `FixedHeadResult`/`FixedHeadResultAt` changed a premise and
+four `iotaDefEq_of_ctorExactAt_*` theorems gained a hypothesis — but every
+affected declaration lives in `ShapeLogRelAdequacy.lean` and every in-file
+consumer was updated, so no fixture source edit is expected either.
+
+— session-C subagent 7
+
+### `CoherentFixedHeadStep` lands; the application fold's adequacy demand is at `depth - 1`, not at the rung (2026-08-15, session-C subagent 8)
+
+Item 4 of the tower is proved.  `LR.CoherentFixedHeadStep.of_steps`
+(ADQ:5227) is green, conditional on two named Props and on nothing else — in
+particular on no global `LR.AdequacyAtDepth` at the rung, which is what the
+previous session recorded as "the wall".  Final state of
+`ShapeLogRelAdequacy.lean`: **zero errors**, the same sole `sorry` at
+`LR.iotaWitnessStep` (now ADQ:7718:8, token ADQ:7748), and 87 → 90 warnings,
+the three new ones being the `unusedSectionVars` linter firing on the three
+new declarations that do not use `[Params.Semantic]`.  Every other warning is
+byte-identical modulo line shifts (`diff` of the sorted, line-stripped sets is
+empty apart from those three additions).  `ShapeLogRel.lean` and `SExpr.lean`
+were not touched.
+
+#### THE DEPTH ANSWER (the paragraph that matters)
+
+**The application fold does not need same-rung adequacy.  Its demand splits
+into one call the step already holds and one call at `depth - 1`.**
+
+`LR.FixedHeadTelescope.toApplicationWithAdequacyAtDepth` (now ADQ:2281)
+takes `LR.AdequacyAtDepth Γ₀ depth` at literally the same `depth` as
+its `hstrat : HasTypeStratifiedS Δ X headType core depth`, and
+`LR.FixedHeadResultAt Γ₀ hX depth` supplies `hstrat` at exactly the rung's
+depth — so read off the signatures, the answer is "same rung, G4 fires".  That
+reading is wrong, and the reason is visible only one level down, inside
+`LR.AdequacyAtDepth.closedHeadSelf` (ADQ:2098), which is where the single
+`adequacy` hypothesis is actually spent.  It is spent **twice, at two
+different subjects and two different depths**:
+
+1. `adequacy hstrong hstrat hX.toInterp hTy.toInterp htyped` — subject `X`,
+   displayed type `headType`, certificate at `depth`.  This instance is
+   *pointwise identical* to an instance of `LR.SelfAdequateAt Γ₀ hX depth`:
+   both conclude `LR.Adequate Γ₀ Δ ρ X X headType headElem headElemTy`, and
+   `SelfAdequateAt`'s only extra premise is `headElem.T ≤ root`, which the
+   `headSelf` callback supplies as `headElem.T ≤ head` composed with the
+   fold's own `hhead : head ≤ root`.  `LR.CoherentRetainedNatStep.of_steps`
+   (ADQ:5199) hands `CoherentFixedHeadStep` exactly that package at exactly
+   that witness and depth.  **Cost: zero.**
+2. `adequacy hTypeStrong (hTypeStrat.mono (Nat.sub_le depth 1)) …` — subject
+   `headType`, displayed type `.sort u`.  `HasTypeStratifiedS.isType`
+   (SExpr:2716) returns `∃ u, Γ ⊢ A : .sort u !! n - 1`, so this certificate
+   lives at `depth - 1`; the `mono` exists **only** so that one hypothesis can
+   serve both calls.  Drop the `mono` and the honest demand is
+   `LR.AdequacyAtDepth Γ₀ (depth - 1)`.
+
+So the arithmetic is: rung `depth`, term call at `depth`, type call at
+`depth - 1`.  `depth - 1 < depth` iff `0 < depth`; at `depth = 0` truncated
+subtraction collapses the two, which is why
+`LR.FixedHeadTypeValidStep.of_lowerAdequacy` (ADQ:2200) carries an explicit
+`0 < depth` and `of_predecessorAdequacy` (ADQ:2169) does not.  The depth-zero
+rung is the only place the demand stops being a predecessor demand.
+
+Two consequences must be stated together, or the result will be over-read.
+
+*The G4 tripwire does not fire on the step.*  Nothing is manufactured inside
+the induction: the term half arrives through the step interface, and the type
+half is an interface hypothesis of `of_steps`.  Neither `children` nor the
+strict predecessor family `lower` is consumed at all — the fixed-head half
+turns out to need **no recursion whatsoever** once the N2 premise change hands
+it the telescope.  That is the strongest evidence yet that the N2 decision was
+the right one.
+
+*But the predecessor family that would discharge the type half is not the one
+the step carries.*  `CoherentFixedHeadStep`'s `lower` is a family of
+`LR.CoherentRetainedAt Γ₀ hX' d'`, not of `LR.AdequacyAtDepth Γ₀ d'`; and its
+`depth` is the **inner** Nat index of the coherent witness recursion,
+universally quantified, with no relation to the **outer** adequacy rung `d` of
+`LR.IotaWitnessStepAtDepth` (ADQ:1880) whose family
+`contextualAdequacyAtDepth_of_iotaSteps` (ADQ:7681) forwards.  Worse,
+the inner `depth` here is the stratification depth of a *registered
+declaration's own typing* (`Pattern.IotaRule.rhsStrong`, SExpr:2242) — an
+environment-level quantity, exactly like `LRS.CtorSpineTypeUniqPath` — so it
+is not bounded by the outer rung and `∀ depth, FixedHeadTypeValidStep Γ₀
+depth` is not reachable from `∀ d' < d, ContextualAdequacyAtDepth d'`.  That
+is why the obligation is landed as a named Prop quantified over all inner
+depths, in the same idiom `LR.CoherentSelfStep.of_leafSteps` already uses for
+`defeqStep : ∀ depth, LR.SelfAdequateDefeqStepAt Γ₀ depth`, rather than
+discharged.  The honest summary: **the wall moved from "adequacy at the rung"
+to "type-level adequacy at the predecessor of an environment-fixed depth",
+which is strictly smaller, structurally the same shape as the self-adequacy
+half's existing obligation, and no longer blocks item 4.**
+
+#### What landed
+
+Producers and named obligations, in file order:
+
+- `LR.AdequacyAtDepth.of_le` (ADQ:2132) — contravariance in the depth index;
+  larger index = strictly stronger package.
+- `LR.FixedHeadTypeValidStep Γ₀ depth` (ADQ:2155, NEW OBLIGATION) — the
+  isolated type rung of `closedHeadSelf`.  Discharged by
+  `of_predecessorAdequacy` (ADQ:2169) from `LR.AdequacyAtDepth Γ₀ (depth - 1)`
+  with **no `mono` anywhere**; by `of_adequacyAtDepth` (ADQ:2190) from the old
+  same-rung package (faithfulness); and by `of_lowerAdequacy` (ADQ:2200) from
+  `∀ d < depth, ContextualAdequacyAtDepth d` given `0 < depth`.
+- `LR.FixedHeadConvertStep Γ₀` (ADQ:2215, NEW OBLIGATION, pre-existing in
+  substance) — the conversion transport
+  `IsDefEq Γ₀ A B (.sort u) → TyDefEq A A a → TyDefEq A B a`.  This was always
+  a hypothesis of `LR.FixedHeadTelescope.toApplicationWith`; it is only now
+  named.  It is **not** an instance of
+  `LR.TyDefEq.of_defeq_of_stratifiedInversion` (ADQ:1168): that lemma also
+  demands `TyDefEq B B a`, and the chain zip has no producer for it.  Its
+  shape is fixed by `LR.FixedHeadShapeChain.pathSemantics` (SLR:14322), which
+  is outside this session's territory.
+- `Pattern.IotaRule.typeClosed` (ADQ:2693) — **the recorded
+  `_closedFixedHead` side condition is discharged.**  `Pattern.IotaRule` still
+  has no `typeClosed` field and needs none: `VEnv.Ordered.closed`
+  (Theory/Typing/Lemmas.lean:412) closes all three components of every
+  registered `VDefEq`, so `(Params.henv.closed.2 rule.registered).2.2.mkInstS`
+  is the whole proof.  No `SExpr.lean` edit, no fixture source edit.
+- `LR.FixedHeadTerminalRetarget` (ADQ:2721, NEW OBLIGATION) and
+  `LR.FixedHeadProducer.of_orderedLink` (ADQ:2741) — see the O1 section below.
+- `LR.SelfAdequateAt.closedHeadSelf` (ADQ:4370) — the depth-refined
+  `headSelf` callback: `SelfAdequateAt` at the same witness and depth for the
+  term half, `FixedHeadTypeValidStep` for the type half, both closedness facts
+  free.  Endpoints are the literal ones the packed telescope selected; nothing
+  is re-existentialized (contrast `SelfAdequateAt.of_fixedHeadTelescope`
+  (ADQ:4341), which republishes an existential and is therefore *not*
+  what the fold should call).
+- `LR.FixedHeadTelescope.toApplicationWithSelfAdequacy` (ADQ:4400) — drop-in
+  strengthening of `toApplicationWithAdequacyAtDepth`: same conclusion, same
+  `convert`/`raw`/`resultRel`/closedness inputs, but `AdequacyAtDepth Γ₀
+  depth` replaced by the two weaker inputs above.  The original is kept
+  unused as the reference statement, the same treatment `MajorChainFoldStep`
+  and `ConstDefnLocalStep` received.
+- `LR.CoherentFixedHeadStep.of_steps` (ADQ:5227) — **item 4**.  Twelve lines.
+  `by_cases` on `out.T ≤ TShape.bot` (bottom branch is `FixedHeadResult.bot`'s
+  ending verbatim), then `FixedHeadApplication.applyRule` on
+  `toApplicationWithSelfAdequacy`.  `hX` must be passed by name at both calls:
+  `LR.FixedHeadApplication`'s `depth` and `hX` are phantom indices — neither
+  occurs in its body — so unification cannot recover them.
+
+Three premises of `FixedHeadResultAt` are **not used** by the proof and were
+renamed with a leading underscore: `hstrong` (subsumed by `hstrat`), `hspineY`
+(the fold zips one raw spine), and — the interesting one — `hcap`, the
+existential per-path capture family.  The telescope already carries every
+capture at its own shapes, so the shape-existential form is now dead weight at
+this consumer.  That is the N2 retention paying out exactly as designed.
+
+#### O1 re-diagnosed: the prescribed repair is not available below `LR.Adequate`
+
+The port queue's O1 says the fix is producer-side, "at the `constDefEq`/
+`Matches` materialization boundary, where `hout`/`hA` must be produced BY the
+ordered peel rather than supplied beside it".  **That repair does not exist
+there**, and the reason is a one-line signature fact worth recording so nobody
+spends a session looking for it: `hout`/`hA` are *inputs* of `LR.constDefEq`
+(ADQ:3638).  The fold recomputes them only when it crosses an application
+layer; in its `pat` branch it passes them to the pattern leaf unchanged, and
+`LR.PatternLeafDefEq.of_iota`, `LR.IotaLeafDefEq` and `LRS.IotaRHSDefEq`
+thread them verbatim to `LRS.iotaDefEq_of_ctorExactAt_*`.  So `outTy` is fixed
+by the caller of the constant-evaluation fold — ultimately by the shape
+argument of `LR.Adequate` — before any pattern is matched.  Nothing at or
+below the matched leaf can produce it.
+
+Two further checks, both negative, both recorded so they are not re-derived:
+
+* `Shape.HasType` is **not** functional, so `out` does not determine `outTy`:
+  `Shape.HasTypeU.bot` (SLR:2548) types `.bot` at every `x` with
+  `HasType x .type`, and `.lam`/`.forallE` do not pin their type index either.
+  O1 cannot be dissolved by uniqueness of the observation.
+* Building the telescope bottom-up instead of peeling top-down does not help.
+  `WithCaptures.cons` (SLR:3661) demands its tail at `(tyFun.app argCap).T`
+  and threads `outTy` unchanged, so the same equation reappears at the base:
+  the fully-peeled registered-type observation must *equal* the caller's
+  `outTy`.  There is no `≤` anywhere on that index.
+
+What this leaves is one equation, and it is now named:
+`LR.FixedHeadTerminalRetarget Γ₀ mx my captureType spine outTy` (ADQ:2721)
+reads a finished telescope at the caller's result observation instead of the
+peel's.  With it, `LR.FixedHeadProducer.of_orderedLink` (ADQ:2741) discharges
+the whole `FixedHeadProducer` interface from four inputs: the registered
+type's own observation `hTyReg`, `FixedHeadOrderedLink`,
+`FixedHeadTerminalLink`, and the retarget.  So the four leaf-local `producer`
+hypotheses introduced by the previous session are no longer opaque: they are
+one reusable producer plus three named per-shape Props.  The retarget's
+natural producer is a *uniqueness* statement rather than a construction — the
+peel's terminal witness observes the syntactic spine result `A` (the right
+endpoint of `SExpr.PathSpineWF`), and the caller's
+`hA : (LR Γ₀).TyDefEq A A outTy` observes that same `A` at `outTy`.  A
+terminal-index monotonicity for `WithCaptures` would also do it, but that is a
+`ShapeLogRel.lean` change and was therefore not attempted.
+
+#### Remaining tower (updated)
+
+1. `LRS.CtorSpineTypeUniqPath` — unchanged; environment-level, not reachable
+   from a depth-bounded rung.
+2. `LR.CoherentIotaLeafStep Γ₀` — unchanged; item 1 plus the multi-level frame
+   layer whose shape-threading specification is in subagent 6's entry.
+3. The δ-definition residual (`LR.ConstDefnDeepStepR` /
+   `LR.ConstDefnDeepInstStep`) — unchanged; genuinely the δ-rank component.
+4. **`LR.CoherentFixedHeadStep Γ₀` — DONE** (ADQ:5227), conditional on
+   `LR.FixedHeadConvertStep Γ₀` and `∀ depth, LR.FixedHeadTypeValidStep Γ₀
+   depth`.
+5. `LR.FixedHeadConvertStep Γ₀` (NEW, ADQ:2215) — one-sided conversion
+   transport for `TyDefEq`; needs the right endpoint's validity, which the
+   chain zip does not carry.  Not new work created by this session: it has
+   been a hypothesis of `toApplicationWith` since that lemma existed.
+6. `∀ depth, LR.FixedHeadTypeValidStep Γ₀ depth` (NEW, ADQ:2155) —
+   type-level adequacy at `depth - 1`; same interface idiom as
+   `∀ depth, LR.SelfAdequateDefeqStepAt Γ₀ depth`, which
+   `CoherentSelfStep.of_leafSteps` already takes, so these two should be
+   discharged together by whatever eventually supplies the depth family.
+7. `LR.FixedHeadTerminalRetarget` (NEW, ADQ:2721) — the isolated O1 equation;
+   with `FixedHeadOrderedLink` and `FixedHeadTerminalLink` it discharges all
+   four `producer` hypotheses via `FixedHeadProducer.of_orderedLink`.
+8. Assembly: `LR.CoherentRetainedNatStep.of_steps` (ADQ:5199) now needs only
+   `CoherentSelfStep.of_leafStepsDeep` plus item 4 — i.e. the fixed-head half
+   is no longer what blocks it.
+
+**Build note for the fixture slice:** this session changed only
+`ShapeLogRelAdequacy.lean` and rebuilt only
+`Lean4Lean.Experimental.ShapeLogRelAdequacy` (`lake build`, exit 0, "Build
+completed successfully (34 jobs)").  The change is **purely additive** — no
+existing declaration changed its statement, gained a premise, or was removed;
+`toApplicationWithAdequacyAtDepth` and `AdequacyAtDepth.closedHeadSelf` are
+kept verbatim as reference statements.  The D0/D1/D2 fixture oleans
+(`SExprParamsD0/D1/D2`) remain stale by design from the previous two sessions
+and still need the central rebuild; no fixture source edit is expected from
+this session either.
+
+— session-C subagent 8
+
+### The `∀ depth` type rung is discharged from `lower`; O1 is refuted (2026-08-15, session-C subagent 9)
+
+`ShapeLogRelAdequacy.lean`: **zero errors**, `Build completed successfully
+(34 jobs)`, the same sole `sorry` at `LR.iotaWitnessStep` (now ADQ:7936:8,
+token ADQ:7968), and the warning set is **byte-identical to the baseline** —
+90 before, 90 after, `comm` empty in both directions after stripping line
+numbers.  Not "changed only by `unusedSectionVars`": *unchanged*.  The eight
+new declarations all forward `[Params.Semantic]` into an existing lemma that
+carries it, so the linter does not fire on any of them.  `ShapeLogRel.lean`
+and `SExpr.lean` were not touched.
+
+#### THE DEPTH AUDIT (lead with this; it decided the session)
+
+**At which depths is `∀ depth, LR.FixedHeadTypeValidStep Γ₀ depth`
+instantiated on the leaf path, and are those depths bounded by the rung?**
+
+*Instantiated at every `depth : Nat`.  Not bounded by the rung.  Neither
+branch of the audit's dichotomy applies, because the dichotomy's premise —
+that the only producer is adequacy at `depth - 1` — is false.*
+
+The two indices, kept apart:
+
+* the **outer rung** `d` of `LR.IotaWitnessStepAtDepth Γ₀ d` (ADQ:1880),
+  which forwards `∀ d' < d, ContextualAdequacyAtDepth d'`.  Note that its
+  product `LR.IotaWitnessStep` (ADQ:1860) is itself **depth-free**;
+* the **inner Nat index** `depth` of the coherent witness recursion.
+  `LR.CoherentRetainedResult` (ADQ:4500) is *literally* `∀ depth,
+  CoherentRetainedAt Γ₀ hX depth`, so `recRDeepNatProvenance` fires the step
+  at every Nat.  `LR.CoherentFixedHeadStep` therefore quantifies `depth`
+  universally and `of_steps` consumed `typeValid depth` at that same index.
+
+Not bounded, for two independent reasons, both now confirmed against the
+source rather than inferred:
+
+1. The bootstrap withholds the bound *by design*.
+   `contextualAdequacyAtDepth_of_iotaSteps`'s docstring (ADQ:7676-7680):
+   "the derivation induction is depth-blind, so a root certificate cannot
+   bound the leaf instances reached through `trans` or evaluator descent.
+   Whatever depth bound a leaf producer needs must come from its own
+   registered-rule certificates."
+2. The registered-rule certificates do **not** supply it here, and this is
+   where the `rootRed` pattern fails to transfer.  The candidate was
+   `Pattern.IotaRule.FocusedActionPreimage` (SLR:9278-9290), whose
+   `rhsStratified` sits at `rhsDepth` and whose `headStratified` sits at
+   `rhsDepth - rule.capturePaths.length` — a genuine bound, but on a
+   *different* certificate than the one the fixed-head consumer reads.  The
+   two live instantiations are `LRS.iotaDefEq_of_ctorExactAt_coherent`
+   (ADQ:5416), which takes its depth from
+   `obtain ⟨rhsDepth, hstrat, _⟩ := hstrong.stratify` on `rule.rhsStrong` —
+   an unbounded existential on an environment-level derivation — and
+   ADQ:5420, which takes the ambient `CoherentRhsSeedAt` depth.  Neither
+   reads `headStratified`.
+
+**So both audit branches fail, and it is still not a G4 tripwire.**  The
+third producer is inside the step's own interface:
+
+> `∀ depth` never needed to be bounded.  The obligation at each `depth` is
+> dischargeable from `lower` — `LR.CoherentFixedHeadStep`'s own strict
+> predecessor family — at that same `depth`.
+
+The arithmetic, spelled out:
+
+| piece | index | source |
+|---|---|---|
+| term half | `depth` | `hself : SelfAdequateAt Γ₀ hX depth`, an interface input (subagent 8) |
+| type half | `depth - 1` | `HasTypeStratifiedS.isType` (SExpr:2716) |
+| decrease | `depth - 1 < depth ⟺ 0 < depth` | `Nat.sub_lt` |
+| `0 < depth` | — | `LR.CoherentRetainedAt.restart lower (Nat.sub_lt hdepth Nat.one_pos)` at `hTypeInterp.witness` |
+| `depth = 0` | — | no adequacy at all; see below |
+
+Two facts make the restart legal here, and both are specific to this
+obligation:
+
+* **The witness is unrelated to `hX`.**  The type half needs self-adequacy at
+  the *registered type's own* interpretation witness, which is not a child of
+  the fixed head's witness — `children` could never have supplied it.
+  `LR.CoherentRetainedAt.restart` (ADQ:5030) admits an arbitrary witness
+  precisely because it rebuilds the evaluator tree itself via
+  `LR.CoherentSeedAt.rebuild`.  This is the same move
+  `LR.selfAdequateExactAtStep` already makes at ADQ:6299-6304 (`restartSelf`).
+* **The conclusion is homogeneous.**  `CoherentRetainedAt` carries
+  `SelfAdequateAt Γ₀ hX' d'`, i.e. `Adequate Γ₀ Δ ρ X X B mx bx` with *one*
+  subject; `FixedHeadTypeValidStep`'s conclusion is
+  `TyDefEq headType headType headElemTy`, also homogeneous, so it fits
+  exactly.
+
+`depth = 0` is free, not residual.  Every `HasTypeStratifiedS` constructor
+except `sort'` and `base` carries the index `n + 1` (SExpr:2380-2409), so a
+depth-`0` certificate forces `X = .sort l` and `headType = .sort l.succ`;
+the conclusion is then the `sort_iff` / `bot` split already used by the
+`sort'` case of `selfAdequateExactAtStep`.  Machine-checked as
+`LR.FixedHeadTypeValidStep.zero`.
+
+#### The previous session's "discharge both together" recommendation is REFUTED
+
+`∀ depth, LR.SelfAdequateDefeqStepAt Γ₀ depth` has the same `∀ depth` shape
+but **cannot** take this route, and the reason is one word: heterogeneity.
+`SelfAdequateDefeqStepAt.of_lowerAdequacy` (ADQ:6231-6241) feeds
+`LR.adequateDefeq`'s first callback, whose type (ADQ:4343-4355, `ihTy`) is
+`Adequate Γ₀ Γ ρ A B (.sort u) ma sa` — **two different endpoints**, carrying
+the `A ≡ B` link.  `SelfAdequateAt` produces only `X X`, so the coherent
+predecessor family is strictly too weak.  Whatever eventually supplies that
+family must either be genuinely heterogeneous adequacy at unbounded inner
+depths, or `LR.CoherentRetainedAt` must be widened to carry a heterogeneous
+rung — and the second is not free, since `selfAdequateExactAtStep` inducts on
+the stratified typing of the *witness's own* subject and has no second
+subject to offer.
+
+#### What landed
+
+- `LR.FixedHeadTypeValidStep.of_lowerCoherent` (ADQ:4987) — the discharge at
+  `0 < depth`, from `lower` alone.  No `LR.AdequacyAtDepth` at any rung.
+- `LR.FixedHeadTypeValidStep.zero` (ADQ:5021) — the depth-zero rung.
+- `LR.FixedHeadTypeValidStep.of_coherentLower` (ADQ:5054) — the two combined;
+  this is what removes the obligation.
+- `LR.CoherentFixedHeadStep.of_convertStep` (ADQ:5445) — **item 4 with the
+  type family gone**.  Identical to `of_steps` (ADQ:5412, kept unchanged as
+  the reference statement) except that `typeValid` is no longer a hypothesis:
+  the instance is built from `lower`, which `of_steps` left unused.  Its only
+  remaining input is `LR.FixedHeadConvertStep Γ₀`.
+- `LR.FixedHeadConvertRightValid` (ADQ:2240) + `LR.FixedHeadConvertStep.of_rightValid`
+  (ADQ:2249) — target 2 narrowed.  The recorded dead end
+  (`LR.TyDefEq.of_defeq_of_stratifiedInversion` "also demands
+  `TyDefEq B B a`") is turned into a producer by *naming* that demand.  The
+  residual is then readable by unfolding: at `a = .sort r`, `sort_iff_ty`
+  makes it "`B` has a weak-head normal form and it is a sort"; at
+  `a = .forallE b f` the same with Pi.  That is `PiHeadNorm` =
+  `TypeWHNFEx` + `PiHeadStable`, the single irreducible factor probeP
+  isolated inside `PiPathInv`.  Nothing weaker is available at the consumer:
+  `SExpr.PathSpineWF`'s `conv`/`ret` edges (SExpr:1650-1658) carry a bare
+  `IsDefEq` and no shape, witness, or endpoint validity — G5 in its exact
+  position.  (Also checked and rejected: `SExpr.IsDefEq.strong`
+  (SExpr:3013) is a real proved bridge, but it only upgrades the raw edge;
+  it produces no interpretation of `B` at `a`, so it does not help.)
+- `LR.FixedHeadTerminalRetarget.hasType_functional` (ADQ:2777) and
+  `LR.FixedHeadTerminalRetarget.not_general` (ADQ:2804) — see below.
+
+Probes (untracked, both green, exit 0, no `sorryAx`):
+`plans/probes/probeT-typevalid.lean` (3 results, axioms
+`propext, Classical.choice, Quot.sound` only) and
+`plans/probes/probeU-convert-retarget.lean` (3 results).
+
+#### O1 RESOLVED IN THE NEGATIVE: `LR.FixedHeadTerminalRetarget` is FALSE
+
+Not "hard", not "needs a producer" — **refutable**, and now machine-checked.
+
+`WithCaptures.nil` (SLR:3661) identifies the telescope's two type indices, so
+at a nil-terminated spine the retarget says exactly: every type of `head`
+equals the caller's `outTy`.  `LR.FixedHeadTerminalRetarget.hasType_functional`
+proves that implication; `TShape.HasType.bot` (SLR:3135) types `.bot` at every
+sort, so `not_general` derives `False` from the Prop at
+`head := TShape.bot`.  `WithCaptures.cons` threads `outTy` unchanged, so on a
+longer spine the same demand simply reappears at the base — the refutation is
+not an artefact of the empty spine, it is the base case of every spine.
+
+Consequences, so the next session does not re-plan around a false statement:
+
+* the previous session's suggested producer — "a *uniqueness* statement rather
+  than a construction", using the caller's `hA : TyDefEq A A outTy` — is
+  refuted along with the Prop.  There is nothing to produce.
+* `LR.FixedHeadProducer.of_orderedLink` (ADQ:2874) is therefore conditional on
+  a false hypothesis.  It is left in place (it is not *wrong*, just vacuous),
+  but it must not be counted as progress toward the four leaf `producer`
+  hypotheses.
+* the repair cannot be leaf-side or producer-side at all.  Two routes remain,
+  both requiring `ShapeLogRel.lean`, i.e. outside this session's territory:
+  (i) give `TypedTelescope.WithCaptures` a terminal-index monotonicity — the
+  same absence O2 records for its level index; or (ii) let
+  `LR.FixedHeadShapeChain.pathSemantics` (SLR:14322) consume a chain at the
+  observation the peel actually reached plus a semantic bridge to `outTy`, so
+  the caller's `hout`/`hA` are used where they are in fact available.  Route
+  (ii) is the one consistent with subagent 8's signature finding that
+  `hout`/`hA` are *inputs* of `LR.constDefEq`.
+
+#### Remaining tower (updated)
+
+1. `LRS.CtorSpineTypeUniqPath` — unchanged; environment-level.
+2. `LR.CoherentIotaLeafStep Γ₀` — unchanged.
+3. δ-definition residual (`LR.ConstDefnDeepStepR` / `LR.ConstDefnDeepInstStep`)
+   — unchanged; the δ-rank component (probeK).
+4. `LR.CoherentFixedHeadStep Γ₀` — **DONE, and now conditional on
+   `LR.FixedHeadConvertStep Γ₀` ALONE** (ADQ:5445).
+5. `LR.FixedHeadConvertStep Γ₀` — narrowed to `JointStratifiedInversion` +
+   `LR.FixedHeadConvertRightValid`; the residual is `PiHeadNorm`.  **Blocked
+   on the same irreducible factor as `PiPathInv`.**
+6. ~~`∀ depth, LR.FixedHeadTypeValidStep Γ₀ depth`~~ — **REMOVED, discharged.**
+7. ~~`LR.FixedHeadTerminalRetarget`~~ — **REMOVED, refuted.**  Replaced by a
+   `ShapeLogRel.lean`-side repair request (routes (i)/(ii) above).
+8. `∀ depth, LR.SelfAdequateDefeqStepAt Γ₀ depth` — unchanged, and now known
+   *not* to be dischargeable alongside item 6.  Blocked on `PiPathInv` via
+   `of_stratifiedInversion`, or on the inner/outer depth mismatch via
+   `of_lowerAdequacy`.
+9. Assembly: `LR.CoherentRetainedNatStep.of_steps` (ADQ:5384) now needs only
+   `CoherentSelfStep.of_leafStepsDeep` plus item 4.
+
+**Build note for the fixture slice:** only `ShapeLogRelAdequacy.lean` changed,
+and only `Lean4Lean.Experimental.ShapeLogRelAdequacy` was built.  The change is
+purely additive — no existing declaration changed its statement, gained or lost
+a premise, or was removed; `of_steps`, `toApplicationWithAdequacyAtDepth`,
+`AdequacyAtDepth.closedHeadSelf`, `of_predecessorAdequacy`, `of_lowerAdequacy`
+and `FixedHeadTerminalRetarget` itself are all kept verbatim.  The D0/D1/D2
+fixture oleans (`SExprParamsD0/D1/D2`) remain stale by design from the previous
+three sessions and still need the central rebuild; no fixture source edit is
+expected from this session either.
+
+— session-C subagent 9
+
+### O1 repaired by terminal-index monotonicity; a SECOND vacuity found and machine-checked (2026-08-15, session-C subagent 10)
+
+`ShapeLogRel.lean`: **zero errors, zero sorries**, warning set **byte-identical**
+to baseline (23 → 23, `diff` empty).  `ShapeLogRelAdequacy.lean`: **zero
+errors**, the same sole `sorry` at `LR.iotaWitnessStep` (ADQ:8348, token
+ADQ:8378), 90 → 100 warnings — nine new `unusedSectionVars` on nine new
+theorems, plus one new `unusedVariables` on `spine`, which is the exact mirror
+of the pre-existing warning on `LR.FixedHeadTelescope` (ADQ:1904) and has the
+same cause: the `spine` argument is ignored definitionally, by design.  No
+warning disappeared.  `SExpr.lean` untouched.  No new `sorryAx`: every new
+declaration checks with `propext, Classical.choice, Quot.sound` only (the two
+`SpineWF` ports need only `propext, Quot.sound`).
+
+#### LEAD WITH THIS: `LR.FixedHeadTerminalLink` IS ALSO FALSE
+
+`LR.FixedHeadProducer.of_orderedLink` was vacuous for **two** independent
+reasons, not one.  Beside the refuted retarget, its `term` input
+
+```
+LR.FixedHeadTerminalLink ρ out := ∀ headTy B, Witness ρ headTy B → out.HasType headTy
+```
+
+is refutable at every non-bottom `out`.  `LE_Interp.Witness.bot` (SLR:3928) is
+`Witness ρ (WShape.T .bot) M` for **arbitrary** `ρ`, `M`, `n`, so instantiating
+at `TShape.bot` gives `out.HasType TShape.bot`, and `TShape.HasType.bot_r`
+(SLR:3120) turns that into `out ≤ TShape.bot`.  Every consumer of the
+fixed-head fold carries `houtNonbot : ¬out.T ≤ TShape.bot` — the bottom result
+shape is split off before the telescope is ever read — so the Prop is false
+exactly where it would be used.  Machine-checked as
+`LR.FixedHeadTerminalLink.le_bot` (ADQ:2844) and `.not_nonbot` (ADQ:2855).
+
+**The pattern behind both refutations, stated so it is not repeated.**  The
+observation lattice has a bottom that *every* syntax is witnessed at and that
+*every* type of type-kind types.  Therefore **no terminal fact about the peel
+may be stated as a law quantified over observations.**  `TerminalRetarget`
+quantified over the reached index; `TerminalLink` quantified over the
+witnessed index; both die to the same instance.  A terminal fact must be a
+*datum at the observation actually reached*, i.e. existential /
+continuation-passing in that index.  That single criterion is what selected
+the route below, and it is the cheap vacuity test to run on the next such
+Prop: instantiate at `TShape.bot` and see whether the statement survives.
+
+#### ROUTE DECISION: (R-A), and (R-B) is not available
+
+**(R-B) is refuted by a signature fact.**  `LR.FixedHeadShapeChain`'s terminal
+index is not free to be the reached observation: it is a `WShape outLevel` that
+flows *verbatim* into `LR.FixedHeadApplication` (ADQ:2075) and thence into the
+conclusion of `LR.FixedHeadResult`, `(LR Γ₀).DefEq … A out outTy`.  Moreover
+`pathSemantics`'s `resultRel : TyDefEq resultType resultType outTy` **is** the
+caller's `hA`, already consumed at the caller's own `outTy`.  So the chain
+must end at `outTy`, the semantic bridge is already there, and there is nothing
+for a second bridge to do.  Recorded as a dead end in
+`FixedHeadTerminalRetarget.not_general`'s docstring.
+
+**(R-A) landed, additive, as a parallel structure.**  The audit that decided
+it: the telescope's terminal index is read in exactly **two** places downstream,
+and both are monotone.
+
+| read | who | direction |
+|---|---|---|
+| `out.HasType outTy` | `WithCaptures.outHasType`, the fold's `nil` case | the caller already holds this (`hout`) |
+| `headElemTy.T ≤ headTy` | the fold's return, spent by `hTy.mono` in `withWitnessAndChain` | head index is an **upper bound** only |
+
+Nothing anywhere uses the head index as a lower bound or as an exact value.
+Hence weakening the base from an index *equality* to `outTy ≤ headTy` is sound
+for every consumer, and it is the unique place the equality was doing work:
+`cons` is verbatim in the new structure, so every layer is the same layer.
+
+#### The new named Prop, and its vacuity check
+
+`LR.FixedHeadTerminalDominance Γ₀ mx my captureType spine headTy outTy`
+(ADQ:3160) — continuation-passing: *some* run of the ordered peel terminates at
+a `reachedTy` with `outTy ≤ reachedTy`, delivering the telescope there.
+
+* **Not refutable by the bot argument**, because the reached observation is
+  chosen by the producer rather than quantified over.  (Contrast: both refuted
+  Props are ∀-over-observations.)
+* **Strictly weaker than what it replaces** — `.of_exact` (ADQ:3174) builds it
+  from the old exact demand at `TShape.LE.rfl`, so nothing that used to
+  discharge the producer stops discharging it.
+* **Inhabited, at the very instance where the retarget is FALSE** — `.nil`
+  (ADQ:3189) builds it at the empty capture spine from `head.HasType outTy`
+  alone, including at `head = .bot`, which is exactly where
+  `FixedHeadTerminalRetarget.not_general` derives `False`.
+
+#### What landed
+
+`ShapeLogRel.lean` (all additive; every pre-existing statement byte-identical):
+
+- `…TypedTelescope.WithCapturesLE` (SLR:3871) — the packed telescope with a
+  monotone terminal index.  Only `nil` differs: `(htyped : head.HasType outTy)`
+  `(hle : outTy ≤ headTy)` in place of the two-index identification.
+- `WithCaptures.toLE` (SLR:3892) — faithfulness.
+- `WithCaptures.retarget` (SLR:3914) — **THE TERMINAL-INDEX MONOTONICITY.**
+  Rebuilds an exact telescope at any lower result observation the caller can
+  type.  This is the lemma `WithCaptures` cannot have on its own.
+- `WithCapturesLE.spine` / `.outHasType` / `.lowerHead` (SLR:3929/3942/3956) —
+  the eliminations, proved directly rather than through `TypedTelescope`, so
+  `TypedTelescope` and `Captures` are untouched.
+- `WithCapturesLE.fixedHeadShapeChain` (SLR:13904) — the fold, differing from
+  the old proof **only in its `nil` case**;
+  `TypedTelescope.fixedHeadShapeChain` (SLR:14110) is kept with its statement
+  byte-identical and is now a one-line corollary via `toLE`, so its sole
+  consumer is unaffected.
+- Secondary ports from `plans/probes/probeS-spinedepth.lean`:
+  `SpineWF.ret_path` (SLR:11360, the missing `ret` dual of `conv_path`) and
+  `HasTypeStratifiedS.spineWF_of_foldl_bound` (SLR:11416), which sharpens the
+  walk to `m + es.length ≤ n`; the old `spineWF_of_foldl` (SLR:11437) keeps its
+  statement and is now a corollary, so its two consumers are unaffected.
+
+`ShapeLogRelAdequacy.lean`:
+
+- `LR.FixedHeadTelescopeLE` (ADQ:2085) + `.toLE` (ADQ:2108) + **`.retarget`**
+  (ADQ:2122) + `.nil` / `.cons` / `.outHasType` / `.lowerHead` / `.withWitness`
+  / `.withWitnessAndChain` (ADQ:2136-2213) + `.toApplicationWith` (ADQ:2480) +
+  `.toApplicationWithSelfAdequacy` (ADQ:4896).
+- **Premise swap, three sites, one token each**: `FixedHeadResult` (ADQ:2590),
+  `FixedHeadResultAt` (ADQ:2639), `FixedHeadProducer` (ADQ:2931) now take
+  `LR.FixedHeadTelescopeLE`.  This is the interesting engineering datum: a
+  single-file `lake env lean` after the swap produced **exactly one error**, in
+  `of_orderedLink`.  The eight Group-B adapters, the four Group-C leaf sites
+  and both `CoherentFixedHeadStep` producers elaborated **unchanged** — dot
+  notation (`htel.toApplicationWithSelfAdequacy`) dispatched to the LE lemmas
+  by itself.  Naming the LE lemmas identically inside the `FixedHeadTelescopeLE`
+  namespace is what bought the zero-ripple landing.
+- `LR.FixedHeadTerminalLink.le_bot` / `.not_nonbot` (ADQ:2844/2855) — the
+  second refutation.
+- `LR.FixedHeadTelescopeLE.ofOrderedLink` (ADQ:2947) — **the repaired ordered
+  peel.**  It takes *no* terminal law: it returns the reached observation with
+  its witness, plus a *factory* `∀ outTy, out.HasType outTy → outTy ≤ reachedTy
+  → telescope`.  The base typing the old `term` supplied is just the caller's
+  own `hout`, and the comparison is handed to the caller — which is the only
+  place `hout`/`hA` exist, since they are inputs of `LR.constDefEq` fixed before
+  any pattern is matched.
+- `LR.FixedHeadTerminalDominance` (ADQ:3160) + `.of_exact` + `.nil` +
+  **`LR.FixedHeadProducer.of_dominance`** (ADQ:3206).
+- `LR.FixedHeadProducer.of_orderedLink` (ADQ:3114) is KEPT as the reference
+  statement with a `.toLE` inserted and a docstring that now says it is vacuous
+  twice over and must not be counted as progress.
+
+#### What `FixedHeadProducer` now rests on
+
+`hTyReg` (the registered type's own observation, an input — the peel transports
+an observation, it does not manufacture one) + `hout` (**already a hypothesis
+of every leaf**, `out.HasType outTy` in `LRS.IotaRHSDefEq`) +
+`LR.FixedHeadTerminalDominance`.  The ordered layer machinery — `link`,
+`consPeel`, `forallE_inst` lockstep, capture alignment — is fully proved and
+enters through `LR.FixedHeadTelescopeLE.ofOrderedLink`.  Net: the four leaf
+`producer` hypotheses are, for the first time, reducible to a statement that is
+not refutable, and the irreducible content is **one comparison**: the caller's
+result-type observation lies below the observation the ordered peel reaches.
+
+Where that comparison must eventually come from, recorded so it is not
+re-derived: it relates a logical-relation observation of the syntactic result
+type `A` (the caller's `outTy`, carried by `hA`) to a semantic-interpretation
+observation of the peeled registered type.  `LE_Interp.Witness` is downward
+closed under `≤` (`.mono`) and the observation sets are directed
+(`LE_Interp.…join'`), so the two have a common upper bound — but the peel's
+terminal is a function of the *initial* `headTy` and the layer `argCap`s, so
+using the join would mean choosing `hTyReg` at a large enough observation.
+That is a join/maximality theory for `Witness`, not a leaf-local fact, and it
+is the honest next design pass on this obligation.
+
+#### Remaining tower (updated)
+
+1. `LRS.CtorSpineTypeUniqPath` — unchanged; environment-level.
+2. `LR.CoherentIotaLeafStep Γ₀` — unchanged.
+3. δ-definition residual (`LR.ConstDefnDeepStepR` / `LR.ConstDefnDeepInstStep`)
+   — unchanged; the δ-rank component (probeK).  *Independently attackable.*
+4. `LR.CoherentFixedHeadStep Γ₀` — **DONE**, still conditional on
+   `LR.FixedHeadConvertStep Γ₀` alone; unaffected by this session's premise
+   swap (its proof did not change a character).
+5. `LR.FixedHeadConvertStep Γ₀` — residual `PiHeadNorm`.  **Blocked on the same
+   irreducible factor as `PiPathInv`.**
+6. `LR.FixedHeadTerminalDominance` (NEW, replaces the refuted
+   `FixedHeadTerminalRetarget` and `FixedHeadTerminalLink`) — the four leaf
+   `producer` hypotheses.  *Independently attackable*: it is adequacy-free and
+   `PiPathInv`-free, living entirely in the shape/witness layer.
+7. `∀ depth, LR.SelfAdequateDefeqStepAt Γ₀ depth` — unchanged.  Blocked on
+   `PiPathInv`, or on the inner/outer depth mismatch.
+8. Assembly: `LR.CoherentRetainedNatStep.of_steps` needs only
+   `CoherentSelfStep.of_leafStepsDeep` plus item 4.
+
+**Build note for the fixture slice:** only `ShapeLogRel.lean` and
+`ShapeLogRelAdequacy.lean` changed, and only
+`Lean4Lean.Experimental.ShapeLogRel` then
+`Lean4Lean.Experimental.ShapeLogRelAdequacy` were built (both exit 0).  The
+`ShapeLogRel.lean` change is purely additive apart from two proofs whose
+*statements* are byte-identical (`TypedTelescope.fixedHeadShapeChain`,
+`HasTypeStratifiedS.spineWF_of_foldl`).  The `ShapeLogRelAdequacy.lean` change
+is additive apart from the three-site premise swap described above.  The D0/D1/D2
+fixture oleans (`SExprParamsD0/D1/D2`) remain stale by design from the previous
+four sessions and still need the central rebuild; no fixture source edit is
+expected from this session either.  **Note for that rebuild:** `ShapeLogRel.lean`
+changed this session for the first time in four sessions, so anything downstream
+of it — not only the Adequacy module — must be rebuilt.
+
+— session-C subagent 10

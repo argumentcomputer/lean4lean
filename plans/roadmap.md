@@ -708,15 +708,62 @@ so they go clean with it.
   consumer surface without `RawTypeUniq`. **The residual has left the
   depth-indexed fixpoint** — `CtorSpineTypeUniqPath` carries no depth
   index and its subject is a registered declaration, so it is the
-  first residual a generation-side argument can attack. Remaining for
-  the leaf: that discipline, `MajorChainAnchorStep.rootRed` (subject
-  reduction to a classified spine, two roots only — and here the rule
-  certificates are on the right side of the redex), and a mechanical
-  multi-level frame layer. `ConstDefnLocalStep` still needs a
-  producer-side depth budget (the principle transfers, the lemma does
-  not — a quantified index, not a narrowable subject). N2 is decided
-  (capture-domain link on the consumer's premise at the telescope's
-  own `headTy` index). Narrative:
+  first residual a generation-side argument can attack. Both fields of
+  `MajorChainAnchorStep` then landed, and `rootRed` needed no
+  re-certifying subject-reduction lemma at all: retaining the
+  conversions `HasTypeStratifiedS.to_core` was discarding collapses the
+  whole discipline to Pi injectivity for type paths, `LRS.PiPathInv`.
+  `CoherentFixedHeadStep` also landed (its application fold spends
+  adequacy at `depth` — an instance the step already holds — and at
+  `depth - 1` via `isType`, so no same-rung demand), leaving three
+  named Props; the N2 premise change and the ordered telescope producer
+  are in the file, and `hcap` is now provably dead weight.
+
+  **2026-08-15 verdict — the leaf cannot close inside 16C′ as scoped.**
+  `PiPathInv` is not provable by any path-, spine-, or depth-level
+  argument: `JointPathInv.iff` shows the chain-wall repair removed
+  exactly one field (`sortPathInv`) and nothing more;
+  `PiPathInv.of_three` decomposes it into `SubjectRedS` + `PiEdgeInv` +
+  `PiHeadNorm`, the first two recoverable from it (so an equivalence
+  modulo the third); and the depth-indexed escape route is closed by
+  two independent machine-checked obstructions (the layer transport
+  needs bounded output where a rung gives bare output — the gap Prop is
+  equivalent to a *uniform* stratification bound that would make the
+  depth induction vacuous; and the chain leaf cannot supply the bounds,
+  since the anchor is manufactured from the previous link's output and
+  grows per conversion edge while chain length is unbounded; yield:
+  spines of length ≤ 1). The irreducible factor is `PiHeadNorm` =
+  `TypeWHNFEx` (a well-typed type HAS a weak-head normal form) +
+  `PiHeadStable`. **The 18A′ scoping pass then relocated the wall
+  again, and this is the current position:** `TypeWHNFEx` is NOT needed
+  — that decomposition is sufficient, not necessary, and is the
+  expensive branch. `PiHeadNorm` follows from Church–Rosser plus
+  **standardization**, transporting a Pi that already exists
+  (`PiHeadNorm.of_crLadder`); Theory already proves the analogue,
+  `VEnv.IsDefEq.reduce_forallE` (HeadReduction.lean:512) via
+  `ParRedS.standard` (:489) — a connection no plan doc had made. The
+  real wall is **sort/Pi shape disjointness**: `NormalEqPiInvL` is
+  structural in six of `NormalEq`'s eight constructors, and the
+  survivors `etaL`/`proofIrrel` cost exactly the facts Theory spends
+  the sorried `sort_forallE_inv`/`sort_inv` on. Confluence cannot
+  supply them (`proofIrrel` is a congruence with no operational
+  content), and they are unavoidable: `SortForallEDisj.of_piHeadNorm`
+  shows the leaf ENTAILS sort/Pi disjointness in four lines. **So
+  L4L-18A′ can never close the leaf on its own, however scoped**, and
+  `TypeWHNFEx` alone unblocks nothing. Scoping pass:
+  `plans/l4l-18a-prime-scope.md` (12-rung ladder, 8 of 12 already
+  machine-checked; implement by transport via `reify`, not by porting,
+  saving ~1600 lines; `Experimental/NormalEq.lean` and
+  `ParallelReduction.lean` are dead stubs recommended for deletion).
+  Open question under investigation: whether adequacy can produce the
+  disjointness facts at a rung strictly below the one consuming them —
+  `sortInv` has a depth-indexed producer (ADQ:471/493/522) where
+  `PiPathInv` does not, so the asymmetry may be favourable. Root cause is not `SpineWF` but
+  `LRS.ValTyPi2`/`LogRel` being `WShape`-indexed with no stratification
+  index. Closure records: `plans/probes/probeP-pipathinv.lean`,
+  `probeS-spinedepth.lean`. N2 is decided (capture-domain link on the
+  consumer's premise at the telescope's own `headTy` index).
+  Narrative:
   `plans/l4l-16c-adequacy-log.md`; gap audit:
   `plans/l4l-16c-buildp-premortem.md`.
 - *L4L-16D — live-environment instance.* The only route segment never
@@ -794,7 +841,27 @@ statements are removed with exact accepted axiom closures — no
 `sorryAx`, no `extra_pat`-style axiom, and no environment oracle on any
 path — and the route record carries any residual semantic-route debt.
 
-**L4L-18A — Church–Rosser `.extra` cases.** The holes in `NormalEq.parRed`
+**L4L-18A — Church–Rosser `.extra` cases.**
+*Promoted 2026-08-15: L4L-18A′ is a HARD DEPENDENCY of the 16C′ leaf,
+not a later cleanup — but it is not sufficient for it either.* The
+leaf's residual `LRS.PiPathInv` factors as `SubjectRedS` + `PiEdgeInv`
++ `PiHeadNorm`; the CR ladder supplies all three (`PiPathInv.of_crLadder`,
+machine-checked), with `PiHeadNorm` coming from CR + **standardization**
+rather than from any normalization theorem — `TypeWHNFEx` is not
+needed. What CR cannot supply is **sort/Pi shape disjointness**, which
+the leaf provably entails; scope that separately (see the 16C″
+recommendation in `plans/l4l-18a-prime-scope.md`, whose ladder has 12
+rungs with R1–R4 parallel-attackable and 8 of 12 already
+machine-checked). Implement by transport via `reify` rather than
+porting. Correction to `SExpr.lean:4371`: its comment claims nothing on
+the L4L-16 gate path consumes `CRDefEq.trans` — that clause is now
+false (recorded as the type-checked `LRS.crDefEq_is_on_the_gate_path`).
+Also: `SExpr.WHRedS.defeq` (:4033) is not separate work — it follows
+from `ParRedS.defeq`; and `HeadReduction.lean` is sorry-free but
+tainted three ways, one of them (via `sort_inv`/`sort_forallE_inv`)
+previously unrecorded.
+
+The holes in `NormalEq.parRed`
 are the constant/application cases where a parallel step meets a
 proof-carrying user-defeq pattern step. Use the generic `Params` pattern
 combinatorics, L4L-10B's match
