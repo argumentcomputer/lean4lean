@@ -1,5 +1,5 @@
 /.lake
-/result
+/result*
 /.direnv
 # Keep scratch plans local while versioning the authoritative execution ladder.
 /plans/*
