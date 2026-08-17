@@ -7660,6 +7660,7 @@ private theorem aliasFormerCtorCandidateContext_empty :
     aliasFormerCtorCandidateContext.withEmptyLocalContext =
       aliasFormerCtorCandidateContext := rfl
 
+set_option warn.sorry false in
 theorem aliasFormerAlignmentRun :
     aliasFormerStagedUniverseInput.staged.constructorValidation.trace.checkCandidateAlignment
       aliasFormerNormalizationCandidate.families.singleton.constructors

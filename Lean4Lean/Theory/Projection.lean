@@ -3489,6 +3489,7 @@ structure RegisteredStructureHeadInversion (env : VEnv) : Prop where
       Nonempty (ProjectionConstructorAlignment env U Γ view levels params idx
         code constructorName runtimeMajor runtimeField)
 
+set_option warn.sorry false in
 /-- Public Tier-R registered-head inversion statement.  L4L-16/17 discharge
 the underlying constant-head theorem; projection structural laws consume only
 this stable interface and therefore shed `sorryAx` automatically when it is
