@@ -689,6 +689,87 @@ theorem _root_.Lean4Lean.Ctx.InstN.wf (henv : Ordered env) (W : Ctx.InstN Γ₀ 
   | zero => exact ⟨H.1, H.1⟩
   | succ W ih => let ⟨h1, h2⟩ := ih H.1; exact ⟨h1, h2, .instN henv W H.2 h₀⟩
 
+/-! ### Substitutions
+
+Simultaneous substitution, as opposed to the one-binder-at-a-time `instN` above. The statements
+are taken from the `SExpr` development in `Experimental/SExpr.lean`, where the same API is
+being proved out; the ones that are `sorry` here are `sorry` there too, and land when it does.
+`Ctx.Closing` -- the case this file actually needs, `Γ₀ = []` -- is `Ctx.SubstEq` at a
+substitution equal to itself, whose `nil` pins it to the identity. -/
+
+section
+variable (HasType : List VExpr → VExpr → VExpr → Prop)
+
+inductive _root_.Lean4Lean.Ctx.Subst (Γ : List VExpr) : VExpr.Subst → List VExpr → Prop where
+  | nil : Ctx.Subst Γ σ []
+  | cons : Ctx.Subst Γ σ.tail Δ → HasType Γ σ.head (A.subst σ.tail) → Ctx.Subst Γ σ (A::Δ)
+
+variable {HasType}
+
+theorem _root_.Lean4Lean.Ctx.Subst.head (H : Ctx.Subst HasType Γ σ (A::Δ)) :
+    HasType Γ σ.head (A.subst σ.tail) := let .cons _ H := H; H
+
+theorem _root_.Lean4Lean.Ctx.Subst.tail (H : Ctx.Subst HasType Γ σ (A::Δ)) :
+    Ctx.Subst HasType Γ σ.tail Δ := let .cons H _ := H; H
+
+theorem _root_.Lean4Lean.Ctx.Subst.cons' (H1 : Ctx.Subst HasType Γ σ Δ)
+    (H2 : HasType Γ e (A.subst σ)) : Ctx.Subst HasType Γ (σ.cons e) (A::Δ) := .cons H1 H2
+
+theorem _root_.Lean4Lean.Ctx.Subst.lift_r (H1 : Ctx.Subst HasType Θ σ Γ) (H2 : Ctx.Lift' ρ Θ Δ) :
+    Ctx.Subst HasType Δ (σ.lift_r ρ) Γ := sorry
+
+theorem _root_.Lean4Lean.Ctx.Subst.id : Ctx.Subst HasType Γ .id Γ := sorry
+
+theorem _root_.Lean4Lean.Ctx.Subst.one (H : HasType Γ e A) :
+    Ctx.Subst HasType Γ (.one e) (A::Γ) := .cons .id (by simpa)
+
+end
+
+/-- A substitution `Γ ⟹ Γ₀`, together with a second one it is pointwise equal to. `nil` is the
+identity at `Γ₀` itself rather than an arbitrary substitution at the empty context, which is
+what makes the closing case below pin down its substitution. -/
+inductive _root_.Lean4Lean.Ctx.SubstEq (env : VEnv) (U : Nat) (Γ₀ : List VExpr) :
+    VExpr.Subst → VExpr.Subst → List VExpr → Prop where
+  | nil : Ctx.SubstEq env U Γ₀ .id .id Γ₀
+  | cons : Ctx.SubstEq env U Γ₀ σ.tail σ'.tail Γ →
+    env.HasType U Γ A (.sort u) →
+    env.IsDefEq U Γ₀ σ.head σ'.head (A.subst σ.tail) →
+    Ctx.SubstEq env U Γ₀ σ σ' (A :: Γ)
+
+theorem IsDefEq.subst {env : VEnv} (W : Ctx.SubstEq env U Γ₀ σ σ' Γ)
+    (H : env.IsDefEq U Γ e1 e2 A) :
+    env.IsDefEq U Γ₀ (e1.subst σ) (e2.subst σ') (A.subst σ) := sorry
+
+theorem _root_.Lean4Lean.Ctx.SubstEq.lookup {env : VEnv} (W : Ctx.SubstEq env U Γ₀ σ σ' Γ)
+    (h : Lookup Γ i A) : env.IsDefEq U Γ₀ (σ i) (σ' i) (A.subst σ) := sorry
+
+theorem _root_.Lean4Lean.Ctx.SubstEq.lift {env : VEnv} (W : Ctx.SubstEq env U Γ₀ σ σ' Γ)
+    (hA : env.HasType U Γ₀ (A.subst σ) (.sort u)) :
+    Ctx.SubstEq env U (A.subst σ :: Γ₀) σ.lift σ'.lift (A :: Γ) := sorry
+
+theorem _root_.Lean4Lean.Ctx.SubstEq.left {env : VEnv} (W : Ctx.SubstEq env U Γ₀ σ σ' Γ) :
+    Ctx.Subst (env.HasType U) Γ₀ σ Γ := by
+  induction W with
+  | nil => exact .id
+  | cons _ _ h ih => exact .cons ih h.hasType.1
+
+theorem _root_.Lean4Lean.Ctx.SubstEq.symm {env : VEnv} (W : Ctx.SubstEq env U Γ₀ σ σ' Γ) :
+    Ctx.SubstEq env U Γ₀ σ' σ Γ := by
+  induction W with
+  | nil => exact .nil
+  | cons W hA h ih => exact .cons ih hA (.defeqDF (.subst W hA) h.symm)
+
+theorem HasType.subst {env : VEnv} (W : Ctx.SubstEq env U Γ₀ σ σ Γ)
+    (H : env.HasType U Γ e A) : env.HasType U Γ₀ (e.subst σ) (A.subst σ) := IsDefEq.subst W H
+
+theorem IsDefEqU.subst {env : VEnv} (W : Ctx.SubstEq env U Γ₀ σ σ Γ)
+    (H : env.IsDefEqU U Γ e1 e2) : env.IsDefEqU U Γ₀ (e1.subst σ) (e2.subst σ) :=
+  let ⟨_, h⟩ := H; ⟨_, h.subst W⟩
+
+theorem IsType.subst {env : VEnv} (W : Ctx.SubstEq env U Γ₀ σ σ Γ)
+    (H : env.IsType U Γ A) : env.IsType U Γ₀ (A.subst σ) :=
+  let ⟨_, h⟩ := H; ⟨_, by simpa using h.subst W⟩
+
 theorem IsDefEq.defeqDF_l' (henv : Ordered env) (h1 : env.IsDefEq U Γ A A' (.sort u))
     (h2 : env.IsDefEq U (Δ++A::Γ) e1 e2 B) : env.IsDefEq U (Δ++A'::Γ) e1 e2 B := by
   have ⟨_, H1, H2⟩ : ∃ Γ', Ctx.LiftN 1 (Δ.length + 1) (Δ ++ A :: Γ) Γ' ∧
