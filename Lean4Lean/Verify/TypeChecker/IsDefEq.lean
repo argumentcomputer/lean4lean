@@ -333,7 +333,7 @@ theorem _root_.Lean4Lean.TypeChecker.ReductionStatus.WF.bool
   | .false => ⟨H1, H2⟩
   | .true => H rfl
 
-def _root_.Lean4Lean.TypeChecker.ReductionStatus.WF.defeq
+theorem _root_.Lean4Lean.TypeChecker.ReductionStatus.WF.defeq
     (h1 : c.IsDefEqU e₁' e₁'') (h2 : c.IsDefEqU e₂' e₂'')
     (H : ReductionStatus.WF c e₁' e₂' ac r) : ReductionStatus.WF c e₁'' e₂'' ac r :=
   match r, H with
