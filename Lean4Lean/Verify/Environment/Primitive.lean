@@ -1,0 +1,47 @@
+import Lean4Lean.Verify.TypeChecker
+import Lean4Lean.Environment
+
+/-!
+This module contains the front-end-specific trust boundary for declaration verification.
+The checker, extension, and declaration modules introduce no additional `sorry`-backed
+assumptions. The imported type-checker and theory layers retain their own explicit
+verification gaps.
+-/
+
+namespace Lean4Lean
+open Lean4Lean TypeChecker
+open Lean hiding Environment Exception
+open Kernel
+
+namespace Primitive
+
+variable {v : DefinitionVal} {ci' : VDefVal}
+
+/-- What the primitive-definition recognizer must establish beyond ordinary type checking.
+This is kept separate from declaration checking so that the remaining metatheory does not
+depend on the recognizer's syntactic implementation. Primitive semantics are claimed only
+in well-formed extensions of the environment in which recognition ran. -/
+structure PrimitiveResult (checked : VEnv) (v : DefinitionVal) (ci' : VDefVal) : Prop where
+  safe : v.safety = .safe
+  no_level_params : v.levelParams = []
+  preserves : ∀ {safety : DefinitionSafety} {venv env' : VEnv},
+    checked ≤ venv → venv.WF → venv.HasPrimitives →
+    TrDefVal safety venv (.defnInfo v) ci' → ci'.WF venv →
+    venv.addConst v.name ci'.toVConstant = some env' →
+    (env'.addDefEq ci'.toDefEq).HasPrimitives
+
+/-- Verification boundary for Lean4Lean's syntactic primitive-definition recognizer.
+
+The recognizer's `isDefEq` calls are about `v.value` and `v.type`, so lifting them into the
+model requires their translations. `addDefinition` establishes those before calling the
+recognizer -- that is what the reordering there is for -- and they arrive here as `hvalue` and
+`htype`, describing the very `ci'` that the caller goes on to add. -/
+theorem checkDef.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) (ci' : VDefVal)
+    (hu : v.levelParams.length = ci'.uvars)
+    (htype : TrExprS (ves.venv .safe) v.levelParams [] v.type ci'.type)
+    (hvalue : TrExprS (ves.venv .safe) v.levelParams [] v.value ci'.value)
+    (hci : ci'.WF (ves.venv .safe))
+    (state : VState := {}) :
+    (checkDef v).WF (.mk' wf .safe v.levelParams) state fun allow _ =>
+      allow → PrimitiveResult (ves.venv .safe) v ci' := sorry
