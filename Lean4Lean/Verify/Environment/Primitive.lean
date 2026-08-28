@@ -1,5 +1,4 @@
-import Lean4Lean.Verify.TypeChecker
-import Lean4Lean.Environment
+import Lean4Lean.Verify.Environment.Primitive.Recursion
 
 /-!
 This module contains the front-end-specific trust boundary for declaration verification.
@@ -16,19 +15,6 @@ open Kernel
 namespace Primitive
 
 variable {v : DefinitionVal} {ci' : VDefVal}
-
-/-- What the primitive-definition recognizer must establish beyond ordinary type checking.
-This is kept separate from declaration checking so that the remaining metatheory does not
-depend on the recognizer's syntactic implementation. Primitive semantics are claimed only
-in well-formed extensions of the environment in which recognition ran. -/
-structure PrimitiveResult (checked : VEnv) (v : DefinitionVal) (ci' : VDefVal) : Prop where
-  safe : v.safety = .safe
-  no_level_params : v.levelParams = []
-  preserves : ∀ {safety : DefinitionSafety} {venv env' : VEnv},
-    checked ≤ venv → venv.WF → venv.HasPrimitives →
-    TrDefVal safety venv (.defnInfo v) ci' → ci'.WF venv →
-    venv.addConst v.name ci'.toVConstant = some env' →
-    (env'.addDefEq ci'.toDefEq).HasPrimitives
 
 /-- Verification boundary for Lean4Lean's syntactic primitive-definition recognizer.
 
