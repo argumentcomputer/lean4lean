@@ -1156,3 +1156,25 @@ theorem IsDefEq.substDF (henv : Ordered env)
     (W : Ctx.SubstEq env U Γ₀ σ σ' Γ) (H : env.IsDefEq U Γ e1 e2 A) :
     env.IsDefEq U Γ₀ (e1.subst σ) (e2.subst σ') (A.subst σ) :=
   ((H.strong henv hΓ).subst henv (.strong henv hΓ) (.strong henv hΓ₀) W).defeq
+
+variable! (henv : Ordered env) in
+theorem IsDefEq.subst (W : Ctx.SubstEq env U Γ₀ σ σ Γ)
+    (H : env.IsDefEq U Γ e1 e2 A) (hΓ₀ : OnCtx Γ₀ (env.IsType U) := by trivial) :
+    env.IsDefEq U Γ₀ (e1.subst σ) (e2.subst σ) (A.subst σ) := H.substDF henv W.wf hΓ₀ W
+
+variable! (henv : Ordered env) in
+theorem HasType.subst (W : Ctx.SubstEq env U Γ₀ σ σ Γ)
+    (H : env.HasType U Γ e A) (hΓ₀ : OnCtx Γ₀ (env.IsType U) := by trivial) :
+    env.HasType U Γ₀ (e.subst σ) (A.subst σ) := H.substDF henv W.wf hΓ₀ W
+
+variable! (henv : Ordered env) in
+theorem IsDefEqU.subst (W : Ctx.SubstEq env U Γ₀ σ σ Γ)
+    (H : env.IsDefEqU U Γ e1 e2) (hΓ₀ : OnCtx Γ₀ (env.IsType U) := by trivial) :
+    env.IsDefEqU U Γ₀ (e1.subst σ) (e2.subst σ) :=
+  let ⟨_, h⟩ := H; ⟨_, h.substDF henv W.wf hΓ₀ W⟩
+
+variable! (henv : Ordered env) in
+theorem IsType.subst (W : Ctx.SubstEq env U Γ₀ σ σ Γ)
+    (H : env.IsType U Γ A) (hΓ₀ : OnCtx Γ₀ (env.IsType U) := by trivial) :
+    env.IsType U Γ₀ (A.subst σ) :=
+  let ⟨_, h⟩ := H; ⟨_, h.substDF henv W.wf hΓ₀ W⟩

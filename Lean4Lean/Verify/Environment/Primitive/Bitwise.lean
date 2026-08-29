@@ -20,7 +20,7 @@ theorem boolOp2_apply (henv : env.WF) {g : Bool → Bool → Bool}
     (hb : env.IsDefEqU U [] b (.boolLit bb)) (hwf : VExpr.WF env U [] ((f.app a).app b)) :
     env.HasType U [] ((f.app a).app b) .bool ∧
     env.IsDefEqU U [] ((f.app a).app b) (.boolLit (g ba bb)) := by
-  obtain ⟨-, hfa⟩ := VExpr.WF.app_inv' henv trivial hfT (hwf.app_inv₂ henv.ordered trivial).1
+  obtain ⟨-, hfa⟩ := VExpr.WF.app_inv' henv trivial hfT (hwf.app_inv₂ henv trivial).1
   have hfa : env.HasType U [] (f.app a) (.forallE .bool .bool) := by
     simpa [VExpr.inst, VExpr.bool] using hfa
   obtain ⟨-, hab⟩ := VExpr.WF.app_inv' henv trivial hfa hwf
@@ -117,9 +117,7 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
       TrExprS.unique (by simp [TrExprS.IsUnique, one, succ, zero]) hB (oneb hnat).trS ▸ hlit0 1
     -- peeling a ground application: how the well-formedness of every piece of the equation body
     -- is read off the conditional's own
-    have pk {f a : VExpr} (h : (f.app a).WF E.venv ctx.lparams.length []) :
-        f.WF E.venv ctx.lparams.length [] ∧ a.WF E.venv ctx.lparams.length [] :=
-      h.app_inv₂ E.wf.ordered trivial
+    have pk {f a : VExpr} (h : (f.app a).WF E.venv ctx.lparams.length []) := h.app_inv₂ E.wf trivial
     -- a translation at the recognizer's context, moved under a branch's own binder
     have hunder {Y e e'} (h : TrExprS ctx.venv ctx.lparams m'.vlctx e e') :
         TrExprS ctx.venv ctx.lparams ((none, .vlam Y) :: m'.vlctx) e e'.lift :=
@@ -181,7 +179,7 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
     cases TrExprS.unique (by simp [TrExprS.IsUnique, zero]) hP0z (zerob hnat).trS
     cases TrExprS.unique (by simp [TrExprS.IsUnique, zero]) hD0z (zerob hnat).trS
     subst hshape0
-    have hwfr0 : E.WF₀ _ := VEnv.IsDefEqU.subst hclS (E.monoW (hrhs.wf hE cwf2.wf.tr.wf))
+    have hwfr0 : E.WF₀ _ := E.monoW (hrhs.wf hE cwf2.wf.tr.wf) |>.subst E.wf hclS
     simp only [diteApp, VExpr.subst, wc.propC.subst_eq', wc.decC.subst_eq', hxs, zerob,
       TrTerm.natZero, TrTerm.of] at hwfr0 ⊢
     obtain ⟨pf0, hev0⟩ := wc.natEq_diteEval (hcdite rfl).2.1 wf.hasPrimitives hnat E.cast
@@ -288,7 +286,7 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
         refine let Y := _
           have hΔ1WF : VLCtx.WF ctx.venv ctx.lparams.length ((none, .vlam Y) :: m'.vlctx) :=
             ⟨cwf2.wf.tr.wf, nofun, hYT⟩; ?_
-        have hS1 := Ctx.SubstEq.cons (σ := (γ.cons ih).cons pf0) (σ' := (γ.cons ih).cons pf0)
+        have hS1 := VEnv.Ctx.SubstEq.cons (σ := (γ.cons ih).cons pf0) (σ' := (γ.cons ih).cons pf0)
             hclS (E.monoT hYT.choose_spec) <| by
           simpa only [VExpr.Subst.cons_tail, VExpr.Subst.cons_head, VExpr.subst, wc.propC.subst_eq',
             wc.decC.subst_eq', hxs, zerob, TrTerm.natZero, TrTerm.of, VExpr.natZero,
@@ -338,7 +336,7 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
           have hpkeq : E.IsDefEqU₀ (pkv.subst ((γ.cons ih).cons pf0))
               (PB.pack'.subst γ.tail.tail) := by
             have h := TrExprS.uniq ctx.Ewf (VLCtx.IsDefEq.refl hE hΔ1WF) hpkv (hunder hpk)
-            have h2 := (E.mono h).subst hS1
+            have h2 := (E.mono h).subst E.wf hS1
             simpa [VExpr.lift, VExpr.liftN_subst, VExpr.Subst.cons_tail, VLocalDecl.depth,
               Lift.skipN, VContext.Ext.IsDefEqU₀, VContext.withMLC] using h2
           have hpackeq := hpkeq.appN' E.wf trivial
@@ -379,22 +377,20 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
     have hlit {k : Nat} {Γ} : env'.HasType ctx.lparams.length Γ (.natLit k) .nat := by
       rw [hlp]; exact (wf.hasPrimitives.natLitT hE hnat k Γ).mono hle
     have hnatTy {Γ} (h : OnCtx Γ (env'.IsType ctx.lparams.length)) :
-        env'.IsType ctx.lparams.length Γ .nat := (hlit (k := 0)).isType hwf''.ordered h
+        env'.IsType ctx.lparams.length Γ .nat := (hlit (k := 0)).isType hwf'' h
     have hbo : env'.IsType ctx.lparams.length [] .boolOp2 := by
       obtain ⟨u, hu⟩ := (boolOp2Ty (c := ctx) hbool).isType
       exact ⟨u, hu.mono hle⟩
     have hΓ1 : OnCtx [.boolOp2] (env'.IsType ctx.lparams.length) := ⟨trivial, hbo⟩
     obtain ⟨_, hnatT1⟩ := hnatTy hΓ1
     obtain ⟨_, hnatT2⟩ := hnatTy (Γ := [.nat, .boolOp2]) ⟨hΓ1, hnatTy hΓ1⟩
-    have hγ1 : Ctx.SubstEq env' ctx.lparams.length []
+    have hγ1 : VEnv.Ctx.SubstEq env' ctx.lparams.length []
         ((VExpr.Subst.id.cons fv).cons (.natLit x'))
-        ((VExpr.Subst.id.cons fv).cons (.natLit x')) [.nat, .boolOp2] :=
-      hγ.cons hnatT1 hlit
-    have hγ2 : Ctx.SubstEq env' ctx.lparams.length []
+        ((VExpr.Subst.id.cons fv).cons (.natLit x')) [.nat, .boolOp2] := hγ.cons hnatT1 hlit
+    have hγ2 : VEnv.Ctx.SubstEq env' ctx.lparams.length []
         (((VExpr.Subst.id.cons fv).cons (.natLit x')).cons (.natLit y'))
         (((VExpr.Subst.id.cons fv).cons (.natLit x')).cons (.natLit y'))
-        [.nat, .nat, .boolOp2] :=
-      hγ1.cons hnatT2 hlit
+        [.nat, .nat, .boolOp2] := hγ1.cons hnatT2 hlit
     obtain ⟨vv, hRv, hlhs⟩ := heq ⟨env', hle, hwf''⟩ _ ih hγ2 <| by
       simpa [ProbeBundle.pihTy, ProbeBundle.parg, ProbeBundle.pγ, VLocalDecl.depth,
         VExpr.natLit, VExpr.Subst.cons, hn1, hm, hn, TrTerm.of, TrTerm.fvar, TrTerm.wk] using hihT

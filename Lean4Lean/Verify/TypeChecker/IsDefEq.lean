@@ -186,7 +186,7 @@ theorem isDefEqArgs.WF {c : VContext} {s : VState}
   unfold isDefEqArgs; split <;> (unfold Expr.getAppFn at H)
   · let .app a1 a2 a3 a4 := he₁
     let .app b1 b2 b3 b4 := he₂
-    refine (isDefEq.WF a4 b4).bind fun _ _ _ h2 => ?_; extract_lets F
+    refine (isDefEq.WF a4 b4).bind fun _ _ _ h2 => ?_
     split <;> [exact .pure nofun; rename_i hb2]
     refine (isDefEqArgs.WF H a3 b3).mono fun _ _ _ h1 hb1 => ?_
     simp at hb2

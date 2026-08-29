@@ -109,7 +109,7 @@ theorem VExpr.subst_appN (γ : VExpr.Subst) : ∀ (e : VExpr) as,
 A telescope of binders is opened by `lambdaTelescope` and closed again by giving each binder a
 value. Both directions are needed: the recognizer works under the open telescope, while the
 statements it feeds are about the value applied to ground arguments. `lams_appN` below is the
-bridge, and the arguments' typing -- which is what makes the closing a `Ctx.SubstEq` -- is not an
+bridge, and the arguments' typing -- which is what makes the closing a `VEnv.Ctx.SubstEq` -- is not an
 assumption but inversion of the application's own well-formedness. -/
 
 /-- A lambda telescope over a list of domains, outermost first: the order `appN` applies its
@@ -165,29 +165,9 @@ theorem VEnv.HasPrimitives.natIsType' {env : VEnv} (henv : env.Ordered)
     (hΓ : OnCtx Γ (env.IsType Us.length)) : env.IsType Us.length Γ VExpr.nat :=
   VLCtx.toCtx_ofCtx Γ ▸ hprim.natIsType (Δ := VLCtx.ofCtx Γ) henv hnat (by simpa using hΓ)
 
-/-- A substitution does not touch a closed term. The closed pieces of a `Condition` are read at
-one depth and used at another, so this is what lets a checked equation be closed off at the
-caller's arguments without disturbing the reflection's own constants. -/
-theorem VExpr.ClosedN.subst_eq : ∀ {e : VExpr} {k} {σ : VExpr.Subst}, e.ClosedN k →
-    (∀ i, i < k → σ i = .bvar i) → e.subst σ = e := by
-  intro e
-  induction e with intro k σ hc hσ
-  | bvar i => simp [VExpr.ClosedN] at hc; exact hσ i hc
-  | sort | const => rfl
-  | app _ _ ih1 ih2 =>
-    simp only [VExpr.ClosedN] at hc
-    simp [VExpr.subst, ih1 hc.1 hσ, ih2 hc.2 hσ]
-  | lam _ _ ih1 ih2 | forallE _ _ ih1 ih2 =>
-    simp only [VExpr.ClosedN] at hc
-    have hσ' : ∀ i, i < k + 1 → σ.lift i = .bvar i := by
-      intro i hi
-      match i with
-      | 0 => rfl
-      | i+1 => simp [VExpr.Subst.lift, hσ i (Nat.lt_of_succ_lt_succ hi), VExpr.lift, VExpr.liftN]
-    simp [VExpr.subst, ih1 hc.1 hσ, ih2 hc.2 hσ']
-
+/-- A substitution does not touch a closed term, at the depth the recognizer works at. -/
 theorem _root_.Lean4Lean.VExpr.ClosedN.subst_eq' {e : VExpr} {σ : VExpr.Subst}
-    (h : e.ClosedN) : e.subst σ = e := h.subst_eq nofun
+    (h : e.ClosedN) : e.subst σ = e := h.subst_eq .zero
 
 /-- The context an all-`Nat` telescope opens is well formed. -/
 theorem _root_.Lean4Lean.OnCtx.natTelescope {env : VEnv}
@@ -512,8 +492,8 @@ equation; pulled out, it is what lets an equation checked *under* a telescope of
 off at arguments for them -- which is how the reflection's checks reach their consumers. -/
 theorem VExpr.ArgsTyped.substEq {env : VEnv} {U} {Γ₀ : List VExpr} :
     ∀ {As : List VExpr} {Γ σ vs}, OnCtx (As.reverse ++ Γ) (env.IsType U) →
-      Ctx.SubstEq env U Γ₀ σ σ Γ → VExpr.ArgsTyped env U Γ₀ As σ vs →
-      Ctx.SubstEq env U Γ₀ (σ.consN vs) (σ.consN vs) (As.reverse ++ Γ) := by
+      VEnv.Ctx.SubstEq env U Γ₀ σ σ Γ → VExpr.ArgsTyped env U Γ₀ As σ vs →
+      VEnv.Ctx.SubstEq env U Γ₀ (σ.consN vs) (σ.consN vs) (As.reverse ++ Γ) := by
   intro As
   induction As with
   | nil => intro _ _ _ _ hσ hargs; cases hargs; exact hσ
@@ -523,7 +503,7 @@ theorem VExpr.ArgsTyped.substEq {env : VEnv} {U} {Γ₀ : List VExpr} :
     simp only [List.reverse_cons, List.append_assoc, List.singleton_append,
       VExpr.Subst.consN_cons] at hctx ⊢
     obtain ⟨u, hAu⟩ : env.IsType U Γ A := (OnCtx.of_append hctx).2
-    have hσ' : Ctx.SubstEq env U Γ₀ (σ.cons _) (σ.cons _) (A :: Γ) := .cons hσ hAu hv
+    have hσ' : VEnv.Ctx.SubstEq env U Γ₀ (σ.cons _) (σ.cons _) (A :: Γ) := .cons hσ hAu hv
     exact ih hctx hσ' hargs
 
 /-- A lambda telescope is well typed when its body is. Needed because closing a *second* term at
@@ -631,15 +611,15 @@ arguments extend `σ` to a closing of the telescope's own context, and the appli
 substitution.
 
 `As` is in telescope order, so the context it opens is `As.reverse ++ Γ`; `OnCtx` there is what
-an `MLCtx.WF` supplies, and it is needed because `Ctx.SubstEq` asks for each domain to be a type
-in *its own* context, which the closed-off application cannot say. -/
+an `MLCtx.WF` supplies, and it is needed because `VEnv.Ctx.SubstEq` asks for each domain to be a
+type in *its own* context, which the closed-off application cannot say. -/
 theorem VExpr.lams_appN {env : VEnv} {U} {Γ₀ : List VExpr} (henv : VEnv.WF env)
     (hΓ₀ : OnCtx Γ₀ (env.IsType U))
     {As : List VExpr} {Γ} (hctx : OnCtx (As.reverse ++ Γ) (env.IsType U))
-    {σ} (hσ : Ctx.SubstEq env U Γ₀ σ σ Γ)
+    {σ} (hσ : VEnv.Ctx.SubstEq env U Γ₀ σ σ Γ)
     {vs e} (hlen : vs.length = As.length)
     (hwf : VExpr.WF env U Γ₀ (((VExpr.lams As e).subst σ).appN vs)) :
-    Ctx.SubstEq env U Γ₀ (σ.consN vs) (σ.consN vs) (As.reverse ++ Γ) ∧
+    VEnv.Ctx.SubstEq env U Γ₀ (σ.consN vs) (σ.consN vs) (As.reverse ++ Γ) ∧
     env.IsDefEqU U Γ₀ (((VExpr.lams As e).subst σ).appN vs) (e.subst (σ.consN vs)) ∧
     VExpr.ArgsTyped env U Γ₀ As σ vs := by
   induction As generalizing Γ σ hσ vs with
@@ -660,7 +640,7 @@ theorem VExpr.lams_appN {env : VEnv} {U} {Γ₀ : List VExpr} (henv : VEnv.WF en
     rwa [show ((VExpr.lams As e).subst σ.lift).inst v = (VExpr.lams As e).subst (σ.cons v) from
       by rw [VExpr.inst_eq, VExpr.subst_subst, VExpr.Subst.lift_comp_one]] at h
   have hcong := VEnv.IsDefEqU.appN henv hΓ₀ (vs := vs) ⟨_, hbeta⟩ hwf
-  have hσ' : Ctx.SubstEq env U Γ₀ (σ.cons v) (σ.cons v) (A :: Γ) := .cons hσ hAu hv'
+  have hσ' : VEnv.Ctx.SubstEq env U Γ₀ (σ.cons v) (σ.cons v) (A :: Γ) := .cons hσ hAu hv'
   obtain ⟨hcl, heq, hargs⟩ := ih (Γ := A :: Γ) hctx hσ' (vs := vs) (by simpa using hlen)
     (hwf.imp fun _ h => VEnv.HasType.defeqU_l henv hΓ₀ hcong h)
   exact ⟨hcl, VEnv.IsDefEqU.trans henv hΓ₀ hcong heq, .cons hv' hargs⟩
@@ -672,22 +652,22 @@ arguments (the packer above all) reuses the substitution and the argument typing
 theorem VExpr.lams_appN' {env : VEnv} {U} {Γ₀ : List VExpr} (henv : VEnv.WF env)
     (hΓ₀ : OnCtx Γ₀ (env.IsType U))
     {As : List VExpr} {Γ} (hctx : OnCtx (As.reverse ++ Γ) (env.IsType U))
-    {σ} (hσ : Ctx.SubstEq env U Γ₀ σ σ Γ)
+    {σ} (hσ : VEnv.Ctx.SubstEq env U Γ₀ σ σ Γ)
     {vs e} (hargs : VExpr.ArgsTyped env U Γ₀ As σ vs)
     (hwf : VExpr.WF env U (As.reverse ++ Γ) e) :
     VExpr.WF env U Γ₀ (((VExpr.lams As e).subst σ).appN vs) ∧
     env.IsDefEqU U Γ₀ (((VExpr.lams As e).subst σ).appN vs) (e.subst (σ.consN vs)) := by
   induction hargs generalizing Γ with
-  | nil => exact ⟨VEnv.IsDefEqU.subst hσ hwf, VEnv.IsDefEqU.subst hσ hwf⟩
+  | nil => exact ⟨.subst henv.ordered hσ hwf, .subst henv.ordered hσ hwf⟩
   | @cons v As vs A σ hv' hargs ih
   have hlamwf : VExpr.WF env U Γ₀ ((VExpr.lams (A :: As) e).subst σ) :=
-    VEnv.IsDefEqU.subst hσ (VExpr.wf_lams henv hctx hwf)
+    .subst henv.ordered hσ (VExpr.wf_lams henv hctx hwf)
   simp only [List.reverse_cons, List.append_assoc, List.singleton_append] at hctx hwf
   obtain ⟨u, hAu⟩ : env.IsType U Γ A := (OnCtx.of_append hctx).2
   obtain ⟨⟨u₀, hAσ⟩, B₀, hX⟩ := hlamwf.lam_inv henv.ordered hΓ₀
   have hbeta := VEnv.IsDefEq.beta hX hv'
   rw [VExpr.inst_eq, VExpr.subst_subst, VExpr.Subst.lift_comp_one] at hbeta
-  have hσ' : Ctx.SubstEq env U Γ₀ (σ.cons v) (σ.cons v) (A :: Γ) := .cons hσ hAu hv'
+  have hσ' : VEnv.Ctx.SubstEq env U Γ₀ (σ.cons v) (σ.cons v) (A :: Γ) := .cons hσ hAu hv'
   obtain ⟨hwfIH, heq⟩ := ih hctx hσ' hwf
   have hcong := VEnv.IsDefEqU.appN henv hΓ₀ (vs := vs) ⟨_, hbeta.symm⟩ hwfIH
   exact ⟨hcong.symm.trans henv hΓ₀ hcong, hcong.symm.trans henv hΓ₀ heq⟩
@@ -707,10 +687,10 @@ abbrev TypeChecker.VContext.WF₀ (c : VContext) : VExpr → Prop :=
   VExpr.WF c.venv c.lparams.length []
 
 /-- `γ` closes the recognizer's context: a substitution into the *empty* context, taken as a
-`Ctx.SubstEq` with itself so that `nil` pins it to the identity when there is nothing to
+`VEnv.Ctx.SubstEq` with itself so that `nil` pins it to the identity when there is nothing to
 close. -/
 abbrev TypeChecker.VContext.Closing (c : VContext) (γ : VExpr.Subst) : Prop :=
-  Ctx.SubstEq c.venv c.lparams.length [] γ γ c.vlctx.toCtx
+  VEnv.Ctx.SubstEq c.venv c.lparams.length [] γ γ c.vlctx.toCtx
 
 /-- The environment a ground judgement is read in. Every primitive but `Nat.bitwise` reads its
 own: the operators a recurrence mentions are constants the branch guarded on, so the checking
@@ -746,7 +726,7 @@ abbrev TypeChecker.VContext.Ext.WF₀ {c : VContext} (E : c.Ext) : VExpr → Pro
 
 /-- `γ` closes the recognizer's context into the extension. At `c.self` this is `c.Closing`. -/
 abbrev TypeChecker.VContext.Ext.Closing {c : VContext} (E : c.Ext) (γ : VExpr.Subst) : Prop :=
-  Ctx.SubstEq E.venv c.lparams.length [] γ γ c.vlctx.toCtx
+  VEnv.Ctx.SubstEq E.venv c.lparams.length [] γ γ c.vlctx.toCtx
 
 /-- Reading an open judgement of the checking environment in the extension. -/
 theorem TypeChecker.VContext.Ext.mono {c : VContext} (E : c.Ext) {U Γ e₁ e₂}

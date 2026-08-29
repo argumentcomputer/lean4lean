@@ -1044,8 +1044,8 @@ in: passing it says the term never mentioned the variable in the first place. -/
 theorem abstract1_eq_self {a : FVarId} {e : Expr} {k}
     (h : (abstract1 a e k).looseBVarRange' ≤ k) : abstract1 a e k = e := by
   induction e generalizing k with
-  | bvar i => simp only [abstract1] at h ⊢; split at h <;> simp_all [looseBVarRange'] <;> omega
-  | fvar v => simp only [abstract1] at h ⊢; split at h <;> simp_all [looseBVarRange'] <;> omega
+  | bvar i => simp only [abstract1] at h ⊢; split at h <;> simp_all [looseBVarRange']; omega
+  | fvar v => simp only [abstract1] at h ⊢; split at h <;> simp_all [looseBVarRange']; omega
   | _ => simp_all [abstract1, looseBVarRange', Nat.max_le] <;> grind
 
 theorem abstractList_eq_self {e : Expr} {as : List FVarId} {k}

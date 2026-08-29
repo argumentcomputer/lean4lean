@@ -168,8 +168,8 @@ that opened a binder and is now closing it again wants. -/
 theorem FVarsIn.abstract1_erase {a : FVarId} : ∀ {e : Expr} {k},
     FVarsIn (fun fv => P fv ∨ fv = a) e → FVarsIn P (Expr.abstract1 a e k) := by
   intro e
-  induction e with intro k h <;> simp_all [FVarsIn, Expr.abstract1]
-  | fvar v => split <;> simp_all [FVarsIn] <;> exact h.resolve_right (Ne.symm ‹_›)
+  induction e with (intro k h; simp_all [FVarsIn, Expr.abstract1])
+  | fvar v => split <;> simp_all [FVarsIn]; exact h.resolve_right (Ne.symm ‹_›)
 
 theorem Closed.abstract1 (h1 : Closed e k) :
     Closed (Expr.abstract1 a e k) (k+1) := by

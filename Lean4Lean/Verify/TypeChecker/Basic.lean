@@ -809,9 +809,9 @@ is vacuous. This is what lets `FVarsBelow` -- which `inferType`/`whnf` hand out 
 "still in the base context". -/
 theorem MLCtx.WF.isFVarUpSet_dropN : ∀ {c : MLCtx} (_ : c.WF env Us) (n hn),
     IsFVarUpSet (· ∈ (c.dropN n hn).vlctx.fvars) c.vlctx
-  | c, wf, 0, _ => .fvars wf.tr.wf.fvwf
-  | .vlam _ _ _ _ _ c, ⟨h1, h2, _⟩, _+1, hn
-  | .vlet _ _ _ _ _ _ c, ⟨h1, h2, _⟩, _+1, hn =>
+  | _, wf, 0, _ => .fvars wf.tr.wf.fvwf
+  | .vlam _ _ _ _ _ c, ⟨h1, h2, _⟩, _+1, _
+  | .vlet _ _ _ _ _ _ c, ⟨h1, h2, _⟩, _+1, _ =>
     ⟨h1.isFVarUpSet_dropN _ _, fun h =>
       (h1.tr.find?_eq_none.1 h2 (dropN_fvars_subset (c := c) _ _ h)).elim⟩
 

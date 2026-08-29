@@ -71,42 +71,42 @@ theorem checkNatFuelRec.WF {c : VContext} {ite : Bool}
   -- `≤` on `Nat`, and the fuel-driven `go` the recursion runs through
   refine .bind (checkType.WF (.of_hasFVar rfl rfl rfl))
     fun _ _ _ ⟨le', leTy', _, hleTr, hleTyTr, hleT⟩ => ?_
-  refine .bind (isDefEq.WF hleTyTr (TrExprS.natNatProp c.Ewf.ordered hprim hnat c.Δwf.toCtx))
+  refine .bind (isDefEq.WF hleTyTr (TrExprS.natNatProp c.Ewf hprim hnat c.Δwf.toCtx))
     fun _ _ _ hb => elseFail ((fun hle => ?_) ∘ hb)
   have hleT' : c.venv.HasType c.lparams.length c.vlctx.toCtx le' vexpr(Nat → Nat → Prop) :=
     VEnv.HasType.defeqU_r c.Ewf c.Δwf.toCtx hle hleT
   rw [hnil] at hleT'
   have hleTrΓ {Δ} : TrExprS c.venv c.lparams Δ _ le' :=
-    TrExprS.of_nil_any c.Ewf.ordered (by simp [noProj]) (hnil ▸ hleTr)
+    TrExprS.of_nil_any c.Ewf (by simp [noProj]) (hnil ▸ hleTr)
   have hleTΓ {Γ} : c.venv.HasType c.lparams.length Γ le' vexpr(Nat → Nat → Prop) :=
-    .weak0 c.Ewf.ordered hleT'
+    .weak0 c.Ewf hleT'
   have hleC : le'.ClosedN := (hleT'.closedN' c.Ewf.ordered.closed trivial).1
   refine .bind (checkType.WF (.of_hasFVar rfl rfl rfl))
     fun _ _ _ ⟨go', goTy', _, hgoTr, hgoTyTr, hgoT⟩ => ?_
   refine .bind (isDefEq.WF hgoTyTr
-    (TrExprS.divGoType c.Ewf.ordered hprim hnat (le' := le') hleTrΓ hleTΓ c.Δwf.toCtx))
+    (TrExprS.divGoType c.Ewf hprim hnat (le' := le') hleTrΓ hleTΓ c.Δwf.toCtx))
     fun _ _ _ hb2 => elseFail ((fun hgo => ?_) ∘ hb2)
   have hgoT' : c.venv.HasType c.lparams.length c.vlctx.toCtx go' (natGoType le') :=
     VEnv.HasType.defeqU_r c.Ewf c.Δwf.toCtx hgo hgoT
   rw [hnil] at hgoT'
   have hgoTrΓ {Δ} : TrExprS c.venv c.lparams Δ _ go' :=
-    TrExprS.of_nil_any c.Ewf.ordered (by simp [noProj]) (hnil ▸ hgoTr)
+    TrExprS.of_nil_any c.Ewf (by simp [noProj]) (hnil ▸ hgoTr)
   have hgoTΓ {Γ} : c.venv.HasType c.lparams.length Γ go' (natGoType le') :=
-    VEnv.HasType.weak0 c.Ewf.ordered hgoT'
+    VEnv.HasType.weak0 c.Ewf hgoT'
   have hgoC : go'.ClosedN := (hgoT'.closedN' c.Ewf.ordered.closed trivial).1
   -- the condition, in both its `ite` and its `dite` form
   refine Condition.check.WF hnat hbool hnil .throw |>.bind fun _ _ _ ⟨w, hite, hdite⟩ => ?_
   have hdecC' : w.dec'.ClosedN := w.decC
   have hpropC' : w.prop'.ClosedN := w.propC
   obtain ⟨natU, hnatTy⟩ : c.venv.IsType c.lparams.length [] .nat :=
-    hprim.natIsType' c.Ewf.ordered hnat trivial
+    hprim.natIsType' c.Ewf hnat trivial
   have hlitT k Γ : c.venv.HasType c.lparams.length Γ (.natLit k) .nat :=
-    hprim.natLitT c.Ewf.ordered hnat k Γ
+    hprim.natLitT c.Ewf hnat k Γ
   have hnatTyΓ {Γ} : c.venv.HasType c.lparams.length Γ VExpr.nat (.sort natU) :=
-    .weak0 c.Ewf.ordered hnatTy
+    .weak0 c.Ewf hnatTy
   -- the check ran before any binder, so the identity closes what there is of the context
   have hγ0 : c.Closing VExpr.Subst.id := by
-    show Ctx.SubstEq _ _ _ _ _ (VLCtx.toCtx c.vlctx)
+    show VEnv.Ctx.SubstEq _ _ _ _ _ (VLCtx.toCtx c.vlctx)
     rw [hnil]; exact .nil
   -- the two recursion variables, and the caller's top equation at them
   refine M.WF.withMLC_self ?_
@@ -227,9 +227,9 @@ theorem checkNatFuelRec.WF {c : VContext} {ite : Bool}
   have hga := goArgs hgoTΓ hleC hwf
   have hpfT := hga.2.1
   have hpf'T := hga.2.2.2.2.1
-  have hc2 := heq2.subst (hγ5 x bb f' pf pf' hpfT hpf'T)
+  have hc2 := heq2.subst c.Ewf.ordered (hγ5 x bb f' pf pf' hpfT hpf'T)
   rw [hshape2] at hc2 he2T
-  have hwf2 := he2T.subst (hγ5 x bb f' pf pf' hpfT hpf'T)
+  have hwf2 := he2T.subst c.Ewf.ordered (hγ5 x bb f' pf pf' hpfT hpf'T)
   simp [diteApp, VExpr.subst, VExpr.Subst.cons, VExpr.Subst.lift, TrTerm.app,
     hP2eq, hD2eq, hHsubst, hdecC'.subst_eq', hgoC.subst_eq', hpropC'.subst_eq',
     hy5, hy4, hy3, hy, hx5, hx4, hx3, hx2, hx, hf5, hf, hhy5, hhy3, hhh5, gob5, lhs5,
@@ -267,7 +267,7 @@ theorem checkNatFuelRec.WF {c : VContext} {ite : Bool}
     have hbeta := (VExpr.WF.betaU c.Ewf trivial hwfr2).2
     rw [VExpr.inst_eq, VExpr.subst_subst, VExpr.Subst.lift_comp_one] at hbeta
     refine hbeta.trans c.Ewf trivial <|
-      hels he2 (TrExprS.underBV c.Ewf.ordered (MLCtx.noBV _) hx5.trS) ?_
+      hels he2 (TrExprS.underBV c.Ewf (MLCtx.noBV _) hx5.trS) ?_
     rw [VExpr.lift_subst, VExpr.Subst.cons_tail]; exact hx5s x bb f' pf pf'
 
 /-- `Nat.mod`: a fuel-driven recursion through `Nat.modCore.go`. Three equations: the base
@@ -305,7 +305,7 @@ theorem checkNatMod.WF {ves : VEnvs} (wf : ves.WF env)
     refine .pure fun a => ?_
     have hγ0 : (ctx.withMLC m0).Closing (VExpr.Subst.id.cons (.natLit a)) :=
       .cons .nil hnatTy (hlitT a [])
-    have h := heq0.subst hγ0
+    have h := heq0.subst ctx.Ewf.ordered hγ0
     have hvalC : ci'.value.ClosedN := (P.hci.closedN' ctx.Ewf.ordered.closed trivial).1
     simpa [TrTerm.natBinApp, TrTerm.app', TrTerm.of, TrTerm.of_nil', TrTerm.wk, TrTerm.fvar,
       TrTerm.natZero, zerob, hx0, Data.hv, VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id,
@@ -387,9 +387,9 @@ theorem checkNatMod.WF {ves : VEnvs} (wf : ves.WF env)
     simpa [VExpr.natLit, VExpr.natZero] using hbase b
   | succ k
   -- the top equation at `x := k`, `y := b`, closed off at literals
-  have hc1 := heq1.subst (hγ2 k b)
+  have hc1 := heq1.subst ctx.Ewf.ordered (hγ2 k b)
   rw [hshapei1, hshape1] at hc1 he1T
-  have hwf1 := he1T.subst (hγ2 k b)
+  have hwf1 := he1T.subst ctx.Ewf.ordered (hγ2 k b)
   simp [iteApp, diteApp, VExpr.subst, VExpr.Subst.cons, VExpr.Subst.lift, TrTerm.app', TrTerm.of,
     TrTerm.natUnApp, TrTerm.of_nil', Data.hv, VExpr.liftN, sxb2, hxs, hys, hPi1eq, hDi1eq,
     hP1eq, hD1eq, hdecC'.subst_eq', hgoC.subst_eq', hvalC.subst_eq', hpropC'.subst_eq'] at hc1 hwf1
@@ -516,9 +516,9 @@ theorem checkNatDiv.WF {ves : VEnvs} (wf : ves.WF env)
     Option.some.injEq, Prod.mk.injEq,
     VContext.vlctx, VContext.withMLC_mlctx, hfindy, hfindx] at hfy1 hfpf1 hfx1 hfsx1
   cases hfy1.1; cases hfpf1.1; cases hfx1.1; cases hfsx1.1
-  have hc1 := heq1.subst (hγ2 a b)
+  have hc1 := heq1.subst ctx.Ewf.ordered (hγ2 a b)
   rw [hshape1] at hc1 he1T
-  have hwf1 := he1T.subst (hγ2 a b)
+  have hwf1 := he1T.subst ctx.Ewf.ordered (hγ2 a b)
   simp [diteApp, VExpr.subst, VExpr.Subst.cons, VExpr.Subst.lift,
     hxs, hys, hP1eq, hD1eq, hdecC'.subst_eq', hgoC.subst_eq', hvalC.subst_eq', hpropC'.subst_eq',
     TrTerm.of, TrTerm.of_nil', VExpr.liftN, Data.hv, id] at hc1 hwf1
